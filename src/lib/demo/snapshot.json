@@ -1,0 +1,981 @@
+{
+ "asOf": "2026-09-21",
+ "comps": [
+  {
+   "ticker": "SNOW",
+   "name": "Snowflake Inc.",
+   "price": 332.43,
+   "changePct": -1.76128,
+   "marketCap": 115220.238,
+   "ev": 115159.538,
+   "evRevLtm": 21.190066978250467,
+   "evEbitdaLtm": null,
+   "growth": 0.32039165188658636,
+   "gm": 0.67031612262172,
+   "fcfm": 0.21994259007102637,
+   "r40": 54.03342419576127,
+   "revenue": 5434.6,
+   "debt": 2284,
+   "cash": 2344.7,
+   "ltmEnd": "2026-07-31",
+   "quarters": [
+    {
+     "label": "Q3 FY25",
+     "revenue": 942.1
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 986.8
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 1042.1
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 1145
+    },
+    {
+     "label": "Q3 FY26",
+     "revenue": 1212.9
+    },
+    {
+     "label": "Q4 FY26",
+     "revenue": 1284
+    },
+    {
+     "label": "Q1 FY27",
+     "revenue": 1391
+    },
+    {
+     "label": "Q2 FY27",
+     "revenue": 1546.8
+    }
+   ],
+   "fye": "Jan 31"
+  },
+  {
+   "ticker": "DDOG",
+   "name": "Datadog, Inc.",
+   "price": 229.92,
+   "changePct": -2.57627,
+   "marketCap": 81842.363206,
+   "ev": 77842.463206,
+   "evRevLtm": 19.623985480626214,
+   "evEbitdaLtm": 994.1566182120051,
+   "growth": 0.3151752262856007,
+   "gm": 0.7951193687448005,
+   "fcfm": 0.2704262989386644,
+   "r40": 58.5601525224265,
+   "revenue": 3966.7,
+   "debt": 985.5,
+   "cash": 4985.4,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 690
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 737.7
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 761.6
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 826.8
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 885.7
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 953.2
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 1006.4
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 1121.5
+    }
+   ],
+   "fye": "Dec 31"
+  },
+  {
+   "ticker": "MDB",
+   "name": "MongoDB, Inc.",
+   "price": 383.56,
+   "changePct": -2.50623,
+   "marketCap": 30850.46992,
+   "ev": 28656.069919999998,
+   "evRevLtm": 10.297567169757079,
+   "evEbitdaLtm": 3411.436895238095,
+   "growth": 0.2545307005680284,
+   "gm": 0.7268578410234297,
+   "fcfm": 0.23681184418571222,
+   "r40": 49.134254475374064,
+   "revenue": 2782.8,
+   "debt": 216.9,
+   "cash": 2411.3,
+   "ltmEnd": "2026-07-31",
+   "quarters": [
+    {
+     "label": "Q3 FY25",
+     "revenue": 529.4
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 548.4
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 549
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 591.4
+    },
+    {
+     "label": "Q3 FY26",
+     "revenue": 628.3
+    },
+    {
+     "label": "Q4 FY26",
+     "revenue": 695.1
+    },
+    {
+     "label": "Q1 FY27",
+     "revenue": 687.6
+    },
+    {
+     "label": "Q2 FY27",
+     "revenue": 771.8
+    }
+   ],
+   "fye": "Jan 31"
+  },
+  {
+   "ticker": "NET",
+   "name": "Cloudflare, Inc.",
+   "price": 323.99,
+   "changePct": -2.97958,
+   "marketCap": 114996.858649,
+   "ev": 114104.358649,
+   "evRevLtm": 45.41647773005891,
+   "evEbitdaLtm": null,
+   "growth": 0.3353885404486021,
+   "gm": 0.7257602292628562,
+   "fcfm": 0.13867218595765005,
+   "r40": 47.40607264062522,
+   "revenue": 2512.4,
+   "debt": 3270.3,
+   "cash": 4162.8,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 430.1
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 459.9
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 479.1
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 512.3
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 562
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 614.5
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 639.8
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 696.1
+    }
+   ],
+   "fye": "Dec 31"
+  },
+  {
+   "ticker": "CRWD",
+   "name": "CrowdStrike Holdings, Inc.",
+   "price": 237.65,
+   "changePct": -3.27635,
+   "marketCap": 241989.317892,
+   "ev": 237721.717892,
+   "evRevLtm": 44.05435738626044,
+   "evEbitdaLtm": null,
+   "growth": 0.24302596116191744,
+   "gm": 0.7519134189507236,
+   "fcfm": 0.2827227071403421,
+   "r40": 52.57486683022595,
+   "revenue": 5396.1,
+   "debt": 746.2,
+   "cash": 5013.8,
+   "ltmEnd": "2026-07-31",
+   "quarters": [
+    {
+     "label": "Q3 FY25",
+     "revenue": 1010.2
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 1058.5
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 1103.4
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 1169
+    },
+    {
+     "label": "Q3 FY26",
+     "revenue": 1234.2
+    },
+    {
+     "label": "Q4 FY26",
+     "revenue": 1305.4
+    },
+    {
+     "label": "Q1 FY27",
+     "revenue": 1385.6
+    },
+    {
+     "label": "Q2 FY27",
+     "revenue": 1470.9
+    }
+   ],
+   "fye": "Jan 31"
+  },
+  {
+   "ticker": "GTLB",
+   "name": "GitLab Inc.",
+   "price": 49.23,
+   "changePct": -2.06883,
+   "marketCap": 8314.947049,
+   "ev": 8084.847049,
+   "evRevLtm": 7.661909637035633,
+   "evEbitdaLtm": null,
+   "growth": 0.22998018417064925,
+   "gm": 0.8574677786201668,
+   "fcfm": 0.20252084912812737,
+   "r40": 43.25010332987767,
+   "revenue": 1055.2,
+   "debt": 0,
+   "cash": 230.1,
+   "ltmEnd": "2026-07-31",
+   "quarters": [
+    {
+     "label": "Q3 FY25",
+     "revenue": 196
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 211.4
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 214.5
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 236
+    },
+    {
+     "label": "Q3 FY26",
+     "revenue": 244.4
+    },
+    {
+     "label": "Q4 FY26",
+     "revenue": 260.4
+    },
+    {
+     "label": "Q1 FY27",
+     "revenue": 264.2
+    },
+    {
+     "label": "Q2 FY27",
+     "revenue": 286.3
+    }
+   ],
+   "fye": "Jan 31"
+  },
+  {
+   "ticker": "PLTR",
+   "name": "Palantir Technologies Inc.",
+   "price": 177.64,
+   "changePct": 0.79437,
+   "marketCap": 407873.8748,
+   "ev": 398464.7748,
+   "evRevLtm": 64.72892262707322,
+   "evEbitdaLtm": 149.6525106287088,
+   "growth": 0.7891937452769866,
+   "gm": 0.8479669910167482,
+   "fcfm": 0.5455416754658133,
+   "r40": 133.47354207428,
+   "revenue": 6155.9,
+   "debt": 0,
+   "cash": 9409.1,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 725.5
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 827.5
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 883.9
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 1003.7
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 1181.1
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 1406.8
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 1632.6
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 1935.5
+    }
+   ],
+   "fye": "Dec 31"
+  },
+  {
+   "ticker": "NOW",
+   "name": "ServiceNow, Inc.",
+   "price": 135.47,
+   "changePct": -2.16653,
+   "marketCap": 140057.28514,
+   "ev": 140828.28514,
+   "evRevLtm": 9.559345991039912,
+   "evEbitdaLtm": 51.191670352599054,
+   "growth": 0.22186281827983745,
+   "gm": 0.7476920988324736,
+   "fcfm": 0.31088786315503664,
+   "r40": 53.27506814348742,
+   "revenue": 14732,
+   "debt": 5435,
+   "cash": 4664,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 2797
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 2957
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 3088
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 3215
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 3407
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 3568
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 3770
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 3987
+    }
+   ],
+   "fye": "Dec 31"
+  },
+  {
+   "ticker": "ESTC",
+   "name": "Elastic N.V.",
+   "price": 86.96,
+   "changePct": -2.25919,
+   "marketCap": 9039.634006,
+   "ev": 8149.834006,
+   "evRevLtm": 4.522158476306736,
+   "evEbitdaLtm": null,
+   "growth": 0.1618102114492006,
+   "gm": 0.755021640217512,
+   "fcfm": 0.19370769060037732,
+   "r40": 35.55179020495779,
+   "revenue": 1802.2,
+   "debt": 571.2,
+   "cash": 1461,
+   "ltmEnd": "2026-07-31",
+   "quarters": [
+    {
+     "label": "Q2 FY25",
+     "revenue": 365.4
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 382.1
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 388.4
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 415.3
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 423.5
+    },
+    {
+     "label": "Q3 FY26",
+     "revenue": 449.9
+    },
+    {
+     "label": "Q4 FY26",
+     "revenue": 450.7
+    },
+    {
+     "label": "Q1 FY27",
+     "revenue": 478.1
+    }
+   ],
+   "fye": "Apr 30"
+  },
+  {
+   "ticker": "CCL",
+   "name": "Carnival Corporation & plc",
+   "price": 21.84,
+   "changePct": -1.4885,
+   "marketCap": 29913.136759,
+   "ev": 53240.136759,
+   "evRevLtm": 1.9494026860605618,
+   "evEbitdaLtm": 7.266294084755016,
+   "growth": 0.05151503484387643,
+   "gm": null,
+   "fcfm": 0.11716890630149024,
+   "r40": 16.868394114536667,
+   "revenue": 27311,
+   "debt": 25570,
+   "cash": 2243,
+   "ltmEnd": "2026-05-31",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 7896
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 5938
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 5810
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 6328
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 8153
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 6330
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 6165
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 6663
+    }
+   ],
+   "fye": "Nov 30"
+  },
+  {
+   "ticker": "AAL",
+   "name": "American Airlines Group Inc.",
+   "price": 12.96,
+   "changePct": 0.15456,
+   "marketCap": 8579.130565,
+   "ev": 25945.130565,
+   "evRevLtm": 0.4447457113838559,
+   "evEbitdaLtm": 8.92505351393189,
+   "growth": 0.07533640552995391,
+   "gm": null,
+   "fcfm": null,
+   "r40": null,
+   "revenue": 58337,
+   "debt": 25254,
+   "cash": 7888,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 13647
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 13660
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 12551
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 14392
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 13691
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 13999
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 13912
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 16735
+    }
+   ],
+   "fye": "Dec 31"
+  },
+  {
+   "ticker": "LUMN",
+   "name": "Lumen Technologies, Inc.",
+   "price": 6.4,
+   "changePct": -1.23457,
+   "marketCap": 6593.984,
+   "ev": 17867.984,
+   "evRevLtm": 1.5101406355645708,
+   "evEbitdaLtm": 6.20847255038221,
+   "growth": -0.07735495945102933,
+   "gm": 0.47794117647058826,
+   "fcfm": 0.07074036511156187,
+   "r40": -0.6614594339467456,
+   "revenue": 11832,
+   "debt": 13150,
+   "cash": 1876,
+   "ltmEnd": "2026-06-30",
+   "quarters": [
+    {
+     "label": "Q3 FY24",
+     "revenue": 3221
+    },
+    {
+     "label": "Q4 FY24",
+     "revenue": 3329
+    },
+    {
+     "label": "Q1 FY25",
+     "revenue": 3182
+    },
+    {
+     "label": "Q2 FY25",
+     "revenue": 3092
+    },
+    {
+     "label": "Q3 FY25",
+     "revenue": 3087
+    },
+    {
+     "label": "Q4 FY25",
+     "revenue": 3041
+    },
+    {
+     "label": "Q1 FY26",
+     "revenue": 2899
+    },
+    {
+     "label": "Q2 FY26",
+     "revenue": 2805
+    }
+   ],
+   "fye": "Dec 31"
+  }
+ ],
+ "startups": [
+  {
+   "name": "Memorable",
+   "oneLiner": "reducing agent reasoning into a graph search problem",
+   "program": "YC S27",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Infrastructure"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://www.memorable.sh/"
+  },
+  {
+   "name": "Rote",
+   "oneLiner": "AI-native insurance department for auto body shops",
+   "program": "YC W27",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Operations"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://tryrote.com/"
+  },
+  {
+   "name": "Tire Swing",
+   "oneLiner": "AI Compliance for Affordable Housing",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Legal"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://gettireswing.com"
+  },
+  {
+   "name": "The Company Company",
+   "oneLiner": "The last agent your company will ever need.",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://www.thecompany.company"
+  },
+  {
+   "name": "GodHands",
+   "oneLiner": "We reconstruct how employees actually work, so nothing breaks when…",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Operations"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://godhands.dev"
+  },
+  {
+   "name": "Degla Inc",
+   "oneLiner": "The fully autonomous intelligence layer in the sky.",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "Industrials",
+    "Drones"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://degla.ai"
+  },
+  {
+   "name": "Collar",
+   "oneLiner": "AI for Investor Relations",
+   "program": "YC F26",
+   "country": "Singapore",
+   "industries": [
+    "B2B"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://usecollarai.com"
+  },
+  {
+   "name": "Nxtcure Labs",
+   "oneLiner": "The full-stack AI CRO for drug discovery.",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "Healthcare",
+    "Therapeutics"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://nxtcure.com"
+  },
+  {
+   "name": "RightNow",
+   "oneLiner": "Enabling Model-Hardware Co-Design at Scale",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Infrastructure"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://runinfra.ai/"
+  },
+  {
+   "name": "Hickory & Company",
+   "oneLiner": "Hickory offers agentic compliance and BSA for banks and fintechs",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Operations"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://hickory.co"
+  },
+  {
+   "name": "Roma",
+   "oneLiner": "The AI task app that gets to work for you.",
+   "program": "YC F26",
+   "country": "",
+   "industries": [
+    "Consumer"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://roma.app"
+  },
+  {
+   "name": "Lyon",
+   "oneLiner": "Foundation models on enterprise transaction data.",
+   "program": "YC F26",
+   "country": "United States",
+   "industries": [
+    "B2B",
+    "Analytics"
+   ],
+   "founders": "",
+   "stage": "Accelerator",
+   "raised": "",
+   "source": "yc",
+   "website": "https://lyon.so"
+  },
+  {
+   "name": "Zedge, Inc.",
+   "oneLiner": "Other Technology · raised $7.67M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Other Technology"
+   ],
+   "founders": "Jonathan Reich, Yi Tsai, Michael Jonas, Howard Jonas, Mark Ghermezian, Elliot Gi",
+   "stage": "Private placement (Reg D)",
+   "raised": "$7.67M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "YM Corp",
+   "oneLiner": "Other · raised $0.00M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Other"
+   ],
+   "founders": "",
+   "stage": "Private placement (Reg D)",
+   "raised": "$0.00M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "Xpect Solutions Parent Holdings LLC",
+   "oneLiner": "Other · raised $29.5M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Other"
+   ],
+   "founders": "Yusuf Abdul-Salaam, Lee Garber, Walter Maner, IV, Andrew Maner, Chris Blahm, Tho",
+   "stage": "Private placement (Reg D)",
+   "raised": "$29.5M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "Xash, Inc.",
+   "oneLiner": "Other Technology · raised $1.77M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Other Technology"
+   ],
+   "founders": "Kevin Huynh, Llewellyn Claasen, Alen Ribic",
+   "stage": "Private placement (Reg D)",
+   "raised": "$1.77M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "XN Companies Inc.",
+   "oneLiner": "Insurance · raised $30.5M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Insurance"
+   ],
+   "founders": "Gabriel Weiss, Raymond Tonsing, Varun Gupta, Adam Yaari, Jonathan York",
+   "stage": "Private placement (Reg D)",
+   "raised": "$30.5M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "Winchester MHC Partners LLC",
+   "oneLiner": "Residential · raised $3.14M in an exempt offering",
+   "program": "SEC Form D",
+   "country": "United States",
+   "industries": [
+    "Residential"
+   ],
+   "founders": "Chase Louderback, Luke Heinsohn, Timothy Henderson",
+   "stage": "Private placement (Reg D)",
+   "raised": "$3.14M",
+   "source": "formd",
+   "website": ""
+  },
+  {
+   "name": "Gdocs-me-up",
+   "oneLiner": "a high-fidelity Google Docs exporter",
+   "program": "Show HN",
+   "country": "",
+   "industries": [
+    "Open source"
+   ],
+   "founders": "behdad",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://github.com/behdad/gdocs-me-up"
+  },
+  {
+   "name": "Ambits",
+   "oneLiner": "agentic grep/rg tool will history tracking",
+   "program": "Show HN",
+   "country": "",
+   "industries": [
+    "Open source"
+   ],
+   "founders": "joshLong145",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://github.com/joshLong145/ambits"
+  },
+  {
+   "name": "Mahabharata Characters",
+   "oneLiner": "307 figures with gunas and decision primitives",
+   "program": "Show HN",
+   "country": "",
+   "industries": [],
+   "founders": "init0",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://huggingface.co/datasets/gnumanth/mahabharata-characters"
+  },
+  {
+   "name": "ScoreTail, Browser-based sheet music editor with live collaboration",
+   "oneLiner": "",
+   "program": "Show HN",
+   "country": "",
+   "industries": [],
+   "founders": "tan-z-tan",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://scoretail.com"
+  },
+  {
+   "name": "Website Auditor",
+   "oneLiner": "> Test your brand's AI visibility, get growth plan",
+   "program": "Show HN",
+   "country": "",
+   "industries": [],
+   "founders": "SpikeyCoder",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://website-auditor.io/"
+  },
+  {
+   "name": "Fluentry",
+   "oneLiner": "local voice-to-text dictation for Linux, Wayland included",
+   "program": "Show HN",
+   "country": "",
+   "industries": [],
+   "founders": "deniswsrosa",
+   "stage": "Bootstrapped / unknown",
+   "raised": "",
+   "source": "hn",
+   "website": "https://fluentry.github.io/"
+  }
+ ],
+ "directoryTotal": 18037
+}

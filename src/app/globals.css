@@ -1,0 +1,179 @@
+@import "tailwindcss";
+@import "./themes.css";
+
+/*
+ * YouBank design tokens. The default (:root) is the Terminal theme; every other theme overrides the same
+ * variables on <html data-theme="...">, see src/lib/themes.ts. Components only ever use tokens.
+ */
+:root {
+  --bg: #0a0c0f;
+  --panel: #101318;
+  --elevated: #171b22;
+  --raised: #1e232c;
+  --line: #242a33;
+  --line-strong: #323a46;
+  --fg: #d7dde6;
+  --muted: #7d8794;
+  --faint: #4d5866;
+  --accent: #f5a623;
+  --accent-soft: rgba(245, 166, 35, 0.12);
+  --accent-fg: #0a0c0f;
+  --pos: #3fb950;
+  --neg: #f85149;
+  --info: #58a6ff;
+  --chart-1: #3987e5;
+  --chart-dim: #4d5866;
+  --chart-emphasis: #c98500;
+  --radius: 4px;
+  --radius-sm: 3px;
+  --bg-image: none;
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.55);
+  --glow: none;
+  --glass: 0;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-elevated: var(--elevated);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-info: var(--info);
+  --color-chart-1: var(--chart-1);
+  --color-chart-dim: var(--chart-dim);
+  --color-chart-emphasis: var(--chart-emphasis);
+  --radius-panel: var(--radius);
+  --radius-ctl: var(--radius-sm);
+  --shadow-float: var(--shadow-lg);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: var(--font-display-serif), Georgia, "Times New Roman", serif;
+}
+
+html {
+  height: 100%;
+  /* Anchor links land below the sticky header rather than under it. */
+  scroll-behavior: smooth;
+  scroll-padding-top: 76px;
+}
+
+body {
+  min-height: 100%;
+  background-color: var(--bg);
+  background-image: var(--bg-image);
+  background-attachment: fixed;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  transition: background-color 400ms ease, color 400ms ease;
+}
+
+.num, table { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.display { font-family: var(--font-display); }
+
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Theme-aware surfaces. Radius and glass follow the theme; components use these instead of fixed rounding. */
+.panel { border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); }
+.ctl { border-radius: var(--radius-sm); }
+.glass { backdrop-filter: blur(calc(var(--glass) * 14px)); -webkit-backdrop-filter: blur(calc(var(--glass) * 14px)); }
+.glow { box-shadow: var(--glow); }
+.float { box-shadow: var(--shadow-lg); }
+
+/* Theme crossfade via the View Transitions API (falls back to the body transition above). */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 420ms; animation-timing-function: ease; }
+
+/* ---------------- Motion ---------------- */
+@keyframes tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tape-track { animation: tape 60s linear infinite; }
+.tape-track:hover { animation-play-state: paused; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px) scale(0.995); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fade-in { animation: fade-in 300ms ease-out both; }
+
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+.shimmer { background: linear-gradient(90deg, var(--elevated) 25%, var(--raised) 50%, var(--elevated) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+.pulse-ring { animation: pulse-ring 1.6s ease-out infinite; }
+
+@keyframes blink { 50% { opacity: 0; } }
+.caret::after { content: "▍"; margin-left: 1px; animation: blink 1s steps(1) infinite; color: var(--accent); }
+
+@keyframes drift { 0% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(2%, -3%, 0) scale(1.06); } 100% { transform: translate3d(0, 0, 0) scale(1); } }
+.drift { animation: drift 18s ease-in-out infinite; }
+.drift-slow { animation: drift 28s ease-in-out infinite reverse; }
+
+@keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.grow-x { transform-origin: left center; animation: grow-x 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.grow-y { transform-origin: bottom center; animation: grow-y 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.draw { stroke-dasharray: 1000; stroke-dashoffset: 1000; animation: draw 1.6s ease-out forwards; }
+
+@keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.float-y { animation: float-y 5s ease-in-out infinite; }
+
+@keyframes gradient-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+.gradient-text {
+  background: linear-gradient(90deg, var(--accent), var(--info), var(--chart-emphasis), var(--accent));
+  background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: gradient-shift 8s ease infinite;
+}
+
+/* Hover lift for cards */
+.lift { transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 220ms ease, border-color 220ms ease; }
+.lift:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+
+/* Scroll reveal (driven by the Reveal component) */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 700ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 700ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* Row / card stagger */
+.stagger > * { animation: rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+.stagger > *:nth-child(9) { animation-delay: 320ms; }
+.stagger > *:nth-child(10) { animation-delay: 360ms; }
+.stagger > *:nth-child(n + 11) { animation-delay: 400ms; }
+
+/* Grid backdrop for hero sections */
+.grid-bg {
+  background-image: linear-gradient(color-mix(in srgb, var(--fg) 6%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--fg) 6%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .tape-track, .rise, .fade-in, .shimmer, .pulse-ring, .caret::after, .drift, .drift-slow, .grow-x, .grow-y, .draw, .float-y, .gradient-text, .stagger > * { animation: none !important; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .draw { stroke-dashoffset: 0; }
+}
