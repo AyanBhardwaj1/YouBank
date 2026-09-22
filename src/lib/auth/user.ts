@@ -46,10 +46,16 @@ export function unauthorized() {
   return NextResponse.json({ error: "Sign in required" }, { status: 401 });
 }
 
-/** Wrap a handler so an Unauthorized error becomes a 401 and other errors a 500. */
+/**
+ * Wrap a handler so a missing session becomes a 401 and other errors a 500.
+ *
+ * An error may opt into a different code by carrying a numeric `status` (team permission failures
+ * use 403 this way), which keeps this module free of an import cycle with the team layer.
+ */
 export function guarded(fn: (user: CurrentUser) => Promise<Response>): Promise<Response> {
   return requireUser().then(fn).catch((e) => {
     if (e instanceof Unauthorized) return unauthorized();
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : 500;
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status });
   });
 }

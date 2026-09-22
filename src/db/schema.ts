@@ -160,3 +160,52 @@ export const documents = pgTable("documents", {
   bytes: integer("bytes").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("documents_user_idx").on(t.userId, t.createdAt)]);
+
+/* ---------------- Teams ---------------- */
+
+/**
+ * A team is a shared workspace: membership, roles and invitations.
+ *
+ * These are all new tables, so the feature can ship without altering any existing one. Sharing a
+ * specific resource with a team adds a nullable `team_id` to that resource's table when the feature
+ * that shares it lands.
+ */
+export const teams = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("teams_slug_uidx").on(t.slug)]);
+
+/** Membership and role. Email and name are denormalized so a member list renders without an auth lookup. */
+export const teamMembers = pgTable("team_members", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  email: text("email").notNull().default(""),
+  name: text("name").notNull().default(""),
+  role: text("role").notNull().default("member"), // owner | admin | member | viewer
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("team_members_team_user_uidx").on(t.teamId, t.userId),
+  index("team_members_user_idx").on(t.userId),
+]);
+
+/** Pending invitations, addressed to an email and redeemed with a single-use token. */
+export const teamInvites = pgTable("team_invites", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  role: text("role").notNull().default("member"),
+  token: text("token").notNull(),
+  invitedBy: text("invited_by").notNull().default(""),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("team_invites_token_uidx").on(t.token),
+  uniqueIndex("team_invites_team_email_uidx").on(t.teamId, t.email),
+  index("team_invites_email_idx").on(t.email),
+]);
