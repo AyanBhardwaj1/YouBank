@@ -10,12 +10,14 @@ export const metadata = { title: "Relationships" };
 
 const isMissingTable = (e: unknown) => /relation .* does not exist|undefined_table/i.test(e instanceof Error ? e.message : String(e));
 
-export default async function CrmPage() {
+/** `connected` and `error` come back on the OAuth redirect; passing them as props avoids a hydration mismatch. */
+export default async function CrmPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string }> }) {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
   let needsMigration = false;
   try { await crmCounts(user.id); } catch (e) { if (!isMissingTable(e)) throw e; needsMigration = true; }
   const ctx = await loadUserContext(user.id);
   const ai = aiStatus(ctx.prefs);
-  return <CrmWorkspace needsMigration={needsMigration} aiConfigured={!!ai?.configured} />;
+  const { connected, error } = await searchParams;
+  return <CrmWorkspace needsMigration={needsMigration} aiConfigured={!!ai?.configured} connected={connected ?? null} oauthError={error ?? null} />;
 }

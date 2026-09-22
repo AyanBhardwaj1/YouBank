@@ -23,6 +23,8 @@ type Draft = {
   citations: { label: string }[]; toAddresses: { name: string; address: string }[]; model: string; createdAt: string;
 };
 type Counts = { threads: number; pendingDrafts: number; needsReply: number; byStage: Record<string, number> };
+type Account = { id: number; address: string; provider: string; status: string; lastSyncAt: string | null; lastError: string };
+type SyncResult = { fetched: number; ingested: number; triaged: number; skipped: number; errors: string[] };
 
 const TABS = [
   { id: "pipeline", label: "Pipeline", icon: "Layers" },
@@ -40,16 +42,20 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 const money = (n: number | null) => (n == null ? "" : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${n}`);
 
-export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration: boolean; aiConfigured: boolean }) {
+export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError }: {
+  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null;
+}) {
   const [tab, setTab] = useState<Tab>("pipeline");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [mailConfigurable, setMailConfigurable] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(oauthError);
+  const [notice, setNotice] = useState<string | null>(connected ? `Connected ${connected}. Sync to let the agent read recent threads.` : null);
   const [paste, setPaste] = useState({ open: false, from: "", subject: "", body: "" });
   const [editing, setEditing] = useState<{ id: number; subject: string; body: string } | null>(null);
 
@@ -64,13 +70,15 @@ export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration:
     let cancelled = false;
     const load = async () => {
       try {
-        const [t, d, q] = await Promise.all([
+        const [t, d, q, a] = await Promise.all([
           api<Thread[]>("/api/crm/threads"),
           api<{ deals: Deal[]; contacts: Contact[]; counts: Counts }>("/api/crm/deals"),
           api<Draft[]>("/api/crm/drafts"),
+          api<{ accounts: Account[]; configurable: boolean }>("/api/crm/accounts"),
         ]);
         if (cancelled) return;
         setThreads(t); setDeals(d.deals); setContacts(d.contacts); setCounts(d.counts); setDrafts(q);
+        setAccounts(a.accounts); setMailConfigurable(a.configurable);
       } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
     };
     void load();
@@ -115,6 +123,27 @@ export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration:
     setEditing(null); await refresh(); say("Saved. Still not sent.");
   });
 
+  const sync = () => run("sync", async () => {
+    const r = await api<SyncResult>("/api/crm/gmail/sync", { method: "POST", body: JSON.stringify({ max: 10 }) });
+    await refresh();
+    say(`Read ${r.triaged} new ${r.triaged === 1 ? "thread" : "threads"} of ${r.fetched} fetched${r.skipped ? `, ${r.skipped} already up to date` : ""}.${r.errors.length ? ` ${r.errors.length} failed.` : ""}`);
+  });
+
+  const disconnect = (id: number, address: string) => run(`dc-${id}`, async () => {
+    if (!window.confirm(`Disconnect ${address}? The stored tokens are deleted. Threads already read stay in your CRM.`)) return;
+    await api(`/api/crm/accounts/${id}`, { method: "DELETE" });
+    await refresh(); say(`Disconnected ${address}`);
+  });
+
+  const send = (d: Draft) => run(`send-${d.id}`, async () => {
+    const current = editing?.id === d.id ? editing : { subject: d.subject, body: d.body };
+    if (!window.confirm(`Send this to ${d.toAddresses.map((a) => a.address).join(", ")}?\n\nThis cannot be undone.`)) return;
+    const r = await api<{ to: string[]; from: string }>(`/api/crm/drafts/${d.id}/send`, {
+      method: "POST", body: JSON.stringify({ subject: current.subject, body: current.body }),
+    });
+    setEditing(null); await refresh(); say(`Sent to ${r.to.join(", ")} from ${r.from}`);
+  });
+
   const discard = (id: number) => run(`discard-${id}`, async () => {
     await api(`/api/crm/drafts/${id}`, { method: "DELETE" });
     await refresh(); say("Draft discarded");
@@ -146,7 +175,41 @@ export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration:
         <div className={`mt-4 ctl border px-3 py-2 text-[12px] ${error ? "border-neg/40 bg-neg/5 text-neg" : "border-pos/40 bg-pos/5 text-pos"}`}>{error ?? notice}</div>
       )}
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
+      <div className="mt-4 ctl flex flex-wrap items-center justify-between gap-2 border border-line bg-elevated/30 px-3 py-2">
+        {accounts.length === 0 ? (
+          <>
+            <span className="text-[11.5px] text-muted">
+              <Icon name="Mail" className="mr-1.5 inline h-3.5 w-3.5" />
+              No mailbox connected. The agent can still read anything you paste in below.
+            </span>
+            {mailConfigurable
+              ? <a href="/api/crm/gmail/connect" className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Connect Gmail</a>
+              : <span className="text-[11px] text-muted">Gmail needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and EMAIL_TOKEN_SECRET on the server.</span>}
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 truncate text-[11.5px]">
+              <Icon name="Mail" className="mr-1.5 inline h-3.5 w-3.5" />
+              {accounts.map((a) => a.address).join(", ")}
+              <span className="text-muted">
+                {accounts[0].status === "needs_reauth" ? " · needs reconnecting" : accounts[0].lastSyncAt ? ` · last read ${new Date(accounts[0].lastSyncAt).toLocaleString()}` : " · not read yet"}
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              {accounts[0].status === "needs_reauth"
+                ? <a href="/api/crm/gmail/connect" className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Reconnect</a>
+                : <button type="button" onClick={sync} disabled={!!busy}
+                    className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">
+                    {busy === "sync" ? "Reading inbox…" : "Sync inbox"}
+                  </button>}
+              <button type="button" onClick={() => disconnect(accounts[0].id, accounts[0].address)} disabled={!!busy}
+                className="text-[11px] text-muted transition hover:text-neg disabled:opacity-50">Disconnect</button>
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap gap-1.5">
           {TABS.map((t) => (
             <button key={t.id} type="button" onClick={() => setTab(t.id)}
@@ -259,7 +322,8 @@ export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration:
       {tab === "drafts" && (
         <div className="mt-5 flex flex-col gap-3">
           <p className="text-[11.5px] text-muted">
-            Every draft here was written by the agent and <strong className="text-fg">has not been sent</strong>. Sending happens from your own mail client until a mailbox is connected.
+            Every draft here was written by the agent and <strong className="text-fg">has not been sent</strong>.{" "}
+            {accounts.length > 0 ? "Sending happens only when you press Send." : "Copy one into your mail client, or connect a mailbox to send from here."}
           </p>
           {drafts.length === 0 && <p className="text-[12px] text-muted">Nothing waiting. Draft a reply from the Inbox tab.</p>}
           {drafts.map((d) => {
@@ -292,6 +356,12 @@ export function CrmWorkspace({ needsMigration, aiConfigured }: { needsMigration:
                       </div>
                     )}
                     <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      {accounts.length > 0 && accounts[0].status !== "needs_reauth" && (
+                        <button type="button" disabled={!!busy} onClick={() => send(d)}
+                          className="ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:opacity-90 disabled:opacity-50">
+                          {busy === `send-${d.id}` ? "Sending…" : "Send"}
+                        </button>
+                      )}
                       <button type="button" onClick={() => { void navigator.clipboard?.writeText(`Subject: ${d.subject}\n\n${d.body}`).then(() => say("Copied. Paste it into your mail client to send.")); }}
                         className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Copy to send</button>
                       <button type="button" onClick={() => setEditing({ id: d.id, subject: d.subject, body: d.body })}

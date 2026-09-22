@@ -54,6 +54,29 @@ Open http://localhost:3000. Required environment: `DATABASE_URL` (Neon, pooled),
 `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET`, `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`), `FMP_API_KEY`,
 `EDGAR_USER_AGENT` (SEC asks for a contact email), `CRON_SECRET`.
 
+## Connecting a mailbox
+
+The Relationships agent reads pasted email with no setup. To let it read a real inbox and send the
+replies you approve, connect Gmail:
+
+1. In Google Cloud, enable the **Gmail API**, then create an **OAuth client ID** of type *Web
+   application*.
+2. Add `https://<your-domain>/api/crm/gmail/callback` as an authorised redirect URI (and the same on
+   `http://localhost:3000` for local work).
+3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `EMAIL_TOKEN_SECRET` (`openssl rand -base64 32`)
+   in the environment. On Vercel these go in the project's environment variables, not `.env.local`.
+4. Open **Relationships** and press *Connect Gmail*.
+
+The agent asks for `gmail.readonly` and `gmail.send` only: it cannot modify or delete anything in the
+mailbox. Refresh tokens are encrypted with AES-256-GCM before they are stored, and disconnecting
+deletes the row rather than flagging it.
+
+Google classes both scopes as **restricted**. Your own account and a test list of up to 100 users work
+immediately; serving anyone else requires Google's verification review.
+
+Nothing is sent without a person pressing Send. `sendDraft()` in `src/lib/crm/send.ts` is the only
+function that sends, and the only path to it is that button.
+
 ## Layout
 
 ```
