@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
-import { can, isTeamRole, outranks, slugify, type TeamPermission, type TeamRole } from "./roles";
+import { can, canAssignRole, isTeamRole, outranks, slugify, type TeamPermission, type TeamRole } from "./roles";
 
 export type TeamSummary = { id: number; name: string; slug: string; role: TeamRole; memberCount: number; createdAt: string };
 export type TeamMember = { userId: string; email: string; name: string; role: TeamRole; joinedAt: string };
@@ -148,8 +148,8 @@ export async function setMemberRole(teamId: number, actor: TeamMember, targetUse
   const target = await membership(teamId, targetUserId);
   if (!target) throw new Forbidden("That person is not on this team");
   if (actor.userId === targetUserId) throw new Forbidden("You cannot change your own role");
-  if (!outranks(actor.role, target.role) || !outranks(actor.role, role)) {
-    throw new Forbidden("You cannot set a role at or above your own");
+  if (!canAssignRole(actor.role, target.role, role)) {
+    throw new Forbidden("You cannot change someone at or above your own role, or grant a role above it");
   }
   await db.update(schema.teamMembers).set({ role })
     .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, targetUserId)));

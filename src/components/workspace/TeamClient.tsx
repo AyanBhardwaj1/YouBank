@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { ROLE_BLURB, ROLE_LABEL, TEAM_ROLES, can, outranks, type TeamRole } from "@/lib/teams/roles";
+import { ROLE_BLURB, ROLE_LABEL, assignableBy, can, outranks, type TeamRole } from "@/lib/teams/roles";
 
 type Me = { id: string; email: string; name: string };
 type Team = { id: number; name: string; slug: string; role: TeamRole; memberCount: number; createdAt: string };
@@ -11,7 +11,8 @@ type Member = { userId: string; email: string; name: string; role: TeamRole; joi
 type Invite = { id: number; email: string; role: TeamRole; invitedBy: string; expiresAt: string; createdAt: string };
 type Detail = { id: number; me: Member; members: Member[]; invites: Invite[] };
 
-const ASSIGNABLE: TeamRole[] = TEAM_ROLES.filter((r) => r !== "owner");
+/** Ownership is granted by promoting an existing member, never by invitation. */
+const INVITABLE = (actor: TeamRole): TeamRole[] => assignableBy(actor).filter((r) => r !== "owner");
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
@@ -225,7 +226,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                             {mayEdit ? (
                               <select value={m.role} disabled={busy} onChange={(e) => changeRole(m.userId, e.target.value as TeamRole)}
                                 className="ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11.5px] outline-none focus:border-accent/60">
-                                {ASSIGNABLE.filter((r) => outranks(myRole, r)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                                {assignableBy(myRole).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                               </select>
                             ) : (
                               <span className="text-muted" title={ROLE_BLURB[m.role]}>{ROLE_LABEL[m.role]}</span>
@@ -257,7 +258,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                       className="ctl min-w-[220px] flex-1 border border-line bg-elevated/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60" />
                     <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as TeamRole)}
                       className="ctl border border-line bg-elevated/60 px-2 py-1.5 text-[12px] outline-none focus:border-accent/60">
-                      {ASSIGNABLE.filter((r) => outranks(myRole, r) || myRole === "owner").map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                      {INVITABLE(myRole).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
                     <button type="button" onClick={invite} disabled={busy || !inviteEmail.trim()}
                       className="ctl bg-fg px-3 py-1.5 text-[12px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">Create invite</button>
@@ -299,7 +300,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                   <div className="mt-2 flex flex-wrap items-center gap-3">
                     <button type="button" disabled={busy} onClick={() => destroy(team?.name ?? "")}
                       className="ctl border border-neg/40 px-2.5 py-1.5 text-[11.5px] text-neg transition hover:bg-neg/10 disabled:opacity-50">Delete this team</button>
-                    <span className="text-[11px] text-muted">Shared work becomes personal again; nothing is deleted with it.</span>
+                    <span className="text-[11px] text-muted">Shared work becomes personal again; nothing is deleted with it. To hand the team over instead, make someone else an owner, then leave.</span>
                   </div>
                 </div>
               )}

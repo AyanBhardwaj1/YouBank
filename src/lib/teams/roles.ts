@@ -47,6 +47,22 @@ export function outranks(a: TeamRole, b: TeamRole): boolean {
   return RANK[a] > RANK[b];
 }
 
+/**
+ * Whether `actor` may move `target` from their current role to `next`.
+ *
+ * Two rules: you must outrank the person you are changing, and you may grant any role up to and
+ * including your own. An owner can therefore make a second owner, which is the only way to hand a
+ * team over or for the last owner to leave.
+ */
+export function canAssignRole(actor: TeamRole, target: TeamRole, next: TeamRole): boolean {
+  return outranks(actor, target) && RANK[next] <= RANK[actor];
+}
+
+/** Roles this actor is allowed to hand out, for rendering a role picker. */
+export function assignableBy(actor: TeamRole): TeamRole[] {
+  return TEAM_ROLES.filter((r) => RANK[r] <= RANK[actor]);
+}
+
 export function isTeamRole(v: unknown): v is TeamRole {
   return typeof v === "string" && (TEAM_ROLES as string[]).includes(v);
 }

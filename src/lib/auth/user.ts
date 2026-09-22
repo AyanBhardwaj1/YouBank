@@ -21,7 +21,8 @@ const SESSION_COOKIE_SUFFIX = "neon-auth.session_token";
 export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   // Development-only bypass for local API testing. Never active in production builds.
   if (process.env.NODE_ENV !== "production" && process.env.YOUBANK_DEV_USER) {
-    return { id: `dev-${process.env.YOUBANK_DEV_USER}`, email: `${process.env.YOUBANK_DEV_USER}@localhost`, name: process.env.YOUBANK_DEV_USER };
+    // A dotted domain so locally-created users pass the same email validation as real ones.
+    return { id: `dev-${process.env.YOUBANK_DEV_USER}`, email: `${process.env.YOUBANK_DEV_USER}@dev.local`, name: process.env.YOUBANK_DEV_USER };
   }
   // Anonymous visitors carry no session cookie; skip the upstream call entirely.
   const jar = await cookies().catch(() => null);
