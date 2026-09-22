@@ -1,4 +1,4 @@
-import { doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
 
@@ -208,4 +208,150 @@ export const teamInvites = pgTable("team_invites", {
   uniqueIndex("team_invites_token_uidx").on(t.token),
   uniqueIndex("team_invites_team_email_uidx").on(t.teamId, t.email),
   index("team_invites_email_idx").on(t.email),
+]);
+
+/* ---------------- CRM and the email agent ---------------- */
+
+export type EmailAddress = { name: string; address: string };
+
+/**
+ * A connected mailbox.
+ *
+ * Tokens are stored encrypted (see src/lib/crm/crypto.ts); nothing here is readable from a database
+ * dump alone. `teamId` null means the mailbox is personal, which is the only supported case today:
+ * a shared mailbox would let one member read another's mail, so it is deliberately not offered yet.
+ */
+export const emailAccounts = pgTable("email_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  provider: text("provider").notNull().default("gmail"),
+  address: text("address").notNull(),
+  displayName: text("display_name").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+  cursor: text("cursor").notNull().default(""),
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  status: text("status").notNull().default("connected"), // connected | needs_reauth | disconnected
+  lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+  lastError: text("last_error").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("email_accounts_user_address_uidx").on(t.userId, t.address), index("email_accounts_user_idx").on(t.userId)]);
+
+/** A person. Linked to the startup directory when the agent can identify their company. */
+export const crmContacts = pgTable("crm_contacts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  email: text("email").notNull(),
+  name: text("name").notNull().default(""),
+  title: text("title").notNull().default(""),
+  company: text("company").notNull().default(""),
+  domain: text("domain").notNull().default(""),
+  startupId: integer("startup_id"),
+  kind: text("kind").notNull().default("unknown"), // founder | investor | lp | banker | operator | other
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  notes: text("notes").notNull().default(""),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("crm_contacts_user_email_uidx").on(t.userId, t.email),
+  index("crm_contacts_team_idx").on(t.teamId),
+  index("crm_contacts_domain_idx").on(t.domain),
+]);
+
+/** A pipeline item: one company moving through the stages of a desk's process. */
+export const crmDeals = pgTable("crm_deals", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  name: text("name").notNull(),
+  stage: text("stage").notNull().default("inbox"),
+  startupId: integer("startup_id"),
+  contactId: integer("contact_id"),
+  sector: text("sector").notNull().default(""),
+  round: text("round").notNull().default(""),
+  amountUsd: doublePrecision("amount_usd"),
+  valuationUsd: doublePrecision("valuation_usd"),
+  source: text("source").notNull().default("manual"), // inbound_email | directory | manual
+  nextStep: text("next_step").notNull().default(""),
+  nextStepDue: timestamp("next_step_due", { withTimezone: true }),
+  status: text("status").notNull().default("open"), // open | won | lost | parked
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("crm_deals_user_stage_idx").on(t.userId, t.stage),
+  index("crm_deals_team_idx").on(t.teamId),
+  index("crm_deals_contact_idx").on(t.contactId),
+]);
+
+/** An email thread the agent has read, with its triage verdict. */
+export const crmThreads = pgTable("crm_threads", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  accountId: integer("account_id"),
+  providerThreadId: text("provider_thread_id").notNull(),
+  subject: text("subject").notNull().default(""),
+  snippet: text("snippet").notNull().default(""),
+  participants: jsonb("participants").$type<EmailAddress[]>().notNull().default([]),
+  contactId: integer("contact_id"),
+  dealId: integer("deal_id"),
+  category: text("category").notNull().default("other"),
+  priority: text("priority").notNull().default("medium"), // high | medium | low
+  summary: text("summary").notNull().default(""),
+  needsReply: boolean("needs_reply").notNull().default(false),
+  triagedAt: timestamp("triaged_at", { withTimezone: true }),
+  lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("crm_threads_user_provider_uidx").on(t.userId, t.providerThreadId),
+  index("crm_threads_user_recent_idx").on(t.userId, t.lastMessageAt),
+  index("crm_threads_deal_idx").on(t.dealId),
+]);
+
+/** One message within a thread. Bodies are stored as plain text. */
+export const crmMessages = pgTable("crm_messages", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id").notNull().references(() => crmThreads.id, { onDelete: "cascade" }),
+  providerMessageId: text("provider_message_id").notNull().default(""),
+  direction: text("direction").notNull().default("inbound"), // inbound | outbound
+  fromName: text("from_name").notNull().default(""),
+  fromAddress: text("from_address").notNull().default(""),
+  toAddresses: jsonb("to_addresses").$type<EmailAddress[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  body: text("body").notNull().default(""),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_messages_thread_idx").on(t.threadId, t.sentAt)]);
+
+/**
+ * A reply the agent has written, waiting for a person.
+ *
+ * Nothing in this table is ever sent automatically. A draft leaves here only when someone approves
+ * it, and the body that goes out is whatever the reviewer last saved.
+ */
+export const crmDrafts = pgTable("crm_drafts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  threadId: integer("thread_id").references(() => crmThreads.id, { onDelete: "cascade" }),
+  dealId: integer("deal_id"),
+  toAddresses: jsonb("to_addresses").$type<EmailAddress[]>().notNull().default([]),
+  subject: text("subject").notNull().default(""),
+  body: text("body").notNull().default(""),
+  rationale: text("rationale").notNull().default(""),
+  citations: jsonb("citations").$type<{ label: string; url: string }[]>().notNull().default([]),
+  status: text("status").notNull().default("pending"), // pending | sent | discarded
+  provider: text("provider").notNull().default(""),
+  model: text("model").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+}, (t) => [
+  index("crm_drafts_user_status_idx").on(t.userId, t.status),
+  index("crm_drafts_thread_idx").on(t.threadId),
 ]);
