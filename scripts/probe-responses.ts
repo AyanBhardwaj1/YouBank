@@ -15,7 +15,7 @@ async function main() {
     ];
     try {
       const stream = await client.responses.create({ model, instructions: "Be brief. Use the tool for financials.", input: "Get SNOW financials via the tool, then reply with one sentence.", tools, stream: true, reasoning: { effort: "low" } });
-      const types = new Map<string, number>(); let responseId = ""; let calls: { call_id: string; name: string; args: string }[] = []; let text = ""; let first = 0;
+      const types = new Map<string, number>(); let responseId = ""; const calls: { call_id: string; name: string; args: string }[] = []; let text = ""; let first = 0;
       for await (const ev of stream) {
         if (!first) first = Date.now() - t0;
         types.set(ev.type, (types.get(ev.type) ?? 0) + 1);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ROLES, ROLE_IDS, type RoleId } from "@/lib/roles";
-import { CATEGORIES } from "@/lib/workflows/types";
+import { CATEGORIES } from "@/lib/workflows/categories";
 import { DEMO } from "@/lib/demo";
 import { SignInButton } from "./SignInButton";
 import { DemoTerminal } from "./DemoTerminal";

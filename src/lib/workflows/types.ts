@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { RoleId } from "@/lib/roles";
 import type { CompanyData } from "@/lib/types";
+import type { ToolCategory } from "./categories";
 
 /* ---------------- Inputs ---------------- */
 
@@ -78,11 +79,7 @@ export const WORKFLOW_OUTPUT_JSON_SCHEMA = z.toJSONSchema(WorkflowOutput) as Rec
 
 /* ---------------- Tool definitions ---------------- */
 
-export type ToolCategory =
-  | "Valuation" | "Modeling" | "Diligence" | "Deliverables" | "Research" | "Screening" | "Reporting" | "Credit & restructuring"
-  | "Capital markets" | "Accounting & audit" | "Tax" | "Planning & forecasting" | "Sourcing & deals" | "Portfolio" | "Learning" | "Communication";
-
-export const CATEGORIES: ToolCategory[] = ["Valuation", "Modeling", "Diligence", "Deliverables", "Research", "Screening", "Reporting", "Credit & restructuring", "Capital markets", "Accounting & audit", "Tax", "Planning & forecasting", "Sourcing & deals", "Portfolio", "Learning", "Communication"];
+export { CATEGORIES, type ToolCategory } from "./categories";
 
 type ToolBase = {
   /** kebab-case, globally unique */

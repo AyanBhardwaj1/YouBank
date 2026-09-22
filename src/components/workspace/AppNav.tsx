@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { authClient } from "@/lib/auth/client";
+import { getAuthClient } from "@/lib/auth/client";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
@@ -24,7 +24,7 @@ export function AppNav({ email }: { email: string }) {
     ...(profile.role === "vc" || profile.role === "pe" ? [{ href: "/app/vc", label: "Private markets", icon: "Rocket" }] : []),
     { href: "/app/library", label: "Library", icon: "Library" },
   ];
-  const signOut = async () => { await authClient.signOut(); router.push("/"); router.refresh(); };
+  const signOut = async () => { await (await getAuthClient()).signOut(); router.push("/"); router.refresh(); };
   const active = (href: string) => (href === "/app" ? path === "/app" : path.startsWith(href));
 
   return (

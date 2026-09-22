@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ALL_TOOL_DEFS, toolsFor } from "@/lib/workflows/registry";
-import { CATEGORIES, type ToolDef } from "@/lib/workflows/types";
+import { CATEGORIES } from "@/lib/workflows/categories";
+import type { ToolDef } from "@/lib/workflows/types";
 import { ROLES, type RoleId } from "@/lib/roles";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Icon } from "@/components/ui/Icon";
