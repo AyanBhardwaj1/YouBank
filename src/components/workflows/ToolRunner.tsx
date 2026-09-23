@@ -10,12 +10,17 @@ import { Icon } from "@/components/ui/Icon";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
 import { useCompany } from "@/lib/client/companies";
+import { useCollabSession } from "@/lib/client/collab";
 import type { Source } from "@/components/terminal/Markdown";
 
 type ToolEvent = { name: string; status: "start" | "end"; summary?: string };
 type RunSummary = { id: number; title: string; createdAt: string; model: string; status: string };
 
-export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker }: { tool: ToolDef; initialInputs?: Inputs; runId?: number; compact?: boolean; ticker?: string }) {
+export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker, sessionId, me }: {
+  tool: ToolDef; initialInputs?: Inputs; runId?: number; compact?: boolean; ticker?: string;
+  /** When set, the inputs below are shared live with everyone else in this session. */
+  sessionId?: number; me?: { id: string; name: string };
+}) {
   const [inputs, setInputs] = useState<Inputs>(() => defaultInputs(tool.fields, { ...(ticker && tool.fields.some((f) => f.key === "ticker") ? { ticker } : {}), ...(initialInputs ?? {}) }));
   const [busy, setBusy] = useState(false);
   const [events, setEvents] = useState<ToolEvent[]>([]);
@@ -33,6 +38,25 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   const { data: company } = useCompany(prefillTicker || null);
   const prefilled = useRef(false);
   const outRef = useRef<HTMLDivElement>(null);
+
+  // A remote edit arrives on the event stream, so merging it here is not a render-phase update.
+  const collab = useCollabSession(sessionId ?? null, {
+    selfId: me?.id,
+    onRemote: (patch, from) => {
+      setInputs((cur) => ({ ...cur, ...patch }));
+      setStatus(`${from} changed ${Object.keys(patch).join(", ")}`);
+    },
+  });
+
+  /** Local edits go to the shared state; only the fields that actually changed are sent. */
+  const changeInputs = useCallback((next: Inputs) => {
+    if (sessionId) {
+      const diff: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(next)) if (inputs[k] !== v) diff[k] = v;
+      if (Object.keys(diff).length) collab.patch(diff);
+    }
+    setInputs(next);
+  }, [sessionId, inputs, collab]);
 
   // Calculators compute live.
   const calc = useMemo(() => {
@@ -116,9 +140,25 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
         </div>
       )}
 
+      {sessionId && (
+        <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-line bg-elevated/40 px-3.5 py-2 text-[11.5px] ${compact ? "" : ""}`}>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${collab.connected ? "bg-pos" : "bg-warn"}`}
+              title={collab.connected ? "Live" : "Reconnecting"} />
+            <span className="text-muted">{collab.connected ? "Shared session" : "Reconnecting…"}</span>
+            {collab.presence.map((p) => (
+              <span key={p.userId} className={`ctl px-1.5 py-0.5 ${p.userId === me?.id ? "bg-elevated text-muted" : "bg-accent-soft text-accent"}`}>
+                {p.userId === me?.id ? "you" : p.name || "someone"}{p.field ? ` · ${p.field}` : ""}
+              </span>
+            ))}
+          </span>
+          <span className="text-[11px] text-muted">Everyone here edits the same inputs.</span>
+        </div>
+      )}
+
       <div className={`grid gap-4 ${compact ? "p-3" : ""} ${tool.kind === "calc" && !compact ? "lg:grid-cols-[380px_1fr]" : ""}`}>
         <section className="panel p-3.5">
-          <FieldsForm fields={tool.fields} values={inputs} onChange={setInputs} columns={tool.kind === "calc" ? 1 : compact ? 1 : 2} />
+          <FieldsForm fields={tool.fields} values={inputs} onChange={changeInputs} columns={tool.kind === "calc" ? 1 : compact ? 1 : 2} />
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {tool.kind === "ai" ? (
               <button type="button" onClick={run} disabled={busy || missing.length > 0} title={missing.length ? `Fill in: ${missing.map((m) => m.label).join(", ")}` : undefined}

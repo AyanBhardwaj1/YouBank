@@ -355,3 +355,48 @@ export const crmDrafts = pgTable("crm_drafts", {
   index("crm_drafts_user_status_idx").on(t.userId, t.status),
   index("crm_drafts_thread_idx").on(t.threadId),
 ]);
+
+/* ---------------- Live collaboration ---------------- */
+
+/**
+ * A shared working session: two or more people on the same tool run.
+ *
+ * `state` is the shared input set. Vercel cannot hold a WebSocket open, so clients poll an
+ * append-only event log over SSE and resume from the last id they saw.
+ */
+export const collabSessions = pgTable("collab_sessions", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id"),
+  ownerId: text("owner_id").notNull(),
+  kind: text("kind").notNull().default("tool"),
+  refId: text("ref_id").notNull().default(""),
+  title: text("title").notNull().default(""),
+  state: jsonb("state").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("open"), // open | closed
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("collab_sessions_team_idx").on(t.teamId), index("collab_sessions_owner_idx").on(t.ownerId)]);
+
+/**
+ * Append-only log. The serial id doubles as the sequence number a reconnecting client resumes from,
+ * which is what makes an SSE connection that Vercel cuts off after a minute survivable.
+ */
+export const collabEvents = pgTable("collab_events", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull().default(""),
+  kind: text("kind").notNull(), // patch | join | leave | note | output
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("collab_events_session_idx").on(t.sessionId, t.id)]);
+
+/** Who is in a session right now. A row older than the liveness window counts as gone. */
+export const collabPresence = pgTable("collab_presence", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").notNull().references(() => collabSessions.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull().default(""),
+  field: text("field").notNull().default(""),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("collab_presence_session_user_uidx").on(t.sessionId, t.userId)]);
