@@ -17,7 +17,7 @@ const CONCEPTS = {
   operatingIncome: ["OperatingIncomeLoss"],
   netIncome: ["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"],
   da: ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet", "DepreciationAmortizationAndOther"],
-  sbc: ["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense"],
+  sbc: ["ShareBasedCompensation", "AllocatedShareBasedCompensationExpense", "SharebasedCompensationArrangementBySharebasedPaymentAwardCompensationCost1"],
   ocf: ["NetCashProvidedByUsedInOperatingActivities"],
   capex: ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
   capSoftware: ["PaymentsToDevelopSoftware"],
@@ -49,12 +49,21 @@ function pickRevenue(cf: CompanyFacts): { concept: string; rows: Fact[] } | null
   return { concept: candidates[0].label, rows: candidates[0].rows };
 }
 
+/**
+ * LTM for a line item: the best-covered concept first, then the other candidates in order when the
+ * first cannot yield an LTM (Snowflake tags stock-based compensation without the periods an LTM needs
+ * under one concept, and completely under another).
+ */
 function ltmFor(cf: CompanyFacts, key: keyof typeof CONCEPTS, end: string, concepts: Record<string, string>) {
-  const pick = pickConcept(cf, CONCEPTS[key]);
-  if (!pick) return { value: null as number | null, method: null as string | null };
-  const d = ltmAt(pick.rows, end);
-  if (d) concepts[key] = pick.concept;
-  return { value: d ? d.value : null, method: d?.method ?? null };
+  const first = pickConcept(cf, CONCEPTS[key]);
+  const order = first ? [first.concept, ...CONCEPTS[key].filter((c) => c !== first.concept)] : [...CONCEPTS[key]];
+  for (const concept of order) {
+    const pick = first && concept === first.concept ? first : pickConcept(cf, [concept]);
+    if (!pick) continue;
+    const d = ltmAt(pick.rows, end);
+    if (d) { concepts[key] = pick.concept; return { value: d.value as number | null, method: d.method as string | null }; }
+  }
+  return { value: null as number | null, method: null as string | null };
 }
 
 function instantFor(cf: CompanyFacts, key: keyof typeof CONCEPTS, end: string, concepts: Record<string, string>) {
