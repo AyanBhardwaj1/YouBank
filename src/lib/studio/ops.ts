@@ -17,6 +17,7 @@ export type Patch =
   | { op: "sheet_add"; sheet: SheetData; index?: number }
   | { op: "sheet_rename"; sheet: string; name: string }
   | { op: "sheet_delete"; sheet: string }
+  | { op: "sheet_order"; order: string[] }
   | { op: "sheet_meta"; sheet: string; cols?: Record<string, number>; freeze?: { rows: number; cols: number } | null; sens?: Sensitivity[] }
   | { op: "slide_upsert"; slide: Slide; index?: number }
   | { op: "slide_delete"; id: string }
@@ -51,6 +52,11 @@ export function applyPatch(doc: StudioDocData, p: Patch, engine?: Engine): void 
     }
     case "sheet_rename": if (wb.sheets[p.sheet]) { wb.sheets[p.sheet].name = p.name; engine?.rebuild(); } return;
     case "sheet_delete": delete wb.sheets[p.sheet]; wb.order = wb.order.filter((x) => x !== p.sheet); engine?.rebuild(); return;
+    case "sheet_order": {
+      const known = p.order.filter((x) => wb.sheets[x]);
+      wb.order = [...known, ...wb.order.filter((x) => !known.includes(x))];
+      return;
+    }
     case "sheet_meta": {
       const s = wb.sheets[p.sheet];
       if (!s) return;
@@ -336,6 +342,7 @@ export function inverseOf(doc: StudioDocData, p: Patch): Patch[] {
     case "sheet_add": return [{ op: "sheet_delete", sheet: p.sheet.id }];
     case "sheet_rename": return wb.sheets[p.sheet] ? [{ op: "sheet_rename", sheet: p.sheet, name: wb.sheets[p.sheet].name }] : [];
     case "sheet_delete": return wb.sheets[p.sheet] ? [{ op: "sheet_add", sheet: clone(wb.sheets[p.sheet]), index: wb.order.indexOf(p.sheet) }] : [];
+    case "sheet_order": return [{ op: "sheet_order", order: [...wb.order] }];
     case "sheet_meta": {
       const s = wb.sheets[p.sheet];
       if (!s) return [];
@@ -375,6 +382,7 @@ export function describePatches(doc: StudioDocData, patches: Patch[]): string {
     else if (p.op === "sheet_add") parts.push(`added sheet ${p.sheet.name}`);
     else if (p.op === "sheet_rename") parts.push(`renamed a sheet to ${p.name}`);
     else if (p.op === "sheet_delete") parts.push("deleted a sheet");
+    else if (p.op === "sheet_order") parts.push("reordered sheets");
     else if (p.op === "slide_upsert") parts.push(`slide "${p.slide.title}"`);
     else if (p.op === "slide_delete") parts.push("deleted a slide");
     else if (p.op === "comments") parts.push("comments");

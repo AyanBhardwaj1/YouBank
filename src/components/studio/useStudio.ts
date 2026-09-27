@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { parseAddr } from "@/lib/studio/address";
 import type { StudioStreamEvent } from "@/lib/studio/agent";
 import type { Issue } from "@/lib/studio/audit";
+import type { SemDiff } from "@/lib/studio/checkpoints";
 import type { TieIssue } from "@/lib/studio/deck";
+import type { LintIssue } from "@/lib/studio/lint";
 import { Engine } from "@/lib/studio/engine";
 import { applyPatch, applyWithUndo, describePatches, type Patch } from "@/lib/studio/ops";
 import type { StudioDocData } from "@/lib/studio/types";
@@ -23,6 +25,7 @@ export type LogItem =
 export type Health = { errors: number; warnings: number; infos: number; top: Issue[] };
 export type AgentState = { running: boolean; runId: string | null; instruction: string; log: LogItem[]; text: string; model: string; stats: Record<string, number> | null; startedAt: number };
 export type Chat = { role: "user" | "assistant"; content: string };
+export type Checkpoint = { id: number; name: string; createdByName: string; eventId: number; createdAt: string };
 
 /** Cells the agent just wrote: when each becomes visible (revealed in reading order) and until when it glows. */
 export type Flash = Map<string, { at: number; until: number; hidden: boolean }>;
@@ -50,6 +53,8 @@ export function useStudio(id: number) {
   const [health, setHealth] = useState<Health | null>(null);
   const [issues, setIssues] = useState<Issue[] | null>(null);
   const [ties, setTies] = useState<TieIssue[] | null>(null);
+  const [lint, setLint] = useState<LintIssue[] | null>(null);
+  const [checkpoints, setCheckpoints] = useState<Checkpoint[] | null>(null);
   const [agent, setAgent] = useState<AgentState>({ running: false, runId: null, instruction: "", log: [], text: "", model: "", stats: null, startedAt: 0 });
   const [chat, setChat] = useState<Chat[]>([]);
   const [saving, setSaving] = useState(0);
@@ -180,6 +185,7 @@ export function useStudio(id: number) {
     for (const e of r.events) receive(e.id, e.patches, name === "template");
     if (name === "audit") setIssues(r.result as Issue[]);
     if (name === "tieout") setTies(r.result as TieIssue[]);
+    if (name === "lint" || name === "lint_fix") setLint(r.result as LintIssue[]);
     if (r.events.length) refreshMeta();
     return r.result;
   }, [id, receive, refreshMeta]);
@@ -240,10 +246,37 @@ export function useStudio(id: number) {
 
   const stop = useCallback(() => { abort.current?.abort(); }, []);
 
+  /** A marked-up printout becomes comments; a data-room PDF becomes a sheet of sourced inputs. */
+  const readDocument = useCallback(async (kind: "markup" | "extract", file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    const r = await J<{ event: { id: number; patches: Patch[] } | null; added?: number; unplaced?: number; illegible?: number; sheet?: { id: string; name: string }; tables?: number; figures?: number; notes?: string[] }>(await fetch(`/api/studio/${id}/${kind}`, { method: "POST", body: form }));
+    if (r.event) receive(r.event.id, r.event.patches, kind === "extract");
+    refreshMeta();
+    return r;
+  }, [id, receive, refreshMeta]);
+
+  const loadCheckpoints = useCallback(async () => {
+    const r = await J<{ checkpoints: Checkpoint[] }>(await fetch(`/api/studio/${id}/checkpoints`));
+    setCheckpoints(r.checkpoints);
+  }, [id]);
+  const saveCheckpoint = useCallback(async (name: string) => {
+    await J(await fetch(`/api/studio/${id}/checkpoints`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) }));
+    await loadCheckpoints();
+  }, [id, loadCheckpoints]);
+  const compareCheckpoint = useCallback(async (cid: number) => J<{ diff: SemDiff; summary: string }>(await fetch(`/api/studio/${id}/checkpoints/${cid}`)), [id]);
+  const restoreCheckpoint = useCallback(async (cid: number) => {
+    const r = await J<{ event: { id: number; patches: Patch[] } | null }>(await fetch(`/api/studio/${id}/checkpoints/${cid}`, { method: "POST" }));
+    if (r.event) receive(r.event.id, r.event.patches, false);
+    refreshMeta();
+    return !!r.event;
+  }, [id, receive, refreshMeta]);
+
   return {
     doc: docRef.current, engine: engineRef.current, meta, error, setError, notice, setNotice, focus, setFocus, focusSlide, setFocusSlide, health, issues, setIssues, ties, setTies, clock,
     /** Where the agent last worked, for settling the view when a run ends. */
     lastWhere: () => lastWhere.current,
     agent, run, stop, edit, undoLast, undoRun, undoEvent, action, flash: flash.current, saving: saving > 0, reload: load, chat,
+    lint, setLint, readDocument, checkpoints, loadCheckpoints, saveCheckpoint, compareCheckpoint, restoreCheckpoint,
   };
 }

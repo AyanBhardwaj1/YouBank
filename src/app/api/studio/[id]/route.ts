@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { guarded } from "@/lib/auth/user";
+import { guardedFor } from "@/lib/office/auth";
 import { myTeams } from "@/lib/teams/db";
 import { commitRaw, deleteDoc, docData, lastEventId, listRuns, recentEvents, requireDoc, shareDoc } from "@/lib/studio/db";
 import { describePatches } from "@/lib/studio/ops";
@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : null; };
 
 /** The document, where to resume its event stream, its recent history and runs. */
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  return guarded(async (user) => {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
     if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const row = await requireDoc(user, id);
@@ -25,7 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 /** A person's edit: patches the browser already applied, with their undo. Or share with a team. */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  return guarded(async (user) => {
+  return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
     if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { patches?: unknown; undo?: unknown; label?: string; share?: number | null } | null;
@@ -40,8 +40,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   });
 }
 
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  return guarded(async (user) => {
+export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
     if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
     await deleteDoc(user, id);

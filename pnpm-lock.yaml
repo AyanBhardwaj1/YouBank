@@ -78,6 +78,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.2
         version: 8.0.2
+      '@types/office-js':
+        specifier: ^1.0.610
+        version: 1.0.610
       '@types/react':
         specifier: ^19
         version: 19.3.0
@@ -2203,6 +2206,9 @@ packages:
 
   '@types/nodemailer@8.0.2':
     resolution: {integrity: sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==}
+
+  '@types/office-js@1.0.610':
+    resolution: {integrity: sha512-e8j3XZGYHiF4sqN7gyxKZjFvudm/Pmztut3wwnqt/EHpjbpZmsnO0FBAsojToAf6PMdOYSvfLgB4Ab+LELEgfg==}
 
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
@@ -6591,6 +6597,8 @@ snapshots:
   '@types/nodemailer@8.0.2':
     dependencies:
       '@types/node': 20.19.43
+
+  '@types/office-js@1.0.610': {}
 
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:

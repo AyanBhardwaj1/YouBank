@@ -82,10 +82,11 @@ Prepared 2026-09-27 for Studio, YouBank's live model-and-deck workspace. Accurac
 | Model-to-deck links and tie-out | Slides hold links to ranges and cells, never pasted values; `tieOut()` flags broken links, error values, typed-in tables and any number in slide text that is not in the model |
 | Integrity on every edit | Every agent run ends with a model audit and a health strip; the audit catches numbers typed into formulas, overwritten formulas, broken row patterns, errors, references to empty cells and circularity |
 | Circularity | Iterative calculation (Tarjan's algorithm to find circular groups, then Gauss–Seidel) with a circuit-breaker switch; the LBO template charges interest on average debt balances |
-| Sourced historicals | Templates fill inputs from SEC XBRL company facts and show the source; the agent passes a source with typed-in figures |
+| Sourced historicals | Templates fill inputs from SEC XBRL company facts and show the source; the agent passes a source with typed-in figures; tables in a data-room PDF arrive as inputs tagged with their file and page |
 | Sensitivity tables and football fields | Engine-computed data tables, plus live-formula sensitivity grids where a closed form exists; the football field is a chart linked to the summary sheet |
 | Banker conventions | One-click banker formatting, a cell-type legend, and colours applied automatically to agent writes |
-| Page turns | Comments on cells and slides; "Turn the comments" makes each change and resolves each comment with a note |
-| Audit trail | Every change is an event with its undo; any change or any whole agent run can be undone |
+| Page turns | Comments on cells and slides; a marked-up PDF or phone photo becomes comments placed on the cells and slides the marks refer to; "Turn the comments" makes each change and resolves each comment with a note |
+| Audit trail | Every change is an event with its undo; any change or any whole agent run can be undone; named checkpoints show what moved since (inputs, formulas, key outputs, slides) and restore in one step |
+| Deck hygiene | The brand check: stale cover dates, pages without a source line, elements off the page, text that will not fit, off-palette colours, crowded tables; most with a one-click fix |
 | Inbound files | An intake report on upload: hidden sheets, external links, unsupported functions, dropped features; file contents are treated as data, not instructions |
-| Round trip | .xlsx export with formulas and computed results; newer functions get Excel's `_xlfn.` prefix; .pptx with native tables and charts |
+| Round trip | .xlsx export with formulas and computed results; newer functions get Excel's `_xlfn.` prefix; .pptx with native tables and charts; and the add-in, which works inside Excel and PowerPoint themselves: the agent writes into the open workbook live, edits there sync back, and decks refresh in place from the model |

@@ -8,6 +8,7 @@ import { addr as A1, parseAddr, parseRange } from "@/lib/studio/address";
 import { NUMBER_FORMATS } from "@/lib/studio/format";
 import { addSheet, deleteSheet, formatRange, renameSheet, type Patch } from "@/lib/studio/ops";
 import { tasksFor } from "@/lib/studio/roles";
+import type { SemDiff } from "@/lib/studio/checkpoints";
 import { newId, type CellStyle } from "@/lib/studio/types";
 import { DeckView } from "./DeckView";
 import { Grid, cellSel, selRange, type Sel } from "./Grid";
@@ -18,7 +19,7 @@ const TOOL: Record<string, string> = {
   clear_range: "Clearing", sheets: "Arranging sheets", build_model: "Building the model from SEC data", company_data: "Pulling SEC financials",
   audit_model: "Auditing the model", banker_format: "Banker formatting", sensitivity_table: "Computing a data table", goal_seek: "Goal seek",
   refresh_data_tables: "Refreshing data tables", add_slide: "Adding a slide", update_slide: "Updating a slide", delete_slide: "Deleting a slide",
-  build_deck: "Building the deck", tie_out_deck: "Tying out the deck", resolve_comment: "Resolving a comment",
+  build_deck: "Building the deck", tie_out_deck: "Tying out the deck", brand_check: "Brand check", checkpoint: "Checkpoint", resolve_comment: "Resolving a comment",
   search_companies: "Looking up companies", get_xbrl_series: "Reading XBRL facts", search_filing: "Searching a filing", read_filing: "Reading a filing",
   get_trading_comps: "Pulling comps", calc: "Calculating", web_search: "Searching the web",
 };
@@ -39,6 +40,12 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   const [prompt, setPrompt] = useState("");
   const [side, setSide] = useState<"agent" | "checks" | "history">("agent");
   const logEnd = useRef<HTMLDivElement | null>(null);
+  const docInput = useRef<HTMLInputElement | null>(null);
+  const docKind = useRef<"markup" | "extract">("markup");
+  const [docMenu, setDocMenu] = useState(false);
+  const [reading, setReading] = useState<string | null>(null);
+  const [cpName, setCpName] = useState("");
+  const [diffs, setDiffs] = useState<Record<number, SemDiff>>({});
 
   const readOnly = false;
   // While the agent works and "Follow agent" is on, the view goes where the agent is writing.
@@ -96,6 +103,28 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
     if (sid && p) { setTab("model"); setSheetId(sid); setSel(cellSel(p.r, p.c)); }
   };
 
+  const pickDocument = (kind: "markup" | "extract") => { docKind.current = kind; setDocMenu(false); docInput.current?.click(); };
+  const onDocument = async (f: File) => {
+    const kind = docKind.current;
+    setReading(kind === "markup" ? `Reading the markup in ${f.name}…` : `Extracting tables from ${f.name}…`);
+    try {
+      const r = await st.readDocument(kind, f);
+      if (kind === "markup") {
+        st.setNotice(r.added ? `Added ${r.added} comment${r.added === 1 ? "" : "s"} from ${f.name}${r.unplaced ? ` (${r.unplaced} placed on the nearest page)` : ""}${r.illegible ? `; ${r.illegible} mark${r.illegible === 1 ? " was" : "s were"} unreadable` : ""}. Turn them from Checks.` : `No reviewer marks found in ${f.name}.`);
+        if (r.added) setSide("checks");
+      } else {
+        st.setNotice(`Extracted ${r.tables} table${r.tables === 1 ? "" : "s"}, ${r.figures} figures, to ${r.sheet?.name}. Each figure is a blue input tagged with its page.`);
+        if (r.sheet) { setTab("model"); setSheetId(r.sheet.id); }
+      }
+    } catch (e) { st.setError(e instanceof Error ? e.message : String(e)); }
+    finally { setReading(null); }
+  };
+  const compare = async (cid: number) => {
+    if (diffs[cid]) { setDiffs((d) => { const n = { ...d }; delete n[cid]; return n; }); return; }
+    try { const r = await st.compareCheckpoint(cid); setDiffs((d) => ({ ...d, [cid]: r.diff })); } catch (e) { st.setError(e instanceof Error ? e.message : String(e)); }
+  };
+  const fixable = st.lint?.filter((i) => i.fix).length ?? 0;
+
   const intake = meta.intake as null | { file: string; sheets: { name: string; cells: number; formulas: number; hidden: boolean }[]; unsupported: { fn: string; count: number }[]; externalLinks: number; dropped: string[]; warnings: string[] };
 
   return (
@@ -117,6 +146,17 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
           {st.saving ? "Saving…" : "Saved"}
           <a href={`/api/studio/${id}/export?format=xlsx`} className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60"><Icon name="Download" className="mr-1 inline h-3.5 w-3.5" />Excel</a>
           <a href={`/api/studio/${id}/export?format=pptx`} className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60"><Icon name="Download" className="mr-1 inline h-3.5 w-3.5" />PowerPoint</a>
+          <Link href="/app/office" title="Work on this model inside Excel and PowerPoint, live" className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60"><Icon name="FileSpreadsheet" className="mr-1 inline h-3.5 w-3.5" />Excel add-in</Link>
+          <span className="relative">
+            <button type="button" disabled={!!reading} onClick={() => setDocMenu((v) => !v)} className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60 disabled:opacity-50"><Icon name="Upload" className="mr-1 inline h-3.5 w-3.5" />{reading ? "Reading…" : "From a document"}</button>
+            {docMenu && (
+              <span className="absolute right-0 top-full z-20 mt-1 flex w-[270px] flex-col ctl border border-line bg-panel p-1 text-left shadow-lg">
+                <button type="button" onClick={() => pickDocument("markup")} className="ctl px-2 py-1.5 text-left hover:bg-elevated"><span className="block text-[12px] text-fg">Marked-up printout → comments</span><span className="block text-[10.5px]">A PDF or phone photo of the MD&apos;s pen marks; each becomes a comment on its cell or slide.</span></button>
+                <button type="button" onClick={() => pickDocument("extract")} className="ctl px-2 py-1.5 text-left hover:bg-elevated"><span className="block text-[12px] text-fg">Data-room PDF → tables</span><span className="block text-[10.5px]">Financial tables from a CIM or accounts, as sourced inputs on a new sheet.</span></button>
+              </span>
+            )}
+            <input ref={docInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void onDocument(f); }} />
+          </span>
           {meta.mine && meta.teams.length > 0 && (
             <select value={meta.teamId ?? ""} onChange={(e) => { void fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: e.target.value ? Number(e.target.value) : null }) }).then(() => st.reload()); }} className="ctl border border-line bg-bg px-1.5 py-1 text-[11px] text-fg">
               <option value="">Private</option>
@@ -125,6 +165,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
           )}
         </span>
       </div>
+      {reading && <div className="flex items-center gap-1.5 bg-accent-soft px-3 py-1 text-[11.5px]"><span className="h-2 w-2 animate-pulse rounded-full bg-accent" />{reading}</div>}
       {(st.error || st.notice) && <div className={`px-3 py-1 text-[11.5px] ${st.error ? "bg-neg/10 text-neg" : "bg-accent-soft text-fg"}`}>{st.error ?? st.notice} <button type="button" className="ml-2 underline" onClick={() => { st.setError(null); st.setNotice(null); }}>Dismiss</button></div>}
 
       <div className="flex min-h-0 flex-1">
@@ -178,7 +219,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
         <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-panel">
           <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11.5px]">
             {(["agent", "checks", "history"] as const).map((t) => (
-              <button key={t} type="button" onClick={() => setSide(t)} className={`ctl px-2 py-0.5 ${side === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
+              <button key={t} type="button" onClick={() => { setSide(t); if (t === "history") void st.loadCheckpoints().catch(() => undefined); }} className={`ctl px-2 py-0.5 ${side === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
                 {t === "agent" ? "Agent" : t === "checks" ? `Checks${st.health && st.health.errors ? ` · ${st.health.errors}` : ""}` : "History"}
               </button>
             ))}
@@ -252,7 +293,25 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <div className="flex gap-1.5">
                 <button type="button" onClick={() => void st.action("audit")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Audit the model</button>
                 <button type="button" onClick={() => void st.action("tieout")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Tie out the deck</button>
+                <button type="button" onClick={() => void st.action("lint")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Brand check</button>
               </div>
+              {st.lint && (
+                <div className="mt-3">
+                  <p className="font-semibold">Brand check: {st.lint.length === 0 ? "the deck is ready to send" : `${st.lint.length} item${st.lint.length === 1 ? "" : "s"}`}</p>
+                  <ul className="mt-1 space-y-1">
+                    {st.lint.map((i) => (
+                      <li key={i.key} className="flex items-start gap-1.5">
+                        <button type="button" onClick={() => { setTab("deck"); setSlide(i.slide); }} className="min-w-0 flex-1 text-left hover:text-fg">
+                          <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${i.severity === "error" ? "bg-neg/15 text-neg" : i.severity === "warning" ? "bg-accent-soft text-accent" : "bg-elevated text-muted"}`}>{i.severity}</span>
+                          <span className="text-muted">{i.slideTitle}:</span> {i.message}
+                        </button>
+                        {i.fix && <button type="button" onClick={() => void st.action("lint_fix", { keys: [i.key] })} className="shrink-0 text-[10.5px] text-accent underline">{i.fixLabel ?? "Fix"}</button>}
+                      </li>
+                    ))}
+                  </ul>
+                  {fixable > 1 && <button type="button" onClick={() => void st.action("lint_fix")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Fix all {fixable}</button>}
+                </div>
+              )}
               {st.issues && (
                 <div className="mt-3">
                   <p className="font-semibold">Model audit: {st.issues.filter((i) => i.severity === "error").length} errors, {st.issues.filter((i) => i.severity === "warning").length} warnings</p>
@@ -293,7 +352,27 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
 
           {side === "history" && (
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11.5px]">
-              <p className="font-semibold">Agent runs</p>
+              <p className="font-semibold">Checkpoints</p>
+              <p className="text-[10.5px] text-muted">Save the model and deck as they are now (&ldquo;Sent to MD&rdquo;), then see exactly what moved since.</p>
+              <div className="mt-1 flex gap-1">
+                <input value={cpName} onChange={(e) => setCpName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && cpName.trim()) { void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x))); } }} placeholder="Name, e.g. Sent to MD" className="min-w-0 flex-1 ctl border border-line bg-bg px-2 py-1 outline-none focus:border-accent/60" />
+                <button type="button" disabled={!cpName.trim()} onClick={() => void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x)))} className="ctl bg-accent px-2 py-1 font-semibold text-bg disabled:opacity-40">Save</button>
+              </div>
+              <ul className="mt-2 space-y-1.5">
+                {(st.checkpoints ?? []).map((c) => (
+                  <li key={c.id} className="ctl border border-line bg-bg/40 p-2">
+                    <p className="font-medium">{c.name}</p>
+                    <p className="text-[10.5px] text-muted">{c.createdByName || "Someone"} · {ago(c.createdAt)}</p>
+                    <div className="mt-1 flex gap-3 text-[10.5px]">
+                      <button type="button" onClick={() => void compare(c.id)} className="text-muted underline hover:text-fg">{diffs[c.id] ? "Hide changes" : "What changed since"}</button>
+                      <button type="button" onClick={() => { if (window.confirm(`Go back to "${c.name}"? The model and deck return to that point, as one change you can undo.`)) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
+                    </div>
+                    {diffs[c.id] && <DiffView d={diffs[c.id]} go={go} />}
+                  </li>
+                ))}
+                {st.checkpoints && !st.checkpoints.length && <li className="text-muted">None yet.</li>}
+              </ul>
+              <p className="mt-4 font-semibold">Agent runs</p>
               <ul className="mt-1 space-y-2">
                 {meta.runs.map((r) => (
                   <li key={r.id} className="ctl border border-line bg-bg/40 p-2">
@@ -332,6 +411,37 @@ function RunLog({ log, running }: { log: LogItem[]; running: boolean }) {
       })}
       {running && <li className="flex items-center gap-1.5 text-[11.5px] text-muted"><span className="h-2 w-2 animate-pulse rounded-full bg-accent" />Working…</li>}
     </ol>
+  );
+}
+
+function DiffView({ d, go }: { d: SemDiff; go: (sheet: string, cell: string) => void }) {
+  const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+  const sh = d.sheets, sl = d.slides;
+  const empty = !d.outputs.length && !d.inputs.length && !d.formulas.length && !d.text && !sh.added.length && !sh.removed.length && !sh.renamed.length && !sl.added.length && !sl.removed.length && !sl.changed.length;
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-line pt-1.5 text-[10.5px]">
+      {empty && <p className="text-muted">No changes since this checkpoint.</p>}
+      {d.outputs.length > 0 && (
+        <div>
+          <p className="font-semibold">Key outputs</p>
+          <ul>{d.outputs.slice(0, 14).map((o, i) => (
+            <li key={i} className="flex justify-between gap-2"><span className="truncate">{o.name}</span><span className="num shrink-0">{o.before} → <b>{o.after}</b>{o.change !== null && <span className={o.change >= 0 ? " text-pos" : " text-neg"}> {pct(o.change)}</span>}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {d.inputs.length > 0 && (
+        <div>
+          <p className="font-semibold">Inputs changed · {d.inputs.length}</p>
+          <ul>{d.inputs.slice(0, 14).map((x, i) => (
+            <li key={i}><button type="button" onClick={() => go(x.sheet, x.cell)} className="num hover:text-fg">{x.sheet}!{x.cell}</button> <span className="text-muted">{x.label}</span> {x.before} → {x.after}</li>
+          ))}</ul>
+        </div>
+      )}
+      {d.formulas.length > 0 && <p><span className="font-semibold">Formulas changed · {d.formulas.length}</span> <span className="text-muted">{d.formulas.slice(0, 6).map((x) => `${x.sheet}!${x.cell}`).join(", ")}{d.formulas.length > 6 ? "…" : ""}</span></p>}
+      {d.text > 0 && <p className="text-muted">{d.text} label{d.text === 1 ? "" : "s"} edited</p>}
+      {(sh.added.length > 0 || sh.removed.length > 0 || sh.renamed.length > 0) && <p><span className="font-semibold">Sheets</span> <span className="text-muted">{[...sh.added.map((x) => `+${x}`), ...sh.removed.map((x) => `−${x}`), ...sh.renamed.map((x) => `${x.from}→${x.to}`)].join(", ")}</span></p>}
+      {(sl.added.length > 0 || sl.removed.length > 0 || sl.changed.length > 0) && <p><span className="font-semibold">Slides</span> <span className="text-muted">{[...sl.added.map((x) => `+${x}`), ...sl.removed.map((x) => `−${x}`), ...sl.changed.map((x) => `~${x}`)].join(", ")}</span></p>}
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@
 import { parseAddr } from "./address";
 import type { Patch } from "./ops";
 
-const OPS = new Set(["cells", "sheet_add", "sheet_rename", "sheet_delete", "sheet_meta", "slide_upsert", "slide_delete", "deck_order", "deck_theme", "comments", "title", "names"]);
+const OPS = new Set(["cells", "sheet_add", "sheet_rename", "sheet_delete", "sheet_order", "sheet_meta", "slide_upsert", "slide_delete", "deck_order", "deck_theme", "comments", "title", "names"]);
 
 export function validPatches(x: unknown): Patch[] | null {
   if (!Array.isArray(x) || x.length === 0 || x.length > 300) return null;

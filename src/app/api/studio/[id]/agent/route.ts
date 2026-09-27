@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth/user";
+import { requestUser } from "@/lib/office/auth";
 import { runStudioAgent, type StudioStreamEvent } from "@/lib/studio/agent";
 import { requireDoc } from "@/lib/studio/db";
 
@@ -11,7 +11,7 @@ export const maxDuration = 300;
  * happen. Closing the request stops the agent between steps.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const user = await currentUser();
+  const user = await requestUser(req);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const id = Number((await ctx.params).id);
   if (!Number.isInteger(id)) return Response.json({ error: "bad id" }, { status: 400 });

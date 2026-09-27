@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
-import { guarded } from "@/lib/auth/user";
+import { guardedFor } from "@/lib/office/auth";
 import { commit, docData, markRun, requireDoc, undoForRun } from "@/lib/studio/db";
 import { Engine } from "@/lib/studio/engine";
 import type { Patch } from "@/lib/studio/ops";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Undo a whole agent run, or one event, as a new event (which can itself be undone). */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
-  return guarded(async (user) => {
+  return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
     if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { runId?: string; eventId?: number } | null;

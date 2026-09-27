@@ -233,24 +233,46 @@ async function runAnthropic(cfg: AiConfig, system: string, history: ChatMessage[
 
 /* ---------------- Structured one-shot calls (no tools) ---------------- */
 
-export async function structured<T>(schema: z.ZodType<T>, name: string, system: string, prompt: string, opts?: { prefs?: AiPrefs | null; override?: AiOverride }): Promise<{ data: T; provider: string; model: string }> {
+/** A file sent with a structured call: a PDF, or a PNG, JPEG, WebP or GIF image. `data` is base64. */
+export type Attachment = { name: string; mime: string; data: string };
+
+export async function structured<T>(schema: z.ZodType<T>, name: string, system: string, prompt: string, opts?: { prefs?: AiPrefs | null; override?: AiOverride; files?: Attachment[]; maxTokens?: number }): Promise<{ data: T; provider: string; model: string }> {
   const cfg = resolveAi(opts?.prefs, opts?.override);
   if (cfg.provider === "none") throw new Error(cfg.reason);
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
+  const files = opts?.files ?? [];
   if (cfg.provider === "openai") {
     const client = new OpenAI({ apiKey: cfg.apiKey });
+    const input: string | OpenAI.Responses.ResponseInput = files.length
+      ? [{
+          role: "user",
+          content: [
+            ...files.map((f): OpenAI.Responses.ResponseInputContent => (f.mime === "application/pdf"
+              ? { type: "input_file", filename: f.name, file_data: `data:${f.mime};base64,${f.data}` }
+              : { type: "input_image", image_url: `data:${f.mime};base64,${f.data}`, detail: "high" })),
+            { type: "input_text", text: prompt },
+          ],
+        }]
+      : prompt;
     const res = await client.responses.create({
-      model: cfg.model, instructions: system, input: prompt,
+      model: cfg.model, instructions: system, input,
       text: { format: { type: "json_schema", name, schema: jsonSchema, strict: false } },
       ...(/^gpt-4/.test(cfg.model) ? {} : { reasoning: { effort: cfg.effort } }),
     });
     return { data: schema.parse(JSON.parse(res.output_text)), provider: cfg.provider, model: cfg.model };
   }
   const client = new Anthropic({ apiKey: cfg.apiKey });
-  const res = await client.messages.create({
-    model: cfg.model, max_tokens: 8000, system, messages: [{ role: "user", content: prompt }],
+  const content: Anthropic.ContentBlockParam[] = [
+    ...files.map((f): Anthropic.ContentBlockParam => (f.mime === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data }, title: f.name }
+      : { type: "image", source: { type: "base64", media_type: f.mime as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data: f.data } })),
+    { type: "text", text: prompt },
+  ];
+  // Streamed, so long outputs (a data room's tables) are not cut off by the non-streaming time limit.
+  const res = await client.messages.stream({
+    model: cfg.model, max_tokens: opts?.maxTokens ?? 8000, system, messages: [{ role: "user", content }],
     output_config: { format: { type: "json_schema", schema: jsonSchema } },
-  });
+  }).finalMessage();
   const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
   return { data: schema.parse(JSON.parse(text)), provider: cfg.provider, model: cfg.model };
 }

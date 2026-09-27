@@ -14,7 +14,8 @@ parts:
   with a stated error bound.
 - **Studio.** A live workbook and deck. The agent builds financial models and pitch books while you watch,
   cell by cell, from SEC data. Slides stay linked to the model, every run is audited and can be undone,
-  and it all exports to Excel and PowerPoint.
+  and it all exports to Excel and PowerPoint. With the add-in it runs inside Excel and PowerPoint too:
+  the agent writes into your own workbook live, and decks refresh from the model.
 
 Production: **https://youbank-nu.vercel.app** · Free while in beta.
 
@@ -300,6 +301,121 @@ These are available to the agent and one click away in the toolbar:
 | Export .xlsx | Formulas with their computed results, styles, widths, frozen panes, merges and defined names. Newer functions get Excel's `_xlfn.` prefix, and the file asks Excel to recalculate on open. Data tables are written as values with a note |
 | Export .pptx | Native, editable tables and column, bar, line and pie charts. Football fields and waterfalls are drawn as precise shapes, the way think-cell does it. Sources, page numbers and confidentiality lines are included |
 | Import | .xlsx and .xlsm, keeping values, formulas (shared formulas expanded), number formats, fonts, fills, borders, widths, frozen panes, merges and defined names. Also .csv |
+
+#### Inside Excel and PowerPoint
+
+The YouBank add-in puts Studio inside Excel and PowerPoint, on the web, Windows and Mac. Install it from
+`/app/office` (the manifest is served at `/office/manifest.xml`), click **YouBank** on the Home tab, and
+connect with a code.
+
+**Connecting.** Office runs add-ins in a frame where a site's cookies are often blocked, so the add-in signs
+in with a device code, not a session:
+1. The add-in asks for a code and shows it (`ABCD-2345`, with no look-alike characters).
+2. The person approves it at `/office/connect`, signed in to YouBank. That page sits outside the app, so a
+   first-time user can sign in and approve before the ten-minute code expires.
+3. The add-in holds a poll secret that only it knows, and uses it to collect a device token, once.
+
+Only hashes of the poll secret and the token are stored. Every connected install is listed at
+`/app/office`, and disconnecting one stops its token at once. The Studio API accepts either the browser
+session or the token, so the add-in uses the same routes as the browser.
+
+**Excel.** A workbook links to a Studio document in one of three ways:
+- build a model here: a DCF, comps, an LBO or a valuation pack from SEC data;
+- use the workbook as it is: a blank sheet or your own model;
+- open an existing YouBank model into it.
+
+Once linked:
+- **The agent writes into your workbook live.** Each patch the agent commits streams to the add-in and is
+  applied at once through Office.js.
+  - Cells are grouped into runs along a row, one range per run.
+  - The selection follows the agent unless you turn **Follow** off.
+  - Everything that writes to Excel goes through one queue, so edits land in order.
+  - A formula Excel rejects fails alone; the rest of the change still lands.
+- **Your edits sync back.** A change marks its sheet. A second later that sheet is read and sent, and
+  Studio stores the difference as one undoable change ("Synced from Excel: 3 cells").
+  - A snapshot is compared by value, so a recalculated result, a formula's letter case or a source tag
+    does not count as an edit.
+  - Renaming a sheet in Excel renames it in Studio, so the deck's links survive.
+  - New, deleted and reordered sheets are picked up on a four-second beat.
+- **A sync cannot undo newer work.** The add-in says which change it last applied. If anything newer has
+  landed, the server refuses the sync (409); the add-in catches up and tries again.
+- **Reopening a workbook days later.** The workbook remembers the last change it saw. When it opens, the
+  add-in:
+  1. rebuilds that state from the undo patches of everything since;
+  2. replays those changes into Excel;
+  3. sends anything typed into Excel while it was closed.
+- **What makes the round trip:** values, formulas, number formats, fonts, fills, borders, alignment,
+  column widths, frozen panes, sheet order and defined names. Text that Excel would turn into a number or
+  a date ("2025", "Jun-25") is written with a leading apostrophe, so it stays text.
+- **Large workbooks.** Snapshots are gzipped. A sheet is read up to 150,000 cells, and its formats up to
+  25,000 cells. A workbook is limited to 400,000 cells.
+
+**PowerPoint.**
+- **Insert the deck.** The deck arrives after the selected slide, as native tables and charts. Each slide
+  is tagged with its Studio slide and document.
+- **Refresh from the model.**
+  - Each tagged slide is replaced in place with its current version.
+  - Slides new in Studio are added after the last one; slides deleted in Studio are removed.
+  - Slides you made yourself are never touched.
+  - PptxGenJS numbers exported slides from 256, which is how one slide is picked out of the file.
+- **Keep my edits** unlinks the selected slides, so a refresh leaves them alone.
+- The brand check, the tie-out and the agent are in the pane. After an agent run, the slides refresh.
+
+**Requirements.** ExcelApi 1.9 and PowerPointApi 1.3: Microsoft 365, Office 2021 or later, or Office on
+the web.
+
+#### Checkpoints
+
+- Save the model and deck under a name ("Sent to MD"). You can do it from Studio's History tab, from the
+  add-in, or by asking the agent.
+- **What changed since** is a semantic diff, not a cell dump. It shows:
+  - the key outputs (named outputs, key-output cells and slide metrics), with before, after and the change
+    in percent;
+  - every input that changed, with its row label;
+  - the formulas that changed;
+  - sheets and slides added, removed or renamed.
+- Two checkpoints can also be compared with each other.
+- **Restore** returns to a checkpoint as one change, which can itself be undone.
+- Comparisons ignore key order, because Postgres `jsonb` re-sorts object keys.
+
+#### Brand check
+
+Run it from Checks, from PowerPoint, or by asking the agent. It flags what gets a book sent back:
+- a cover dated in a past month;
+- a page of figures without a source line;
+- elements running off the page or into the footer, and elements overlapping;
+- text that will not fit its box, text under 9 pt, and colours outside the deck's palette;
+- tables with too many rows for their space;
+- headline figures without a caption, empty slides and two-line titles.
+
+Most findings come with a fix:
+- bring the cover date up to this month;
+- add a source line naming the model's sheets;
+- move an element inside the page;
+- reduce a font size;
+- use the theme colour.
+
+**Fix all** applies every fix as one change. Fixes to the same element stack rather than overwrite each
+other.
+
+#### Paper in: marked-up printouts and data rooms
+
+- **A marked-up printout becomes comments.**
+  - Upload a PDF or a phone photo of the reviewer's pen marks.
+  - The model reads the handwriting, circles and arrows against an outline of the live document: slides by
+    number, rows by label, periods by column header.
+  - Each mark becomes a comment on its slide or cell. Marks it cannot place land on their page's slide,
+    and are counted.
+  - Then **Turn the comments** has the agent make the changes.
+- **A data-room PDF becomes a sheet of sourced inputs.** Upload a CIM, audited accounts or a management
+  deck, and its financial tables become a new sheet:
+  - each table sits under a banded title with its unit and page;
+  - figures are copied exactly as printed, as blue inputs; parentheses become negatives and percentages
+    become decimals;
+  - each figure is tagged with its file and page;
+  - notes on restatements, adjustments and unaudited periods are kept at the foot.
+- Files can be up to 4 MB: PDF, PNG, JPEG, WebP or GIF. Printed text is treated as content, never as an
+  instruction.
 
 Research behind Studio:
 [docs/research/studio-competitive-landscape.md](docs/research/studio-competitive-landscape.md) and
@@ -722,9 +838,9 @@ Graduation offers appear at the top of the queue.
 ## Architecture
 
 ```
-                         Browser: Next.js App Router pages, React 19
-                                        │
-                                        ▼
+     Browser: Next.js App Router pages, React 19      Excel and PowerPoint: the add-in (Office.js)
+                                        │                     │  device token, same /api/studio routes
+                                        ▼                     ▼
   Vercel ─── Next.js 16 server: pages and route handlers under /api/*
    │   Cron 06:00 UTC ─► /api/cron/sync     startup directory and Form D refresh
    │   Cron 11:00 UTC ─► /api/cron/agent    morning agent run (drafts only)
@@ -779,7 +895,8 @@ All tables are in `src/db/schema.ts`.
 | Live collaboration | `collab_sessions`, `collab_events`, `collab_presence` |
 | Relationships | `email_accounts`, `crm_contacts`, `crm_deals`, `crm_threads`, `crm_messages`, `crm_drafts`, `crm_questions`, `crm_playbook`, `crm_settings`, `crm_actions`, `crm_signals`, `crm_nurture_rules`, `crm_nurture_log`, `crm_campaigns`, `crm_campaign_leads` |
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
-| Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor), `studio_runs` (each agent run: instruction, status, summary, stats) |
+| Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
+| Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
 
 **Migrations.**
 - On a fresh database, `drizzle-kit push` creates every table from the schema.
@@ -792,6 +909,7 @@ All tables are in `src/db/schema.ts`.
   - `0005_autopilot`
   - `0006_adaptive`
   - `0007_studio`
+  - `0008_office`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -899,7 +1017,7 @@ bash scripts/preflight.sh                                         # everything t
 2. **Database.** Apply any new migration to production, then check for drift:
    ```bash
    set -a; . ./.env.local; set +a
-   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0006_adaptive.sql drizzle/0007_studio.sql
+   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0008_office.sql
    pnpm exec drizzle-kit push        # should report no changes
    ```
 3. **Build and ship:**
@@ -933,6 +1051,8 @@ bash scripts/preflight.sh                                         # everything t
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
 | Studio end to end | `DATABASE_URL=<branch> pnpm exec tsx scripts/e2e-studio.ts` | With the live model: a valuation pack with a linked deck, a custom formula-linked sheet with a waterfall slide, a turned comment, undoing a run, and exports from the stored document |
+| Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
+| Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
 | Preflight | `bash scripts/preflight.sh` | Themes, typecheck, lint, tool packs, production build |
 
@@ -959,6 +1079,14 @@ production.
 - Automated messages are never answered.
 - Loop guards limit autopilot to two sends per conversation per day.
 - Lessons cannot authorise facts.
+
+**Excel and PowerPoint.**
+- The add-in signs in with a device code. Only hashes of the poll secret and the device token are stored.
+- A token is collected once. A code is approved only from a signed-in browser session, never by another
+  add-in, and the approval page warns people to approve only a code they see in their own Office.
+- Every install is listed with its last use, and disconnecting one revokes its token at once.
+- Uploaded printouts and data-room files are read as content: the reviewer's marks are the only requests,
+  and printed text is never followed as an instruction.
 
 **Scheduled endpoints.**
 - Cron and heartbeat endpoints require bearer secrets.
@@ -1038,12 +1166,12 @@ the plan:
   - It would follow the stateless 2026-07-28 MCP specification, with MCP Apps for rendered results.
   - On Vercel it would use `mcp-handler`, which needs its own OAuth 2.1 authorisation server.
 - **Mailboxes:** Microsoft 365 and Outlook, and Google verification (CASA) for the Gmail API path.
-- **Studio:**
-  - an Excel and PowerPoint add-in that mirrors a Studio session into the open file;
-  - turning comments from a marked-up PDF or a photo;
-  - a deck brand lint;
-  - data-room extraction into models, with each cell linked to its page;
-  - named checkpoints with semantic diffs.
+- **Studio and the add-in:**
+  - single sign-on in the add-in through Office's nested app authentication, for Microsoft 365 tenants;
+  - an AppSource listing, so the add-in installs from Office's store;
+  - pushing changes to the add-in over a stream, instead of a four-second poll;
+  - Excel charts, conditional formats and data validation in the round trip;
+  - data-room files over 4 MB, uploaded straight to storage.
 - **Engine:**
   - fit the reply-delay curve to real data once there are 200 replies;
   - evaluate new angle strategies offline from the logged propensities;
@@ -1060,14 +1188,15 @@ the plan:
 ```
 YouBank/
   docs/                    product thinking, decisions, specs, market research
-  drizzle/                 hand-written SQL migrations (0001–0006)
+  drizzle/                 hand-written SQL migrations (0001–0008)
   neon/autopilot.ts        the five-minute heartbeat relay (Neon Function)
   scripts/                 tests, end-to-end runs, migrations, snapshot, themes, backfill, preflight
-  src/app/                 routes: marketing, /for/<role>, /onboarding, /app/*, /api/*
+  src/app/                 routes: marketing, /for/<role>, /onboarding, /app/*, /office/* (the add-in), /api/*
   src/components/
     crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
                            agent settings, engine insights, mailbox bar
     studio/                Studio home, workspace, grid, deck view, slide charts, state hook
+    office/                the add-in's task pane, and the connect and install pages
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
     terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS)
     workflows/             tool gallery, runner, form, output blocks
@@ -1076,7 +1205,10 @@ YouBank/
   src/lib/
     crm/                   the relationships agent, autopilot and the adaptive engine (see Architecture)
     studio/                formula engine, functions, number formats, templates, audit, deck, edit
-                           operations, persistence, .xlsx/.pptx, the Studio agent
+                           operations, persistence, .xlsx/.pptx, the Studio agent, workbook sync,
+                           checkpoints, the brand check, reading printouts and data rooms
+    office/                the add-in: pairing and tokens, the Excel and PowerPoint adapters, the
+                           manifest, its API client
     ai/                    models, config, agent (OpenAI Responses and Anthropic), data tools, prompts
     edgar/  fmp/  vc/      SEC EDGAR and XBRL, prices, startup directory and Form D
     workflows/             tool contract, prompt builder, registry, a pack per role

@@ -105,6 +105,9 @@ export async function persist(docId: number, p: Patch) {
     case "sheet_delete":
       await db.execute(sql`update studio_docs set workbook = jsonb_set(workbook #- ${sheetPath(p.sheet)}, '{order}', ${withoutId(sql`workbook->'order'`, p.sheet)}), ${touch} where id = ${docId}`);
       return;
+    case "sheet_order":
+      await db.execute(sql`update studio_docs set workbook = jsonb_set(workbook, '{order}', ${J(p.order)}::jsonb), ${touch} where id = ${docId}`);
+      return;
     case "sheet_meta": {
       let expr = sql`workbook`;
       if (p.cols) expr = sql`jsonb_set(${expr}, ${sheetPath(p.sheet, "cols")}, coalesce(workbook #> ${sheetPath(p.sheet, "cols")}, '{}'::jsonb) || ${J(p.cols)}::jsonb)`;
@@ -196,3 +199,32 @@ export async function recentEvents(docId: number, limit = 60) {
   return requireDb().select({ id: schema.studioEvents.id, actor: schema.studioEvents.actor, actorName: schema.studioEvents.actorName, runId: schema.studioEvents.runId, label: schema.studioEvents.label, createdAt: schema.studioEvents.createdAt })
     .from(schema.studioEvents).where(eq(schema.studioEvents.docId, docId)).orderBy(desc(schema.studioEvents.id)).limit(limit);
 }
+
+/* ---------------- Checkpoints ---------------- */
+
+export type CheckpointRow = typeof schema.studioCheckpoints.$inferSelect;
+
+/** Save the document as it is now under a name ("Sent to MD"), to compare against or go back to. */
+export async function createCheckpoint(docId: number, user: CurrentUser, name: string, doc: StudioDocData) {
+  const eventId = await lastEventId(docId);
+  const [row] = await requireDb().insert(schema.studioCheckpoints).values({
+    docId, name: name.trim().slice(0, 120) || "Checkpoint", createdBy: user.id, createdByName: user.name || user.email, workbook: doc.workbook, deck: doc.deck, eventId,
+  }).returning({ id: schema.studioCheckpoints.id, name: schema.studioCheckpoints.name, createdByName: schema.studioCheckpoints.createdByName, eventId: schema.studioCheckpoints.eventId, createdAt: schema.studioCheckpoints.createdAt });
+  return row;
+}
+
+export async function listCheckpoints(docId: number) {
+  return requireDb().select({ id: schema.studioCheckpoints.id, name: schema.studioCheckpoints.name, createdByName: schema.studioCheckpoints.createdByName, eventId: schema.studioCheckpoints.eventId, createdAt: schema.studioCheckpoints.createdAt })
+    .from(schema.studioCheckpoints).where(eq(schema.studioCheckpoints.docId, docId)).orderBy(desc(schema.studioCheckpoints.createdAt)).limit(50);
+}
+
+export async function getCheckpoint(docId: number, id: number): Promise<CheckpointRow> {
+  const [row] = await requireDb().select().from(schema.studioCheckpoints).where(and(eq(schema.studioCheckpoints.docId, docId), eq(schema.studioCheckpoints.id, id)));
+  if (!row) throw Object.assign(new Error("No such checkpoint"), { status: 404 });
+  return row;
+}
+
+export async function deleteCheckpoint(docId: number, id: number) {
+  await requireDb().delete(schema.studioCheckpoints).where(and(eq(schema.studioCheckpoints.docId, docId), eq(schema.studioCheckpoints.id, id)));
+}
+

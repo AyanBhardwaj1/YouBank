@@ -728,3 +728,46 @@ export const studioRuns = pgTable("studio_runs", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, (t) => [index("studio_runs_doc_idx").on(t.docId, t.startedAt)]);
+
+/* ---------------- YouBank for Excel and PowerPoint ---------------- */
+
+/**
+ * A pairing in progress: the add-in shows `code`, the person approves it in YouBank, and the add-in
+ * collects its device token (held encrypted here until collected) with the poll secret it kept.
+ */
+export const officePairings = pgTable("office_pairings", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  pollHash: text("poll_hash").notNull(),
+  host: text("host").notNull().default(""),
+  userId: text("user_id"),
+  token: text("token"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("office_pairings_code_uidx").on(t.code), uniqueIndex("office_pairings_poll_uidx").on(t.pollHash)]);
+
+/** A connected Excel or PowerPoint install. Only the token's hash is stored; revoking cuts it off at once. */
+export const officeDevices = pgTable("office_devices", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  name: text("name").notNull().default(""),
+  host: text("host").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("office_devices_token_uidx").on(t.tokenHash), index("office_devices_user_idx").on(t.userId)]);
+
+/** A named snapshot of a Studio document ("Sent to MD"), to compare against or go back to. */
+export const studioCheckpoints = pgTable("studio_checkpoints", {
+  id: serial("id").primaryKey(),
+  docId: integer("doc_id").notNull().references(() => studioDocs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  createdBy: text("created_by").notNull(),
+  createdByName: text("created_by_name").notNull().default(""),
+  workbook: jsonb("workbook").$type<import("@/lib/studio/types").Workbook>().notNull(),
+  deck: jsonb("deck").$type<import("@/lib/studio/types").Deck>().notNull(),
+  eventId: integer("event_id").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("studio_checkpoints_doc_idx").on(t.docId, t.createdAt)]);
