@@ -1,12 +1,14 @@
+import { randomUUID } from "node:crypto";
 import type { EmailAddress } from "@/db/schema";
+import { isAutomatedMessage } from "./autopilot-rules";
 import type { IncomingMessage } from "./db";
 
 /**
- * Gmail connector: OAuth, reading threads, and sending an approved draft.
+ * Gmail connector over the Gmail API: OAuth, reading threads, and sending.
  *
  * Least privilege on purpose. `gmail.readonly` cannot modify or delete anything, and `gmail.send`
- * can only send — neither can empty a mailbox. Nothing here sends by itself: sendMessage runs only
- * from the route a person triggers by approving a draft.
+ * can only send — neither can empty a mailbox. Nothing here decides to send: sendMessage is called
+ * only by sendDraft, for a draft a person sent or one their autopilot settings allow.
  */
 
 export const GMAIL_SCOPES = [
@@ -80,14 +82,14 @@ async function call<T>(token: string, path: string, init?: RequestInit): Promise
 }
 
 export function profile(token: string) {
-  return call<{ emailAddress: string }>(token, "/profile");
+  return call<{ emailAddress: string; historyId: string }>(token, "/profile");
 }
 
 /* ---------------- Reading ---------------- */
 
 type GmailHeader = { name: string; value: string };
 type GmailPart = { mimeType?: string; filename?: string; headers?: GmailHeader[]; body?: { data?: string; size?: number }; parts?: GmailPart[] };
-type GmailMessage = { id: string; threadId: string; internalDate?: string; payload?: GmailPart; snippet?: string };
+type GmailMessage = { id: string; threadId: string; internalDate?: string; payload?: GmailPart; snippet?: string; labelIds?: string[] };
 type GmailThread = { id: string; messages?: GmailMessage[] };
 
 const decode = (data?: string) => (data ? Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8") : "");
@@ -145,7 +147,12 @@ export function stripQuoted(body: string): string {
   return trimmed.split("\n").filter((l) => !/^\s*>/.test(l)).join("\n").trim();
 }
 
-export type FetchedThread = { providerThreadId: string; subject: string; messages: IncomingMessage[] };
+/** `inInbox` is false for a thread that only exists in Sent, or only in Promotions, Social and the like. */
+export type FetchedThread = { providerThreadId: string; subject: string; messages: IncomingMessage[]; inInbox?: boolean };
+
+const HIDDEN = new Set(["DRAFT", "SPAM", "TRASH"]);
+const NOT_PRIMARY = /^CATEGORY_(PROMOTIONS|SOCIAL|FORUMS|UPDATES)$/;
+const refsOf = (raw: string) => raw.split(/\s+/).map((r) => r.trim()).filter((r) => r.startsWith("<"));
 
 /** Recent threads worth reading. Defaults to the primary inbox, newest first. */
 export async function listThreadIds(token: string, opts?: { query?: string; max?: number }): Promise<string[]> {
@@ -156,9 +163,11 @@ export async function listThreadIds(token: string, opts?: { query?: string; max?
 
 export async function fetchThread(token: string, threadId: string, selfAddress: string): Promise<FetchedThread | null> {
   const t = await call<GmailThread>(token, `/threads/${threadId}?format=full`);
-  const messages = (t.messages ?? []).map((m): IncomingMessage => {
+  const visible = (t.messages ?? []).filter((m) => !(m.labelIds ?? []).some((l) => HIDDEN.has(l)));
+  const messages = visible.map((m): IncomingMessage => {
     const from = parseAddresses(header(m, "From"))[0] ?? { name: "", address: "" };
     const raw = bodyOf(m.payload) || m.snippet || "";
+    const get = (name: string) => header(m, name) || undefined;
     return {
       providerMessageId: m.id,
       direction: from.address && from.address === selfAddress.toLowerCase() ? "outbound" : "inbound",
@@ -168,10 +177,52 @@ export async function fetchThread(token: string, threadId: string, selfAddress: 
       subject: header(m, "Subject"),
       body: stripQuoted(raw).slice(0, 20_000),
       sentAt: m.internalDate ? new Date(Number(m.internalDate)) : null,
+      rfcMessageId: header(m, "Message-ID"),
+      inReplyTo: header(m, "In-Reply-To"),
+      references: refsOf(header(m, "References")),
+      automated: isAutomatedMessage(get, from.address),
     };
   }).filter((m) => m.fromAddress);
   if (messages.length === 0) return null;
-  return { providerThreadId: t.id, subject: messages[0].subject ?? "", messages };
+  const inInbox = visible.some((m) => (m.labelIds ?? []).includes("INBOX") && !(m.labelIds ?? []).some((l) => NOT_PRIMARY.test(l)));
+  return { providerThreadId: t.id, subject: messages[0].subject ?? "", messages, inInbox };
+}
+
+type HistoryPage = {
+  history?: { id: string; messagesAdded?: { message: { id: string; threadId: string; labelIds?: string[] } }[] }[];
+  historyId?: string; nextPageToken?: string;
+};
+
+/**
+ * Threads that gained a message since `startHistoryId`, oldest change first, and the history id to
+ * resume from. Stops collecting at `max` threads and returns the id of the last change it fully
+ * covered, so a large backlog is worked through in order rather than re-read from the top.
+ * Returns null when Gmail no longer has history that old; the caller then starts afresh.
+ */
+export async function historyChanges(token: string, startHistoryId: string, max: number): Promise<{ threadIds: string[]; historyId: string; complete: boolean } | null> {
+  const threadIds: string[] = [];
+  let cursor = startHistoryId;
+  let pageToken: string | undefined;
+  for (let page = 0; page < 10; page++) {
+    let res: HistoryPage;
+    try {
+      res = await call<HistoryPage>(token, `/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded&maxResults=500${pageToken ? `&pageToken=${pageToken}` : ""}`);
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) return null;
+      throw e;
+    }
+    for (const h of res.history ?? []) {
+      const fresh = (h.messagesAdded ?? []).map((a) => a.message)
+        .filter((m) => !(m.labelIds ?? []).some((l) => HIDDEN.has(l)) && (m.labelIds ?? []).some((l) => l === "INBOX" || l === "SENT"))
+        .map((m) => m.threadId).filter((id) => !threadIds.includes(id));
+      if (threadIds.length + new Set(fresh).size > max && threadIds.length > 0) return { threadIds, historyId: cursor, complete: false };
+      for (const id of fresh) if (!threadIds.includes(id)) threadIds.push(id);
+      cursor = h.id;
+    }
+    if (!res.nextPageToken) return { threadIds, historyId: res.historyId ?? cursor, complete: true };
+    pageToken = res.nextPageToken;
+  }
+  return { threadIds, historyId: cursor, complete: false };
 }
 
 /** The RFC Message-ID of a message, needed so a reply threads correctly in the recipient's client. */
@@ -182,30 +233,33 @@ export async function messageIdHeader(token: string, gmailMessageId: string): Pr
 
 /* ---------------- Sending ---------------- */
 
+/** A fresh RFC Message-ID on the sender's domain, so our own sends can be recognised when replies arrive. */
+export function newMessageId(fromAddress: string): string {
+  return `<${randomUUID()}@${fromAddress.split("@")[1] || "youbank.local"}>`;
+}
+
 /** RFC 2822 with UTF-8 subjects encoded, base64url for the Gmail API. */
-function buildRaw(msg: { to: string[]; subject: string; body: string; inReplyTo?: string }): string {
+export function buildRaw(msg: { to: string[]; subject: string; body: string; inReplyTo?: string; references?: string[]; messageId?: string }): string {
   const subject = /[^\x20-\x7E]/.test(msg.subject)
     ? `=?UTF-8?B?${Buffer.from(msg.subject, "utf8").toString("base64")}?=`
     : msg.subject;
+  const references = [...(msg.references ?? []), ...(msg.inReplyTo && !(msg.references ?? []).includes(msg.inReplyTo) ? [msg.inReplyTo] : [])];
   const lines = [
     `To: ${msg.to.join(", ")}`,
     `Subject: ${subject}`,
+    ...(msg.messageId ? [`Message-ID: ${msg.messageId}`] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
-    ...(msg.inReplyTo ? [`In-Reply-To: ${msg.inReplyTo}`, `References: ${msg.inReplyTo}`] : []),
+    ...(msg.inReplyTo ? [`In-Reply-To: ${msg.inReplyTo}`] : []),
+    ...(references.length ? [`References: ${references.join(" ")}`] : []),
     "",
     msg.body,
   ];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
 }
 
-/**
- * Send one message.
- *
- * Only ever called from the route behind a person approving a draft. There is no scheduler, cron or
- * agent path into this function.
- */
-export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; threadId?: string | null; inReplyTo?: string }) {
+/** Send one message. Called only from sendDraft, which enforces who may send what. */
+export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; threadId?: string | null; inReplyTo?: string; references?: string[]; messageId?: string }) {
   return call<{ id: string; threadId: string }>(token, "/messages/send", {
     method: "POST",
     headers: { "content-type": "application/json" },

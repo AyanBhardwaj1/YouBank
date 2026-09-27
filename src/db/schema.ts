@@ -234,6 +234,10 @@ export const emailAccounts = pgTable("email_accounts", {
   cursor: text("cursor").notNull().default(""),
   scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
   status: text("status").notNull().default("connected"), // connected | needs_reauth | disconnected
+  /** For IMAP/SMTP mailboxes: hosts, ports and user name. Never the password. */
+  settings: jsonb("settings").$type<{ imapHost?: string; imapPort?: number; imapSecure?: boolean; smtpHost?: string; smtpPort?: number; smtpSecure?: boolean; username?: string; preset?: string }>().notNull().default({}),
+  /** For IMAP/SMTP mailboxes: the app password, encrypted like the OAuth tokens. */
+  secret: text("secret").notNull().default(""),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastError: text("last_error").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -253,6 +257,8 @@ export const crmContacts = pgTable("crm_contacts", {
   kind: text("kind").notNull().default("unknown"), // founder | investor | lp | banker | operator | other
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
   notes: text("notes").notNull().default(""),
+  /** Set when they asked not to be contacted. Nurture and campaigns never write to them again. */
+  optedOutAt: timestamp("opted_out_at", { withTimezone: true }),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -324,9 +330,14 @@ export const crmMessages = pgTable("crm_messages", {
   toAddresses: jsonb("to_addresses").$type<EmailAddress[]>().notNull().default([]),
   subject: text("subject").notNull().default(""),
   body: text("body").notNull().default(""),
+  /** The RFC 5322 Message-ID and In-Reply-To, which is how replies are threaded across providers. */
+  rfcMessageId: text("rfc_message_id").notNull().default(""),
+  inReplyTo: text("in_reply_to").notNull().default(""),
+  /** Machine-sent: an auto-reply, a mailing list, a no-reply sender. Never answered automatically. */
+  automated: boolean("automated").notNull().default(false),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("crm_messages_thread_idx").on(t.threadId, t.sentAt)]);
+}, (t) => [index("crm_messages_thread_idx").on(t.threadId, t.sentAt), index("crm_messages_rfc_idx").on(t.rfcMessageId)]);
 
 /**
  * A reply the agent has written, waiting for a person.
@@ -346,6 +357,28 @@ export const crmDrafts = pgTable("crm_drafts", {
   rationale: text("rationale").notNull().default(""),
   citations: jsonb("citations").$type<{ label: string; url: string }[]>().notNull().default([]),
   status: text("status").notNull().default("pending"), // pending | sent | discarded
+  kind: text("kind").notNull().default("reply"), // reply | follow_up | nurture | campaign
+  contactId: integer("contact_id"),
+  campaignLeadId: integer("campaign_lead_id"),
+  /** Which step of a campaign, which nurture rule, which signal: whatever produced it. */
+  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string }>().notNull().default({}),
+  /** Set when autopilot will send it: the time it goes, unless someone stops it first. */
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+  /** Why autopilot handed it to a person instead of sending, in plain words. */
+  holdReason: text("hold_reason").notNull().default(""),
+  confidence: text("confidence").notNull().default(""), // high | medium | low
+  sensitive: boolean("sensitive").notNull().default(false),
+  /** The message this answers, so a newer one arriving first can be noticed before sending. */
+  replyToMessageId: integer("reply_to_message_id"),
+  sentBy: text("sent_by").notNull().default(""), // you | autopilot
+  lastError: text("last_error").notNull().default(""),
+  attempts: integer("attempts").notNull().default(0),
+  /** The text as the agent wrote it, before anyone edited it. What the engine learns from. */
+  originalBody: text("original_body").notNull().default(""),
+  /** The outreach choices the engine made for this email, e.g. "angle:question;hour:morning". */
+  variant: text("variant").notNull().default(""),
+  /** Its outcome has been counted by the adaptive engine, so it is never counted twice. */
+  learned: boolean("learned").notNull().default(false),
   provider: text("provider").notNull().default(""),
   model: text("model").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -354,6 +387,251 @@ export const crmDrafts = pgTable("crm_drafts", {
 }, (t) => [
   index("crm_drafts_user_status_idx").on(t.userId, t.status),
   index("crm_drafts_thread_idx").on(t.threadId),
+  index("crm_drafts_lead_idx").on(t.campaignLeadId),
+  index("crm_drafts_scheduled_idx").on(t.userId, t.scheduledFor),
+]);
+
+/**
+ * Something the agent could not answer on its own: a price, a date, whether to agree. It waits here
+ * for the person, and the answer is used to finish the draft (and, if asked, remembered).
+ */
+export const crmQuestions = pgTable("crm_questions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  draftId: integer("draft_id"),
+  threadId: integer("thread_id"),
+  question: text("question").notNull(),
+  context: text("context").notNull().default(""),
+  answer: text("answer").notNull().default(""),
+  status: text("status").notNull().default("open"), // open | answered | dismissed
+  remember: boolean("remember").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+}, (t) => [index("crm_questions_user_status_idx").on(t.userId, t.status)]);
+
+/* ---------------- The adaptive engine ---------------- */
+
+/**
+ * Earned autonomy: for each kind of email (bucket, e.g. "reply:external:high"), a Beta posterior over
+ * the chance the person sends the agent's draft unchanged. Autopilot is held where it is low and
+ * suggested where it is proven.
+ */
+export const crmTrust = pgTable("crm_trust", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  bucket: text("bucket").notNull(),
+  /** Good and bad labels, decayed with a 90-day half-life. Certification uses a flat prior on these. */
+  good: doublePrecision("good").notNull().default(0),
+  bad: doublePrecision("bad").notNull().default(0),
+  observations: integer("observations").notNull().default(0),
+  unchanged: integer("unchanged").notNull().default(0),
+  /** Anytime-valid evidence that the bad rate exceeds 10%; demotes at 20. */
+  eprocess: doublePrecision("eprocess").notNull().default(1),
+  /** Consecutive automatic sends the person stopped during the hold. */
+  cancelStreak: integer("cancel_streak").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("crm_trust_user_bucket_uidx").on(t.userId, t.bucket)]);
+
+/** Outreach experiments: one Beta-Bernoulli arm per choice (an opening angle, a send hour), rewarded by replies. */
+export const crmArms = pgTable("crm_arms", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  dimension: text("dimension").notNull(), // angle | hour
+  arm: text("arm").notNull(),
+  /** Settled sends, positive replies and negative replies (opt-outs), decayed with a 90-day half-life. */
+  pulls: doublePrecision("pulls").notNull().default(0),
+  rewards: doublePrecision("rewards").notNull().default(0),
+  negatives: doublePrecision("negatives").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("crm_arms_user_dim_arm_uidx").on(t.userId, t.dimension, t.arm)]);
+
+/** Rules inferred from how the person edits drafts. Applied to every later draft in the same context. */
+export const crmLessons = pgTable("crm_lessons", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  context: text("context").notNull().default("any"), // e.g. reply:external, campaign, any
+  rule: text("rule").notNull(),
+  evidence: integer("evidence").notNull().default(1),
+  /** A lesson applies once seen twice, or once the person confirms it. */
+  confirmed: boolean("confirmed").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  sourceDraftId: integer("source_draft_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_lessons_user_idx").on(t.userId, t.active)]);
+
+/** Every signal the engine learned from, for audit and offline evaluation. */
+export const crmLearningEvents = pgTable("crm_learning_events", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  draftId: integer("draft_id"),
+  loop: text("loop").notNull(), // trust | arm | lesson
+  key: text("key").notNull().default(""), // the bucket, arm or lesson it touched
+  outcome: text("outcome").notNull(), // unchanged | edited | rewritten | discarded | replied | no_reply | learned
+  editRatio: doublePrecision("edit_ratio"),
+  reward: doublePrecision("reward"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_learning_events_user_idx").on(t.userId, t.createdAt)]);
+
+/** What the agent has been taught: questions it will meet again, and the person's answers. */
+export const crmPlaybook = pgTable("crm_playbook", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  source: text("source").notNull().default("you"), // you | answered
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_playbook_user_idx").on(t.userId)]);
+
+/* ---------------- The agent's standing orders, nurture, campaigns ---------------- */
+
+/**
+ * How the agent should work for this person: standing instructions, reference knowledge about their
+ * firm, and a description of their writing voice. All three go into every prompt that writes.
+ */
+export const crmSettings = pgTable("crm_settings", {
+  userId: text("user_id").primaryKey(),
+  instructions: text("instructions").notNull().default(""),
+  knowledge: text("knowledge").notNull().default(""),
+  voice: text("voice").notNull().default(""),
+  followUpDays: integer("follow_up_days").notNull().default(5),
+  staleDealDays: integer("stale_deal_days").notNull().default(21),
+  /** Let the nightly run prepare drafts and suggestions. It never sends. */
+  nightly: boolean("nightly").notNull().default(true),
+  /** deals | sales, or "" to follow the person's profile. */
+  mode: text("mode").notNull().default(""),
+  /** Who the reader is and what they are selling or doing, in their words. Beats the profile persona. */
+  about: text("about").notNull().default(""),
+  /** Added to every email sent from YouBank. Mail sent through an API gets no client signature. */
+  signature: text("signature").notNull().default(""),
+  /** Email domains that count as coworkers. Empty means the connected mailbox's own domain. */
+  internalDomains: jsonb("internal_domains").$type<string[]>().notNull().default([]),
+  /** See AutopilotSettings. Normalized on every read. */
+  autopilot: jsonb("autopilot").$type<Record<string, unknown>>().notNull().default({}),
+  /** Held while a scheduled pass works on this person's mail, so two passes never overlap. */
+  lockUntil: timestamp("lock_until", { withTimezone: true }),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * A suggested change for a person to approve: move a deal, follow up, check in, reconnect.
+ *
+ * `dedupeKey` is unique per user, so re-scanning never repeats a suggestion, including one that was
+ * dismissed.
+ */
+export const crmActions = pgTable("crm_actions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(), // move_stage | follow_up | check_in | reconnect
+  status: text("status").notNull().default("pending"), // pending | done | dismissed
+  title: text("title").notNull(),
+  reasoning: text("reasoning").notNull().default(""),
+  uncertainties: jsonb("uncertainties").$type<string[]>().notNull().default([]),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  dedupeKey: text("dedupe_key").notNull(),
+  contactId: integer("contact_id"),
+  dealId: integer("deal_id"),
+  threadId: integer("thread_id"),
+  draftId: integer("draft_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("crm_actions_user_dedupe_uidx").on(t.userId, t.dedupeKey),
+  index("crm_actions_user_status_idx").on(t.userId, t.status),
+]);
+
+/** Something that happened to a contact's company, found in YouBank's own data (a Form D, for now). */
+export const crmSignals = pgTable("crm_signals", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id"),
+  dealId: integer("deal_id"),
+  kind: text("kind").notNull().default("funding"),
+  sourceKey: text("source_key").notNull(), // e.g. the Form D accession
+  title: text("title").notNull(),
+  detail: text("detail").notNull().default(""),
+  url: text("url").notNull().default(""),
+  strength: text("strength").notNull().default("name"), // officer | name
+  occurredAt: timestamp("occurred_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("crm_signals_user_contact_source_uidx").on(t.userId, t.contactId, t.sourceKey),
+  index("crm_signals_user_idx").on(t.userId, t.createdAt),
+]);
+
+/** Reactivate relationships that have gone quiet. */
+export const crmNurtureRules = pgTable("crm_nurture_rules", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  cadenceDays: integer("cadence_days").notNull().default(180),
+  anchor: text("anchor").notNull().default("last_sent"), // last_sent | last_contact
+  kinds: jsonb("kinds").$type<string[]>().notNull().default([]), // contact kinds; empty is everyone
+  minExchanges: integer("min_exchanges").notNull().default(2),
+  dailyCap: integer("daily_cap").notNull().default(5),
+  instructions: text("instructions").notNull().default(""),
+  sendMode: text("send_mode").notNull().default("default"), // default | approve | auto
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_nurture_rules_user_idx").on(t.userId)]);
+
+/** Every nurture decision, drafted or skipped, with the reason. Also what enforces cadence and the daily cap. */
+export const crmNurtureLog = pgTable("crm_nurture_log", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  ruleId: integer("rule_id").notNull().references(() => crmNurtureRules.id, { onDelete: "cascade" }),
+  contactId: integer("contact_id").notNull(),
+  outcome: text("outcome").notNull(), // drafted | skipped
+  reason: text("reason").notNull().default(""),
+  draftId: integer("draft_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_nurture_log_rule_idx").on(t.ruleId, t.createdAt), index("crm_nurture_log_contact_idx").on(t.userId, t.contactId)]);
+
+/** An outbound sequence to a qualified list. */
+export const crmCampaigns = pgTable("crm_campaigns", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("draft"), // draft | active | paused | done
+  goal: text("goal").notNull().default(""),
+  icp: text("icp").notNull().default(""),
+  instructions: text("instructions").notNull().default(""),
+  steps: jsonb("steps").$type<{ dayOffset: number; instruction: string }[]>().notNull().default([]),
+  dailyCap: integer("daily_cap").notNull().default(10),
+  sendMode: text("send_mode").notNull().default("default"), // default | approve | auto
+  /** The person confirms they have consent or another lawful basis to cold-email EU and Canadian recipients. */
+  consentRegions: boolean("consent_regions").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("crm_campaigns_user_idx").on(t.userId)]);
+
+/** A person in a campaign and where they are in it. */
+export const crmCampaignLeads = pgTable("crm_campaign_leads", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => crmCampaigns.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  contactId: integer("contact_id"),
+  startupId: integer("startup_id"),
+  email: text("email").notNull().default(""),
+  name: text("name").notNull().default(""),
+  company: text("company").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  status: text("status").notNull().default("sourced"),
+  fit: integer("fit"),
+  fitReason: text("fit_reason").notNull().default(""),
+  step: integer("step").notNull().default(0), // the next step to send
+  nextDueAt: timestamp("next_due_at", { withTimezone: true }),
+  lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+  repliedAt: timestamp("replied_at", { withTimezone: true }),
+  repliedAtStep: integer("replied_at_step"),
+  threadId: integer("thread_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("crm_campaign_leads_campaign_idx").on(t.campaignId, t.status),
+  index("crm_campaign_leads_user_email_idx").on(t.userId, t.email),
 ]);
 
 /* ---------------- Live collaboration ---------------- */

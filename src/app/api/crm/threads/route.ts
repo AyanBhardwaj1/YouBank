@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
-import { ingestThread, listThreads, processThread } from "@/lib/crm/db";
+import { ingestThread, listThreads, processThread, threadActivity } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
+/** Threads, each with what the agent has done about it: drafted, scheduled, sent, or waiting on a question. */
 export async function GET() {
-  return guarded(async (user) => NextResponse.json(await listThreads(user.id)));
+  return guarded(async (user) => {
+    const threads = await listThreads(user.id);
+    const activity = await threadActivity(user.id, threads.map((t) => t.id));
+    return NextResponse.json(threads.map((t) => ({ ...t, activity: activity[t.id] ?? null })));
+  });
 }
 
 /**

@@ -1,18 +1,43 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
-import { getAccount, listAccounts, syncMailbox } from "@/lib/crm/accounts";
+import { getAccount, listAccounts } from "@/lib/crm/accounts";
+import { afterTriage, sendDue } from "@/lib/crm/autopilot";
+import { claimLock, releaseLock } from "@/lib/crm/settings";
+import { syncAccount } from "@/lib/crm/sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** Pull recent threads and read them. Triggered by the person, never on a schedule. */
+/**
+ * Read the mailbox now. Works for every connected mailbox type (Gmail sign-in or app password).
+ * New mail is triaged and, as the autopilot settings allow, answered; anything autopilot has due
+ * afterwards is sent inside the person's sending hours.
+ */
 export async function POST(req: Request) {
   return guarded(async (user) => {
-    const body = (await req.json().catch(() => null)) as { accountId?: number; max?: number; query?: string } | null;
+    const body = (await req.json().catch(() => null)) as { accountId?: number; max?: number } | null;
     const account = body?.accountId ? await getAccount(user.id, body.accountId) : (await listAccounts(user.id))[0];
     if (!account) return NextResponse.json({ error: "No mailbox is connected" }, { status: 400 });
-    const max = Math.min(Math.max(body?.max ?? 10, 1), 25);
-    const result = await syncMailbox(user.id, account, new URL(req.url).origin, { max, query: body?.query });
-    return NextResponse.json(result);
+    // The heartbeat may be working on this mailbox right now; never read it twice at once.
+    if (!(await claimLock(user.id, 5))) {
+      return NextResponse.json({ error: "The agent is reading your mailbox right now. Try again in a minute." }, { status: 409 });
+    }
+    try {
+      const origin = new URL(req.url).origin;
+      const deadline = Date.now() + 250_000;
+      let drafted = 0, scheduled = 0;
+      const result = await syncAccount(user.id, account, origin, {
+        max: Math.min(Math.max(body?.max ?? 15, 1), 40), deadline: deadline - 30_000,
+        onTriaged: async (threadId) => {
+          const r = await afterTriage(user.id, threadId).catch(() => null);
+          if (r?.drafted) drafted++;
+          if (r?.scheduled) scheduled++;
+        },
+      });
+      const queue = await sendDue(user.id, origin, deadline).catch(() => null);
+      return NextResponse.json({ ...result, drafted, scheduled, sent: queue?.sent ?? 0 });
+    } finally {
+      await releaseLock(user.id);
+    }
   });
 }

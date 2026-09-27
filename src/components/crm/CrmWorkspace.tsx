@@ -4,13 +4,24 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import {
-  CATEGORY_LABEL, STAGES, STAGE_BLURB, STAGE_LABEL,
-  type Category, type Stage,
+  CATEGORY_LABEL, LOST_STAGES, STAGE_BLURB, STAGE_LABEL, isStage, stagesFor,
+  type Category, type Mode, type Stage,
 } from "@/lib/crm/model";
+import { AgentSettings } from "./AgentSettings";
+import { CampaignsPanel } from "./CampaignsPanel";
+import { ContactsPanel } from "./ContactsPanel";
+import { MailboxBar, type MailboxInfo } from "./MailboxBar";
+import { NurturePanel } from "./NurturePanel";
+import { ReviewQueue, type Draft } from "./ReviewQueue";
+import { api, btn, money, type PanelCtx } from "./shared";
 
+type Activity = {
+  draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
+  questions: number;
+} | null;
 type Thread = {
   id: number; subject: string; snippet: string; summary: string; category: string; priority: string;
-  needsReply: boolean; triagedAt: string | null; lastMessageAt: string | null; dealId: number | null;
+  needsReply: boolean; triagedAt: string | null; lastMessageAt: string | null; dealId: number | null; activity: Activity;
 };
 type Deal = {
   id: number; name: string; stage: string; sector: string; round: string;
@@ -18,78 +29,104 @@ type Deal = {
   startupId: number | null; source: string;
 };
 type Contact = { id: number; email: string; name: string; title: string; company: string; kind: string; startupId: number | null };
-type Draft = {
-  id: number; threadId: number | null; subject: string; body: string; rationale: string;
-  citations: { label: string }[]; toAddresses: { name: string; address: string }[]; model: string; createdAt: string;
+type Counts = { threads: number; pendingDrafts: number; needsReply: number; pendingActions: number; byStage: Record<string, number> };
+type AgentRun = {
+  signals: number; followUps: number; checkIns: number; nurture: { drafted: number; skipped: number };
+  campaigns: { drafted: number; waitingForEmail: number }; scheduled: number; errors: string[]; stoppedEarly: boolean;
 };
-type Counts = { threads: number; pendingDrafts: number; needsReply: number; byStage: Record<string, number> };
-type Account = { id: number; address: string; provider: string; status: string; lastSyncAt: string | null; lastError: string };
-type SyncResult = { fetched: number; ingested: number; triaged: number; skipped: number; errors: string[] };
+type Settings = { mode: Mode; autopilot: { enabled: boolean; autoSync: boolean } };
 
 const TABS = [
-  { id: "pipeline", label: "Pipeline", icon: "Layers" },
+  { id: "drafts", label: "Queue", icon: "FileText" },
   { id: "inbox", label: "Inbox", icon: "Mail" },
-  { id: "drafts", label: "Review queue", icon: "FileText" },
+  { id: "pipeline", label: "Pipeline", icon: "Layers" },
+  { id: "contacts", label: "Contacts", icon: "Users" },
+  { id: "campaigns", label: "Campaigns", icon: "Target" },
+  { id: "nurture", label: "Nurture", icon: "RefreshCw" },
+  { id: "agent", label: "Agent & autopilot", icon: "Settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
-  return body as T;
+/** What the agent run found and wrote, in one sentence. */
+function describeRun(r: AgentRun): string {
+  const suggestions = r.signals + r.followUps + r.checkIns;
+  const drafted = r.nurture.drafted + r.campaigns.drafted;
+  const parts = [
+    suggestions ? `${suggestions} new ${suggestions === 1 ? "suggestion" : "suggestions"}` : "no new suggestions",
+    `${drafted} ${drafted === 1 ? "draft" : "drafts"} written`,
+    r.scheduled ? `${r.scheduled} scheduled on autopilot` : "",
+    r.nurture.skipped ? `${r.nurture.skipped} quiet ${r.nurture.skipped === 1 ? "contact" : "contacts"} deliberately left alone` : "",
+    r.campaigns.waitingForEmail ? `${r.campaigns.waitingForEmail} campaign ${r.campaigns.waitingForEmail === 1 ? "lead needs" : "leads need"} an address` : "",
+  ].filter(Boolean);
+  return `Agent run: ${parts.join(", ")}.${r.stoppedEarly ? " Stopped at the time limit; run again for the rest." : ""}${r.errors.length ? ` ${r.errors.length} failed: ${r.errors[0]}` : ""}`;
 }
 
-const money = (n: number | null) => (n == null ? "" : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}k` : `$${n}`);
+/** One short status per thread: what the agent did about it. */
+function threadStatus(t: Thread): { label: string; tone: string } | null {
+  const a = t.activity;
+  if (a?.questions) return { label: "Needs your input", tone: "bg-accent-soft text-accent font-semibold" };
+  const d = a?.draft;
+  if (d?.status === "pending" && d.scheduledFor) return { label: "Autopilot sending", tone: "bg-accent-soft text-accent" };
+  if (d?.status === "pending") return { label: "Draft waiting", tone: "bg-info/15 text-info" };
+  if (d?.status === "sent") return { label: d.sentBy === "autopilot" ? "Answered by autopilot" : "You replied", tone: "bg-pos/15 text-pos" };
+  if (t.needsReply) return { label: "Needs reply", tone: "bg-accent-soft text-accent font-semibold" };
+  return null;
+}
 
-export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError }: {
-  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null;
+export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab }: {
+  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null;
 }) {
-  const [tab, setTab] = useState<Tab>("pipeline");
+  const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [counts, setCounts] = useState<Counts | null>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [mailConfigurable, setMailConfigurable] = useState(false);
+  const [mailbox, setMailbox] = useState<MailboxInfo | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(oauthError);
-  const [notice, setNotice] = useState<string | null>(connected ? `Connected ${connected}. Sync to let the agent read recent threads.` : null);
+  const [notice, setNotice] = useState<string | null>(connected ? `Connected ${connected}. The agent will read recent threads.` : null);
   const [paste, setPaste] = useState({ open: false, from: "", subject: "", body: "" });
-  const [editing, setEditing] = useState<{ id: number; subject: string; body: string } | null>(null);
 
-  const say = (m: string) => { setNotice(m); setError(null); window.setTimeout(() => setNotice((n) => (n === m ? null : n)), 5000); };
+  const say = (m: string) => { setNotice(m); setError(null); window.setTimeout(() => setNotice((n) => (n === m ? null : n)), 7000); };
 
   // Everything reloads together; `tick` is how an action asks for a fresh read.
   const [tick, setTick] = useState(0);
   const refresh = useCallback(async () => { setTick((n) => n + 1); }, []);
+  const run = async (label: string, fn: () => Promise<void>) => {
+    setBusy(label); setError(null);
+    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(null); }
+  };
+  const ctx: PanelCtx = { busy, run, say, refresh: () => { void refresh(); }, tick };
 
   useEffect(() => {
     if (needsMigration) return;
     let cancelled = false;
     const load = async () => {
       try {
-        const [t, d, q, a] = await Promise.all([
+        const [t, d, q, a, s] = await Promise.all([
           api<Thread[]>("/api/crm/threads"),
           api<{ deals: Deal[]; contacts: Contact[]; counts: Counts }>("/api/crm/deals"),
           api<Draft[]>("/api/crm/drafts"),
-          api<{ accounts: Account[]; configurable: boolean }>("/api/crm/accounts"),
+          api<MailboxInfo>("/api/crm/accounts"),
+          api<Settings>("/api/crm/settings"),
         ]);
         if (cancelled) return;
-        setThreads(t); setDeals(d.deals); setContacts(d.contacts); setCounts(d.counts); setDrafts(q);
-        setAccounts(a.accounts); setMailConfigurable(a.configurable);
+        setThreads(t); setDeals(d.deals); setContacts(d.contacts); setCounts(d.counts); setDrafts(q); setMailbox(a); setSettings(s);
       } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
     };
     void load();
     return () => { cancelled = true; };
   }, [needsMigration, tick]);
 
-  const run = async (label: string, fn: () => Promise<void>) => {
-    setBusy(label); setError(null);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(null); }
-  };
+  // While autopilot is on, keep the page current with what the heartbeat does in the background.
+  useEffect(() => {
+    if (!settings?.autopilot.enabled) return;
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") setTick((n) => n + 1); }, 60_000);
+    return () => window.clearInterval(id);
+  }, [settings?.autopilot.enabled]);
 
   const ingest = () => run("ingest", async () => {
     const r = await api<{ triage?: { summary: string }; thread?: unknown }>("/api/crm/threads", {
@@ -104,7 +141,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 
   const draftFor = (threadId: number, instruction?: string) => run(`draft-${threadId}`, async () => {
     await api(`/api/crm/threads/${threadId}`, { method: "POST", body: JSON.stringify({ action: "draft", instruction }) });
-    await refresh(); setTab("drafts"); say("Draft written. Nothing has been sent — review it below.");
+    await refresh(); setTab("drafts"); say("Draft written. It is in the queue, waiting for you.");
   });
 
   const reprocess = (threadId: number) => run(`proc-${threadId}`, async () => {
@@ -117,57 +154,36 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
     await refresh();
   });
 
-  const saveDraft = () => run("save", async () => {
-    if (!editing) return;
-    await api(`/api/crm/drafts/${editing.id}`, { method: "PATCH", body: JSON.stringify({ subject: editing.subject, body: editing.body }) });
-    setEditing(null); await refresh(); say("Saved. Still not sent.");
-  });
-
-  const sync = () => run("sync", async () => {
-    const r = await api<SyncResult>("/api/crm/gmail/sync", { method: "POST", body: JSON.stringify({ max: 10 }) });
+  const runAgent = () => run("agent", async () => {
+    const r = await api<AgentRun>("/api/crm/agent", { method: "POST" });
     await refresh();
-    say(`Read ${r.triaged} new ${r.triaged === 1 ? "thread" : "threads"} of ${r.fetched} fetched${r.skipped ? `, ${r.skipped} already up to date` : ""}.${r.errors.length ? ` ${r.errors.length} failed.` : ""}`);
-  });
-
-  const disconnect = (id: number, address: string) => run(`dc-${id}`, async () => {
-    if (!window.confirm(`Disconnect ${address}? The stored tokens are deleted. Threads already read stay in your CRM.`)) return;
-    await api(`/api/crm/accounts/${id}`, { method: "DELETE" });
-    await refresh(); say(`Disconnected ${address}`);
-  });
-
-  const send = (d: Draft) => run(`send-${d.id}`, async () => {
-    const current = editing?.id === d.id ? editing : { subject: d.subject, body: d.body };
-    if (!window.confirm(`Send this to ${d.toAddresses.map((a) => a.address).join(", ")}?\n\nThis cannot be undone.`)) return;
-    const r = await api<{ to: string[]; from: string }>(`/api/crm/drafts/${d.id}/send`, {
-      method: "POST", body: JSON.stringify({ subject: current.subject, body: current.body }),
-    });
-    setEditing(null); await refresh(); say(`Sent to ${r.to.join(", ")} from ${r.from}`);
-  });
-
-  const discard = (id: number) => run(`discard-${id}`, async () => {
-    await api(`/api/crm/drafts/${id}`, { method: "DELETE" });
-    await refresh(); say("Draft discarded");
+    say(describeRun(r));
+    if (r.nurture.drafted + r.campaigns.drafted + r.signals + r.followUps + r.checkIns > 0) setTab("drafts");
   });
 
   const contactFor = (id: number | null) => contacts.find((c) => c.id === id) ?? null;
+  const canSend = (mailbox?.accounts ?? []).some((a) => a.status === "connected");
+  const mode = settings?.mode ?? "sales";
+  const pipeline = [...stagesFor(mode), ...deals.map((d) => d.stage).filter((s): s is Stage => isStage(s) && !stagesFor(mode).includes(s))]
+    .filter((s, i, all) => all.indexOf(s) === i);
 
   if (needsMigration) {
     return (
-      <Shell counts={null}>
-        <div className="mt-6 ctl border border-warn/40 bg-warn/5 p-4">
+      <Shell counts={null} autopilot={null} onAutopilot={() => undefined}>
+        <div className="mt-6 ctl border border-info/40 bg-info/5 p-4">
           <h2 className="flex items-center gap-2 text-[14px] font-semibold"><Icon name="AlertTriangle" className="h-4 w-4" /> Not set up yet</h2>
-          <p className="mt-2 max-w-[70ch] text-[12px] text-muted">The CRM tables have not been created. Apply the migration and reload:</p>
+          <p className="mt-2 max-w-[70ch] text-[12px] text-muted">The CRM tables have not been created. Apply the migrations and reload:</p>
           <pre className="num mt-3 overflow-auto ctl border border-line bg-elevated/60 p-3 text-[11.5px]">( set -a; . ./.env.local; set +a; pnpm exec drizzle-kit push )</pre>
-          <p className="mt-2 text-[11.5px] text-muted">The statements are in <span className="num">drizzle/0002_crm.sql</span> — six new tables, nothing existing is touched.</p>
+          <p className="mt-2 text-[11.5px] text-muted">The statements are in <span className="num">drizzle/0002_crm.sql</span>, <span className="num">0004_outreach.sql</span> and <span className="num">0005_autopilot.sql</span>. They only add tables and columns.</p>
         </div>
       </Shell>
     );
   }
 
   return (
-    <Shell counts={counts}>
+    <Shell counts={counts} autopilot={settings?.autopilot.enabled ?? null} onAutopilot={() => setTab("agent")}>
       {!aiConfigured && (
-        <div className="mt-4 ctl border border-warn/40 bg-warn/5 px-3 py-2 text-[12px]">
+        <div className="mt-4 ctl border border-info/40 bg-info/5 px-3 py-2 text-[12px]">
           No AI provider is configured, so the agent cannot read or draft. Add a key in <Link href="/app/settings" className="text-accent hover:underline">Settings</Link>.
         </div>
       )}
@@ -175,39 +191,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
         <div className={`mt-4 ctl border px-3 py-2 text-[12px] ${error ? "border-neg/40 bg-neg/5 text-neg" : "border-pos/40 bg-pos/5 text-pos"}`}>{error ?? notice}</div>
       )}
 
-      <div className="mt-4 ctl flex flex-wrap items-center justify-between gap-2 border border-line bg-elevated/30 px-3 py-2">
-        {accounts.length === 0 ? (
-          <>
-            <span className="text-[11.5px] text-muted">
-              <Icon name="Mail" className="mr-1.5 inline h-3.5 w-3.5" />
-              No mailbox connected. The agent can still read anything you paste in below.
-            </span>
-            {mailConfigurable
-              ? <a href="/api/crm/gmail/connect" className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Connect Gmail</a>
-              : <span className="text-[11px] text-muted">Gmail needs GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and EMAIL_TOKEN_SECRET on the server.</span>}
-          </>
-        ) : (
-          <>
-            <span className="min-w-0 truncate text-[11.5px]">
-              <Icon name="Mail" className="mr-1.5 inline h-3.5 w-3.5" />
-              {accounts.map((a) => a.address).join(", ")}
-              <span className="text-muted">
-                {accounts[0].status === "needs_reauth" ? " · needs reconnecting" : accounts[0].lastSyncAt ? ` · last read ${new Date(accounts[0].lastSyncAt).toLocaleString()}` : " · not read yet"}
-              </span>
-            </span>
-            <span className="flex items-center gap-2">
-              {accounts[0].status === "needs_reauth"
-                ? <a href="/api/crm/gmail/connect" className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Reconnect</a>
-                : <button type="button" onClick={sync} disabled={!!busy}
-                    className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">
-                    {busy === "sync" ? "Reading inbox…" : "Sync inbox"}
-                  </button>}
-              <button type="button" onClick={() => disconnect(accounts[0].id, accounts[0].address)} disabled={!!busy}
-                className="text-[11px] text-muted transition hover:text-neg disabled:opacity-50">Disconnect</button>
-            </span>
-          </>
-        )}
-      </div>
+      <MailboxBar ctx={ctx} info={mailbox} autoSync={settings?.autopilot.autoSync ?? true} />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         <div className="flex flex-wrap gap-1.5">
@@ -215,20 +199,26 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
             <button key={t.id} type="button" onClick={() => setTab(t.id)}
               className={`ctl flex items-center gap-1.5 px-3 py-1.5 text-[12px] transition ${tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
               <Icon name={t.icon} className="h-3.5 w-3.5" /> {t.label}
-              {t.id === "drafts" && counts?.pendingDrafts ? <span className="num ctl bg-accent/20 px-1 text-[10px]">{counts.pendingDrafts}</span> : null}
+              {t.id === "drafts" && (counts?.pendingDrafts || counts?.pendingActions) ? <span className="num ctl bg-accent/20 px-1 text-[10px]">{(counts.pendingDrafts ?? 0) + (counts.pendingActions ?? 0)}</span> : null}
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => setPaste((p) => ({ ...p, open: !p.open }))}
-          className="ctl border border-line px-2.5 py-1.5 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg">
-          <Icon name="Plus" className="mr-1 inline h-3.5 w-3.5" />Feed the agent an email
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={() => setPaste((p) => ({ ...p, open: !p.open }))} className={btn.ghost}>
+            <Icon name="Plus" className="mr-1 inline h-3.5 w-3.5" />Paste an email
+          </button>
+          <button type="button" onClick={runAgent} disabled={!!busy || !aiConfigured}
+            title="Scan for follow-ups, quiet deals and funding news, and draft what nurture rules and live campaigns have due."
+            className={btn.primary}>
+            <Icon name="Bot" className="mr-1 inline h-3.5 w-3.5" />{busy === "agent" ? "Agent working…" : "Run agent"}
+          </button>
+        </div>
       </div>
 
       {paste.open && (
         <div className="mt-4 ctl border border-line bg-elevated/40 p-3.5">
           <h3 className="text-[13px] font-semibold">Paste an email</h3>
-          <p className="mt-1 max-w-[70ch] text-[11.5px] text-muted">The agent reads it, files the sender and any company, and puts it in your pipeline. Use this to try the agent before connecting a mailbox.</p>
+          <p className="mt-1 max-w-[70ch] text-[11.5px] text-muted">The agent reads it, files the sender and any company, and puts it in your pipeline. Useful for trying the agent before connecting a mailbox.</p>
           <div className="mt-2.5 grid gap-1.5 sm:grid-cols-2">
             <input value={paste.from} onChange={(e) => setPaste({ ...paste, from: e.target.value })} placeholder="maya@ledgerline.io"
               className="ctl border border-line bg-bg/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60" />
@@ -238,20 +228,21 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
           <textarea value={paste.body} onChange={(e) => setPaste({ ...paste, body: e.target.value })} rows={7} placeholder="Paste the email body…"
             className="mt-1.5 w-full ctl border border-line bg-bg/60 px-2.5 py-2 text-[12px] outline-none focus:border-accent/60" />
           <div className="mt-2 flex items-center gap-2">
-            <button type="button" onClick={ingest} disabled={!!busy || !paste.from.trim() || !paste.body.trim()}
-              className="ctl bg-fg px-3 py-1.5 text-[12px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">
+            <button type="button" onClick={ingest} disabled={!!busy || !paste.from.trim() || !paste.body.trim()} className={btn.primary}>
               {busy === "ingest" ? "Reading…" : "Read and file"}
             </button>
-            <button type="button" onClick={() => setPaste({ open: false, from: "", subject: "", body: "" })} className="text-[11.5px] text-muted hover:text-fg">Cancel</button>
+            <button type="button" onClick={() => setPaste({ open: false, from: "", subject: "", body: "" })} className={btn.link}>Cancel</button>
           </div>
         </div>
       )}
 
+      {tab === "drafts" && <div className="mt-5"><ReviewQueue ctx={ctx} drafts={drafts} canSend={canSend} autopilotOn={!!settings?.autopilot.enabled} /></div>}
+
       {tab === "pipeline" && (
         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {STAGES.map((stage) => {
+          {pipeline.map((stage) => {
             const inStage = deals.filter((d) => d.stage === stage);
-            if (stage === "passed" && inStage.length === 0) return null;
+            if (LOST_STAGES.includes(stage) && inStage.length === 0) return null;
             return (
               <section key={stage} className="ctl border border-line bg-elevated/30 p-3">
                 <header className="flex items-baseline justify-between">
@@ -276,7 +267,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
                         {d.nextStep && <p className="mt-1.5 text-[11px]"><span className="text-muted">Next:</span> {d.nextStep}</p>}
                         <select value={d.stage} disabled={!!busy} onChange={(e) => move(d.id, e.target.value as Stage)}
                           className="mt-2 w-full ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11px] outline-none focus:border-accent/60">
-                          {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
+                          {pipeline.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
                         </select>
                       </article>
                     );
@@ -290,112 +281,69 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 
       {tab === "inbox" && (
         <div className="mt-5 flex flex-col gap-2">
-          {threads.length === 0 && <p className="text-[12px] text-muted">No threads yet. Paste one in above to see what the agent does with it.</p>}
-          {threads.map((t) => (
-            <article key={t.id} className="ctl border border-line bg-elevated/30 p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="truncate text-[13px] font-semibold">{t.subject || "(no subject)"}</h3>
-                  <p className="mt-0.5 text-[11.5px] text-muted">{t.summary || t.snippet}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {t.needsReply && <span className="ctl bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">Needs reply</span>}
-                  <span className={`ctl px-1.5 py-0.5 text-[10px] ${t.priority === "high" ? "bg-neg/15 text-neg" : t.priority === "low" ? "bg-elevated text-muted" : "bg-elevated text-fg"}`}>{t.priority}</span>
-                  <span className="ctl bg-elevated px-1.5 py-0.5 text-[10px] text-muted">{CATEGORY_LABEL[t.category as Category] ?? t.category}</span>
-                </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button type="button" disabled={!!busy} onClick={() => draftFor(t.id)}
-                  className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">
-                  {busy === `draft-${t.id}` ? "Writing…" : "Draft a reply"}
-                </button>
-                <button type="button" disabled={!!busy} onClick={() => { const i = window.prompt("What should the reply do? e.g. \"pass, too early\" or \"ask for the deck and metrics\""); if (i) draftFor(t.id, i); }}
-                  className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg disabled:opacity-50">Draft with an instruction</button>
-                <button type="button" disabled={!!busy} onClick={() => reprocess(t.id)}
-                  className="text-[11.5px] text-muted transition hover:text-fg disabled:opacity-50">{busy === `proc-${t.id}` ? "Reading…" : "Re-read"}</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {tab === "drafts" && (
-        <div className="mt-5 flex flex-col gap-3">
-          <p className="text-[11.5px] text-muted">
-            Every draft here was written by the agent and <strong className="text-fg">has not been sent</strong>.{" "}
-            {accounts.length > 0 ? "Sending happens only when you press Send." : "Copy one into your mail client, or connect a mailbox to send from here."}
-          </p>
-          {drafts.length === 0 && <p className="text-[12px] text-muted">Nothing waiting. Draft a reply from the Inbox tab.</p>}
-          {drafts.map((d) => {
-            const isEditing = editing?.id === d.id;
+          {threads.length === 0 && <p className="text-[12px] text-muted">No threads yet. Connect a mailbox above, or paste an email to see what the agent does with it.</p>}
+          {threads.map((t) => {
+            const status = threadStatus(t);
             return (
-              <article key={d.id} className="ctl border border-line bg-elevated/30 p-3.5">
-                <header className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-[13px] font-semibold">{isEditing ? "Editing draft" : d.subject}</h3>
-                  <span className="num text-[10.5px] text-muted">to {d.toAddresses.map((a) => a.address).join(", ") || "—"} · {d.model}</span>
-                </header>
-                {isEditing ? (
-                  <>
-                    <input value={editing.subject} onChange={(e) => setEditing({ ...editing, subject: e.target.value })}
-                      className="mt-2 w-full ctl border border-line bg-bg/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60" />
-                    <textarea value={editing.body} onChange={(e) => setEditing({ ...editing, body: e.target.value })} rows={9}
-                      className="mt-1.5 w-full ctl border border-line bg-bg/60 px-2.5 py-2 text-[12px] outline-none focus:border-accent/60" />
-                    <div className="mt-2 flex gap-2">
-                      <button type="button" onClick={saveDraft} disabled={!!busy} className="ctl bg-fg px-3 py-1.5 text-[12px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">Save</button>
-                      <button type="button" onClick={() => setEditing(null)} className="text-[11.5px] text-muted hover:text-fg">Cancel</button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <pre className="mt-2 whitespace-pre-wrap ctl border border-line bg-bg/60 p-2.5 font-sans text-[12px] leading-relaxed">{d.body}</pre>
-                    {d.rationale && <p className="mt-2 text-[11px] text-muted"><span className="font-semibold">Why this reply:</span> {d.rationale}</p>}
-                    {d.citations.length > 0 && (
-                      <div className="mt-1.5 ctl border border-warn/40 bg-warn/5 px-2.5 py-1.5">
-                        <div className="text-[10.5px] font-semibold text-warn">Decide before sending</div>
-                        <ul className="mt-0.5 list-inside list-disc text-[11px] text-muted">{d.citations.map((c, i) => <li key={i}>{c.label}</li>)}</ul>
-                      </div>
-                    )}
-                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                      {accounts.length > 0 && accounts[0].status !== "needs_reauth" && (
-                        <button type="button" disabled={!!busy} onClick={() => send(d)}
-                          className="ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:opacity-90 disabled:opacity-50">
-                          {busy === `send-${d.id}` ? "Sending…" : "Send"}
-                        </button>
-                      )}
-                      <button type="button" onClick={() => { void navigator.clipboard?.writeText(`Subject: ${d.subject}\n\n${d.body}`).then(() => say("Copied. Paste it into your mail client to send.")); }}
-                        className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white">Copy to send</button>
-                      <button type="button" onClick={() => setEditing({ id: d.id, subject: d.subject, body: d.body })}
-                        className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg">Edit</button>
-                      <button type="button" disabled={!!busy} onClick={() => discard(d.id)}
-                        className="text-[11.5px] text-muted transition hover:text-neg disabled:opacity-50">Discard</button>
-                    </div>
-                  </>
-                )}
+              <article key={t.id} className="ctl border border-line bg-elevated/30 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-[13px] font-semibold">{t.subject || "(no subject)"}</h3>
+                    <p className="mt-0.5 text-[11.5px] text-muted">{t.summary || t.snippet}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {status && <span className={`ctl px-1.5 py-0.5 text-[10px] ${status.tone}`}>{status.label}</span>}
+                    <span className={`ctl px-1.5 py-0.5 text-[10px] ${t.priority === "high" ? "bg-neg/15 text-neg" : t.priority === "low" ? "bg-elevated text-muted" : "bg-elevated text-fg"}`}>{t.priority}</span>
+                    <span className="ctl bg-elevated px-1.5 py-0.5 text-[10px] text-muted">{CATEGORY_LABEL[t.category as Category] ?? t.category}</span>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" disabled={!!busy} onClick={() => draftFor(t.id)} className={btn.primary}>
+                    {busy === `draft-${t.id}` ? "Writing…" : "Draft a reply"}
+                  </button>
+                  <button type="button" disabled={!!busy} onClick={() => { const i = window.prompt("What should the reply do? e.g. \"propose Tuesday at 2pm\" or \"decline politely, not a fit\""); if (i) draftFor(t.id, i); }}
+                    className={btn.ghost}>Draft with an instruction</button>
+                  <button type="button" disabled={!!busy} onClick={() => reprocess(t.id)} className={btn.link}>{busy === `proc-${t.id}` ? "Reading…" : "Re-read"}</button>
+                </div>
               </article>
             );
           })}
         </div>
       )}
+
+      {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} /></div>}
+      {tab === "nurture" && <div className="mt-5"><NurturePanel ctx={ctx} onDrafted={() => setTab("drafts")} /></div>}
+      {tab === "campaigns" && <div className="mt-5"><CampaignsPanel ctx={ctx} onDrafted={() => undefined} /></div>}
+      {tab === "agent" && <div className="mt-5"><AgentSettings ctx={ctx} /></div>}
     </Shell>
   );
 }
 
-function Shell({ counts, children }: { counts: Counts | null; children: React.ReactNode }) {
+function Shell({ counts, autopilot, onAutopilot, children }: { counts: Counts | null; autopilot: boolean | null; onAutopilot: () => void; children: React.ReactNode }) {
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1240px] px-5 py-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-[20px] font-semibold tracking-tight">Relationships</h1>
-            <p className="mt-1 max-w-[74ch] text-[12px] text-muted">
-              An agent that reads your inbox, files who wrote and what they want, keeps your pipeline current, and drafts replies for you to review. It never sends anything on its own.
+            <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight">
+              Relationships
+              {autopilot !== null && (
+                <button type="button" onClick={onAutopilot}
+                  className={`ctl px-2 py-0.5 text-[10.5px] font-semibold ${autopilot ? "bg-accent text-bg" : "border border-line text-muted hover:text-fg"}`}>
+                  {autopilot ? "Autopilot on" : "Autopilot off"}
+                </button>
+              )}
+            </h1>
+            <p className="mt-1 max-w-[80ch] text-[12px] text-muted">
+              An agent that tracks your inbox, answers what it can, asks you what it cannot and remembers the answer, keeps your pipeline current, and runs outreach. It sends on its own only for the kinds of email you put on autopilot.
             </p>
           </div>
           {counts && (
             <div className="flex gap-4 text-[11.5px] text-muted">
               <span><span className="num text-fg">{counts.threads}</span> threads</span>
               <span><span className="num text-fg">{counts.needsReply}</span> need a reply</span>
-              <span><span className="num text-fg">{counts.pendingDrafts}</span> drafts waiting</span>
+              <span><span className="num text-fg">{counts.pendingDrafts}</span> drafts</span>
+              {counts.pendingActions ? <span><span className="num text-fg">{counts.pendingActions}</span> suggestions</span> : null}
             </div>
           )}
         </div>
