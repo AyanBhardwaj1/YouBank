@@ -21,6 +21,7 @@ export function AppNav({ email }: { email: string }) {
     { href: "/app", label: "Home", icon: "Home" },
     { href: "/app/terminal", label: "Terminal", icon: "Terminal" },
     { href: "/app/tools", label: "Tools", icon: "Wand2" },
+    { href: "/app/studio", label: "Studio", icon: "FileSpreadsheet" },
     ...(profile.role === "vc" || profile.role === "pe" ? [{ href: "/app/vc", label: "Private markets", icon: "Rocket" }] : []),
     { href: "/app/crm", label: "Relationships", icon: "Network" },
     { href: "/app/collab", label: "Together", icon: "Users" },

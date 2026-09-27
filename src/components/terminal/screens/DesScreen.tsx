@@ -26,6 +26,12 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
             {c.hq && <span className="rounded border border-line bg-elevated px-1.5 py-0.5 text-muted">{c.hq}</span>}
             <span className="rounded border border-line bg-elevated px-1.5 py-0.5 text-muted">FYE {c.fye}</span>
           </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+            <span className="text-muted">Model in Studio:</span>
+            {([["dcf", "DCF"], ["valuation", "Valuation pack + deck"], ["lbo", "LBO"], ["comps", "Comps"]] as const).map(([t, label]) => (
+              <a key={t} href={`/app/studio?template=${t}&ticker=${encodeURIComponent(c.ticker)}`} className="rounded border border-accent/40 bg-accent-soft px-1.5 py-0.5 text-accent hover:border-accent">{label}</a>
+            ))}
+          </div>
         </div>
         {p ? (
           <div className="shrink-0 text-right">

@@ -12,6 +12,9 @@ parts:
 - **Autopilot and the adaptive engine.** Autopilot sends on your behalf, but only the kinds of email you
   allow. The adaptive engine decides when a kind of email has earned that, from your own behaviour and
   with a stated error bound.
+- **Studio.** A live workbook and deck. The agent builds financial models and pitch books while you watch,
+  cell by cell, from SEC data. Slides stay linked to the model, every run is audited and can be undone,
+  and it all exports to Excel and PowerPoint.
 
 Production: **https://youbank-nu.vercel.app** · Free while in beta.
 
@@ -24,6 +27,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Company and filing data](#company-and-filing-data)
    - [Private markets](#private-markets)
    - [AI assistant](#ai-assistant)
+   - [Studio: live models and decks](#studio-live-models-and-decks)
    - [Relationships: the email agent](#relationships-the-email-agent)
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
@@ -178,6 +182,128 @@ its output, calls function tools, shows reasoning summaries, searches the web an
 | `get_insider_transactions` | `calc` (exact arithmetic) | |
 
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
+
+### Studio: live models and decks
+
+`/app/studio` is a spreadsheet and slide workspace where the agent does analyst work while you watch. You
+can start in three ways:
+- describe what you need;
+- pick a template and a ticker;
+- drop in an .xlsx, .xlsm or .csv.
+
+The terminal's company page also links straight to a new DCF, valuation pack, LBO or comps model for
+that ticker.
+
+#### Watching the agent work
+
+- The agent's edits stream to your screen the moment each one is stored. New cells appear in reading
+  order and glow, and the agent's cursor shows where it is writing. The view follows it across sheets
+  and slides.
+- Other people with the document open see the same edits over a live event stream.
+- Every run ends with:
+  - an audit of the model, shown as a health strip;
+  - a refresh of the data tables;
+  - a short summary with cell references.
+- **Speed:** choose Fast, Balanced or Thorough.
+- **Stop:** halts the agent between steps.
+- **Undo this run:** reverses everything the run did. Every single change, by the agent or a person, is
+  in the History tab with its own undo.
+
+#### The spreadsheet
+
+The grid is built to feel like Excel:
+- a formula bar and name box, selection by click, shift-click or drag, and Excel keyboard navigation;
+- type-to-edit and F2, clearing with Delete, and undo with Cmd/Ctrl+Z;
+- copy and paste as tab-separated text, to and from Excel. Pasting within Studio adjusts relative
+  references.
+- frozen panes, merged cells, text that spills into empty neighbours, and resizable columns;
+- number formats and banker colour shortcuts;
+- cell comments, source markers, and a "cell types" legend that tints inputs, formulas, links and
+  numbers typed into formulas.
+
+The calculation engine (`src/lib/studio/`) is YouBank's own, and it runs in the browser and on the server:
+- **Formula language.** A tokenizer and parser follow Excel's rules: negation binds tighter than `^`, and
+  `^` is left-associative. They handle sheet-qualified references, whole columns and rows, defined names,
+  error literals and array arithmetic.
+- **About 120 functions,** including:
+  - NPV, XNPV, IRR, XIRR, MIRR, PMT, IPMT, PPMT, PV, FV, NPER, RATE, RRI and EFFECT;
+  - INDEX, MATCH, XLOOKUP, VLOOKUP, OFFSET and INDIRECT;
+  - SUMIFS, COUNTIFS, AVERAGEIFS and SUMPRODUCT;
+  - EDATE, EOMONTH and YEARFRAC;
+  - TEXT, the statistical functions and the logical functions.
+
+  They are tested against the results Excel documents.
+- **Recalculation.**
+  - Values are computed lazily and cached.
+  - A dependency graph means an edit recalculates only the cells that depend on it.
+  - Deep chains are evaluated bottom-up, so a 6,000-step chain does not exhaust the stack.
+- **Circular references.** They are solved the way Excel's iterative calculation does it. Tarjan's
+  algorithm finds each circular group, which is then solved by Gauss–Seidel substitution, ordered so a
+  loop that is switched off settles at once. The limit is 100 iterations, stopping when nothing moves
+  by more than 0.001. The LBO template charges interest on average debt balances, with a
+  circuit-breaker switch.
+- **What-if tools.** Two-way data tables (the output recomputed for every pair of inputs) and goal seek.
+- **Imported workbooks.** A cell using a function YouBank does not implement shows the value the file
+  had saved.
+
+#### Templates
+
+Each template is fully formula-driven and filled from SEC XBRL company facts and market data:
+- blue inputs, black formulas, green links;
+- USD millions;
+- key outputs saved as named ranges.
+
+| Template | What it builds |
+|---|---|
+| DCF | Unlevered free cash flow over 5 years; a CAPM WACC build; mid-year convention; perpetuity-growth terminal value; implied price and upside; a live WACC × terminal-growth grid written as formulas, with its steps as inputs. For a loss-making company, the margin ramps to its margin before stock-based compensation |
+| Trading comps | Peers from the saved peer group or a list you give; EV/revenue and EV/EBITDA with quartiles; the implied value range of the target |
+| Valuation pack | DCF, comps and a summary sheet that feeds a football field, plus a linked 6-slide pitch deck |
+| LBO | Sources and uses; a debt schedule with a cash sweep and interest on average balances; IRR and MOIC; an entry × exit IRR data table. It uses adjusted EBITDA, with a take-private entry at a 25% premium, for listed companies |
+| Merger model | Accretion/dilution, breakeven synergies, and a live premium × stock-mix grid |
+| Cap table | A priced round, with the option-pool top-up solved in closed form |
+
+#### The deck
+
+- Slides are 16:9. Their tables, charts, figures and football fields are **links into the model**, so a
+  changed assumption flows to every page.
+- Charts come in column, bar, stacked, line, pie, waterfall and football-field forms.
+- You can edit titles and text, drag elements to move or resize them, reorder slides and comment on
+  them.
+- **Tie-out** checks the deck against the model. It flags:
+  - broken links and error values;
+  - tables typed in by hand;
+  - any number in slide text that is not in the model at the precision shown.
+
+#### Grunt-work tools
+
+These are available to the agent and one click away in the toolbar:
+- **Audit:** errors, numbers typed into formulas, overwritten formulas in projection rows, formulas that
+  break their row's pattern, references to empty cells, unused inputs, circular references and failed
+  checks. Each finding links to its cell.
+- **Banker formatting:** colours, and number formats chosen by what each row is about.
+- **Refresh data tables.**
+- **Turn the comments:** the agent makes each requested change across the model and the deck, then
+  resolves each comment with a note.
+- **Intake report** for uploads: sheets, cells and formulas; hidden sheets; links to other workbooks;
+  unsupported functions; and what could not be kept (macros, images, conditional formats, charts). A
+  "Review this file" button is included, and file contents are treated as data, never as instructions.
+- **Per-career quick tasks:**
+  - bankers get valuation packs and football fields;
+  - PE gets LBOs, returns attribution and IC decks;
+  - VCs get rounds, cap tables and liquidation waterfalls;
+  - students get "plant three errors for me to find".
+
+#### Files
+
+| Direction | What happens |
+|---|---|
+| Export .xlsx | Formulas with their computed results, styles, widths, frozen panes, merges and defined names. Newer functions get Excel's `_xlfn.` prefix, and the file asks Excel to recalculate on open. Data tables are written as values with a note |
+| Export .pptx | Native, editable tables and column, bar, line and pie charts. Football fields and waterfalls are drawn as precise shapes, the way think-cell does it. Sources, page numbers and confidentiality lines are included |
+| Import | .xlsx and .xlsm, keeping values, formulas (shared formulas expanded), number formats, fonts, fills, borders, widths, frozen panes, merges and defined names. Also .csv |
+
+Research behind Studio:
+[docs/research/studio-competitive-landscape.md](docs/research/studio-competitive-landscape.md) and
+[docs/research/analyst-grunt-work.md](docs/research/analyst-grunt-work.md).
 
 ### Relationships: the email agent
 
@@ -653,6 +779,7 @@ All tables are in `src/db/schema.ts`.
 | Live collaboration | `collab_sessions`, `collab_events`, `collab_presence` |
 | Relationships | `email_accounts`, `crm_contacts`, `crm_deals`, `crm_threads`, `crm_messages`, `crm_drafts`, `crm_questions`, `crm_playbook`, `crm_settings`, `crm_actions`, `crm_signals`, `crm_nurture_rules`, `crm_nurture_log`, `crm_campaigns`, `crm_campaign_leads` |
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
+| Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor), `studio_runs` (each agent run: instruction, status, summary, stats) |
 
 **Migrations.**
 - On a fresh database, `drizzle-kit push` creates every table from the schema.
@@ -664,6 +791,7 @@ All tables are in `src/db/schema.ts`.
   - `0004_outreach`
   - `0005_autopilot`
   - `0006_adaptive`
+  - `0007_studio`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -771,7 +899,7 @@ bash scripts/preflight.sh                                         # everything t
 2. **Database.** Apply any new migration to production, then check for drift:
    ```bash
    set -a; . ./.env.local; set +a
-   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0006_adaptive.sql
+   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0006_adaptive.sql drizzle/0007_studio.sql
    pnpm exec drizzle-kit push        # should report no changes
    ```
 3. **Build and ship:**
@@ -803,6 +931,8 @@ bash scripts/preflight.sh                                         # everything t
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
+| Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
+| Studio end to end | `DATABASE_URL=<branch> pnpm exec tsx scripts/e2e-studio.ts` | With the live model: a valuation pack with a linked deck, a custom formula-linked sheet with a waterfall slide, a turned comment, undoing a run, and exports from the stored document |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
 | Preflight | `bash scripts/preflight.sh` | Themes, typecheck, lint, tool packs, production build |
 
@@ -908,6 +1038,12 @@ the plan:
   - It would follow the stateless 2026-07-28 MCP specification, with MCP Apps for rendered results.
   - On Vercel it would use `mcp-handler`, which needs its own OAuth 2.1 authorisation server.
 - **Mailboxes:** Microsoft 365 and Outlook, and Google verification (CASA) for the Gmail API path.
+- **Studio:**
+  - an Excel and PowerPoint add-in that mirrors a Studio session into the open file;
+  - turning comments from a marked-up PDF or a photo;
+  - a deck brand lint;
+  - data-room extraction into models, with each cell linked to its page;
+  - named checkpoints with semantic diffs.
 - **Engine:**
   - fit the reply-delay curve to real data once there are 200 replies;
   - evaluate new angle strategies offline from the logged propensities;
@@ -931,6 +1067,7 @@ YouBank/
   src/components/
     crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
                            agent settings, engine insights, mailbox bar
+    studio/                Studio home, workspace, grid, deck view, slide charts, state hook
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
     terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS)
     workflows/             tool gallery, runner, form, output blocks
@@ -938,6 +1075,8 @@ YouBank/
   src/db/schema.ts         every table
   src/lib/
     crm/                   the relationships agent, autopilot and the adaptive engine (see Architecture)
+    studio/                formula engine, functions, number formats, templates, audit, deck, edit
+                           operations, persistence, .xlsx/.pptx, the Studio agent
     ai/                    models, config, agent (OpenAI Responses and Anthropic), data tools, prompts
     edgar/  fmp/  vc/      SEC EDGAR and XBRL, prices, startup directory and Form D
     workflows/             tool contract, prompt builder, registry, a pack per role
@@ -954,4 +1093,4 @@ YouBank/
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
 | [docs/04-comps-engine-spec.md](docs/04-comps-engine-spec.md) | Comps engine spec |
 | [docs/01-tech-ma-personas.md](docs/01-tech-ma-personas.md) | The original persona study |
-| [docs/research/](docs/research/) | Eight market-research reports behind the tool packs |
+| [docs/research/](docs/research/) | Market research behind the tool packs, plus the Studio competitive landscape and the analyst grunt-work study |

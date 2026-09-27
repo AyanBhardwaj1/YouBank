@@ -33,6 +33,15 @@ const AGENT = [
   { icon: "Target", title: "Runs outbound", body: "Build a list from 18,000+ startups or your own, qualify it against your ideal profile, and work through a personalised sequence that stops the moment someone replies or opts out." },
 ];
 
+const STUDIO = [
+  { icon: "Play", title: "Watch it build", body: "Ask for a valuation pack and watch the DCF, the comps and the pitch book fill in from SEC filings, a cell at a time, with the agent's cursor on screen. Stop it at any moment; undo any run in one click." },
+  { icon: "Layers", title: "Model and deck, linked", body: "Tables, charts and figures on slides are links into the model. Change the WACC and every page moves with it; the tie-out flags any number on a slide that does not trace back to a cell." },
+  { icon: "Landmark", title: "Models a VP would sign", body: "DCF, LBO with a real debt schedule and its circularity solved, trading comps, merger and cap table templates. Blue inputs, black formulas, green links, sourced historicals." },
+  { icon: "ListChecks", title: "The checks you do by hand", body: "Every run ends with an audit: numbers typed into formulas, overwritten formulas, broken row patterns, errors, circular references. Banker formatting and data tables in one click." },
+  { icon: "MessageSquare", title: "Page turns, turned", body: "Leave comments on cells and slides the way an MD marks up a book. The agent makes each change across the model and the deck and resolves each comment, saying what it did." },
+  { icon: "FileSpreadsheet", title: "Excel and PowerPoint, in and out", body: "Upload a seller's model and get an intake report before you trust it. Export .xlsx with live formulas and .pptx with native tables and charts, ready for the firm template." },
+];
+
 const GUARDRAILS = [
   "Autopilot is off until you switch it on, and each kind of email has its own setting: off, ask me, or autopilot.",
   "It never sends what it is unsure of, anything sensitive, anything with a blank to fill, or anything that needs your input. It says why.",
@@ -72,6 +81,7 @@ const FAQ = [
   { q: "Will it send emails without me?", a: "Only if you switch autopilot on, only for the kinds of email you choose, and only when a draft passes every check: high confidence, nothing sensitive, nothing it needs to ask you, inside your hours and daily limit. Until then every email waits for you to press Send." },
   { q: "How does it learn?", a: "From what you do. Each draft you send unchanged or edit, and each automatic send you stop, updates how far it can be trusted with that kind of email; autopilot is offered only once it is 90% confident at most 1 in 10 would need your edits. Edits become lessons, your own past emails set the tone, and replies to outreach tell it which openings and send times work. All of it is visible and reversible in the app." },
   { q: "Is it suitable for a FINRA-registered firm?", a: "Regulated mode is built for it: autopilot cannot be switched on, every email is sent by a person from their own mailbox (so the firm's archive captures it), and every AI draft can be exported for supervision. Your compliance team decides; we give them the controls and the log." },
+  { q: "Can it build my models and decks?", a: "Yes, in Studio. Describe what you need, or start from a DCF, LBO, comps, merger or cap table template filled from SEC filings, and watch the agent build the workbook and the slides. Slides stay linked to the model, every run is audited and can be undone, and it all exports to Excel and PowerPoint. You can also upload your own workbook." },
   { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API, with the source link on every figure. Anything from the web is cited. If a number is derived, the method is stated next to it." },
   { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an agent that produces the deliverable and does the follow-through." },
   { q: "What does it cost?", a: "Free while in beta. The plans below are what we intend to charge afterwards; nothing is billed today." },
@@ -94,6 +104,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
           <nav className="ml-4 hidden items-center gap-4 text-[12.5px] text-muted md:flex">
             <a href="#loop" className="hover:text-fg">Product</a>
             <a href="#agent" className="hover:text-fg">Agent</a>
+            <a href="#studio" className="hover:text-fg">Studio</a>
             <a href="#engine" className="hover:text-fg">Adaptive engine</a>
             <a href="#demos" className="hover:text-fg">Demos</a>
             <a href="#pricing" className="hover:text-fg">Pricing</a>
@@ -212,6 +223,47 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
                   Replies to coworkers: 24 of your last 24 went out exactly as written. We are 90% confident at most 10% would need your edits. Put them on autopilot?
                 </div>
               </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* studio */}
+      <section id="studio" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div>
+            <Reveal>
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Studio</h2>
+              <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">The model and the deck, built live while you watch.</p>
+              <p className="mt-2 max-w-[62ch] text-[12.5px] text-muted">Analysts spend their nights spreading comps, rebuilding models, pasting tables into slides and tying out every number. Studio does that work in a live workbook and deck that stay linked, and checks it the way a reviewer would.</p>
+            </Reveal>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {STUDIO.map((a, i) => (
+                <Reveal key={a.title} delay={i * 60}>
+                  <div className="h-full panel p-4">
+                    <h3 className="flex items-center gap-2 text-[13.5px] font-semibold"><Icon name={a.icon} className="h-4 w-4 text-accent" />{a.title}</h3>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{a.body}</p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+          <Reveal delay={100}>
+            <div className="panel p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">&ldquo;Build a valuation pack for Snowflake with a deck&rdquo;</p>
+              <ol className="mt-3 space-y-2 border-l border-line pl-3 text-[12px]">
+                {[
+                  ["Building the model from SEC data", "DCF, comps and a summary sheet, from XBRL company facts"],
+                  ["Writing cells", "DCF!C5:G20: revenue, margins, free cash flow"],
+                  ["Computing a data table", "Implied price across WACC and terminal growth"],
+                  ["Adding slides", "Overview, comps, DCF, football field, sensitivity"],
+                  ["Auditing the model", "No errors; no numbers typed into formulas"],
+                  ["Tying out the deck", "Every figure on every slide traces to a cell"],
+                ].map(([t, d], i) => (
+                  <li key={t} className="flex gap-2"><Icon name="Check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pos" /><span><span className="font-semibold">{t}</span><span className="text-muted"> · {d}</span>{i === 1 && <span className="ml-1.5 ctl bg-accent/80 px-1 text-[9.5px] font-bold text-bg">Agent</span>}</span></li>
+                ))}
+              </ol>
+              <p className="mt-4 text-[11px] text-muted">Every change is logged with its undo. The workbook and deck export to Excel and PowerPoint with formulas and native charts intact.</p>
             </div>
           </Reveal>
         </div>

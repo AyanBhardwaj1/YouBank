@@ -678,3 +678,53 @@ export const collabPresence = pgTable("collab_presence", {
   field: text("field").notNull().default(""),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [uniqueIndex("collab_presence_session_user_uidx").on(t.sessionId, t.userId)]);
+
+/* ---------------- Studio: live models and decks ---------------- */
+
+/**
+ * A workbook and its deck, edited live by people and the agent. Stored whole as JSON: edits are
+ * patches applied with single atomic jsonb updates, and every patch is also appended to studio_events.
+ */
+export const studioDocs = pgTable("studio_docs", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  teamId: integer("team_id"),
+  title: text("title").notNull().default("Untitled model"),
+  kind: text("kind").notNull().default("blank"),
+  ticker: text("ticker").notNull().default(""),
+  workbook: jsonb("workbook").$type<import("@/lib/studio/types").Workbook>().notNull(),
+  deck: jsonb("deck").$type<import("@/lib/studio/types").Deck>().notNull(),
+  comments: jsonb("comments").$type<import("@/lib/studio/types").StudioComment[]>().notNull().default([]),
+  /** What an uploaded file contained and what could not be kept (macros, charts, unsupported functions). */
+  intake: jsonb("intake").$type<Record<string, unknown> | null>(),
+  version: integer("version").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("studio_docs_owner_idx").on(t.ownerId, t.updatedAt), index("studio_docs_team_idx").on(t.teamId)]);
+
+/** Every change, in order, with the patches that undo it. The serial id is the stream cursor. */
+export const studioEvents = pgTable("studio_events", {
+  id: serial("id").primaryKey(),
+  docId: integer("doc_id").notNull().references(() => studioDocs.id, { onDelete: "cascade" }),
+  actor: text("actor").notNull(),
+  actorName: text("actor_name").notNull().default(""),
+  runId: text("run_id").notNull().default(""),
+  label: text("label").notNull().default(""),
+  patches: jsonb("patches").$type<unknown[]>().notNull(),
+  undo: jsonb("undo").$type<unknown[]>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("studio_events_doc_idx").on(t.docId, t.id)]);
+
+/** One agent run: what it was asked, what it did, and whether it finished. */
+export const studioRuns = pgTable("studio_runs", {
+  id: text("id").primaryKey(),
+  docId: integer("doc_id").notNull().references(() => studioDocs.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  instruction: text("instruction").notNull(),
+  status: text("status").notNull().default("running"), // running | done | error | stopped | undone
+  summary: text("summary").notNull().default(""),
+  model: text("model").notNull().default(""),
+  stats: jsonb("stats").$type<Record<string, unknown>>().notNull().default({}),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+}, (t) => [index("studio_runs_doc_idx").on(t.docId, t.startedAt)]);

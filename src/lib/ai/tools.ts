@@ -25,7 +25,7 @@ export type ToolDef<T = unknown> = {
   run: (input: T, ctx: ToolCtx) => Promise<string>;
 };
 
-function def<T>(t: Omit<ToolDef<T>, "parameters">): ToolDef<T> {
+export function def<T>(t: Omit<ToolDef<T>, "parameters">): ToolDef<T> {
   return { ...t, parameters: z.toJSONSchema(t.schema) as Record<string, unknown> };
 }
 
@@ -235,8 +235,8 @@ export const calcTool = def({
 export const ALL_TOOLS = [getCompanyTool, compsTool, searchCompaniesTool, searchFilingTool, readFilingTool, readDocumentTool, fullTextTool, recentFilingsTool, xbrlSeriesTool, insiderTool, calcTool, webResearchTool, formDTool, startupsTool] as unknown as ToolDef<unknown>[];
 
 /** Run a tool by name with schema validation; errors are returned as strings so the model can recover. */
-export async function runTool(name: string, rawInput: unknown, ctx: ToolCtx): Promise<{ output: string; isError: boolean }> {
-  const tool = ALL_TOOLS.find((t) => t.name === name);
+export async function runTool(name: string, rawInput: unknown, ctx: ToolCtx, defs: ToolDef<unknown>[] = ALL_TOOLS): Promise<{ output: string; isError: boolean }> {
+  const tool = defs.find((t) => t.name === name) ?? ALL_TOOLS.find((t) => t.name === name);
   if (!tool) return { output: `Unknown tool ${name}`, isError: true };
   const parsed = tool.schema.safeParse(rawInput);
   if (!parsed.success) return { output: JSON.stringify({ INVALID_INPUT: parsed.error.issues.map((i) => i.message) }), isError: true };

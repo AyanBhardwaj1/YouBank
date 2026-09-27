@@ -30,6 +30,10 @@ export type RunOptions = {
   json?: JsonFormat;
   /** Replace the default system prompt entirely (workflows pass their own). */
   system?: string;
+  /** Tools bound to one task (Studio's workbook tools), offered alongside the named data tools. */
+  extraTools?: ToolDef[];
+  /** Stop between turns when the person cancels. */
+  signal?: AbortSignal;
   maxTurns?: number;
   /**
    * Absolute timestamp after which the loop stops calling tools and forces a final answer. Serverless hosts
@@ -63,12 +67,12 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   if (cfg.provider === "none") { opts.emit({ type: "error", message: cfg.reason }); return { text: "", sources: [] }; }
   const system = opts.system ?? systemPrompt(opts.context);
   const { ctx, sources } = makeCtx();
-  const tools = opts.tools ? ALL_TOOLS.filter((t) => opts.tools!.includes(t.name)) : ALL_TOOLS;
+  const tools = [...(opts.tools ? ALL_TOOLS.filter((t) => opts.tools!.includes(t.name)) : opts.extraTools ? [] : ALL_TOOLS), ...(opts.extraTools ?? [])];
   let text = "";
   try {
     text = cfg.provider === "openai"
-      ? await runOpenAI(cfg, system, opts.messages, tools, ctx, opts.emit, opts.json, opts.maxTurns ?? 10, opts.deadline)
-      : await runAnthropic(cfg, system, opts.messages, tools, ctx, opts.emit, opts.json, opts.maxTurns ?? 10, opts.deadline);
+      ? await runOpenAI(cfg, system, opts.messages, tools, ctx, opts.emit, opts.json, opts.maxTurns ?? 10, opts.deadline, opts.signal)
+      : await runAnthropic(cfg, system, opts.messages, tools, ctx, opts.emit, opts.json, opts.maxTurns ?? 10, opts.deadline, opts.signal);
   } catch (e) {
     opts.emit({ type: "error", message: describeError(e) });
   }
@@ -91,7 +95,7 @@ export function describeError(e: unknown): string {
 
 const NATIVE_WEB_SEARCH = true;
 
-async function runOpenAI(cfg: AiConfig, system: string, history: ChatMessage[], toolDefs: ToolDef[], ctx: ToolCtx, emit: (e: AgentEvent) => void, json: JsonFormat | undefined, maxTurns: number, deadline?: number): Promise<string> {
+async function runOpenAI(cfg: AiConfig, system: string, history: ChatMessage[], toolDefs: ToolDef[], ctx: ToolCtx, emit: (e: AgentEvent) => void, json: JsonFormat | undefined, maxTurns: number, deadline?: number, signal?: AbortSignal): Promise<string> {
   const client = new OpenAI({ apiKey: cfg.apiKey });
   // With native web search available, the web_research function tool is redundant on OpenAI.
   const fnDefs = NATIVE_WEB_SEARCH ? toolDefs.filter((t) => t.name !== "web_research") : toolDefs;
@@ -106,6 +110,7 @@ async function runOpenAI(cfg: AiConfig, system: string, history: ChatMessage[], 
   let useSummary = true;
 
   for (let turn = 0; turn < maxTurns; turn++) {
+    if (signal?.aborted) { emit({ type: "status", text: "stopped" }); return finalText; }
     const overdue = deadline !== undefined && Date.now() > deadline;
     if (overdue) {
       emit({ type: "status", text: "time budget reached, writing the answer from what was gathered" });
@@ -159,7 +164,7 @@ async function runOpenAI(cfg: AiConfig, system: string, history: ChatMessage[], 
       let parsed: unknown = {};
       try { parsed = c.args ? JSON.parse(c.args) : {}; } catch { parsed = { INVALID_JSON: c.args }; }
       emit({ type: "tool", name: c.name, status: "start", summary: summarizeInput(parsed) });
-      const r = await runTool(c.name, parsed, ctx);
+      const r = await runTool(c.name, parsed, ctx, toolDefs);
       emit({ type: "tool", name: c.name, status: "end", summary: summarizeInput(parsed) });
       outputs.push({ type: "function_call_output", call_id: c.call_id, output: r.output.slice(0, 120_000) });
     }
@@ -172,7 +177,7 @@ async function runOpenAI(cfg: AiConfig, system: string, history: ChatMessage[], 
 
 /* ---------------- Anthropic (Messages API, streaming manual loop) ---------------- */
 
-async function runAnthropic(cfg: AiConfig, system: string, history: ChatMessage[], toolDefs: ToolDef[], ctx: ToolCtx, emit: (e: AgentEvent) => void, json: JsonFormat | undefined, maxTurns: number, deadline?: number): Promise<string> {
+async function runAnthropic(cfg: AiConfig, system: string, history: ChatMessage[], toolDefs: ToolDef[], ctx: ToolCtx, emit: (e: AgentEvent) => void, json: JsonFormat | undefined, maxTurns: number, deadline?: number, signal?: AbortSignal): Promise<string> {
   const client = new Anthropic({ apiKey: cfg.apiKey });
   const tools: Anthropic.Tool[] = toolDefs.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as Anthropic.Tool.InputSchema, eager_input_streaming: true }));
   const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
@@ -181,6 +186,7 @@ async function runAnthropic(cfg: AiConfig, system: string, history: ChatMessage[
   let finalText = "";
 
   for (let turn = 0; turn < maxTurns; turn++) {
+    if (signal?.aborted) { emit({ type: "status", text: "stopped" }); return finalText; }
     const overdue = deadline !== undefined && Date.now() > deadline;
     if (overdue) {
       emit({ type: "status", text: "time budget reached, writing the answer from what was gathered" });
@@ -215,7 +221,7 @@ async function runAnthropic(cfg: AiConfig, system: string, history: ChatMessage[
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const tu of toolUses) {
       emit({ type: "tool", name: tu.name, status: "start", summary: summarizeInput(tu.input) });
-      const r = await runTool(tu.name, tu.input, ctx);
+      const r = await runTool(tu.name, tu.input, ctx, toolDefs);
       emit({ type: "tool", name: tu.name, status: "end", summary: summarizeInput(tu.input) });
       results.push({ type: "tool_result", tool_use_id: tu.id, content: r.output.slice(0, 120_000), ...(r.isError ? { is_error: true } : {}) });
     }

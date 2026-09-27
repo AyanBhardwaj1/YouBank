@@ -177,3 +177,9 @@ body {
   .reveal { opacity: 1; transform: none; transition: none; }
   .draw { stroke-dashoffset: 0; }
 }
+
+/* Studio: a cell the agent just wrote glows, then fades. */
+@keyframes studio-glow { from { opacity: 0.85; } to { opacity: 0; } }
+.studio-glow { position: absolute; inset: 0; pointer-events: none; background: #ffd54f; animation: studio-glow 1.3s ease-out both; }
+@keyframes studio-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+.studio-cursor { animation: studio-cursor 1.1s ease-in-out infinite; }
