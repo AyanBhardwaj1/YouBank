@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ROLES, ROLE_IDS, type RoleId } from "@/lib/roles";
-import { CATEGORIES } from "@/lib/workflows/categories";
 import { DEMO } from "@/lib/demo";
 import { SignInButton } from "./SignInButton";
 import { DemoTerminal } from "./DemoTerminal";
@@ -11,6 +10,7 @@ import { DemoComps } from "./DemoComps";
 import { DemoAi } from "./DemoAi";
 import { DemoDirectory } from "./DemoDirectory";
 import { ThemeShowcase } from "./ThemeShowcase";
+import { AdaptiveDemo } from "./AdaptiveDemo";
 import { Reveal, CountUp } from "@/components/motion/Reveal";
 import { Icon } from "@/components/ui/Icon";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
@@ -18,26 +18,63 @@ import { Logo, LogoMark } from "@/components/brand/Logo";
 
 const ROLE_ICON: Record<RoleId, string> = { banker: "Landmark", pe: "Briefcase", vc: "Rocket", markets: "LineChart", corpfin: "Building2", consultant: "Compass", accountant: "Receipt", student: "GraduationCap" };
 
-const PILLARS = [
-  { icon: "Database", title: "The data layer, free and traceable", body: "Fundamentals parsed from SEC XBRL for every US registrant, last-twelve-months built the way an analyst builds it, filing text and exhibits searchable back to 2001, Form 4 insider activity, Form D private raises, and live prices. Every number on screen links to the filing it came from." },
-  { icon: "Bot", title: "An assistant that does the work", body: "Not a chatbot bolted on. The model holds the same tools you do: pull financials, run comps, search filing text, read a merger agreement, compute with an exact calculator, research the web. It cites each figure and tells you when the data will not support the answer." },
-  { icon: "Layout", title: "Your desk, your job", body: "Answer a short survey and the terminal rebuilds itself: the function keys, watchlists, panels, prompt library and tool shelf a restructuring banker needs are not the ones a Big 4 audit senior or a seed investor needs." },
+/** Signal, analysis, action, memory: the loop the whole product is built around. */
+const LOOP = [
+  { icon: "Radar", title: "Signal", body: "New SEC Form D raises every business day, 8-K events decoded, insider trades, and funding news matched to the people in your inbox." },
+  { icon: "FileSearch", title: "Analysis", body: "Comps, precedents, capital structure, memos and QoE flags built from XBRL and filing text in minutes. Every figure links to its filing." },
+  { icon: "Mail", title: "Action", body: "An agent that tracks every thread, drafts the reply, runs outreach and keeps the pipeline current. It sends on its own only where you allow it." },
+  { icon: "Sparkles", title: "Memory", body: "A playbook of your answers, lessons from your edits, and trust earned email by email. It needs less of you every week." },
+];
+
+const AGENT = [
+  { icon: "Mail", title: "Tracks every email", body: "Connect Gmail, Google Workspace, iCloud, Yahoo, Zoho or Fastmail with an app password. It reads new mail every five minutes, files who wrote and what they want, and keeps a pipeline: lead, contacted, engaged, meeting, proposal, won." },
+  { icon: "Bot", title: "Answers what it can", body: "Prospects, customers and your own coworkers get a reply drafted in your voice. You choose, per kind of email, whether it waits for you or goes on autopilot." },
+  { icon: "MessageSquare", title: "Asks what it cannot, and remembers", body: "When a reply needs something only you know (a price, a date, a yes), it asks you one short question. Tick “remember” and the next person who asks gets the answer without bothering you." },
+  { icon: "Target", title: "Runs outbound", body: "Build a list from 18,000+ startups or your own, qualify it against your ideal profile, and work through a personalised sequence that stops the moment someone replies or opts out." },
+];
+
+const GUARDRAILS = [
+  "Autopilot is off until you switch it on, and each kind of email has its own setting: off, ask me, or autopilot.",
+  "It never sends what it is unsure of, anything sensitive, anything with a blank to fill, or anything that needs your input. It says why.",
+  "It never sends a link, email address or account number you have not given it yourself, so an inbound email cannot steer it.",
+  "Automatic emails wait out a hold you can cancel, go only in your sending hours, and stop at a daily limit. About 1 in 5 still comes to you as a spot check.",
+  "It never answers newsletters, auto-replies or no-reply addresses, and before sending it re-reads the live thread: if you already replied from your phone, its draft is withdrawn.",
+  "Campaigns skip EU and Canadian recipients unless you confirm consent, and nobody gets more than one first cold email through YouBank a month.",
+  "Every email goes from your own mailbox. Regulated mode turns autopilot off entirely, and the audit log exports every draft, who sent it and how much it was edited.",
+  "Your data trains no model. What the engine learns is statistics and plain-language lessons in your account, which you can read and retire.",
+];
+
+const SEGMENTS = [
+  { icon: "Handshake", title: "Boutique advisors and placement agents", body: "Comps, buyer lists and teasers without a Capital IQ budget, and an outreach desk that keeps every mandate moving." },
+  { icon: "Briefcase", title: "Emerging VC and PE managers", body: "Form D and funding signals on the companies you track, cited diligence, and a pipeline that files itself from your inbox." },
+  { icon: "Rocket", title: "Founders raising or selling", body: "Cold outreach, investor and customer follow-up, and replies to your own team, with autopilot where you have earned it." },
+  { icon: "GraduationCap", title: "Students recruiting into finance", body: "Real comps and DCFs on real filings, deal walk-throughs from 8-Ks, and the same desk you will use on the job." },
+];
+
+/** Planned plans, from the pricing research. Nothing is billed during the beta. */
+const PLANS = [
+  { name: "Campus", price: "Free", unit: "with a .edu address", points: ["The full terminal and data", "AI workflows with a monthly allowance", "Recruiting pack: practice comps, deal walk-throughs"] },
+  { name: "Pro", price: "$39", unit: "per month, or $29 billed yearly", points: ["Everything in Campus, higher limits", "Relationships agent and one mailbox", "Nurture, signals and compose"], highlight: false },
+  { name: "Deal Team", price: "$149", unit: "per seat per month, three seats minimum", points: ["Autopilot and campaigns", "The adaptive engine across the team", "Shared workspaces and live collaboration"], highlight: true },
+  { name: "Enterprise", price: "From $249", unit: "per seat per month, yearly", points: ["Regulated mode and audit exports", "SSO, admin controls, data residency options", "Bring your own data licences"] },
 ];
 
 const METHOD = [
   { k: "Fundamentals", v: "SEC XBRL company facts. LTM = fiscal year plus year-to-date less prior year-to-date, with the concept the filer actually used, restatements deduped by accession." },
   { k: "Filings", v: "EDGAR submissions and full-text search across every filing and exhibit since 2001: merger proxies, credit agreements, indentures, comment letters, 8-K item codes." },
-  { k: "Private markets", v: "18,001 startups from Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and AI web discovery, refreshed nightly." },
-  { k: "Prices", v: "Live quotes, market cap and 52-week range from a market data API. Consensus estimates are not licensed, so NTM figures are entered by you and marked as manual." },
-  { k: "Limits we state plainly", v: "Reported EBITDA is operating income plus D&A, not company-adjusted. Fiscal years are not calendarized. Filers who tag statements with custom extensions can have sparse facts. The assistant says so rather than guessing." },
+  { k: "Private markets", v: `${DEMO.directoryTotal.toLocaleString()} startups from Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and AI web discovery, refreshed nightly.` },
+  { k: "Prices", v: "Quotes, market cap and 52-week range from a market data API. Consensus estimates are not licensed, so NTM figures are entered by you and marked as manual." },
+  { k: "The adaptive engine", v: "Per-account statistics you can inspect: how often you send each kind of draft unchanged (certified on your own decisions with exact Beta bounds), Thompson sampling over outreach choices rewarded by human replies, and plain-language lessons from your edits. No model is trained on your data." },
+  { k: "Limits we state plainly", v: "Reported EBITDA is operating income plus D&A, not company-adjusted. Fiscal years are not calendarized. The agent's confidence is its own estimate, which is why autopilot also has to earn your trust." },
 ];
 
 const FAQ = [
-  { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an assistant that produces the deliverable: the comps sheet, the memo, the capital structure, the footnote, the outreach email. Free while in beta." },
+  { q: "Will it send emails without me?", a: "Only if you switch autopilot on, only for the kinds of email you choose, and only when a draft passes every check: high confidence, nothing sensitive, nothing it needs to ask you, inside your hours and daily limit. Until then every email waits for you to press Send." },
+  { q: "How does it learn?", a: "From what you do. Each draft you send unchanged or edit, and each automatic send you stop, updates how far it can be trusted with that kind of email; autopilot is offered only once it is 90% confident at most 1 in 10 would need your edits. Edits become lessons, your own past emails set the tone, and replies to outreach tell it which openings and send times work. All of it is visible and reversible in the app." },
+  { q: "Is it suitable for a FINRA-registered firm?", a: "Regulated mode is built for it: autopilot cannot be switched on, every email is sent by a person from their own mailbox (so the firm's archive captures it), and every AI draft can be exported for supervision. Your compliance team decides; we give them the controls and the log." },
   { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API, with the source link on every figure. Anything from the web is cited. If a number is derived, the method is stated next to it." },
-  { q: "Can I use my own AI model?", a: "Yes. The workspace ships on GPT-6 Astra and you can switch model and reasoning depth per run, including the GPT-5.6 family, o-series reasoning models and Claude if you add a key." },
-  { q: "What happens to my work?", a: "Saved to your account: peer groups, comps sheets, manual estimates, workflow runs with their sources, and your style and model preferences." },
-  { q: "Do you need my company's data?", a: "Only when you want it. Public-data tools work with nothing from you. The planning, audit and diligence tools accept a pasted CSV or an uploaded export, and that data is used for the run and stored with it in your account." },
+  { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an agent that produces the deliverable and does the follow-through." },
+  { q: "What does it cost?", a: "Free while in beta. The plans below are what we intend to charge afterwards; nothing is billed today." },
 ];
 
 export function Landing({ toolCounts }: { toolCounts: { total: number; ai: number; calc: number } }) {
@@ -53,14 +90,13 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
 
       <header className="glass sticky top-0 z-40 border-b border-line bg-bg/80">
         <div className="mx-auto flex max-w-[1240px] items-center gap-4 px-5 py-3">
-          <Link href="/" className="flex items-center gap-2">
-            <Logo size={26} />
-          </Link>
+          <Link href="/" className="flex items-center gap-2"><Logo size={26} /></Link>
           <nav className="ml-4 hidden items-center gap-4 text-[12.5px] text-muted md:flex">
-            <a href="#product" className="hover:text-fg">Product</a>
+            <a href="#loop" className="hover:text-fg">Product</a>
+            <a href="#agent" className="hover:text-fg">Agent</a>
+            <a href="#engine" className="hover:text-fg">Adaptive engine</a>
             <a href="#demos" className="hover:text-fg">Demos</a>
-            <a href="#roles" className="hover:text-fg">Roles</a>
-            <a href="#styles" className="hover:text-fg">Styles</a>
+            <a href="#pricing" className="hover:text-fg">Pricing</a>
             <a href="#data" className="hover:text-fg">Data</a>
           </nav>
           <div className="ml-auto flex items-center gap-2">
@@ -72,37 +108,37 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
 
       {/* hero */}
       <section className="mx-auto max-w-[1240px] px-5 pb-8 pt-12 lg:pt-16">
-        <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)]">
+        <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)]">
           <div>
             <Reveal>
               <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-[11px] text-muted">
-                <span className="pulse-ring h-1.5 w-1.5 rounded-full bg-accent" /> Free in beta · {toolCounts.total} tools across 8 careers
+                <span className="pulse-ring h-1.5 w-1.5 rounded-full bg-accent" /> New: an email agent that earns autopilot · free in beta
               </span>
             </Reveal>
             <Reveal delay={60}>
               <h1 className="mt-4 text-[38px] font-semibold leading-[1.06] tracking-tight sm:text-[46px]">
-                The terminal that <span className="gradient-text">does the analyst work</span>, tailored to your job.
+                The AI deal desk that <span className="gradient-text">does the work, and learns how you do it</span>.
               </h1>
             </Reveal>
             <Reveal delay={120}>
-              <p className="mt-4 max-w-[56ch] text-[14.5px] leading-relaxed text-muted">
-                YouBank reads the same filings you do, then produces the thing you were going to spend the night building: the comps sheet, the capital structure, the quality-of-earnings flags, the investment memo, the audit memo, the outreach email. Every figure cites its filing.
+              <p className="mt-4 max-w-[58ch] text-[14.5px] leading-relaxed text-muted">
+                Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and earns the right to send on its own. For boutique advisors, emerging managers, founders, and the students who will join them.
               </p>
             </Reveal>
             <Reveal delay={180}>
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 <SignInButton label="Start free with Google" />
-                <a href="#demos" className="ctl border border-line px-4 py-2.5 text-[13px] font-semibold text-fg transition hover:border-accent/60 hover:text-accent">See it work</a>
+                <a href="#engine" className="ctl border border-line px-4 py-2.5 text-[13px] font-semibold text-fg transition hover:border-accent/60 hover:text-accent">Try the adaptive engine</a>
               </div>
-              <p className="mt-3 text-[11px] text-muted">No credit card. Your work saves to your account.</p>
+              <p className="mt-3 text-[11px] text-muted">No credit card. Nothing is sent from your mailbox unless you switch that on.</p>
             </Reveal>
             <Reveal delay={240}>
               <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-6 sm:grid-cols-4">
                 {[
-                  { n: toolCounts.ai, l: "AI workflows" },
-                  { n: toolCounts.calc, l: "exact calculators" },
+                  { n: toolCounts.total, l: "tools across 8 careers" },
                   { n: DEMO.directoryTotal, l: "startups indexed" },
-                  { n: 14, l: "UI styles" },
+                  { n: toolCounts.ai, l: "AI workflows" },
+                  { n: 3, l: "learning loops per account" },
                 ].map((s) => (
                   <div key={s.l}>
                     <dt className="num text-[22px] font-semibold leading-none text-accent"><CountUp value={s.n} /></dt>
@@ -116,14 +152,15 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
         </div>
       </section>
 
-      {/* pillars */}
-      <section id="product" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
-        <Reveal><h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">What it is</h2></Reveal>
-        <Reveal delay={60}><p className="mt-3 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">A financial database, a workspace, and a copilot that can actually finish the deliverable.</p></Reveal>
-        <div className="mt-8 grid gap-3 md:grid-cols-3">
-          {PILLARS.map((p, i) => (
-            <Reveal key={p.title} delay={i * 80}>
-              <div className="lift h-full panel p-5">
+      {/* the loop */}
+      <section id="loop" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <Reveal><h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">How it works</h2></Reveal>
+        <Reveal delay={60}><p className="mt-3 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">One loop, from the filing to the follow-up: signal, analysis, action, memory.</p></Reveal>
+        <div className="mt-8 grid gap-3 md:grid-cols-4">
+          {LOOP.map((p, i) => (
+            <Reveal key={p.title} delay={i * 70}>
+              <div className="lift relative h-full panel p-5">
+                <span className="num absolute right-4 top-4 text-[11px] text-muted">0{i + 1}</span>
                 <span className="grid h-9 w-9 place-items-center ctl bg-accent-soft text-accent"><Icon name={p.icon} className="h-5 w-5" /></span>
                 <h3 className="mt-3 text-[15px] font-semibold">{p.title}</h3>
                 <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{p.body}</p>
@@ -131,6 +168,100 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             </Reveal>
           ))}
         </div>
+      </section>
+
+      {/* the agent */}
+      <section id="agent" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div>
+            <Reveal>
+              <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">The relationships agent</h2>
+              <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">Your inbox, handled the way you would handle it.</p>
+              <p className="mt-2 max-w-[62ch] text-[12.5px] text-muted">A founder sending cold emails, answering prospects and replying to the team. An investor screening pitches. The agent works in your mode, your voice and your rules.</p>
+            </Reveal>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {AGENT.map((a, i) => (
+                <Reveal key={a.title} delay={i * 60}>
+                  <div className="h-full panel p-4">
+                    <h3 className="flex items-center gap-2 text-[13.5px] font-semibold"><Icon name={a.icon} className="h-4 w-4 text-accent" />{a.title}</h3>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{a.body}</p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+          <Reveal delay={100}>
+            <div className="panel p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Your queue, this morning</p>
+              <div className="mt-3 space-y-2.5 text-[12px]">
+                <div className="ctl border border-accent/40 bg-accent-soft/40 p-3">
+                  <p className="font-semibold">The agent needs your input</p>
+                  <p className="mt-1">What pricing should we quote for 10 entities on NetSuite?</p>
+                  <p className="mt-1 text-[11px] text-muted">Your answer finishes the reply to Dana, and is remembered for the next person who asks.</p>
+                </div>
+                <div className="ctl border border-accent/40 p-3">
+                  <p className="flex items-center gap-2"><span className="ctl bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">Reply to coworker</span><span className="ctl bg-pos/15 px-1.5 py-0.5 text-[10px] text-pos">high confidence</span></p>
+                  <p className="mt-1.5">Tell them we integrate natively with NetSuite and QuickBooks Online…</p>
+                  <p className="mt-1 flex items-center gap-1 text-[11px] text-accent"><Icon name="Timer" className="h-3 w-3" /> Autopilot sends this in 4 min unless you stop it.</p>
+                </div>
+                <div className="ctl border border-line p-3">
+                  <p className="flex items-center gap-2"><span className="ctl bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold text-accent">Reply</span><span className="ctl bg-info/15 px-1.5 py-0.5 text-[10px] text-info">medium confidence</span></p>
+                  <p className="mt-1.5 text-[11px] text-info">Autopilot left this for you: The agent&apos;s confidence is medium, not high; It touches money, terms, legal or something sensitive.</p>
+                </div>
+                <div className="ctl border border-pos/40 bg-pos/5 p-3 text-[11.5px]">
+                  Replies to coworkers: 24 of your last 24 went out exactly as written. We are 90% confident at most 10% would need your edits. Put them on autopilot?
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* adaptive engine */}
+      <section id="engine" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <Reveal>
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">The adaptive engine</h2>
+          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Autonomy is earned, not assumed. Try it: this runs the product&apos;s own code.</p>
+          <p className="mt-2 max-w-[85ch] text-[12.5px] leading-relaxed text-muted">
+            A language model&apos;s confidence in itself is not evidence. YouBank decides what to automate from what you do: every draft you send unchanged or edit, and every reply your outreach earns. Three learning loops, each with its uncertainty shown rather than hidden.
+          </p>
+        </Reveal>
+        <div className="mt-7"><AdaptiveDemo /></div>
+        <Reveal>
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {[
+              { t: "Earned autonomy", b: "Your own decisions, per kind of email, certified with exact bounds: autopilot is offered once the engine is 90% confident at most 10% would need edits. Spot checks keep it learning; stopped sends, a rising edit rate or time hand it back." },
+              { t: "Outreach experiments", b: "Thompson sampling over opening angles and send times, rewarded by human replies and penalised by opt-outs, learning from day one by counting unanswered sends as partial misses. One decision in ten explores at random, and every choice is logged." },
+              { t: "Lessons from edits", b: "Durable preferences inferred from what you change, applied once seen twice or confirmed, plus your own most similar emails as examples of tone. Lessons shape wording only; they never authorise a fact or relax a rule." },
+            ].map((x) => (
+              <div key={x.t} className="panel p-4">
+                <h3 className="text-[13px] font-semibold">{x.t}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{x.b}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10.5px] leading-relaxed text-muted">
+            Methods: W. R. Thompson, Biometrika (1933); O. Chapelle and L. Li, NeurIPS (2011); D. Russo et al., “A Tutorial on Thompson Sampling” (2018); C. Vernade, O. Cappé and V. Perchet, UAI (2017), arXiv:1706.09186, for delayed rewards; A. Angelopoulos et al., “Learn then Test”, Annals of Applied Statistics (2025), arXiv:2110.01052, for certified error rates; G. Gao et al., PRELUDE/CIPHER, NeurIPS (2024), arXiv:2404.15269, and PROSE, ICML (2025), arXiv:2505.23815, for learning from edits.
+          </p>
+        </Reveal>
+      </section>
+
+      {/* guardrails */}
+      <section className="mx-auto max-w-[1240px] px-5 py-10">
+        <Reveal>
+          <div className="panel grid gap-6 p-6 lg:grid-cols-[minmax(0,34%)_minmax(0,66%)]">
+            <div>
+              <span className="grid h-9 w-9 place-items-center ctl bg-accent-soft text-accent"><Icon name="Shield" className="h-5 w-5" /></span>
+              <h2 className="mt-3 text-[20px] font-semibold tracking-tight">Guardrails before autonomy</h2>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">An email sent in your name cannot be taken back, so everything doubtful comes to you with the reason written down. Mailbox passwords and tokens are encrypted with AES-256-GCM; disconnecting deletes them.</p>
+            </div>
+            <ul className="grid gap-2.5 sm:grid-cols-2">
+              {GUARDRAILS.map((g) => (
+                <li key={g} className="flex gap-2 text-[12.5px] leading-relaxed"><Icon name="Check" className="mt-0.5 h-4 w-4 shrink-0 text-pos" /><span>{g}</span></li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
       </section>
 
       {/* demos */}
@@ -166,7 +297,6 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
                     <li key={i} className="flex gap-2"><span className="num grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent">{i + 1}</span><span>{t}</span></li>
                   ))}
                 </ol>
-                <div className="mt-4 border-t border-line pt-3 text-[11.5px] text-muted">Model is yours to pick: GPT-6 Astra by default, the GPT-5.6 family, reasoning models, or Claude with your own key. Reasoning depth is a dial per run.</div>
               </div>
             </div>
           )}
@@ -174,53 +304,60 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
         </div>
       </section>
 
-      {/* roles */}
+      {/* who it is for */}
       <section id="roles" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
-          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Built per career</h2>
-          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">Eight careers researched in depth, then turned into tools.</p>
-          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">
-            We went through what each seat actually produces, at each level: the deliverables, the data, the formulas, the pain. A restructuring banker gets recovery waterfalls, liability-management capacity and DIP comps. An audit senior gets materiality, sampling, journal-entry tests and disclosure benchmarking. Pick your seat to see the list.
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Built for the long tail of dealmakers</h2>
+          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Enterprise-grade analysis and follow-through, priced for the firms that cannot justify an enterprise seat.</p>
+          <p className="mt-2 max-w-[90ch] text-[12px] text-muted">
+            A general AI assistant will build a DCF for $20 a month, but not from verified data, and not the follow-through: on September 2026&apos;s Excel modelling benchmark, frontier models passed only 64% of numerical checks.<sup>1</sup> The platforms that bring the data sell annual contracts in the thousands to tens of thousands of dollars.<sup>2</sup> YouBank is cited, filing-backed work plus the agent that acts on it, for the teams in between.
           </p>
         </Reveal>
-        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {ROLE_IDS.map((id, i) => {
-            const r = ROLES[id];
-            return (
-              <Reveal key={id} delay={(i % 4) * 70}>
-                <Link href={`/for/${id}`} className="lift group flex h-full flex-col panel p-4">
-                  <span className="flex items-center gap-2">
-                    <span className="grid h-8 w-8 place-items-center ctl bg-accent-soft text-accent"><Icon name={ROLE_ICON[id]} className="h-4 w-4" /></span>
-                    <span className="text-[14px] font-semibold">{r.label}</span>
-                  </span>
-                  <span className="mt-2 text-[12px] text-muted">{r.blurb}</span>
-                  <ul className="mt-3 space-y-1 text-[11.5px] text-fg/85">
-                    {r.jobs.slice(0, 3).map((j) => <li key={j} className="flex gap-1.5"><span className="text-accent">•</span><span>{j}</span></li>)}
-                  </ul>
-                  <span className="mt-auto pt-3 text-[11.5px] text-accent opacity-0 transition group-hover:opacity-100">See the toolkit →</span>
-                </Link>
-              </Reveal>
-            );
-          })}
+        <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {SEGMENTS.map((s, i) => (
+            <Reveal key={s.title} delay={(i % 4) * 70}>
+              <div className="h-full panel p-4">
+                <span className="grid h-8 w-8 place-items-center ctl bg-accent-soft text-accent"><Icon name={s.icon} className="h-4 w-4" /></span>
+                <h3 className="mt-2.5 text-[13.5px] font-semibold">{s.title}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{s.body}</p>
+              </div>
+            </Reveal>
+          ))}
         </div>
+        <Reveal>
+          <p className="mt-8 text-[12.5px] font-semibold">Eight careers, each with its own researched toolkit</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {ROLE_IDS.map((id) => (
+              <Link key={id} href={`/for/${id}`} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg">
+                <Icon name={ROLE_ICON[id]} className="h-3.5 w-3.5" />{ROLES[id].label}
+              </Link>
+            ))}
+          </div>
+          <p className="mt-2 text-[11.5px] text-muted">{toolCounts.ai} AI workflows that research and draft, and {toolCounts.calc} calculators that compute exactly.</p>
+        </Reveal>
       </section>
 
-      {/* tool categories */}
-      <section className="mx-auto max-w-[1240px] px-5 py-8">
+      {/* pricing */}
+      <section id="pricing" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
-          <div className="panel p-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="text-[15px] font-semibold">{toolCounts.total} tools, two kinds</h3>
-              <span className="text-[11.5px] text-muted">{toolCounts.ai} AI workflows that research and draft · {toolCounts.calc} calculators that compute exactly</span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {CATEGORIES.map((c) => <span key={c} className="rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted">{c}</span>)}
-            </div>
-            <p className="mt-3 max-w-[85ch] text-[12px] leading-relaxed text-muted">
-              Workflows stream their tool calls and return structured output: headline numbers, tables, bridges, sensitivity grids, risk registers, checklists, timelines, question banks, drafted emails. Calculators run in the browser as you type, prefilled from the company you are looking at, and save to your library with the inputs that produced them.
-            </p>
-          </div>
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Pricing</h2>
+          <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">Free while in beta.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">These are the plans we intend to offer after the beta. Nothing is billed today, and beta accounts will be told well before anything changes.</p>
         </Reveal>
+        <div className="mt-7 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {PLANS.map((p, i) => (
+            <Reveal key={p.name} delay={i * 60}>
+              <div className={`flex h-full flex-col panel p-5 ${p.highlight ? "glow border-accent/50" : ""}`}>
+                <h3 className="text-[14px] font-semibold">{p.name}</h3>
+                <p className="mt-2"><span className="text-[26px] font-semibold">{p.price}</span></p>
+                <p className="text-[11px] text-muted">{p.unit}</p>
+                <ul className="mt-4 space-y-1.5 text-[12px]">
+                  {p.points.map((x) => <li key={x} className="flex gap-1.5"><Icon name="Check" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />{x}</li>)}
+                </ul>
+              </div>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       {/* styles */}
@@ -266,19 +403,25 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
         <Reveal>
           <div className="glow relative overflow-hidden panel p-8 text-center">
             <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.10]" style={{ background: "radial-gradient(600px 240px at 50% 0%, var(--accent), transparent 70%)" }} />
-            <h2 className="relative text-[26px] font-semibold tracking-tight">Tell it what you do. Get your desk.</h2>
-            <p className="relative mx-auto mt-2 max-w-[60ch] text-[13px] text-muted">A two-minute survey sets the watchlists, function keys, prompt library and tools for your seat. Change it any time.</p>
+            <h2 className="relative text-[26px] font-semibold tracking-tight">Tell it what you do. It learns the rest.</h2>
+            <p className="relative mx-auto mt-2 max-w-[62ch] text-[13px] text-muted">A two-minute survey sets your desk. Connect a mailbox when you are ready, and give the agent as much or as little autonomy as it has earned.</p>
             <div className="relative mt-6 flex justify-center"><SignInButton label="Continue with Google" /></div>
           </div>
         </Reveal>
       </section>
 
       <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-5 py-6 text-[11px] text-muted">
-          <span className="flex items-center gap-2"><LogoMark size={16} id="foot" /> YouBank</span>
-          <span>Data: SEC EDGAR, Financial Modeling Prep, Y Combinator, a16z, Show HN, Wikipedia.</span>
-          <span>Not investment advice. Figures are derived from public filings and may be restated.</span>
-          <Link href="/sign-in" className="ml-auto hover:text-fg">Sign in →</Link>
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-3 px-5 py-6 text-[11px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <span className="flex items-center gap-2"><LogoMark size={16} id="foot" /> YouBank</span>
+            <span>Data: SEC EDGAR, Financial Modeling Prep, Y Combinator, a16z, Show HN, Wikipedia.</span>
+            <span>Not investment advice. Figures are derived from public filings and may be restated.</span>
+            <Link href="/sign-in" className="ml-auto hover:text-fg">Sign in →</Link>
+          </div>
+          <p className="text-[10.5px] leading-relaxed">
+            <sup>1</sup> Vals AI, Excel Modeling Benchmark (LBO, DCF, M&amp;A and three-statement models), updated 22 September 2026, vals.ai/benchmarks/emb. Wall Street Prep&apos;s 2026 test of AI modelling tools reached a similar verdict: the best tool still underperformed a junior analyst.{" "}
+            <sup>2</sup> Sacra&apos;s estimate for Rogo is about $3,300 per seat a year; Vendr buyer data put AlphaSense&apos;s median contract at $18,375 a year (February 2026). Retail research terminals publish $25–$120 a month (TIKR, Koyfin, September 2026).
+          </p>
         </div>
       </footer>
     </main>

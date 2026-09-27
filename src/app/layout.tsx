@@ -11,18 +11,18 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const display = Instrument_Serif({ variable: "--font-display-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
-  title: { default: "YouBank · The AI data platform for finance", template: "%s · YouBank" },
-  description: "The AI data platform for finance. SEC filings, live fundamentals and an assistant that produces the deliverable, tailored to your job.",
+  title: { default: "YouBank · The AI deal desk that learns how you work", template: "%s · YouBank" },
+  description: "Cited analysis from SEC filings, and an email agent that tracks every thread, asks you what it cannot answer, remembers, and earns the right to send on its own. For boutique advisors, emerging managers, founders and students.",
   metadataBase: new URL("https://youbank-nu.vercel.app"),
   applicationName: "YouBank",
   openGraph: {
-    title: "YouBank · The AI data platform for finance",
-    description: "A terminal that does the analyst work, tailored to your job.",
+    title: "YouBank · The AI deal desk that learns how you work",
+    description: "Cited analysis from SEC filings, and an email agent that earns autonomy from your own decisions.",
     type: "website",
     url: "https://youbank-nu.vercel.app",
     images: [{ url: "/brand/og.png", width: 1200, height: 630, alt: "YouBank" }],
   },
-  twitter: { card: "summary_large_image", title: "YouBank", description: "The AI data platform for finance.", images: ["/brand/og.png"] },
+  twitter: { card: "summary_large_image", title: "YouBank", description: "The AI deal desk that learns how you work.", images: ["/brand/og.png"] },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
