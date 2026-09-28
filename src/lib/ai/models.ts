@@ -58,7 +58,8 @@ export const EFFORTS: { id: Effort; label: string; hint: string }[] = [
 ];
 
 /** Per-user AI preferences stored in profiles.extra.ai. */
-export type AiPrefs = { provider?: Provider; model?: string; effort?: Effort; researchModel?: string };
+/** `routing`: send background work (triage, qualification, drafts) to smaller models. On unless turned off. */
+export type AiPrefs = { provider?: Provider; model?: string; effort?: Effort; researchModel?: string; routing?: boolean };
 
 export function normalizePrefs(raw: unknown): AiPrefs {
   const p = (raw ?? {}) as Record<string, unknown>;
@@ -67,5 +68,6 @@ export function normalizePrefs(raw: unknown): AiPrefs {
   if (typeof p.model === "string" && p.model.length <= 64) out.model = p.model;
   if (p.effort === "low" || p.effort === "medium" || p.effort === "high" || p.effort === "xhigh") out.effort = p.effort;
   if (typeof p.researchModel === "string" && p.researchModel.length <= 64) out.researchModel = p.researchModel;
+  if (typeof p.routing === "boolean") out.routing = p.routing;
   return out;
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ROLES, ROLE_IDS, type RoleId } from "@/lib/roles";
-import { toolsForRole } from "@/lib/workflows/registry";
+import { catalogForRole } from "@/lib/workflows/catalog";
 import { RolePage } from "@/components/marketing/RolePage";
 
 export const dynamic = "force-static";
@@ -20,7 +20,7 @@ export default async function ForRole({ params }: { params: Promise<{ role: stri
   const { role } = await params;
   if (!ROLE_IDS.includes(role as RoleId)) notFound();
   const id = role as RoleId;
-  const tools = toolsForRole(id).map((t) => ({ id: t.id, title: t.title, tagline: t.tagline, kind: t.kind, category: t.category, icon: t.icon, specialties: t.specialties ?? null, savesMinutes: t.savesMinutes ?? null }));
+  const tools = catalogForRole(id).map((t) => ({ id: t.id, title: t.title, tagline: t.tagline, kind: t.kind, category: t.category, icon: t.icon, specialties: t.specialties ?? null, savesMinutes: t.savesMinutes ?? null }));
   return (
     <>
       <RolePage role={id} tools={tools} />

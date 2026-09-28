@@ -2,6 +2,7 @@ import { runChat, type ChatMessage } from "@/lib/ai/agent";
 import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MODELS, type Effort } from "@/lib/ai/models";
+import { runAsUser } from "@/lib/ai/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
-      await runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS });
+      await runAsUser(user.id, () => runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS, feature: "terminal-ai", parallelTools: true }));
       controller.close();
     },
   });

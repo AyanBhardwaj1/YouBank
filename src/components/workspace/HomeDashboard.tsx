@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
 import { ToolCard } from "@/components/workflows/ToolsGallery";
 import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
@@ -18,7 +18,7 @@ const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late n
 
 export function HomeDashboard({ facts }: { facts: { directoryTotal: number | null; sheets: number; groups: number } }) {
   const { profile, config } = useWorkspace();
-  const tools = toolsFor(profile);
+  const tools = catalogFor(profile);
   const [runs, setRuns] = useState<Run[] | null>(null);
   const { data, loading } = useCompanies(config.watchlist);
   const rows = config.watchlist.map((t) => data[t]).filter(Boolean);

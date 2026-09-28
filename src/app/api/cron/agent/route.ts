@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { secretsMatch } from "@/lib/crm/crypto";
 import { nightlyUsers, runAgent } from "@/lib/crm/run";
+import { runAsUser } from "@/lib/ai/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   for (const userId of await nightlyUsers()) {
     if (Date.now() > deadline - 20_000) break;
     try {
-      const r = await runAgent(userId, deadline - 10_000);
+      const r = await runAsUser(userId, () => runAgent(userId, deadline - 10_000));
       results.push({ userId, drafted: r.nurture.drafted + r.campaigns.drafted, suggestions: r.signals + r.followUps + r.checkIns, errors: r.errors.length });
     } catch (e) {
       results.push({ userId, error: e instanceof Error ? e.message : String(e) });

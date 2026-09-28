@@ -1,14 +1,16 @@
 "use client";
 
-import { FUNCTIONS, functionsForProfile } from "@/lib/functions";
+import { FUNCTIONS, FUNCTION_CODES, functionsForProfile, type FunctionGroup } from "@/lib/functions";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
+
+const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["market", "Markets and economy"], ["workspace", "Workspace"]];
 
 /** Keyboard and command reference, opened with "?" in the terminal. */
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
   const { profile, config } = useWorkspace();
   const fns = functionsForProfile(profile);
-  const tools = toolsFor(profile).slice(0, 8);
+  const tools = catalogFor(profile).slice(0, 8);
   const keys: [string, string][] = [
     ["/", "focus the command bar"], ["Cmd or Ctrl + K", "focus and select the command bar"], ["Tab", "complete the highlighted suggestion"],
     ["Enter", "run the command"], ["↑ ↓", "move through suggestions"], ["Esc", "close a menu, restore a maximized panel"], ["?", "this reference"],
@@ -28,6 +30,10 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
               <li><span className="num text-accent">CAP</span> a function alone uses the active ticker</li>
               <li><span className="num text-accent">CCL</span> a ticker alone opens its description</li>
               <li><span className="num text-accent">{config.watchlist[0] ?? "SNOW"} TOOL dcf</span> run a tool in a panel</li>
+              <li><span className="num text-accent">ECO</span> market functions need no ticker</li>
+              <li><span className="num text-accent">EQS</span> <span className="text-muted">growing over 20% with net margins above 10%</span>: screen in plain English</li>
+              <li><span className="num text-accent">PORT AAPL 40 MSFT 30 KO 30</span> risk of a portfolio</li>
+              <li><span className="num text-accent">PG DES</span> a ticker that is also a code works with a function after it</li>
             </ul>
             <div className="mt-4 text-[10.5px] uppercase tracking-wider text-muted">Keys</div>
             <dl className="mt-2 space-y-1 text-[12px]">
@@ -35,10 +41,17 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
             </dl>
           </div>
           <div>
-            <div className="text-[10.5px] uppercase tracking-wider text-muted">Functions for your seat</div>
-            <dl className="mt-2 grid grid-cols-[62px_1fr] gap-x-2 gap-y-1 text-[12px]">
-              {fns.map((f) => <div key={f} className="col-span-2 grid grid-cols-subgrid"><dt className="num font-semibold text-accent">{f}</dt><dd className="text-muted">{FUNCTIONS[f].hint}</dd></div>)}
-            </dl>
+            <div className="text-[10.5px] uppercase tracking-wider text-muted">Functions <span className="normal-case tracking-normal text-faint">(yours in bold)</span></div>
+            <div className="mt-2 max-h-[46vh] space-y-3 overflow-auto pr-1">
+              {GROUPS.map(([g, label]) => (
+                <div key={g}>
+                  <div className="mb-1 text-[10px] uppercase tracking-wider text-faint">{label}</div>
+                  <dl className="grid grid-cols-[52px_1fr] gap-x-2 gap-y-0.5 text-[11.5px]">
+                    {FUNCTION_CODES.filter((f) => FUNCTIONS[f].group === g).map((f) => <div key={f} className="col-span-2 grid grid-cols-subgrid"><dt className={`num text-accent ${fns.includes(f) ? "font-bold" : "font-normal opacity-80"}`}>{f}</dt><dd className="text-muted">{FUNCTIONS[f].hint}</dd></div>)}
+                  </dl>
+                </div>
+              ))}
+            </div>
             <div className="mt-4 text-[10.5px] uppercase tracking-wider text-muted">Tools you can run in a panel</div>
             <ul className="mt-2 space-y-0.5 text-[11.5px]">
               {tools.map((t) => <li key={t.id} className="flex gap-2"><span className="num shrink-0 text-accent">{t.id}</span><span className="truncate text-muted">{t.title}</span></li>)}

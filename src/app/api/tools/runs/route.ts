@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { toolById } from "@/lib/workflows/registry";
-import { WorkflowOutput } from "@/lib/workflows/types";
+import { WorkflowOutput } from "@/lib/workflows/schema";
 
 export const dynamic = "force-dynamic";
 

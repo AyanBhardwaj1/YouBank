@@ -5,8 +5,11 @@
 YouBank is a financial research terminal and an email agent for people whose work is deals. It has three
 parts:
 
-- **Research.** A terminal and 321 tools built on public regulatory data (SEC EDGAR filings and XBRL facts,
-  Form D, public startup directories) plus live prices. Every figure cites the filing it came from.
+- **Research.** A terminal with more than 35 functions and 328 tools built on public regulatory data (SEC
+  EDGAR filings and XBRL facts, Form D, the Treasury, the BLS, public startup directories) plus market
+  prices. Every figure cites its source, and every model shows its working: forecasts with calibrated
+  intervals, credit and earnings-quality models, GARCH risk, Monte Carlo valuation and knowledge tracing
+  that fits the terminal to how well you know it.
 - **Relationships.** An agent that reads your mailbox, drafts replies in your voice, asks you what it cannot
   answer and remembers the answer, runs cold outreach and nurture, and keeps a pipeline current.
 - **Autopilot and the adaptive engine.** Autopilot sends on your behalf, but only the kinds of email you
@@ -90,32 +93,71 @@ Each career has its own research, tool pack, watchlists, prompt library and defa
 
 ### Research terminal
 
-`/app/terminal` is a multi-panel terminal driven from the keyboard. Its functions:
+`/app/terminal` is a multi-panel terminal driven from the keyboard, with familiar function codes. Company
+functions take a ticker (`SNOW WACC`); market functions do not (`ECO`); a few take words
+(`EQS profitable software companies growing over 20%`, `PORT AAPL 40 MSFT 30 KO 30`).
 
-| Function | What it shows |
-|---|---|
-| `DES` | Company description |
-| `FA` | Financial analysis |
-| `COMPS` | Trading comps |
-| `PREC` | Precedent transactions |
-| `CAP` | Capital structure |
-| `FIL` | Filings |
-| `EVT` | Events (8-K item codes decoded) |
-| `INS` | Insider transactions (Form 4) |
-| `XBRL` | XBRL concept explorer |
-| `AI` | Assistant |
-| `PG` | Peer groups |
-| `TOOLS` | Tool shelf |
-| `TOOL <id>` | Runs a tool in a panel |
+**Company**
 
-Type into the command bar, for example `SNOW COMPS`, `CCL CAP` or `DDOG TOOL dcf`. `/` or Cmd+K focuses it.
-Each seat gets a function strip for its role.
+| Function | What it shows | Models |
+|---|---|---|
+| `DES` | Description | |
+| `FA` | Financial analysis | |
+| `GP` | Price chart with 50- and 200-day averages, volume, trend and volatility regime, a price cone | GARCH(1,1) |
+| `HP` | Daily price history | |
+| `BETA` | Beta four ways, with standard errors and a rolling beta | OLS, Blume, Welch (2022) |
+| `RISK` | Volatility now and forecast, VaR and expected shortfall, drawdowns | EWMA, GARCH, Cornish-Fisher, Kupiec backtest |
+| `COMPS` | Trading comps | |
+| `PREC` | Precedent transactions | |
+| `CAP` | Capital structure | |
+| `WACC` | Cost of capital from its parts, with a range and a tornado | CAPM, implied-rating spread, Monte Carlo |
+| `IRAT` | Implied credit rating and default odds | Altman Z'', Ohlson O-score, Merton distance to default |
+| `DDIS` | Debt maturity ladder and refinancing risk | |
+| `QUAL` | Earnings quality and red flags | Beneish M, Piotroski F, Sloan accruals |
+| `FCST` | Revenue forecast against the Street | M4 combination, conformal intervals |
+| `EE` | Earnings: surprises, beat odds, the typical move | Beta-Binomial, conformal quantile |
+| `ANR` | Analyst ratings, targets and drift | |
+| `DVD` | Dividends and a safety score | |
+| `FIL` / `EVT` / `INS` / `XBRL` | Filings, 8-K events, Form 4 insiders, any XBRL concept | |
+| `AI` | Assistant | |
+
+**Markets and economy**
+
+| Function | What it shows | Models |
+|---|---|---|
+| `WEI` / `FXC` / `CMDTY` | World indices, currencies, commodities and crypto | Each move in standard deviations of its own volatility |
+| `MOST` / `SECT` / `MA` | Movers, sector performance, M&A filings | |
+| `GC` | Treasury curve against a week, a month and a year ago | Nelson-Siegel; the New York Fed recession probit |
+| `ECO` | Inflation, jobs, growth and rates, with three-month outlooks | Damped trend, conformal intervals, the Sahm rule |
+| `EQS` | A screener over every SEC filer, in plain English | A small model turns words into filters you can edit |
+| `PORT` | Portfolio risk: risk shares, correlations, a year of outcomes | Covariance attribution, bootstrap |
+
+**Workspace:** `LEARN` (your mastery of each function, what to learn next, quick quizzes), `PG` (peer
+groups), `TOOLS` and `TOOL <id>`.
+
+**What makes it more than a data screen:**
+- **Models and sources** on every analytics screen: the method, its assumptions and where the inputs came from.
+- **AI read:** a small, cheap model writes a three-bullet read of any screen from its numbers alone.
+- **Ask AI** hands a screen's question to the assistant, which has the same models as tools.
+- **Knowledge tracing:** typing a command is evidence you know it, clicking a suggestion weaker evidence,
+  closing a panel straight away evidence against. Hints fade as mastery grows and the next functions
+  unlock when their prerequisites are known (Bayesian knowledge tracing with forgetting).
+- **Fast:** every screen but DES and FA loads on demand, data is cached and reused across panels, and
+  hovering a function on the strip prefetches its data.
+- **Honest about data:** a function whose data the market-data plan does not cover says so and points to
+  the ones that work for every US filer.
+
+Type into the command bar, for example `SNOW COMPS`, `CCL IRAT` or `DDOG TOOL dcf`. `/` or Cmd+K focuses it,
+`?` lists every function. Each seat gets a function strip for its role. A ticker that is also a code works
+with a function after it: `PG DES` is Procter & Gamble.
 
 ### Tools
 
-`/app/tools` holds **321 tools**:
+`/app/tools` holds **328 tools**:
 - **230 AI workflows** that research and draft;
-- **91 calculators** that compute exactly.
+- **98 calculators** that compute exactly, including an inference pack: a Monte Carlo DCF with correlated
+  inputs, a credit scorecard, a forecast with calibrated intervals, a beta estimator, a pipeline forecast,
+  an earnings-quality check and a VaR backtest.
 
 Both kinds render into the same 19 kinds of output block:
 - headline numbers, tables, bridges and sensitivity grids;
@@ -143,7 +185,14 @@ How to add tools: [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.m
   includes merger proxies, credit agreements, indentures and comment letters, with 8-K item codes decoded.
 - **Insiders** come from Form 4 transactions. Capital structure, precedents, peer groups and saved comps
   sheets are also available.
-- **Prices** come from Financial Modeling Prep: quotes, market cap and the 52-week range.
+- **Prices** come from Financial Modeling Prep: quotes, market cap and the 52-week range, and on the
+  terminal daily history, estimates, grades, dividends, sectors and M&A filings. The free plan covers
+  daily prices for about 87 sample tickers and caps requests per day; FMP Starter (about $19 a month
+  billed yearly) covers every US symbol, and a display licence is needed before prices are shown to
+  paying users. Functions that need prices say so when the plan does not cover a ticker.
+- **Rates and the economy** come from the Treasury's daily par yield curve and the BLS (both public
+  domain), which feed the models, and FRED, which is shown with attribution only: FRED's terms bar using
+  its content with machine learning or language models, so it never reaches the assistant or a model.
 - **Stated limits:**
   - Consensus estimates are not licensed, so NTM figures are entered by you and marked as manual.
   - Reported EBITDA is operating income plus D&A, not a company-adjusted figure.
@@ -172,7 +221,7 @@ A nightly job (`/api/cron/sync`, 06:00 UTC) refreshes the directory:
 You can switch the model and the reasoning depth (low, medium, high or xhigh) per run. The assistant streams
 its output, calls function tools, shows reasoning summaries, searches the web and returns structured output.
 
-**Fourteen data tools:**
+**Twenty-one tools:**
 
 | Tool | Tool | Tool |
 |---|---|---|
@@ -180,7 +229,17 @@ its output, calls function tools, shows reasoning summaries, searches the web an
 | `search_filing` | `read_filing` | `web_research` |
 | `form_d_search` | `search_startups` | `edgar_fulltext_search` |
 | `read_document` | `get_recent_filings` | `get_xbrl_series` |
-| `get_insider_transactions` | `calc` (exact arithmetic) | |
+| `get_insider_transactions` | `calc` (exact arithmetic) | `get_price_risk` |
+| `get_credit_risk` | `get_earnings_quality` | `get_revenue_forecast` |
+| `get_cost_of_capital` | `get_macro_outlook` | `screen_companies` |
+
+The last seven are the terminal's models, so an answer about risk, credit, a forecast or the economy
+names the model behind each number and gives a range.
+
+**Cost.** Classification, extraction and summaries route to a small model (GPT-5.6 Luna or Claude Haiku
+4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
+stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
+cost are recorded and shown in Settings. See [docs/research/ai-inference.md](docs/research/ai-inference.md).
 
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
 
@@ -288,6 +347,13 @@ These are available to the agent and one click away in the toolbar:
 - **Intake report** for uploads: sheets, cells and formulas; hidden sheets; links to other workbooks;
   unsupported functions; and what could not be kept (macros, images, conditional formats, charts). A
   "Review this file" button is included, and file contents are treated as data, never as instructions.
+- **Uncertainty tools:**
+  - `monte_carlo` draws the model's own input cells (optionally correlated through a Gaussian copula),
+    recomputes the whole workbook for each draw without changing it, and writes percentiles, a tornado
+    and each input's share of the variance to a Monte Carlo sheet slides can link to;
+  - `suggest_assumptions` gives data-driven ranges for growth, margin, WACC and terminal growth;
+  - `forecast_series` extends history with calibrated intervals;
+  - `risk_check` adds the implied rating and earnings-quality flags.
 - **Per-career quick tasks:**
   - bankers get valuation packs and football fields;
   - PE gets LBOs, returns attribution and IC decks;
@@ -423,8 +489,8 @@ Research behind Studio:
 
 ### Relationships: the email agent
 
-`/app/crm` has seven tabs: **Queue**, **Inbox**, **Pipeline**, **Contacts**, **Campaigns**, **Nurture**, and
-**Agent & autopilot**.
+`/app/crm` has eight tabs: **Queue**, **Inbox**, **Pipeline**, **Contacts**, **Insights**, **Campaigns**,
+**Nurture**, and **Agent & autopilot**.
 
 #### Mailboxes
 
@@ -544,6 +610,23 @@ Cold outreach, from lead list to follow-ups:
 - **Deals** move through the mode's stages.
 - **Threads** show their activity, including what autopilot did.
 - **Compose** writes a new email from a one-line instruction.
+
+#### Insights
+
+Relationship intelligence from the mail the agent has read, each number with its method:
+- **Relationship strength** (0 to 100): recency-weighted emails times how two-way they are, scaled to your
+  own volume.
+- **Reply odds** for a new email to each contact: a logistic model trained on your own settled emails,
+  used only when it beats per-contact reply rates on your most recent quarter (Brier score shown).
+- **Waiting on a reply:** Kaplan-Meier over every email says when an unprompted reply becomes unlikely;
+  threads past that point are marked "nudge due", with a one-click nudge draft.
+- **Going quiet:** people who wrote regularly and are well past their usual gap, with a reconnect draft.
+- **Pipeline forecast:** each open deal's win odds (stage priors calibrated to your record, moved by
+  engagement), the exact distribution of wins and a simulated P10/P50/P90 value.
+- **What each contact knows:** every email is tagged once with its topics by a small model; replaying a
+  contact's mail gives, per topic, the chance they know it (knowledge tracing with forgetting) and how
+  much they engage with it. Drafts to them are told not to re-explain what they know and what is worth
+  raising next.
 
 #### The morning run
 
@@ -897,6 +980,7 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
 **Migrations.**
 - On a fresh database, `drizzle-kit push` creates every table from the schema.
@@ -910,6 +994,8 @@ All tables are in `src/db/schema.ts`.
   - `0006_adaptive`
   - `0007_studio`
   - `0008_office`
+  - `0009_ai_usage`
+  - `0010_contact_knowledge`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1047,6 +1133,7 @@ bash scripts/preflight.sh                                         # everything t
 | Autopilot (62 tests) | `pnpm exec tsx scripts/test-autopilot.ts` | Settings normalisation, autonomy levels, sending windows and time zones, the send verdict, placeholders, automated-mail detection, the daily cap, playbook selection |
 | Outreach (53 tests) | `pnpm exec tsx scripts/test-outreach.ts` | Follow-up, stale-deal and nurture candidate rules; funding-signal matching; company normalisation; sequence steps; the consent guard |
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
+| Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
@@ -1054,7 +1141,7 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Preflight | `bash scripts/preflight.sh` | Themes, typecheck, lint, tool packs, production build |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
 production.
@@ -1124,8 +1211,11 @@ production.
 
 ## Research behind the product
 
-Three research reports were written in September 2026 and are behind the adaptive engine, the website and
-the plan:
+**AI inference** (September 2026): LLM inference techniques, financial machine learning and knowledge
+tracing, and Bloomberg's functions against the free data that can replace them. What was built from them,
+the data licences and what was left for later: [docs/research/ai-inference.md](docs/research/ai-inference.md).
+
+Three earlier research reports are behind the adaptive engine, the website and the plan:
 - new AI and machine-learning methods;
 - the fintech and dealmaking market;
 - startup and venture context.

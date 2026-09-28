@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { knowledgeNote } from "./insights";
 import { loadUserContext } from "@/lib/ai/persona";
 import { directoryRecord, enrichCompany } from "./agent";
 import { renderPlaybook, selectPlaybook } from "./autopilot-rules";
@@ -30,9 +31,9 @@ export async function composeDraft(userId: string, input: { to: string; name?: s
     .orderBy(desc(schema.crmMessages.sentAt)).limit(4);
   const [ctx, settings, playbook, directory] = await Promise.all([loadUserContext(userId), getSettings(userId), listPlaybook(userId), directoryRecord(contact.startupId)]);
 
-  const [lessons, examples] = await Promise.all([lessonsFor(userId, "compose"), ownExamples(userId, brief)]);
+  const [lessons, examples, known] = await Promise.all([lessonsFor(userId, "compose"), ownExamples(userId, brief), knowledgeNote(userId, contact.id)]);
   const { data, provider, model } = await writeCompose({
-    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples].filter(Boolean).join("\n\n"),
+    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known].filter(Boolean).join("\n\n"),
     playbook: renderPlaybook(selectPlaybook(asEntries(playbook), brief)), brief,
     to: { name: contact.name, email, company: contact.company, notes: contact.notes }, directory,
     history: history.reverse().map((m): HistoryItem => ({ direction: m.direction === "outbound" ? "outbound" : "inbound", sentAt: m.sentAt?.toISOString().slice(0, 10) ?? null, subject: m.subject, body: m.body })),

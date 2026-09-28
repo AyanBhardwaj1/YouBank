@@ -1,19 +1,23 @@
 "use client";
 
 import { forwardRef, useEffect, useMemo, useState } from "react";
-import { FUNCTIONS, FUNCTION_CODES, isFunctionCode, parseCommand, type Command, type FunctionCode } from "@/lib/functions";
+import { FUNCTIONS, FUNCTION_CODES, isFunctionCode, needsTicker, parseCommand, type Command, type FunctionCode } from "@/lib/functions";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { getCached } from "@/lib/client/companies";
 import type { TickerRow } from "@/lib/types";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
 
 type Props = { activeTicker: string; onRun: (command: Command) => void };
 type Suggestion = { text: string; label: string; hint: string; command: Command };
 
+/** Function suggestions: company functions carry the ticker, market ones stand alone. Codes that take words (EQS, PORT) complete to the code and a space. */
 const fnSuggestions = (ticker: string, prefix = ""): Suggestion[] =>
-  FUNCTION_CODES.filter((f) => f.startsWith(prefix)).map((f) => ({
-    text: `${ticker} ${f}`, label: `${ticker} ${f}`, hint: FUNCTIONS[f].hint, command: { ticker, fn: f as FunctionCode },
-  }));
+  FUNCTION_CODES.filter((f) => f.startsWith(prefix) && f !== "TOOL").map((f) => {
+    const own = needsTicker(f);
+    const words = f === "EQS" || f === "PORT";
+    const text = own ? `${ticker} ${f}` : words ? `${f} ` : f;
+    return { text, label: own ? `${ticker} ${f}` : f, hint: FUNCTIONS[f].hint, command: { ticker: own ? ticker : "", fn: f as FunctionCode } };
+  });
 
 export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBar({ activeTicker, onRun }, ref) {
   const [value, setValue] = useState("");
@@ -52,7 +56,7 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
     const toolArg = value.trim().split(/\s+/).slice(isFunctionCode(tk) ? 1 : 2).join(" ").toLowerCase();
     const tickerForTool = isFunctionCode(tk) ? activeTicker : tk;
     if ((tk === "TOOL" && tokens.length >= 1) || (second === "TOOL")) {
-      return toolsFor(profile).filter((t) => !toolArg || t.id.includes(toolArg) || t.title.toLowerCase().includes(toolArg)).slice(0, 9)
+      return catalogFor(profile).filter((t) => !toolArg || t.id.includes(toolArg) || t.title.toLowerCase().includes(toolArg)).slice(0, 9)
         .map((t) => ({ text: `${tickerForTool} TOOL ${t.id}`, label: t.id, hint: t.title, command: { ticker: tickerForTool, fn: "TOOL" as FunctionCode, arg: t.id } }));
     }
     return isFunctionCode(tk) ? [] : fnSuggestions(tk, second ?? "");
@@ -62,11 +66,11 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
 
   const choose = (s: Suggestion) => {
     if (s.text.endsWith(" ")) { setValue(s.text); return; }
-    onRun(s.command); setValue(""); setError(null); setOpen(false);
+    onRun({ ...s.command, via: "click" }); setValue(""); setError(null); setOpen(false);
   };
   const submit = () => {
     const result = parseCommand(value, activeTicker);
-    if (result.ok) { onRun(result.command); setValue(""); setError(null); setOpen(false); }
+    if (result.ok) { onRun({ ...result.command, via: "typed" }); setValue(""); setError(null); setOpen(false); }
     else setError(result.error);
   };
 
@@ -83,10 +87,14 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
           if (e.key === "ArrowDown") { e.preventDefault(); setIndex((i) => Math.min(i + 1, suggestions.length - 1)); setOpen(true); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setIndex((i) => Math.max(i - 1, 0)); }
           else if (e.key === "Tab" && suggestions[index]) { e.preventDefault(); setValue(suggestions[index].text); }
-          else if (e.key === "Enter") { if (open && suggestions[index] && (tokens.length < 2 || suggestions[index].command.fn === "TOOL") && suggestions[index].label !== first) choose(suggestions[index]); else submit(); }
+          else if (e.key === "Enter") {
+            // Complete a partial ticker or tool id from the list; a complete command runs as typed.
+            const s0 = suggestions[index];
+            if (open && s0 && s0.label !== first && ((tokens.length < 2 && !isFunctionCode(first)) || s0.command.fn === "TOOL")) choose(s0); else submit();
+          }
           else if (e.key === "Escape") { setOpen(false); (e.target as HTMLInputElement).blur(); }
         }}
-        placeholder={`${activeTicker} COMPS  ·  any US ticker + function`}
+        placeholder={`${activeTicker} COMPS  ·  ${activeTicker} WACC  ·  ECO  ·  EQS in plain English`}
         spellCheck={false}
         autoComplete="off"
         className="num w-full rounded-md border border-line bg-bg py-1.5 pl-7 pr-2 uppercase tracking-wide text-fg placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20"

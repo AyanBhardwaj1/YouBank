@@ -10,6 +10,7 @@ import {
 import { AgentSettings } from "./AgentSettings";
 import { CampaignsPanel } from "./CampaignsPanel";
 import { ContactsPanel } from "./ContactsPanel";
+import { InsightsPanel } from "./InsightsPanel";
 import { MailboxBar, type MailboxInfo } from "./MailboxBar";
 import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
@@ -41,6 +42,7 @@ const TABS = [
   { id: "inbox", label: "Inbox", icon: "Mail" },
   { id: "pipeline", label: "Pipeline", icon: "Layers" },
   { id: "contacts", label: "Contacts", icon: "Users" },
+  { id: "insights", label: "Insights", icon: "Activity" },
   { id: "campaigns", label: "Campaigns", icon: "Target" },
   { id: "nurture", label: "Nurture", icon: "RefreshCw" },
   { id: "agent", label: "Agent & autopilot", icon: "Settings" },
@@ -312,6 +314,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
       )}
 
       {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} /></div>}
+      {tab === "insights" && <div className="mt-5"><InsightsPanel ctx={ctx} /></div>}
       {tab === "nurture" && <div className="mt-5"><NurturePanel ctx={ctx} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "campaigns" && <div className="mt-5"><CampaignsPanel ctx={ctx} onDrafted={() => undefined} /></div>}
       {tab === "agent" && <div className="mt-5"><AgentSettings ctx={ctx} /></div>}

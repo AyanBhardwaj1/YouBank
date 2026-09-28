@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/user";
 import { requireSession } from "@/lib/collab/db";
-import { toolById } from "@/lib/workflows/registry";
-import { ToolRunner } from "@/components/workflows/ToolRunner";
+import { metaById } from "@/lib/workflows/catalog";
+import { SessionRunner } from "./SessionRunner";
 import type { Inputs } from "@/lib/workflows/types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const tool = session.refId ? toolById(session.refId) : undefined;
+  const tool = session.refId ? metaById(session.refId) : undefined;
   if (!tool) {
     return (
       <Shell>
@@ -53,9 +53,9 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           </div>
           <Link href="/app/collab" className="shrink-0 text-[11.5px] text-muted hover:text-fg">← All sessions</Link>
         </div>
-        <ToolRunner
-          tool={tool}
-          initialInputs={session.state as Inputs}
+        <SessionRunner
+          toolId={tool.id}
+          initialInputs={(session.state ?? {}) as Inputs}
           sessionId={session.id}
           me={{ id: user.id, name: user.name || user.email }}
         />

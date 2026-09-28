@@ -10,13 +10,14 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
 type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; error?: string; streaming?: boolean };
 
-export function AiScreen({ ticker, company, ai, openPanels, subject, prompts }: { ticker: string; company?: CompanyData; ai: AiStatus | null; openPanels: OpenPanel[]; onRun?: (c: Command) => void; subject?: string; prompts?: string[] }) {
+export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, question }: { ticker: string; company?: CompanyData; ai: AiStatus | null; openPanels: OpenPanel[]; onRun?: (c: Command) => void; subject?: string; prompts?: string[]; /** A question handed over from another screen ("Ask AI"), ready to send. */ question?: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(question ?? "");
   const [busy, setBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const { config } = useWorkspace();
-  const suggestions = prompts ?? config.suggestedPrompts(ticker);
+  const base = prompts ?? config.suggestedPrompts(ticker);
+  const suggestions = question ? [question, ...base.filter((p) => p !== question)] : base;
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages]);
 
@@ -31,7 +32,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts }: 
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), context: { ticker, panels: openPanels.map((p) => `${p.ticker} ${p.fn}`), subject } }),
+        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), context: { ticker, panels: openPanels.map((p) => `${p.ticker} ${p.fn}`.trim()), subject } }),
       });
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}));

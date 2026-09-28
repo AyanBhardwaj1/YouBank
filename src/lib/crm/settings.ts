@@ -141,7 +141,7 @@ export async function learnVoice(userId: string): Promise<{ voice: string; sampl
   const { data } = await structured(VoiceResult, "writing_voice",
     "You describe a person's email writing style so another writer can imitate it. Describe; never quote. Leave out names, companies and any other details about the people they wrote to.",
     usable.map((m, i) => `--- Email ${i + 1}: ${m.subject} ---\n${m.body.slice(0, 2000)}`).join("\n\n"),
-    { prefs: ctx.prefs });
+    { prefs: ctx.prefs, task: "summarize" });
   await saveSettings(userId, { voice: data.voice });
   return { voice: data.voice, samples: usable.length };
 }

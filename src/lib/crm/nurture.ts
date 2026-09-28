@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { knowledgeNote } from "./insights";
 import { loadUserContext } from "@/lib/ai/persona";
 import { directoryRecord } from "./agent";
 import type { DraftRow } from "./db";
@@ -147,9 +148,9 @@ export async function draftReconnect(userId: string, contactId: number, opts?: {
   const last = history.length ? history[history.length - 1].sentAt : null;
   const daysQuiet = last ? Math.floor((Date.now() - new Date(last).getTime()) / DAY_MS) : 0;
 
-  const [lessons, examples] = await Promise.all([lessonsFor(userId, "nurture"), ownExamples(userId, history.map((h) => h.body).join(" "))]);
+  const [lessons, examples, known] = await Promise.all([lessonsFor(userId, "nurture"), ownExamples(userId, history.map((h) => h.body).join(" ")), knowledgeNote(userId, contactId)]);
   const { data, provider, model } = await writeNurture({
-    persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples].filter(Boolean).join("\n\n"), ruleInstructions: opts?.ruleInstructions ?? "", daysQuiet,
+    persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known].filter(Boolean).join("\n\n"), ruleInstructions: opts?.ruleInstructions ?? "", daysQuiet,
     playbook: renderPlaybook(selectPlaybook(asEntries(playbook), history.map((h) => h.body).join("\n"))),
     contact: { name: contact.name, email: contact.email, title: contact.title, company: contact.company, kind: contact.kind, notes: contact.notes },
     directory, signals: signals.map((s) => `${s.title}. ${s.detail}`), history,

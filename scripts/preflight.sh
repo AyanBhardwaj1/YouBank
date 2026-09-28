@@ -7,11 +7,18 @@ step() { printf "\n=== %s\n" "$1"; }
 step "themes"
 pnpm exec tsx scripts/gen-themes.ts || fail=1
 
+step "tool catalog"
+pnpm exec tsx scripts/gen-catalog.ts || fail=1
+git diff --quiet -- src/lib/workflows/catalog.gen.ts || { echo "catalog.gen.ts was stale and has been regenerated: commit it"; }
+
 step "typecheck"
 pnpm exec tsc --noEmit -p tsconfig.json || fail=1
 
 step "lint"
 pnpm exec eslint src --ext .ts,.tsx || fail=1
+
+step "inference"
+pnpm exec tsx scripts/test-inference.ts > /tmp/youbank-test-inference.log 2>&1 && tail -1 /tmp/youbank-test-inference.log || { cat /tmp/youbank-test-inference.log; fail=1; }
 
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1

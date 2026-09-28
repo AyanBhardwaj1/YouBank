@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { autopilotUsers, tick } from "@/lib/crm/autopilot";
 import { secretsMatch } from "@/lib/crm/crypto";
+import { runAsUser } from "@/lib/ai/usage";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -24,7 +25,7 @@ async function handle(req: Request) {
   const results: Record<string, unknown>[] = [];
   for (const userId of await autopilotUsers()) {
     if (Date.now() > deadline - 30_000) break;
-    const r = await tick(userId, origin, Math.min(deadline, Date.now() + 120_000)).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+    const r = await runAsUser(userId, () => tick(userId, origin, Math.min(deadline, Date.now() + 120_000))).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
     results.push({
       user: userId.slice(0, 8),
       ...("error" in r ? r : {

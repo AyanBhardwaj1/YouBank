@@ -1,8 +1,8 @@
 /** Run one AI workflow end to end with its example inputs: pnpm exec tsx --env-file=.env.local scripts/run-workflow.ts <tool-id> [model] */
 import { runChat } from "../src/lib/ai/agent";
 import { toolById } from "../src/lib/workflows/registry";
-import { workflowSystemPrompt, workflowUserPrompt } from "../src/lib/workflows/prompt";
-import { WORKFLOW_OUTPUT_JSON_SCHEMA, WorkflowOutput } from "../src/lib/workflows/types";
+import { workflowContext, workflowSystemPrompt, workflowUserPrompt } from "../src/lib/workflows/prompt";
+import { WORKFLOW_OUTPUT_JSON_SCHEMA, WorkflowOutput } from "../src/lib/workflows/schema";
 
 async function main() {
   const id = process.argv[2];
@@ -15,7 +15,7 @@ async function main() {
   const { text, sources } = await runChat({
     messages: [{ role: "user", content: workflowUserPrompt(tool, inputs) }],
     context: { ticker: String(inputs.ticker ?? ""), panels: [], subject: tool.title },
-    system: workflowSystemPrompt(tool, "", new Date().toISOString().slice(0, 10)),
+    system: workflowSystemPrompt(), volatile: workflowContext(tool, "", new Date().toISOString().slice(0, 10)),
     json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
     tools: tool.tools, override: { model, effort: tool.effort }, maxTurns: 16,
     emit: (e) => { if (e.type === "tool" && e.status === "start") process.stdout.write(`  ⟳ ${e.name} ${e.summary ?? ""}\n`); if (e.type === "error") process.stdout.write(`  ! ${e.message}\n`); },

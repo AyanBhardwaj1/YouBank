@@ -336,8 +336,12 @@ export const crmMessages = pgTable("crm_messages", {
   /** Machine-sent: an auto-reply, a mailing list, a no-reply sender. Never answered automatically. */
   automated: boolean("automated").notNull().default(false),
   sentAt: timestamp("sent_at", { withTimezone: true }),
+  /** Topics the email raised (and, for inbound, what the sender showed they know or asked about); null until tagged. */
+  topics: jsonb("topics").$type<MessageTopics>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("crm_messages_thread_idx").on(t.threadId, t.sentAt), index("crm_messages_rfc_idx").on(t.rfcMessageId)]);
+
+export type MessageTopics = { topics: string[]; knows?: string[]; asks?: string[] };
 
 /**
  * A reply the agent has written, waiting for a person.
@@ -771,3 +775,21 @@ export const studioCheckpoints = pgTable("studio_checkpoints", {
   eventId: integer("event_id").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("studio_checkpoints_doc_idx").on(t.docId, t.createdAt)]);
+
+/** One row per model call or agent run: tokens and list-price cost, for cost per feature and cache hit rates. */
+export const aiUsage = pgTable("ai_usage", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id"),
+  feature: text("feature").notNull(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  effort: text("effort").notNull().default(""),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  cachedTokens: integer("cached_tokens").notNull().default(0),
+  cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  reasoningTokens: integer("reasoning_tokens").notNull().default(0),
+  costUsd: doublePrecision("cost_usd").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("ai_usage_user_idx").on(t.userId, t.createdAt)]);
+

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ToolDef, WorkflowOutput, Inputs } from "@/lib/workflows/types";
-import { WorkflowOutput as OutputSchema } from "@/lib/workflows/types";
+import { WorkflowOutput as OutputSchema } from "@/lib/workflows/schema";
 import { FieldsForm, defaultInputs } from "./FieldsForm";
 import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";

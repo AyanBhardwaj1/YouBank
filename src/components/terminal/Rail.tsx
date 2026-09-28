@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
-import type { Command } from "@/lib/functions";
+import { FUNCTIONS, type Command, type FunctionCode } from "@/lib/functions";
 import type { OpenPanel } from "./Terminal";
 import { LogoMark } from "@/components/brand/Logo";
 
@@ -15,7 +15,7 @@ const shortName = (name: string) =>
 
 export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: string; panels: OpenPanel[]; onRun: (c: Command) => void; aiLabel: string }) {
   const { config, profile } = useWorkspace();
-  const tools = toolsFor(profile).slice(0, 5);
+  const tools = catalogFor(profile).slice(0, 5);
   const watchlist = config.watchlist;
   const { data } = useCompanies(watchlist);
   return (
@@ -58,6 +58,14 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
         })}
       </ul>
 
+      <div className="border-t border-line px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">Markets and you</div>
+      <div className="flex flex-wrap gap-1 px-2 pb-2">
+        {(["WEI", "GC", "ECO", "SECT", "EQS", "LEARN"] as FunctionCode[]).map((f) => (
+          <button key={f} type="button" title={FUNCTIONS[f].hint} onClick={() => onRun({ ticker: "", fn: f, via: "click" })}
+            className="num ctl border border-line px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:border-accent/50 hover:text-accent">{f}</button>
+        ))}
+      </div>
+
       <div className="flex items-baseline justify-between border-t border-line px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">
         <span>Tools for you</span>
         <Link href="/app/tools" className="normal-case tracking-normal hover:text-fg">all →</Link>
@@ -80,7 +88,7 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
         {panels.map((p) => (
           <li key={p.id} className="flex items-center gap-2 px-1 py-0.5 text-[11px]">
             <span className="h-1.5 w-1.5 rounded-full bg-accent/80" />
-            <span className="text-fg">{p.ticker}</span>
+            {p.ticker && <span className="text-fg">{p.ticker}</span>}
             <span className="text-muted">{p.fn}</span>
           </li>
         ))}

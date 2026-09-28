@@ -81,7 +81,7 @@ export async function writeNurture(input: {
     "",
     renderHistory(input.history),
   ].filter(Boolean).join("\n\n");
-  return structured(NurtureResult, "nurture_decision", NURTURE_SYSTEM, prompt, opts);
+  return structured(NurtureResult, "nurture_decision", NURTURE_SYSTEM, prompt, { ...opts, task: "classify" });
 }
 
 /* ---------------- Lead qualification ---------------- */
@@ -115,7 +115,7 @@ export async function qualifyLeads(input: {
     "Leads:",
     ...input.leads.map((l) => JSON.stringify(l)),
   ].filter(Boolean).join("\n\n");
-  return structured(QualifyResult, "lead_qualification", QUALIFY_SYSTEM, prompt, opts);
+  return structured(QualifyResult, "lead_qualification", QUALIFY_SYSTEM, prompt, { ...opts, task: "classify" });
 }
 
 /* ---------------- Campaign steps ---------------- */
@@ -155,7 +155,7 @@ export async function writeStep(input: {
     input.directory ? `YouBank's directory record for their company (verified background):\n${JSON.stringify(input.directory)}` : "YouBank has no directory record for this company. Do not imply you know anything about it beyond the lead details.",
     input.earlier.length ? `Emails already sent to them in this sequence (no reply yet):\n${input.earlier.map((e, i) => `--- Step ${i + 1}: ${e.subject} ---\n${e.body}`).join("\n\n")}` : "",
   ].filter(Boolean).join("\n\n");
-  return structured(StepResult, "campaign_step", stepSystem(input.mode ?? "deals"), prompt, opts);
+  return structured(StepResult, "campaign_step", stepSystem(input.mode ?? "deals"), prompt, { ...opts, task: "draft" });
 }
 
 /* ---------------- A new email ---------------- */
@@ -183,5 +183,5 @@ export async function writeCompose(input: {
     input.directory ? `YouBank's directory record for their company (verified background):\n${JSON.stringify(input.directory)}` : "",
     input.history.length ? `Earlier emails with this person:\n${renderHistory(input.history)}` : "",
   ].filter(Boolean).join("\n\n");
-  return structured(ComposeResult, "compose_email", system, prompt, opts);
+  return structured(ComposeResult, "compose_email", system, prompt, { ...opts, task: "draft" });
 }

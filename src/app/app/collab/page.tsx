@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { currentUser } from "@/lib/auth/user";
 import { listSessions } from "@/lib/collab/db";
 import { myTeams } from "@/lib/teams/db";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
 import type { Profile, RoleId } from "@/lib/roles";
 import { CollabList } from "@/components/collab/CollabList";
 
@@ -30,7 +30,7 @@ export default async function CollabPage() {
     sectors: p?.sectors ?? [], goals: p?.goals ?? "", name: user.name,
   };
   // Only id and title cross to the browser; the tool definitions stay on the server.
-  const tools = toolsFor(profile).slice(0, 60).map((t) => ({ id: t.id, title: t.title, kind: t.kind }));
+  const tools = catalogFor(profile).slice(0, 60).map((t) => ({ id: t.id, title: t.title, kind: t.kind }));
 
   return (
     <CollabList

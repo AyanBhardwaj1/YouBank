@@ -6,7 +6,7 @@ import { ROLES, SECTORS, type Profile, type RoleId } from "@/lib/roles";
 import { THEMES, isThemeId, type ThemeId } from "@/lib/themes";
 import { ThemeThumb } from "@/components/theme/ThemePicker";
 import { useTheme } from "@/components/theme/ThemeProvider";
-import { toolsForRole } from "@/lib/workflows/registry";
+import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 
 type Draft = Profile;
@@ -22,7 +22,7 @@ export function OnboardingWizard({ initial, userName }: { initial: Partial<Profi
   const [error, setError] = useState<string | null>(null);
   const role = ROLES[d.role];
   const steps = ["Role", role.specialtyLabel, "Experience", "Focus", "Style", "Goals"];
-  const toolCount = toolsForRole(d.role).length;
+  const toolCount = catalogForRole(d.role).length;
 
   const pickRole = (id: RoleId) => {
     setD({ ...d, role: id, specialty: "", seniority: "", firmType: "" });

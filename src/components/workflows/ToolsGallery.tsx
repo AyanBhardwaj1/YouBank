@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ALL_TOOL_DEFS, toolsFor } from "@/lib/workflows/registry";
+import { TOOL_CATALOG, catalogFor, type ToolMeta } from "@/lib/workflows/catalog";
 import { CATEGORIES } from "@/lib/workflows/categories";
-import type { ToolDef } from "@/lib/workflows/types";
 import { ROLES, type RoleId } from "@/lib/roles";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Icon } from "@/components/ui/Icon";
 
-export function ToolCard({ t, href, compact = false }: { t: ToolDef; href?: string; compact?: boolean }) {
+export function ToolCard({ t, href, compact = false }: { t: ToolMeta; href?: string; compact?: boolean }) {
   return (
     <Link href={href ?? `/app/tools/${t.id}`} className={`lift group panel flex flex-col ${compact ? "p-2.5" : "p-3.5"}`}>
       <div className="flex items-start gap-2.5">
@@ -37,10 +36,10 @@ export function ToolsGallery({ role: roleProp }: { role?: RoleId }) {
   const [cat, setCat] = useState<string>("");
   const [kind, setKind] = useState<"" | "ai" | "calc">("");
   const [allRoles, setAllRoles] = useState(false);
-  const base = useMemo(() => (allRoles ? ALL_TOOL_DEFS : toolsFor({ role, specialty: profile.specialty })), [allRoles, role, profile.specialty]);
+  const base = useMemo(() => (allRoles ? TOOL_CATALOG : catalogFor({ role, specialty: profile.specialty })), [allRoles, role, profile.specialty]);
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return base.filter((t) => (!cat || t.category === cat) && (!kind || t.kind === kind) && (!s || [t.title, t.tagline, t.description, ...(t.tags ?? []), t.category].join(" ").toLowerCase().includes(s)));
+    return base.filter((t) => (!cat || t.category === cat) && (!kind || t.kind === kind) && (!s || [t.title, t.tagline, ...(t.tags ?? []), t.category].join(" ").toLowerCase().includes(s)));
   }, [base, q, cat, kind]);
   const cats = CATEGORIES.filter((c) => base.some((t) => t.category === c));
   const forYou = list.filter((t) => t.roles !== "all" && t.specialties?.includes(profile.specialty));

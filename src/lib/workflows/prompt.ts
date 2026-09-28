@@ -1,17 +1,12 @@
 import type { WorkflowDef } from "./types";
 
 /**
- * System prompt for an AI workflow: the general analyst rules, the workflow's own methodology, and the
- * output contract (structured blocks). The final assistant message must be JSON matching WorkflowOutput.
+ * The workflow system prompt in two parts. The rules and the output contract are the same for every
+ * workflow and person, so they (with the tool list) form a prefix the providers cache; the workflow's
+ * own method, the date and who the person is follow in workflowContext().
  */
-export function workflowSystemPrompt(tool: WorkflowDef, persona: string, today: string): string {
-  return `You are YouBank AI running the "${tool.title}" workflow for a finance professional. Today is ${today}.
-
-WHAT THIS WORKFLOW PRODUCES
-${tool.description}
-
-METHOD (follow exactly)
-${tool.instructions}
+export function workflowSystemPrompt(): string {
+  return `You are YouBank AI running a workflow for a finance professional. The workflow, its method and the date follow these rules.
 
 DATA RULES
 - Every number comes from a tool call (SEC XBRL, filing text, EDGAR full-text search, Form D, the startup directory, web search) or from the user's inputs. Never invent figures. If something is unavailable, say so in caveats and use the closest proxy, labeled.
@@ -32,7 +27,17 @@ Block types and when to use them:
 - sensitivity: two-way tables (rows x cols of numbers) for valuation and returns.
 - timeline: dated events (filings, maturities, process steps). steps: process or procedures. checklist: to-dos with owner/due. risks: risk register with severity and mitigation.
 - qa: question/answer pairs (interview prep, Q&A banks). email: outreach drafts. score: scored rubrics. callout: one important warning or insight.
-Use at least three different block types, lead with kpis or a callout when there is a headline, and finish with nextSteps and caveats. Titles are short. Do not repeat the same information in two blocks.${persona ? `\n\nABOUT THE USER\n${persona}` : ""}`;
+Use at least three different block types, lead with kpis or a callout when there is a headline, and finish with nextSteps and caveats. Titles are short. Do not repeat the same information in two blocks.`;
+}
+
+export function workflowContext(tool: WorkflowDef, persona: string, today: string): string {
+  return `WORKFLOW: "${tool.title}". Today is ${today}.
+
+WHAT THIS WORKFLOW PRODUCES
+${tool.description}
+
+METHOD (follow exactly)
+${tool.instructions}${persona ? `\n\nABOUT THE USER\n${persona}` : ""}`;
 }
 
 /** Turn validated inputs into the user message, appending any pasted data. */

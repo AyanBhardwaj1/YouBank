@@ -51,7 +51,7 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
               </div>
             )}
           </div>
-        ) : <div className="text-[11px] text-muted">No price (FMP key missing or symbol unsupported)</div>}
+        ) : <div className="text-[11px] text-muted">No price right now: market data is unavailable for this symbol or the plan’s daily limit is used up</div>}
       </div>
 
       <div className="grid grid-cols-3 gap-2 xl:grid-cols-6">

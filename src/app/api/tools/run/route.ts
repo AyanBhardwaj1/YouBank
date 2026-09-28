@@ -1,10 +1,12 @@
 import { runChat } from "@/lib/ai/agent";
 import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
+import { runAsUser } from "@/lib/ai/usage";
 import { MODELS, type Effort } from "@/lib/ai/models";
 import { toolById } from "@/lib/workflows/registry";
-import { workflowSystemPrompt, workflowUserPrompt } from "@/lib/workflows/prompt";
-import { WORKFLOW_OUTPUT_JSON_SCHEMA, WorkflowOutput, type Inputs } from "@/lib/workflows/types";
+import { workflowSystemPrompt, workflowContext, workflowUserPrompt } from "@/lib/workflows/prompt";
+import { WORKFLOW_OUTPUT_JSON_SCHEMA, WorkflowOutput } from "@/lib/workflows/schema";
+import type { Inputs } from "@/lib/workflows/types";
 import { db, schema } from "@/db";
 
 export const dynamic = "force-dynamic";
@@ -55,14 +57,14 @@ export async function POST(req: Request) {
     async start(controller) {
       const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
       let provider = "", model = "";
-      const { text, sources } = await runChat({
+      const { text, sources } = await runAsUser(user.id, () => runChat({
         messages: [{ role: "user", content: workflowUserPrompt(tool, cleaned.inputs) }],
         context: { ticker: String(cleaned.inputs.ticker ?? ""), panels: [], subject: tool.title, persona },
-        system: workflowSystemPrompt(tool, persona, today),
+        system: workflowSystemPrompt(), volatile: workflowContext(tool, persona, today), feature: `tool:${tool.id}`, parallelTools: true,
         json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
         tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS,
         emit: (e) => { if (e.type === "done") { provider = e.provider; model = e.model; } if (e.type !== "text") emit(e); else emit({ type: "progress", chars: e.text.length }); },
-      });
+      }));
       const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
       let output: WorkflowOutput | null = null;
       let error = "";

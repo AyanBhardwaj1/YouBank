@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { toolById } from "@/lib/workflows/registry";
+import { metaById } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 
 export type LibRun = { id: number; toolId: string; title: string; model: string; provider: string; status: string; durationMs: number; createdAt: string };
@@ -57,7 +57,7 @@ export function LibraryClient({ runs, sheets, groups }: { runs: LibRun[]; sheets
             ) : (
               <ul className="stagger space-y-1.5">
                 {list.map((r) => {
-                  const t = toolById(r.toolId);
+                  const t = metaById(r.toolId);
                   return (
                     <li key={r.id} className="lift panel flex items-center gap-3 p-3">
                       <span className={`grid h-8 w-8 shrink-0 place-items-center ctl ${r.provider === "calc" ? "bg-info/10 text-info" : "bg-accent-soft text-accent"}`}><Icon name={t?.icon ?? "Wand2"} className="h-4 w-4" /></span>

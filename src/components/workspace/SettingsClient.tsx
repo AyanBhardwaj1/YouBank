@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
+import { AiUsage } from "@/components/ai/AiUsage";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { toolsFor } from "@/lib/workflows/registry";
+import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 
@@ -20,9 +21,10 @@ type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs }: { email: string; prefs: AiPrefs }) {
   const [tab, setTab] = useState<Tab>("style");
+  const [routing, setRouting] = useState(prefs.routing !== false);
   const { profile, config } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
-  const tools = toolsFor(profile);
+  const tools = catalogFor(profile);
 
   return (
     <div className="h-full overflow-auto">
@@ -65,6 +67,7 @@ export function SettingsClient({ email, prefs }: { email: string; prefs: AiPrefs
               </div>
             )}
             <div className="mt-4"><ModelPicker value={{ model: settings.model ?? prefs.model, effort: settings.effort ?? prefs.effort }} onChange={setSettings} /></div>
+            <AiUsage routing={routing} onRouting={(v) => { setRouting(v); void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: { routing: v } }) }); }} />
           </section>
         )}
 

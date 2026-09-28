@@ -558,6 +558,14 @@ export class Engine {
     finally { for (const k of keys) { this.overrides.delete(k); this.invalidate(k); } }
   }
 
+  /** Several outputs with some inputs replaced (references like "DCF!C5"), in one pass. Nothing in the workbook changes. */
+  whatIf(sheet: string, outputs: string[], values: { ref: string; value: Prim }[]): Prim[] {
+    const outs = outputs.map((o) => this.resolve(o, sheet));
+    const ov: Record<string, Prim> = {};
+    for (const v of values) { const r = this.resolve(v.ref, sheet); ov[K(r.sheet, r.a)] = v.value; }
+    return this.withOverrides(ov, () => outs.map((o) => this.get(o.sheet, o.a)));
+  }
+
   /** A two-way data table: the output for every (row value, column value) pair. */
   table(sheet: string, output: string, rowInput: string, colInput: string, rowValues: number[], colValues: number[]): Prim[][] {
     const out = this.resolve(output, sheet), ri = this.resolve(rowInput, sheet), ci = this.resolve(colInput, sheet);

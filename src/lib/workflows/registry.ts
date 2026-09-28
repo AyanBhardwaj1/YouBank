@@ -9,10 +9,11 @@ import { CORPFIN_PACK } from "./packs/corpfin";
 import { CONSULTANT_PACK } from "./packs/consultant";
 import { ACCOUNTANT_PACK } from "./packs/accountant";
 import { STUDENT_PACK } from "./packs/student";
+import { INFERENCE_PACK } from "./packs/inference";
 
 /** Every tool, de-duplicated by id (first definition wins). A pack that fails to load is skipped, not fatal. */
 export const ALL_TOOL_DEFS: ToolDef[] = (() => {
-  const packs: unknown[] = [CORE_PACK, BANKER_PACK, PE_PACK, VC_PACK, MARKETS_PACK, CORPFIN_PACK, CONSULTANT_PACK, ACCOUNTANT_PACK, STUDENT_PACK];
+  const packs: unknown[] = [CORE_PACK, BANKER_PACK, PE_PACK, VC_PACK, MARKETS_PACK, CORPFIN_PACK, CONSULTANT_PACK, ACCOUNTANT_PACK, STUDENT_PACK, INFERENCE_PACK];
   const seen = new Set<string>();
   const out: ToolDef[] = [];
   for (const pack of packs) {

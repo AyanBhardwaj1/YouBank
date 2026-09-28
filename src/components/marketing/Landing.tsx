@@ -44,6 +44,15 @@ const STUDIO = [
   { icon: "CheckSquare", title: "Before it goes out", body: "A brand check for stale cover dates, missing source lines, text off the page and off-brand colours, with one-click fixes. Checkpoints show exactly what moved since the version the MD saw." },
 ];
 
+const TERMINAL = [
+  { icon: "Gauge", title: "Risk with its error bars", body: "GARCH volatility forecasts and a price cone, betas four ways with their standard errors (including Welch's, the best predictor of future beta), and value at risk three ways with a backtest that says whether it held." },
+  { icon: "Shield", title: "Credit without a ratings licence", body: "An implied rating from Altman's Z'', Ohlson's O-score and Merton's distance to default, with historical default rates, for every US filer. Where a model does not fit a company, it is left out and the screen says why." },
+  { icon: "LineChart", title: "Forecasts with honest intervals", body: "Revenue and the economy forecast with the methods that won the M4 competition, and bands sized by how wrong the method has actually been, with the coverage shown. Set beside the Street's consensus." },
+  { icon: "BarChart3", title: "Valuation as a range", body: "WACC from its parts with a Monte Carlo range, and a Monte Carlo DCF with correlated inputs, in the terminal, the tool library and inside any Studio model: P10, P50, P90 and what drives the spread." },
+  { icon: "Landmark", title: "Rates and the economy", body: "The Treasury curve with its Nelson-Siegel factors and the New York Fed's recession probability; BLS inflation and jobs with model outlooks and the Sahm rule. Markets boards read each move in its own volatility." },
+  { icon: "GraduationCap", title: "It learns what you know", body: "Knowledge tracing follows how well you know each function: hints fade as you master them, and the next functions unlock when you are ready. Ask for a quick quiz, or an AI read of any screen." },
+];
+
 const GUARDRAILS = [
   "Autopilot is off until you switch it on, and each kind of email has its own setting: off, ask me, or autopilot.",
   "It never sends what it is unsure of, anything sensitive, anything with a blank to fill, or anything that needs your input. It says why.",
@@ -107,6 +116,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
           <nav className="ml-4 hidden items-center gap-4 text-[12.5px] text-muted md:flex">
             <a href="#loop" className="hover:text-fg">Product</a>
             <a href="#agent" className="hover:text-fg">Agent</a>
+            <a href="#terminal" className="hover:text-fg">Terminal</a>
             <a href="#studio" className="hover:text-fg">Studio</a>
             <a href="#engine" className="hover:text-fg">Adaptive engine</a>
             <a href="#demos" className="hover:text-fg">Demos</a>
@@ -269,6 +279,25 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
               <p className="mt-4 text-[11px] text-muted">Every change is logged with its undo. Work in the browser, or inside Excel and PowerPoint with the add-in; files export with formulas and native charts intact.</p>
             </div>
           </Reveal>
+        </div>
+      </section>
+
+      {/* terminal */}
+      <section id="terminal" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <Reveal>
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">The terminal</h2>
+          <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">Terminal-grade functions, with the models shown.</p>
+          <p className="mt-2 max-w-[70ch] text-[12.5px] text-muted">More than thirty-five functions on familiar codes: <span className="num text-fg">GP BETA RISK WACC IRAT QUAL FCST EE ANR DVD GC ECO WEI EQS PORT</span>. Each analytics screen shows its method and sources, and the assistant uses the same models, so an answer about risk or credit names the model behind every number.</p>
+        </Reveal>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {TERMINAL.map((a, i) => (
+            <Reveal key={a.title} delay={i * 60}>
+              <div className="h-full panel p-4">
+                <h3 className="flex items-center gap-2 text-[13.5px] font-semibold"><Icon name={a.icon} className="h-4 w-4 text-accent" />{a.title}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{a.body}</p>
+              </div>
+            </Reveal>
+          ))}
         </div>
       </section>
 

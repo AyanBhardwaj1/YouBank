@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelDef } from "@/lib/ai/models";
 
 export type AiSettings = { model?: string; effort?: Effort };
@@ -10,24 +10,25 @@ let catalogCache: Catalog | null = null;
 let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string } | null = null;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
+const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 
 /** Account-level AI settings, shared by every picker on the page and persisted to the profile. */
 export function useAiSettings() {
-  const [, force] = useState(0);
+  // The server has no status, so hydration renders none too (the server snapshot); the shared store
+  // takes over after, even when another component on the page fetched it before this one hydrated.
+  const statusNow = useSyncExternalStore(subscribe, () => statusCache, () => null);
+  const catalogNow = useSyncExternalStore(subscribe, () => catalogCache, () => null);
   useEffect(() => {
-    const l = () => force((n) => n + 1);
-    listeners.add(l);
     if (!statusCache) fetch("/api/ai/status").then((r) => r.json()).then((s) => { statusCache = s; notify(); }).catch(() => {});
     if (!catalogCache) fetch("/api/ai/models").then((r) => r.json()).then((c) => { if (c && Array.isArray(c.models)) { catalogCache = c; notify(); } }).catch(() => {});
-    return () => { listeners.delete(l); };
   }, []);
-  const settings: AiSettings = { model: statusCache?.model, effort: statusCache?.effort };
+  const settings: AiSettings = { model: statusNow?.model, effort: statusNow?.effort };
   const setSettings = (next: AiSettings, persist = true) => {
     if (statusCache) statusCache = { ...statusCache, model: next.model ?? statusCache.model, effort: next.effort ?? statusCache.effort, label: MODELS.find((m) => m.id === next.model)?.label };
     notify();
     if (persist) fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: next }) }).catch(() => {});
   };
-  return { settings, setSettings, catalog: catalogCache, status: statusCache };
+  return { settings, setSettings, catalog: catalogNow, status: statusNow };
 }
 
 const tierLabel: Record<ModelDef["tier"], string> = { flagship: "Flagship", pro: "Pro", balanced: "Balanced", fast: "Fast", reasoning: "Reasoning", legacy: "Older" };

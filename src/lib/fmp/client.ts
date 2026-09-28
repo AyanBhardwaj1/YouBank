@@ -1,4 +1,4 @@
-import { cacheJson } from "@/lib/cache";
+import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
 
 /** Financial Modeling Prep. Free tier: `profile` (price, market cap, change, 52w range) and `search-name`. */
 const BASE = "https://financialmodelingprep.com/stable";
@@ -13,9 +13,12 @@ export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetche
   const key = process.env.FMP_API_KEY;
   if (!key) return null;
   const rows = await cacheJson<FmpProfile[] | null>(`fmp:profile:${symbol}`, 15 * 60_000, async () => {
+    // The plan's daily limit (see FMP_LIMIT_KEY in market/fmp): skip the request while it is in force.
+    if (await cacheGet("fmp:daily-limit")) return null;
     const res = await fetch(`${BASE}/profile?symbol=${encodeURIComponent(symbol)}&apikey=${key}`, { cache: "no-store" });
     if (!res.ok) return null;
-    const data = (await res.json()) as unknown;
+    const data = (await res.json().catch(() => null)) as unknown;
+    if (data && typeof data === "object" && /Limit Reach/i.test(String((data as { "Error Message"?: string })["Error Message"] ?? ""))) { await cacheSet("fmp:daily-limit", "1", 30 * 60_000); return null; }
     return Array.isArray(data) ? (data as FmpProfile[]) : null; // FMP returns an object with a message on plan errors
   });
   const p = rows?.[0];

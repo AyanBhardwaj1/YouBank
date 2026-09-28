@@ -58,7 +58,7 @@ export async function generalizeAnswer(userId: string, question: string, answer:
     const ctx = await loadUserContext(userId);
     const { data } = await structured(General, "playbook_entry",
       "You turn a question a person answered about one specific email into a reusable playbook entry for their email assistant. Remove the names of the specific person and company and any one-off detail. Keep every fact, number, price, condition and limit exactly as the person wrote it; never add, round or soften anything. If the answer only makes sense for that one case, keep it specific.",
-      `Question the assistant asked: ${question}\nThe person's answer: ${answer}`, { prefs: ctx.prefs });
+      `Question the assistant asked: ${question}\nThe person's answer: ${answer}`, { prefs: ctx.prefs, task: "extract" });
     return data.question.trim() && data.answer.trim() ? { question: data.question.trim(), answer: data.answer.trim() } : { question, answer };
   } catch {
     return { question, answer };

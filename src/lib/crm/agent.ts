@@ -193,7 +193,7 @@ export async function triageThread(thread: ThreadInput, opts?: {
     opts?.audience === "internal" ? "The sender works at the reader's company." : "",
     renderThread(thread),
   ].filter(Boolean);
-  const res = await structured(triageSchema(mode), "email_triage", TRIAGE_SYSTEM[mode], parts.join("\n\n"), { prefs: opts?.prefs, override: opts?.override });
+  const res = await structured(triageSchema(mode), "email_triage", TRIAGE_SYSTEM[mode], parts.join("\n\n"), { prefs: opts?.prefs, override: opts?.override, task: "classify" });
   return { ...res, data: res.data as TriageResult };
 }
 
@@ -219,7 +219,7 @@ export async function draftReply(
     "",
     renderThread(thread),
   ].filter(Boolean);
-  return structured(DraftResult, "email_draft", system, parts.join("\n\n"), { prefs: opts?.prefs, override: opts?.override });
+  return structured(DraftResult, "email_draft", system, parts.join("\n\n"), { prefs: opts?.prefs, override: opts?.override, task: "draft" });
 }
 
 /** The company domain for a thread's inbound sender, used for enrichment and contact records. */

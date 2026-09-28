@@ -161,7 +161,7 @@ export const inferLessons: InferLessons = async (userId, context, original, fina
   const ctx = await loadUserContext(userId);
   const knownText = known.length ? known.map((k) => `#${k.id}: ${k.rule}`).join("\n") : "(none yet)";
   const { data } = await structured(LessonResult, "edit_lessons", LESSON_SYSTEM,
-    `Context: ${context}\n\n--- Known lessons ---\n${knownText}\n\n--- The assistant's draft ---\n${original.slice(0, 4000)}\n\n--- What the person sent ---\n${final.slice(0, 4000)}`, { prefs: ctx.prefs });
+    `Context: ${context}\n\n--- Known lessons ---\n${knownText}\n\n--- The assistant's draft ---\n${original.slice(0, 4000)}\n\n--- What the person sent ---\n${final.slice(0, 4000)}`, { prefs: ctx.prefs, task: "extract" });
   return data.lessons.map((l) => ({ rule: l.rule, sameAs: l.same_as }));
 };
 

@@ -1,6 +1,8 @@
 /** Validate a tool pack: pnpm exec tsx scripts/test-pack.ts <role|all> */
 import { ALL_TOOL_DEFS } from "../src/lib/workflows/registry";
-import { WorkflowOutput, type ToolDef } from "../src/lib/workflows/types";
+import { WorkflowOutput } from "../src/lib/workflows/schema";
+import type { ToolDef } from "../src/lib/workflows/types";
+import { TOOL_CATALOG } from "../src/lib/workflows/catalog";
 
 const role = process.argv[2] ?? "all";
 const tools: ToolDef[] = role === "all" ? ALL_TOOL_DEFS : ALL_TOOL_DEFS.filter((t) => t.roles === "all" || t.roles.includes(role as never));
@@ -24,6 +26,12 @@ for (const t of tools) {
     } catch (e) { console.error(`${t.id}: compute threw on example: ${(e as Error).message}`); failures++; }
     try { t.compute({}); } catch { /* throwing on empty inputs is acceptable */ }
   }
+}
+// The catalog the browser lists from must match the packs (regenerate with scripts/gen-catalog.ts).
+if (TOOL_CATALOG.length !== ALL_TOOL_DEFS.length) { console.error(`catalog has ${TOOL_CATALOG.length} tools, the registry ${ALL_TOOL_DEFS.length}: run scripts/gen-catalog.ts`); failures++; }
+for (const t of ALL_TOOL_DEFS) {
+  const m = TOOL_CATALOG.find((x) => x.id === t.id);
+  if (!m || m.kind !== t.kind || m.title !== t.title || m.tagline !== t.tagline || m.category !== t.category) { console.error(`${t.id}: catalog entry missing or stale: run scripts/gen-catalog.ts`); failures++; }
 }
 const ai = tools.filter((t) => t.kind === "ai").length, calc = tools.length - ai;
 console.log(`${role}: ${tools.length} tools (${ai} AI workflows, ${calc} calculators), ${failures} problem(s)`);

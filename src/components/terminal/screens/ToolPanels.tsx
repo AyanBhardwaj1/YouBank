@@ -1,16 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import type { Command } from "@/lib/functions";
-import { ALL_TOOL_DEFS, toolById, toolsFor } from "@/lib/workflows/registry";
-import { ToolRunner } from "@/components/workflows/ToolRunner";
+import { TOOL_CATALOG, catalogFor, metaById } from "@/lib/workflows/catalog";
+import { useTool } from "@/components/workflows/useTool";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Icon } from "@/components/ui/Icon";
+
+// The runner (and the output schema it validates with) loads when a tool opens, not with the terminal.
+const ToolRunner = dynamic(() => import("@/components/workflows/ToolRunner").then((m) => m.ToolRunner), { loading: () => <div className="p-3 text-[12px] text-muted">Loading…</div> });
 
 /** First tool whose id, title, or tags contain any of the keywords (packs are data, so lookups are by keyword). */
 export function findToolId(keywords: string[]): string | null {
   const ks = keywords.map((k) => k.toLowerCase());
-  const hit = ALL_TOOL_DEFS.find((t) => ks.some((k) => t.id.includes(k.replace(/\s+/g, "-")) || t.title.toLowerCase().includes(k) || (t.tags ?? []).some((g) => g.toLowerCase().includes(k))));
+  const hit = TOOL_CATALOG.find((t) => ks.some((k) => t.id.includes(k.replace(/\s+/g, "-")) || t.title.toLowerCase().includes(k) || (t.tags ?? []).some((g) => g.toLowerCase().includes(k))));
   return hit?.id ?? null;
 }
 
@@ -20,7 +24,7 @@ export function ToolsPanel({ ticker, onRun }: { ticker: string; onRun: (c: Comma
   const [q, setQ] = useState("");
   const tools = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return toolsFor(profile).filter((t) => !s || [t.title, t.tagline, t.category, ...(t.tags ?? [])].join(" ").toLowerCase().includes(s));
+    return catalogFor(profile).filter((t) => !s || [t.title, t.tagline, t.category, ...(t.tags ?? [])].join(" ").toLowerCase().includes(s));
   }, [profile, q]);
   return (
     <div className="flex h-full flex-col">
@@ -41,9 +45,10 @@ export function ToolsPanel({ ticker, onRun }: { ticker: string; onRun: (c: Comma
 }
 
 export function ToolPanel({ ticker, id, onRun }: { ticker: string; id: string; onRun: (c: Command) => void }) {
-  const tool = toolById(id);
-  if (!tool) {
-    const near = ALL_TOOL_DEFS.filter((t) => t.id.includes(id.split("-")[0] ?? "")).slice(0, 6);
+  const meta = metaById(id);
+  const tool = useTool(id);
+  if (!meta || tool === null) {
+    const near = TOOL_CATALOG.filter((t) => t.id.includes(id.split("-")[0] ?? "")).slice(0, 6);
     return (
       <div className="p-3 text-[12px]">
         <div className="text-neg">No tool with id “{id}”.</div>
@@ -52,5 +57,6 @@ export function ToolPanel({ ticker, id, onRun }: { ticker: string; id: string; o
       </div>
     );
   }
+  if (!tool) return <div className="p-3 text-[12px] text-muted">Loading {meta.title}…</div>;
   return <ToolRunner key={`${id}-${ticker}`} tool={tool} compact ticker={ticker} />;
 }
