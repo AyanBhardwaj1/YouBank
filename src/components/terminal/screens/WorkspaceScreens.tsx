@@ -5,7 +5,7 @@ import { FUNCTIONS, isFunctionCode, needsTicker, type Command } from "@/lib/func
 import type { PortfolioView } from "@/lib/terminal/portfolio";
 import type { Filter, Metric, ScreenRow } from "@/lib/terminal/screen";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { BarList, DataTable, fm, fn, fp, Frame, fsp, Heatmap, Hint, Meter, Pill, postTerminal, recordSkill, Section, terminalUrl, Tile, Tiles, tone, useSkills, Why, type Column } from "../kit";
+import { BarList, DataTable, fm, fn, fp, Frame, fsp, Heatmap, Hint, Meter, Pill, postTerminal, recordSkill, Section, terminalUrl, Tile, Tiles, tone, useSkills, Why, type Column, type Sources } from "../kit";
 
 type Props = { onRun?: (c: Command) => void; arg?: string; activeTicker: string };
 
@@ -119,18 +119,18 @@ function parseHoldings(text: string): { symbol: string; weight: number }[] {
 export function PortScreen({ arg }: Props) {
   const { config } = useWorkspace();
   const [text, setText] = useState(arg || config.watchlist.slice(0, 6).join(" "));
-  const [state, setState] = useState<{ data?: PortfolioView; error?: string; planLimited?: boolean; busy: boolean } | null>(null);
+  const [state, setState] = useState<{ data?: PortfolioView; error?: string; planLimited?: boolean; busy: boolean; sources?: Sources } | null>(null);
   const run = async (t: string) => {
     const holdings = parseHoldings(t);
     if (!holdings.length) return;
     setState({ busy: true });
     const r = await postTerminal<PortfolioView>("portfolio", { holdings });
-    setState({ busy: false, data: r.data, error: r.error, planLimited: r.planLimited });
+    setState({ busy: false, data: r.data, error: r.error, planLimited: r.planLimited, sources: r.sources });
   };
   useEffect(() => {
     if (!arg) return;
     let live = true;
-    void postTerminal<PortfolioView>("portfolio", { holdings: parseHoldings(arg) }).then((r) => { if (live) setState({ busy: false, data: r.data, error: r.error, planLimited: r.planLimited }); });
+    void postTerminal<PortfolioView>("portfolio", { holdings: parseHoldings(arg) }).then((r) => { if (live) setState({ busy: false, data: r.data, error: r.error, planLimited: r.planLimited, sources: r.sources }); });
     return () => { live = false; };
   }, [arg]);
   return (
@@ -143,7 +143,7 @@ export function PortScreen({ arg }: Props) {
         {!state ? (
           <div className="p-3"><Hint skill="PORT">Enter tickers and weights (weights are normalized; leave them out for equal weights). The analysis uses two years of daily prices: how volatile the book is, how much of the risk each holding contributes (rarely its share of the money), how the holdings move together, and a bootstrap of a year of outcomes.</Hint></div>
         ) : (
-          <Frame q={{ data: state.data, error: state.error, planLimited: state.planLimited ?? false, loading: state.busy }} what="portfolio prices">
+          <Frame q={{ data: state.data, error: state.error, planLimited: state.planLimited ?? false, loading: state.busy, sources: state.sources }} what="portfolio prices">
             {(d) => (
               <div className="flex flex-col gap-3 p-3">
                 <Tiles>

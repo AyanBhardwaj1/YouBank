@@ -2,7 +2,7 @@ import type { CompanyData } from "./types";
 import { resolveTicker } from "./edgar/tickers";
 import { fyeLabel, getSubmissions, recentFilings, submissionsUrl } from "./edgar/submissions";
 import { factsUrl, fiscalLabel, getCompanyFacts, instantAt, latestEnd, ltmAt, addMonths, pickConcept, quarterAt, quarterEnds, rowsFor, extensionConcepts, recentCoverage, type CompanyFacts, type Fact } from "./edgar/facts";
-import { fmpProfile } from "./fmp/client";
+import { quoteProfile } from "./market/data";
 import { applyManualInputs } from "@/db/manual";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
@@ -108,8 +108,14 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
       if (row && Date.now() - row.fetchedAt.getTime() < COMPANY_TTL_MS) {
         base = structuredClone(row.data as CompanyData);
         // Refresh the price part more often than the fundamentals.
-        const p = await fmpProfile(ticker).catch(() => null);
-        if (p && base.price) { const [lo, hi] = p.range?.split("-").map(Number) ?? [NaN, NaN]; base.price = { ...base.price, last: p.price, change: p.change, changePct: p.changePercentage, marketCap: p.marketCap / MM, low52: Number.isFinite(lo) ? lo : base.price.low52, high52: Number.isFinite(hi) ? hi : base.price.high52, asOf: p.fetchedAt }; }
+        // A cached record without a price (every feed was out when it was built) gets one when a feed is back.
+        const p = await quoteProfile(ticker).catch(() => null);
+        if (p) {
+          const [lo, hi] = p.range?.split("-").map(Number) ?? [NaN, NaN];
+          const cap = p.marketCap > 0 ? p.marketCap / MM : base.balance.sharesOut ? p.price * base.balance.sharesOut : base.price?.marketCap ?? null;
+          if (cap !== null) base.price = { last: p.price, change: p.change, changePct: p.changePercentage, marketCap: cap, low52: Number.isFinite(lo) ? lo : base.price?.low52 ?? null, high52: Number.isFinite(hi) ? hi : base.price?.high52 ?? null, asOf: p.fetchedAt };
+          if (!base.description && p.description) base.description = p.description;
+        }
       }
     } catch { /* cache unavailable */ }
   }
@@ -131,7 +137,7 @@ async function assembleCompany(tickerRaw: string): Promise<CompanyData | null> {
   const [sub, cf, profile] = await Promise.all([
     getSubmissions(row.cik),
     getCompanyFacts(row.cik),
-    fmpProfile(row.ticker).catch(() => null),
+    quoteProfile(row.ticker).catch(() => null),
   ]);
 
   const concepts: Record<string, string> = {};

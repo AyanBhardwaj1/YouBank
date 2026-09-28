@@ -187,6 +187,39 @@ re-explain), what they heard before (refer back) and what is worth raising.
 | Financial Modeling Prep | Prices, quotes, estimates, grades, dividends, M&A, sectors | The free plan covers daily prices for about 87 sample tickers and caps requests per day; FMP Starter (about $19 a month billed yearly) covers all US symbols, and a separate display licence is needed before prices are shown to paying users |
 | Loughran-McDonald dictionary | Not used | Academic licence only |
 
+### Backups when FMP is out
+
+The free plan's daily cap and its 87-ticker limit made the terminal fragile, so every market-data call
+now falls back in order (`src/lib/market/data.ts`):
+
+1. **Free sources.** Nasdaq's quote API (keyless) for every US stock and ETF: daily history, quotes,
+   market cap, dividends, earnings surprises and dates, EPS forecasts, analyst targets and ratings,
+   movers. ETFs stand in for what Nasdaq does not list (S&P 500 via SPY, gold via GLD; returns, not
+   levels). The ECB's reference rates for currencies (via Frankfurter), CoinGecko for crypto, the SPDR
+   sector ETFs for sectors, and merger filings on SEC EDGAR for deals. Nasdaq has dividend history only
+   for Nasdaq-listed stocks, so for the rest DVD reads dividends per share from the company's own 10-K
+   and 10-Q XBRL: fiscal quarters for the table, 10-K fiscal years for growth and the no-cut streak (a
+   52-week year ending 2023-01-01 counts as fiscal 2022).
+   Per-share history is restated for splits (`src/lib/edgar/splits.ts`). A split shows as the cover-page
+   share count (dei:EntityCommonStockSharesOutstanding) jumping between two filings by a split-like
+   ratio; the dividends must show it too, so a stock-funded merger that happens to add half the share
+   count restates nothing. Amounts as paid change at the split itself; filings restate their
+   comparatives for a few years, so there the boundary is the first step of about the split ratio. A
+   10-for-1 with a raise at the split (NVIDIA, 2024) is still caught: the fall need only be a third of
+   the split's size in log terms.
+2. **AI research** (`src/lib/market/research.ts`), for facts rather than series. GPT-5.6 Luna, the
+   cheapest OpenAI model with web search (about 1 to 3 cents a lookup, mostly the search fee), returns
+   each figure with its date, its page and a verbatim quote. A figure is kept only if the page is one
+   the search actually retrieved and not a forum or social network, the quote contains the number, it
+   is fresh enough for its kind, and it passes cross-checks (a price inside its 52-week range, a market
+   cap near price times SEC shares, targets near the price). Under half surviving triggers one retry
+   on GPT-5.4 mini. Results are cached for 4 to 12 hours and logged, search fees included.
+
+Yahoo Finance (what yfinance scrapes) was tested first and refused: it now answers plain requests with
+HTTP 429, and yfinance itself only gets through by impersonating Chrome's TLS fingerprint. Stooq and
+Cboe sit behind bot checks. Nasdaq's API is the site's own, meant for personal use, so the backups suit
+the free beta and switch off with `MARKET_BACKUP=off`.
+
 ---
 
 ## 6. Left for later

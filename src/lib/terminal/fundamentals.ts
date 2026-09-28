@@ -10,7 +10,10 @@ import { forecast, impliedGrowth, type Forecast } from "@/lib/inference/forecast
 import { annualPanel, type Annual } from "@/lib/inference/fundamentals";
 import { beneish, grossProfitability, piotroski, sloanAccruals, workingCapitalDays, type Beneish, type Piotroski } from "@/lib/inference/quality";
 import { parkinsonVol, returns, stdev } from "@/lib/inference/stats";
-import { estimates, history } from "@/lib/market/fmp";
+import { history } from "@/lib/market/data";
+import { estimates } from "@/lib/market/fmp";
+import { noteSource } from "@/lib/market/provenance";
+import { factNum, research, type Researched } from "@/lib/market/research";
 
 const REVENUE = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet"];
 
@@ -92,6 +95,9 @@ export type ForecastView = {
   history: { label: string; end: string; revenue: number }[];
   forecast: Forecast; labels: string[]; growth: (number | null)[];
   consensus: { period: string; revenueAvg: number; revenueLow: number; revenueHigh: number; analysts: number }[];
+  /** Where the Street's numbers came from: FMP, or AI research (one figure, with its source) when FMP has none. */
+  consensusSource: "FMP" | "AI research" | null;
+  research: Researched | null;
   modelVsStreet: { period: string; model: number; street: number; gap: number } | null;
 };
 
@@ -113,10 +119,25 @@ export async function forecastView(ticker: string): Promise<ForecastView> {
   });
   const est = await estimates(ticker, "quarter").catch(() => []);
   const future = est.filter((e) => e.date > hist[hist.length - 1].end).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 4);
-  const consensus = future.map((e) => ({ period: fiscalLabel(e.date, fyeMonth), revenueAvg: e.revenueAvg / 1e6, revenueLow: e.revenueLow / 1e6, revenueHigh: e.revenueHigh / 1e6, analysts: e.numAnalystsRevenue }));
+  let consensus = future.map((e) => ({ period: fiscalLabel(e.date, fyeMonth), revenueAvg: e.revenueAvg / 1e6, revenueLow: e.revenueLow / 1e6, revenueHigh: e.revenueHigh / 1e6, analysts: e.numAnalystsRevenue }));
+  let consensusSource: ForecastView["consensusSource"] = consensus.length ? "FMP" : null;
+  let researched: Researched | null = null;
+  if (consensus.length) noteSource("FMP");
+  else {
+    // No consensus from FMP: look up next quarter's figure, checked against its source, and label it as such.
+    researched = await research(`${company.name} (${company.exchange ? `${company.exchange}: ` : ""}${company.ticker}), next quarter after the one ending ${hist[hist.length - 1].end}`, ["revenueEstimate"]).catch(() => null);
+    const v = factNum(researched, "revenueEstimate");
+    if (v !== null && v > 0) {
+      const mm = v / 1e6;
+      consensus = [{ period: labels[0], revenueAvg: mm, revenueLow: mm, revenueHigh: mm, analysts: 0 }];
+      consensusSource = "AI research";
+      noteSource("AI research");
+    }
+  }
   const next = consensus[0];
   return {
     ticker: company.ticker, name: company.name, history: hist.map((h) => ({ ...h, revenue: h.revenue / 1e6 })), forecast: fc, labels, growth: impliedGrowth(y, fc, 4), consensus,
+    consensusSource, research: researched,
     modelVsStreet: next ? { period: next.period, model: fc.point[0], street: next.revenueAvg, gap: fc.point[0] / next.revenueAvg - 1 } : null,
   };
 }

@@ -4,6 +4,8 @@ import { guarded } from "@/lib/auth/user";
 import { structured } from "@/lib/ai/agent";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MarketDataError } from "@/lib/market/fmp";
+import { withProvenance } from "@/lib/market/provenance";
+import { companySnapshot, type Need } from "@/lib/terminal/snapshot";
 import { creditView, debtView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
 import { curveView, macroView } from "@/lib/terminal/macro";
 import { commodities, currencies, dealsView, moversView, sectorsView, worldIndices } from "@/lib/terminal/markets";
@@ -21,7 +23,7 @@ const TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 const COMPANY = new Set(["price", "credit", "quality", "forecast", "debt", "earnings", "analysts", "dividends", "wacc"]);
 
 /** How long the browser may reuse an answer: market data briefly, fundamentals longer. */
-const TTL: Record<string, number> = { price: 120, indices: 60, fx: 120, commodities: 120, movers: 60, sectors: 300, deals: 600, curve: 900, macro: 1800, credit: 1800, quality: 3600, forecast: 3600, debt: 3600, earnings: 1800, analysts: 1800, dividends: 3600, wacc: 900, screen: 3600 };
+const TTL: Record<string, number> = { price: 120, indices: 60, fx: 120, commodities: 120, movers: 60, sectors: 300, deals: 600, curve: 900, macro: 1800, credit: 1800, quality: 3600, forecast: 3600, debt: 3600, earnings: 1800, analysts: 1800, dividends: 3600, wacc: 900, screen: 3600, snapshot: 300 };
 
 const fail = (message: string, status: number) => Object.assign(new Error(message), { status });
 
@@ -47,6 +49,11 @@ async function compute(fn: string, p: URLSearchParams, userId: string): Promise<
     case "deals": return dealsView();
     case "curve": return curveView();
     case "macro": return macroView();
+    case "snapshot": {
+      if (!TICKER.test(ticker)) throw fail("Give a ticker", 400);
+      const needs = (p.get("need") ?? "quote").split(",").filter((n): n is Need => n === "quote" || n === "profile" || n === "risk");
+      return companySnapshot(ticker, needs.length ? needs : ["quote"]);
+    }
     case "skills": return skillsView(userId);
     case "screen": {
       let filters: Filter[] = [];
@@ -59,21 +66,34 @@ async function compute(fn: string, p: URLSearchParams, userId: string): Promise<
   }
 }
 
-function errorResponse(e: unknown) {
+function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
   const planLimited = e instanceof MarketDataError;
   const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : planLimited ? 402 : 502;
-  return NextResponse.json({ error: e instanceof Error ? e.message : String(e), planLimited }, { status });
+  return NextResponse.json({ error: e instanceof Error ? e.message : String(e), planLimited, ...extra }, { status, headers });
 }
+
+/** The sources an answer used, for the screen's badge: providers and notes such as "S&P 500 tracked by the SPY ETF". */
+const sourceHeaders = (providers: string[], notes: string[]): Record<string, string> => (providers.length ? { "x-data-sources": JSON.stringify({ providers: [...new Set(providers)], notes: [...new Set(notes)].slice(0, 8) }) } : {});
+
+/** Functions whose screens need daily prices: when no feed has them, a researched snapshot stands in. */
+const PRICE_FNS = new Set(["price"]);
 
 export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }) {
   return guarded(async (user) => {
     const fn = (await ctx.params).fn;
-    try {
-      const data = await compute(fn, new URL(req.url).searchParams, user.id);
-      return NextResponse.json(data, { headers: { "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? 60}` } });
-    } catch (e) {
-      return errorResponse(e);
+    const params = new URL(req.url).searchParams;
+    const run = await withProvenance(async () => {
+      try { return { data: await compute(fn, params, user.id) }; } catch (error) { return { error }; }
+    });
+    const headers = sourceHeaders(run.providers, run.notes);
+    if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? 60}` } });
+    const e = run.value.error;
+    // No feed has this company's prices: offer what research can find (price, range, beta) instead of nothing.
+    if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {
+      const snap = await withProvenance(() => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null));
+      if (snap.value) return errorResponse(e, { snapshot: snap.value }, sourceHeaders([...run.providers, ...snap.providers], [...run.notes, ...snap.notes]));
     }
+    return errorResponse(e, {}, headers);
   });
 }
 
@@ -130,7 +150,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
         }
         case "portfolio": {
           const holdings = (Array.isArray(body?.holdings) ? body.holdings : []).filter((h): h is Holding => !!h && typeof (h as Holding).symbol === "string" && typeof (h as Holding).weight === "number");
-          return NextResponse.json(await portfolioView(holdings));
+          const run = await withProvenance(() => portfolioView(holdings));
+          return NextResponse.json(run.value, { headers: sourceHeaders(run.providers, run.notes) });
         }
         case "skills": {
           const key = typeof body?.key === "string" ? body.key.toUpperCase() : "";

@@ -4,13 +4,23 @@ import type { Command } from "@/lib/functions";
 import type { CompanyData } from "@/lib/types";
 import { derive, fmtMoney, fmtPct } from "@/lib/metrics";
 import { Columns } from "@/components/charts/Columns";
+import type { Snapshot } from "@/lib/terminal/snapshot";
 import { StatTile } from "../StatTile";
+import { ResearchNote, SourceBadge, useTerminal } from "../kit";
 
 export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: (cmd: Command) => void }) {
   const d = derive(c);
-  const p = c.price;
+  // When the feeds have no price or description, the backup layer looks them up (checked against their sources).
+  const needs = [!c.price ? "quote" : "", !c.description ? "profile" : ""].filter(Boolean);
+  const snap = useTerminal<Snapshot>("snapshot", { ticker: c.ticker, need: needs.join(",") }, needs.length > 0);
+  const s = snap.data;
+  const p = c.price ?? (s && s.price !== null ? { last: s.price, changePct: s.changePct !== null ? s.changePct * 100 : null, low52: s.low52, high52: s.high52 } : null);
+  const researchedPrice = !c.price && !!p;
   const chg = p?.changePct ?? null;
   const rangePos = p && p.low52 !== null && p.high52 !== null && p.high52 > p.low52 ? Math.min(1, Math.max(0, (p.last - p.low52) / (p.high52 - p.low52))) : null;
+  const marketCap = d.marketCap ?? (researchedPrice ? s?.marketCap ?? null : null);
+  const ev = d.ev ?? (marketCap !== null ? marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null);
+  const description = c.description || s?.description || "";
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -35,7 +45,7 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
         </div>
         {p ? (
           <div className="shrink-0 text-right">
-            <div className="num text-[20px] font-semibold leading-none">{p.last.toFixed(2)}</div>
+            <div className="num text-[20px] font-semibold leading-none">{p.last.toFixed(2)}{researchedPrice && <span className="ml-1 align-middle font-sans text-[9.5px] font-normal text-chart-emphasis" title="Looked up on the web by AI research; see the sources below">researched</span>}</div>
             {chg !== null && (
               <div className={`num mt-1 text-[11px] ${chg >= 0 ? "text-pos" : "text-neg"}`}>
                 {chg >= 0 ? "▲" : "▼"} {Math.abs(chg).toFixed(2)}% <span className="text-muted">today</span>
@@ -51,12 +61,12 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
               </div>
             )}
           </div>
-        ) : <div className="text-[11px] text-muted">No price right now: market data is unavailable for this symbol or the plan’s daily limit is used up</div>}
+        ) : <div className="max-w-[220px] text-right text-[11px] text-muted">{snap.loading ? "No feed has a price; looking it up on the web…" : "No price right now: no feed has this symbol and the lookup found nothing it could verify"}</div>}
       </div>
 
       <div className="grid grid-cols-3 gap-2 xl:grid-cols-6">
-        <StatTile label="Market cap" value={d.marketCap !== null ? `$${fmtMoney(d.marketCap)}` : "n/a"} hint="From FMP" />
-        <StatTile label="Enterprise value" value={d.ev !== null ? `$${fmtMoney(d.ev)}` : "n/a"} delta={d.netDebt !== null ? (d.netDebt < 0 ? `net cash $${fmtMoney(-d.netDebt)}` : `net debt $${fmtMoney(d.netDebt)}`) : undefined} hint="Market cap + debt - cash" />
+        <StatTile label="Market cap" value={marketCap !== null ? `$${fmtMoney(marketCap)}` : "n/a"} hint={researchedPrice ? "Researched on the web" : "From the price feed"} />
+        <StatTile label="Enterprise value" value={ev !== null ? `$${fmtMoney(ev)}` : "n/a"} delta={d.netDebt !== null ? (d.netDebt < 0 ? `net cash $${fmtMoney(-d.netDebt)}` : `net debt $${fmtMoney(d.netDebt)}`) : undefined} hint="Market cap + debt - cash" />
         <StatTile label="LTM revenue" value={c.ltm.revenue !== null ? `$${fmtMoney(c.ltm.revenue)}` : "n/a"} delta={d.revenueGrowth !== null ? `${fmtPct(d.revenueGrowth)} y/y` : undefined} deltaGood={d.revenueGrowth !== null ? d.revenueGrowth >= 0 : undefined} trend={c.quarters.map((q) => q.revenue)} />
         <StatTile label="Gross margin" value={fmtPct(d.grossMargin)} />
         <StatTile label="FCF margin" value={fmtPct(d.fcfMargin)} delta={d.fcf !== null ? `$${fmtMoney(d.fcf)} FCF` : undefined} deltaGood={d.fcf !== null ? d.fcf >= 0 : undefined} />
@@ -68,7 +78,7 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
           <Columns data={c.quarters.map((q) => ({ label: q.label, value: q.revenue }))} format={(v) => `$${fmtMoney(v)}`} title="Quarterly revenue, USD millions (SEC XBRL)" height={140} />
         ) : <div className="text-[11px] text-muted">No quarterly revenue series available.</div>}
         <div className="min-w-0">
-          <p className="line-clamp-6 text-[12px] leading-relaxed text-fg/90">{c.description || "No description available."}</p>
+          <p className="line-clamp-6 text-[12px] leading-relaxed text-fg/90">{description || (snap.loading ? "Looking up what the company does…" : "No description available.")}</p>
           <dl className="num mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-[11px]">
             <dt className="text-muted">CIK</dt><dd>{c.cik}</dd>
             <dt className="text-muted">LTM period</dt><dd>{c.ltm.periodEnd}</dd>
@@ -86,6 +96,7 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
         ))}
         <a href={c.sources.factsUrl} target="_blank" rel="noreferrer" className="ml-auto text-[10px] text-muted hover:text-info">XBRL source ↗</a>
       </div>
+      {s?.research && <><div className="-mx-3"><SourceBadge sources={snap.sources} /></div><ResearchNote research={s.research} /></>}
     </div>
   );
 }

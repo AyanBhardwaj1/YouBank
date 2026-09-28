@@ -3,6 +3,8 @@
  * credit, knowledge tracing, survival, relationship and pipeline models, Monte Carlo with correlated
  * inputs, and the terminal's command parser. No network.   pnpm exec tsx scripts/test-inference.ts
  */
+import type { CompanyFacts } from "@/lib/edgar/facts";
+import { restate, splitsOf } from "@/lib/edgar/splits";
 import { parseCommand } from "@/lib/functions";
 import { impliedRating, emsRating, mortalityFor, ohlsonO, pdRating } from "@/lib/inference/credit";
 import type { Annual } from "@/lib/inference/fundamentals";
@@ -13,6 +15,9 @@ import { cholesky, drawInputs, quantileOf, spearman } from "@/lib/inference/mont
 import { kupiec, normalSampler, parkinsonVol, rng, welchBeta } from "@/lib/inference/stats";
 import { conditionalHazard, kaplanMeier, nudgeDay, poissonBinomial, survivalAt } from "@/lib/inference/survival";
 import { ASSISTED_BKT, bktUpdate, DEFAULT_BKT, hintLevel, nextSkills, type SkillState } from "@/lib/inference/tracing";
+import { isFxPair, PROXIES } from "@/lib/market/data";
+import { isoDate, num as nq } from "@/lib/market/nasdaq";
+import { crossCheck, parseDate, parseNumber, quoteHasNumber, validate } from "@/lib/market/research";
 import { Engine } from "@/lib/studio/engine";
 import { inferenceTools } from "@/lib/studio/inference-tools";
 import { applyPatch, type Patch } from "@/lib/studio/ops";
@@ -152,6 +157,47 @@ async function main() {
   const tools2 = inferenceTools({ engine: e2, doc, commit: async (ps) => { for (const p of ps) applyPatch(doc, p, e2); }, guard: (fn) => fn() });
   const fs = JSON.parse(await tools2.find((t) => t.name === "forecast_series")!.run({ sheet: "DCF", range: "C1:C28", horizon: 4, period: 4, write_to: "E1" }, { addSource: () => "" }) as string);
   check("forecast_series reads the model and writes a band", fs.point.length === 4 && typeof doc.workbook.sheets.s1.cells.F1?.v === "number" && !!fcTool);
+
+  console.log("market data backups");
+  check("Nasdaq numbers: dollars, commas, percents, N/A", nq("$1,234.56") === 1234.56 && nq("+0.58%") === 0.58 && nq("30,002,768") === 30002768 && nq("N/A") === null);
+  check("Nasdaq dates", isoDate("09/25/2026") === "2026-09-25" && isoDate("9/5/2026") === "2026-09-05" && isoDate("Aug 10, 2026") === "2026-08-10" && isoDate("soon") === null);
+  check("indices and commodities map to ETFs that track them", PROXIES["^GSPC"] === "SPY" && PROXIES.GCUSD === "GLD" && !PROXIES.AAPL);
+  check("currency pairs are recognised, tickers are not", isFxPair("EURUSD") && isFxPair("USDJPY") && !isFxPair("AAPLUS") && !isFxPair("SNOW"));
+  const close = (a: number | null, b: number) => a !== null && Math.abs(a - b) <= Math.abs(b) * 1e-9;
+  check("research numbers: units and percents", close(parseNumber("$4.98T"), 4.98e12) && close(parseNumber("1,234.5 million"), 1234.5e6) && close(parseNumber("1.53%", true), 0.0153) && close(parseNumber("(0.42)"), -0.42) && parseNumber("about 5") === null,
+    [parseNumber("$4.98T"), parseNumber("1,234.5 million"), parseNumber("1.53%", true), parseNumber("(0.42)"), parseNumber("about 5")]);
+  check("research dates", parseDate("2026-10-29") === "2026-10-29" && parseDate("10/29/2026") === "2026-10-29" && parseDate("October 29, 2026") === "2026-10-29");
+  check("a quote must contain the value", quoteHasNumber("Market cap $4.98T as of today", 4.98e12) && quoteHasNumber("closed at 335.94, up 0.58%", 335.94) && !quoteHasNumber("closed at 335.94", 341.07));
+  const today = "2026-09-28", seen = new Set(["nasdaq.com", "finance.yahoo.com"]);
+  const entry = (o: Partial<{ value: string | null; asOf: string | null; url: string | null; quote: string | null }>) => ({ field: "price", value: "335.94", asOf: "2026-09-25", url: "https://www.nasdaq.com/market-activity/stocks/snow", quote: "Last sale $335.94", ...o });
+  check("a figure from a retrieved, reputable page passes", !!validate("price", entry({}), seen, { today }).fact);
+  check("a page the search never retrieved is rejected", /not among/.test(validate("price", entry({ url: "https://example-finance.com/snow" }), seen, { today }).reason ?? ""));
+  check("forums are rejected", /unreliable/.test(validate("price", entry({ url: "https://www.reddit.com/r/stocks" }), new Set([...seen, "reddit.com"]), { today }).reason ?? ""));
+  check("a value missing from its quote is rejected", /quote/.test(validate("price", entry({ quote: "Snowflake shares rose today" }), seen, { today }).reason ?? ""));
+  check("a stale price is rejected", /stale/.test(validate("price", entry({ asOf: "2026-08-01" }), seen, { today }).reason ?? ""));
+  check("a past earnings date is rejected", /past/.test(validate("nextEarningsDate", { field: "nextEarningsDate", value: "2026-08-01", asOf: null, url: "https://finance.yahoo.com/quote/SNOW", quote: "Earnings Date Aug 1, 2026" }, seen, { today }).reason ?? ""));
+  const move = (value: string, quote: string) => validate("changePct", { field: "changePct", value, asOf: "2026-09-25", url: "https://www.nasdaq.com/market-activity/stocks/snow", quote }, seen, { today }).fact?.value;
+  check("a percent without its sign is read as the page prints it", close(move("0.5", "SNOW closed at $335.94, up 0.50%") as number, 0.005) && close(move("0.58%", "up 0.58%") as number, 0.0058) && close(move("-2.1", "down -2.10% on the day") as number, -0.021),
+    [move("0.5", "SNOW closed at $335.94, up 0.50%"), move("0.58%", "up 0.58%"), move("-2.1", "down -2.10% on the day")]);
+  const px = (v: number) => ({ value: v, asOf: today, source: "https://www.nasdaq.com", quote: "" });
+  check("cross-checks: a price outside its 52-week range is dropped", crossCheck({ price: px(500), high52: px(400), low52: px(200) }, {}).some((x) => x.field === "price"));
+  check("cross-checks: a market cap far from price times shares is dropped", crossCheck({ price: px(100), marketCap: px(5e12) }, { shares: 1e9 }).some((x) => x.field === "marketCap"));
+  check("cross-checks: consistent figures pass", crossCheck({ price: px(100), marketCap: px(1.02e11), high52: px(120), low52: px(80), targetMean: px(130) }, { shares: 1e9 }).length === 0);
+  const covers = (counts: [string, number][]): CompanyFacts => ({ cik: 1, entityName: "X", facts: { dei: { EntityCommonStockSharesOutstanding: { units: { shares: counts.map(([end, val], i) => ({ end, val, accn: `a${i}`, fy: 0, fp: "", form: "10-Q", filed: end })) } } } } });
+  const fourForOne = splitsOf(covers([["2020-04-17", 4.33e9], ["2020-07-17", 4.28e9], ["2020-10-16", 17.0e9], ["2021-01-15", 16.8e9]]));
+  check("splits: a 4-for-1 shows in the cover-page share count", fourForOne.length === 1 && fourForOne[0].ratio === 4 && fourForOne[0].after === "2020-07-17", fourForOne);
+  check("splits: buybacks and a 30% issuance are not splits", splitsOf(covers([["2020-01-01", 1e9], ["2020-04-01", 0.97e9], ["2020-07-01", 1.26e9]])).length === 0);
+  const asPaid = restate([{ date: "2020-02-07", amount: 0.77 }, { date: "2020-05-08", amount: 0.82 }, { date: "2020-08-07", amount: 0.82 }, { date: "2020-11-06", amount: 0.205 }, { date: "2021-02-05", amount: 0.205 }], fourForOne, "paid");
+  check("splits: dividends as paid are restated from the split back", close(asPaid[0].amount, 0.1925) && close(asPaid[2].amount, 0.205) && close(asPaid[4].amount, 0.205), asPaid.map((x) => x.amount));
+  const filed = restate([{ date: "2016-09-24", amount: 2.18 }, { date: "2017-09-30", amount: 2.4 }, { date: "2018-09-29", amount: 0.68 }, { date: "2019-09-28", amount: 0.75 }, { date: "2020-09-26", amount: 0.795 }, { date: "2021-09-25", amount: 0.85 }], fourForOne, "filed");
+  check("splits: 10-K figures are restated where the restated comparatives stop", close(filed[0].amount, 0.545) && close(filed[1].amount, 0.6) && close(filed[2].amount, 0.68), filed.map((x) => x.amount));
+  const cut = [{ date: "2022-02-01", amount: 1 }, { date: "2022-05-01", amount: 1 }, { date: "2022-08-01", amount: 0.5 }, { date: "2022-11-01", amount: 0.5 }];
+  check("splits: a cut away from any split stays a cut", [restate(cut, fourForOne, "paid"), restate(cut, fourForOne, "filed")].flat().every((x, i) => x.amount === cut[i % 4].amount));
+  const tenForOne = [{ ratio: 10, after: "2024-05-17", before: "2024-08-21" }];
+  const raised = restate([{ date: "2023-12-05", amount: 0.04 }, { date: "2024-03-05", amount: 0.04 }, { date: "2024-06-11", amount: 0.01 }, { date: "2024-09-12", amount: 0.01 }], tenForOne, "paid");
+  check("splits: a 10-for-1 with a raise at the split still restates what was paid before it", close(raised[1].amount, 0.004) && close(raised[2].amount, 0.01), raised.map((x) => x.amount));
+  const steady = [{ date: "2024-03-05", amount: 0.5 }, { date: "2024-06-11", amount: 0.5 }, { date: "2024-09-12", amount: 0.5 }];
+  check("splits: a share-count jump the dividends do not show changes nothing", restate(steady, [{ ratio: 2, after: "2024-05-17", before: "2024-08-21" }], "paid").every((x) => x.amount === 0.5));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

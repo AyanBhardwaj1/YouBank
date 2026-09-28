@@ -189,7 +189,25 @@ How to add tools: [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.m
   terminal daily history, estimates, grades, dividends, sectors and M&A filings. The free plan covers
   daily prices for about 87 sample tickers and caps requests per day; FMP Starter (about $19 a month
   billed yearly) covers every US symbol, and a display licence is needed before prices are shown to
-  paying users. Functions that need prices say so when the plan does not cover a ticker.
+  paying users.
+- **Backups when FMP is out** (its daily limit, or a ticker the plan does not cover), in order:
+  1. **Free sources.** Nasdaq's quote API for every US stock and ETF (history, quotes, market cap,
+     dividends, earnings surprises and dates, EPS forecasts, analyst targets and ratings, movers); ETFs
+     that track the indices and commodities it does not list (S&P 500 via SPY, gold via GLD); the
+     ECB's reference rates for currencies; CoinGecko for crypto; the SPDR sector ETFs for sectors;
+     merger filings on SEC EDGAR for deals; and, for dividends outside Nasdaq's listings, dividends per
+     share from each company's own 10-K and 10-Q filings. Dividend history is restated for stock splits,
+     which the filings reveal as a jump in the cover-page share count.
+  2. **AI research.** GPT-5.6 Luna with web search looks up what is still missing (a next earnings
+     date, a consensus figure, a price, a description). A figure is kept only if its page is one the
+     search retrieved, the quote copied from the page contains it, it is recent enough, and it is
+     plausible; when fewer than half survive, one retry goes to GPT-5.4 mini. A lookup costs a few
+     cents, is cached for hours and is logged in the usage ledger.
+  Every screen shows a "Backup data" badge naming the sources used, marks ETF stand-ins ("via SPY"),
+  and lists researched figures with links to their pages. Nasdaq's API is the site's own and is meant
+  for personal use, so the backups suit the free beta; `MARKET_BACKUP=off` turns off Nasdaq, the ECB
+  rates, CoinGecko and AI research (SEC filings are public domain and stay on). Operators
+  can check which layers answer from production at `/api/market/health` (Bearer `CRON_SECRET`).
 - **Rates and the economy** come from the Treasury's daily par yield curve and the BLS (both public
   domain), which feed the models, and FRED, which is shown with attribution only: FRED's terms bar using
   its content with machine learning or language models, so it never reaches the assistant or a model.
@@ -1057,6 +1075,8 @@ bash scripts/preflight.sh                                         # everything t
 | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes | The key for the chosen provider |
 | `OPENAI_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_REASONING_EFFORT`, `ANTHROPIC_MODEL` | no | Defaults: `gpt-6-astra`, `gpt-5.4-mini`, `medium`, `claude-opus-5` |
 | `FMP_API_KEY` | yes | Prices and market caps |
+| `MARKET_BACKUP` | no | `off` turns off the market-data backups (Nasdaq, the ECB rates, CoinGecko, AI research); on by default |
+| `MARKET_RESEARCH_MODEL`, `MARKET_RESEARCH_ESCALATION_MODEL` | no | The models AI research uses; defaults `gpt-5.6-luna`, retrying with `gpt-5.4-mini` |
 | `EDGAR_USER_AGENT` | yes | The SEC asks for a descriptive User-Agent with a contact email |
 | `CRON_SECRET` | yes | Bearer token for Vercel Cron (`/api/cron/sync`, `/api/cron/agent`) |
 | `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`) |

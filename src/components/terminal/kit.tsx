@@ -6,17 +6,25 @@
  * histograms, tornados, heatmaps, signed bars, probability meters). Everything here is dependency-free
  * so each screen stays small when it is lazy-loaded.
  */
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Command } from "@/lib/functions";
+import type { Researched } from "@/lib/market/research";
+import type { Snapshot } from "@/lib/terminal/snapshot";
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Data                                                                                             */
 /* ----------------------------------------------------------------------------------------------- */
 
-export type Result<T> = { data?: T; error?: string; planLimited?: boolean };
+/** Where an answer's numbers came from (the data layer's fallbacks), from the x-data-sources header. */
+export type Sources = { providers: string[]; notes: string[] };
+export type Result<T> = { data?: T; error?: string; planLimited?: boolean; sources?: Sources; snapshot?: Snapshot };
 const cache = new Map<string, { at: number; r: Result<unknown> }>();
 const inflight = new Map<string, Promise<Result<unknown>>>();
 const FRESH_MS = 90_000;
+
+const sourcesOf = (res: Response): Sources | undefined => {
+  try { const h = res.headers.get("x-data-sources"); return h ? (JSON.parse(h) as Sources) : undefined; } catch { return undefined; }
+};
 
 async function load<T>(url: string): Promise<Result<T>> {
   const existing = inflight.get(url);
@@ -24,8 +32,9 @@ async function load<T>(url: string): Promise<Result<T>> {
   const p = (async (): Promise<Result<unknown>> => {
     try {
       const res = await fetch(url);
-      const j = (await res.json().catch(() => ({}))) as { error?: string; planLimited?: boolean };
-      const r: Result<unknown> = res.ok ? { data: j } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited };
+      const j = (await res.json().catch(() => ({}))) as { error?: string; planLimited?: boolean; snapshot?: Snapshot };
+      const sources = sourcesOf(res);
+      const r: Result<unknown> = res.ok ? { data: j, sources } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited, sources, snapshot: j.snapshot };
       // Keep answers and plan limits; let transient failures retry on the next open.
       if (res.ok || j.planLimited || res.status === 404 || res.status === 400) cache.set(url, { at: Date.now(), r });
       return r;
@@ -66,7 +75,7 @@ export function useTerminal<T>(fn: string, params: Record<string, string | numbe
   }, [url, enabled, nonce]);
   const r = (state?.url === url ? state.r : (cache.get(url)?.r as Result<T> | undefined));
   return {
-    data: r?.data, error: r?.error, planLimited: r?.planLimited ?? false, loading: enabled && !r,
+    data: r?.data, error: r?.error, planLimited: r?.planLimited ?? false, loading: enabled && !r, sources: r?.sources, snapshot: r?.snapshot,
     reload: () => { cache.delete(url); setNonce((n) => n + 1); },
   };
 }
@@ -75,7 +84,7 @@ export async function postTerminal<T>(fn: string, body: unknown): Promise<Result
   try {
     const res = await fetch(`/api/terminal/${fn}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = (await res.json().catch(() => ({}))) as { error?: string; planLimited?: boolean };
-    return res.ok ? { data: j as T } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited };
+    return res.ok ? { data: j as T, sources: sourcesOf(res) } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited, sources: sourcesOf(res) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Network error" };
   }
@@ -134,11 +143,25 @@ export const tone = (v: number | null | undefined) => (!ok(v) ? "text-faint" : v
 /* Layout                                                                                           */
 /* ----------------------------------------------------------------------------------------------- */
 
-type Q<T> = { data?: T; error?: string; planLimited: boolean; loading: boolean; reload?: () => void };
+type Q<T> = { data?: T; error?: string; planLimited: boolean; loading: boolean; reload?: () => void; sources?: Sources; snapshot?: Snapshot };
 
-/** Loading, errors and plan limits for one query; renders children once the data is in. */
+/** The providers that count as backups: a screen that used any of them says so. */
+const BACKUPS = ["Nasdaq", "ECB", "CoinGecko", "SEC EDGAR", "AI research"];
+/** The sources behind the Frame being rendered, so "Models and sources" can name the backups that answered. */
+const SourcesContext = createContext<Sources | undefined>(undefined);
+
+/**
+ * Loading, errors and plan limits for one query; renders children once the data is in. When the data
+ * layer fell back from FMP, a badge says which backups answered, and figures looked up by AI research
+ * are listed with their sources. When no feed had the prices a screen needs, a researched snapshot
+ * stands in for the error.
+ */
 export function Frame<T>({ q, what, children }: { q: Q<T>; what: string; children: (data: T) => ReactNode }) {
-  if (q.data) return <>{children(q.data)}</>;
+  if (q.data) {
+    const research = (q.data as { research?: Researched | null }).research ?? null;
+    return <SourcesContext value={q.sources}><SourceBadge sources={q.sources} />{children(q.data)}{research && <div className="px-3 pb-3"><ResearchNote research={research} /></div>}</SourcesContext>;
+  }
+  if (q.snapshot) return <SnapshotCard snapshot={q.snapshot} what={what} sources={q.sources} />;
   if (q.loading || (!q.error && !q.data)) {
     return (
       <div className="flex flex-col gap-3 p-3" aria-busy="true">
@@ -161,6 +184,77 @@ export function Frame<T>({ q, what, children }: { q: Q<T>; what: string; childre
       <div className="text-[13px] text-neg">Could not load {what}</div>
       <div className="max-w-[460px] text-[11px] text-muted">{q.error}</div>
       {q.reload && <button type="button" onClick={q.reload} className="ctl mt-1 border border-line px-2 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-fg">Try again</button>}
+    </div>
+  );
+}
+
+/** "Backup data" when the data layer fell back from FMP: which sources answered, with their notes on hover. */
+export function SourceBadge({ sources }: { sources?: Sources }) {
+  const backups = (sources?.providers ?? []).filter((p) => BACKUPS.includes(p));
+  if (!backups.length) return null;
+  const ai = backups.includes("AI research"), partly = sources?.providers.includes("FMP");
+  return (
+    <div className={`mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border px-2.5 py-1 text-[10.5px] ${ai ? "border-chart-emphasis/40 bg-chart-emphasis/10" : "border-info/30 bg-info/10"}`} title={(sources?.notes ?? []).join("\n")}>
+      <span className="font-semibold text-fg/90">{ai ? "Backup data, partly researched by AI" : "Backup data"}</span>
+      <span className="text-muted">{partly ? "Some of this" : "This"} came from {backups.join(", ")} because FMP was unavailable.</span>
+      {sources?.notes?.length ? <span className="text-faint">{sources.notes.slice(0, 2).join(" · ")}{sources.notes.length > 2 ? " …" : ""}</span> : null}
+    </div>
+  );
+}
+
+const FACT_LABEL: Record<string, string> = {
+  price: "Price", changePct: "Change today", marketCap: "Market cap", high52: "52-week high", low52: "52-week low", beta: "Beta", rating: "Consensus rating",
+  analysts: "Analysts", buy: "Buy ratings", hold: "Hold ratings", sell: "Sell ratings", targetMean: "Consensus target", targetHigh: "High target", targetLow: "Low target",
+  nextEarningsDate: "Next earnings", epsEstimate: "EPS estimate, next quarter", revenueEstimate: "Revenue estimate, next quarter", lastEps: "EPS, last quarter",
+  lastEpsEstimate: "EPS estimate, last quarter", lastReportDate: "Last report", annualDividend: "Annual dividend", dividendYield: "Dividend yield",
+  exDividendDate: "Ex-dividend date", payoutRatio: "Payout ratio", description: "Description", sector: "Sector", industry: "Industry",
+};
+const PCT_FACTS = new Set(["changePct", "dividendYield", "payoutRatio"]);
+const fmtFact = (field: string, v: number | string) => (typeof v !== "number" ? v : PCT_FACTS.has(field) ? fp(v, 2) : field === "marketCap" || field === "revenueEstimate" ? `$${fbig(v)}` : v.toLocaleString("en-US", { maximumFractionDigits: 2 }));
+const hostOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+
+/** The figures AI research supplied, each with the page it was read from (the quote on hover). */
+export function ResearchNote({ research }: { research: Researched }) {
+  const facts = Object.entries(research.facts).filter(([, f]) => f);
+  if (!facts.length) return null;
+  return (
+    <details className="rounded-md border border-chart-emphasis/40 bg-chart-emphasis/5 px-2.5 py-1.5 text-[11px]">
+      <summary className="cursor-pointer select-none text-[10.5px] font-semibold text-fg/90">Researched by AI on the web: {facts.length} figure{facts.length === 1 ? "" : "s"}, each checked against its source</summary>
+      <table className="mt-1.5 w-full text-[11px]">
+        <tbody>
+          {facts.map(([k, f]) => (
+            <tr key={k} className="border-b border-line/50 last:border-0 align-top">
+              <td className="py-0.5 pr-2 text-muted">{FACT_LABEL[k] ?? k}</td>
+              <td className="num py-0.5 pr-2 text-fg">{k === "description" ? <span className="font-sans">{String(f!.value).slice(0, 220)}{String(f!.value).length > 220 ? "…" : ""}</span> : fmtFact(k, f!.value)}</td>
+              <td className="num py-0.5 pr-2 text-faint">{f!.asOf ?? ""}</td>
+              <td className="py-0.5 text-right"><a href={f!.source} target="_blank" rel="noreferrer" title={f!.quote} className="text-info hover:underline">{hostOf(f!.source)}</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {research.rejected.length > 0 && <div className="mt-1 text-[10px] text-faint">Left out: {research.rejected.slice(0, 6).map((r) => `${FACT_LABEL[r.field] ?? r.field} (${r.reason})`).join("; ")}</div>}
+      <div className="mt-1 text-[10px] text-faint">{research.model} · {research.searches} search{research.searches === 1 ? "" : "es"} · {research.researchedAt.slice(0, 16).replace("T", " ")} UTC. A backup, not a data feed: check anything you rely on.</div>
+    </details>
+  );
+}
+
+/** When no feed has a company's daily prices: what the feeds and a checked web lookup could confirm. */
+export function SnapshotCard({ snapshot: s, what, sources }: { snapshot: Snapshot; what: string; sources?: Sources }) {
+  return (
+    <div className="flex flex-col gap-3 pb-3">
+      <SourceBadge sources={sources} />
+      <div className="mx-3 rounded-md border border-line p-3">
+        <div className="flex items-baseline gap-2"><span className="text-[13px] font-semibold">{s.name}</span><span className="num text-muted">{s.ticker}</span></div>
+        <p className="mt-1 text-[11.5px] text-muted">No feed has the daily prices {what} needs for this ticker right now, so its charts and models cannot run. Here is what the feeds and a web lookup could confirm.</p>
+        <div className="mt-2"><Tiles>
+          <Tile label="Price" value={s.price !== null ? fn(s.price) : "—"} sub={s.changePct !== null ? `${fsp(s.changePct, 2)} on the day` : undefined} subTone={tone(s.changePct)} />
+          <Tile label="52-week range" value={s.low52 !== null && s.high52 !== null ? `${fn(s.low52)}–${fn(s.high52)}` : "—"} />
+          <Tile label="Market cap" value={fm(s.marketCap)} />
+          <Tile label="Beta (published)" value={s.beta !== null ? fn(s.beta) : "—"} sub="5-year monthly" />
+        </Tiles></div>
+        {s.description && <p className="mt-2 text-[11.5px] leading-relaxed text-fg/85">{s.description}</p>}
+      </div>
+      {s.research && <div className="mx-3"><ResearchNote research={s.research} /></div>}
     </div>
   );
 }
@@ -215,6 +309,7 @@ export function Hint({ skill, children }: { skill: string; children: ReactNode }
 
 /** The working behind an inference: the model, its assumptions, and where the inputs came from. */
 export function Why({ items, sources }: { items: [string, ReactNode][]; sources?: string[] }) {
+  const backups = (useContext(SourcesContext)?.providers ?? []).filter((p) => BACKUPS.includes(p));
   return (
     <details className="rounded-md border border-line bg-elevated/30 px-2.5 py-1.5 text-[11px]">
       <summary className="cursor-pointer select-none text-[10.5px] font-semibold uppercase tracking-wider text-muted hover:text-fg">Models and sources</summary>
@@ -222,6 +317,7 @@ export function Why({ items, sources }: { items: [string, ReactNode][]; sources?
         {items.map(([k, v]) => <div key={k}><dt className="font-semibold text-fg/90">{k}</dt><dd className="leading-relaxed text-muted">{v}</dd></div>)}
       </dl>
       {sources && sources.length > 0 && <div className="mt-2 border-t border-line pt-1.5 text-[10.5px] text-faint">Sources: {sources.join(" · ")}</div>}
+      {backups.length > 0 && <div className="mt-1 text-[10.5px] text-faint">This time {backups.join(", ")} stood in where FMP was out (see the note at the top).</div>}
     </details>
   );
 }

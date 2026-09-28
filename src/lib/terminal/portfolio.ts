@@ -3,7 +3,8 @@
  * holding's share of the risk (which is rarely its share of the money), and a one-year range of
  * outcomes from a bootstrap of the portfolio's own daily returns (fat tails included).
  */
-import { closes, MarketDataError } from "@/lib/market/fmp";
+import { closes } from "@/lib/market/data";
+import { MarketDataError } from "@/lib/market/fmp";
 import { correlation, maxDrawdown, mean, ols, quantile, returns, rng, stdev, valueAtRisk } from "@/lib/inference/stats";
 import { BENCHMARK } from "./price";
 

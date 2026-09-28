@@ -21,9 +21,12 @@ export const priceRiskTool = def({
   schema: z.object({ ticker: z.string() }),
   run: async ({ ticker }, ctx) => {
     try {
-      const { priceAnalytics } = await import("@/lib/terminal/price");
-      const p = await priceAnalytics(ticker.toUpperCase());
-      const src = ctx.addSource(`${p.ticker} daily prices to ${p.asOf} (Financial Modeling Prep), YouBank risk models`, "https://financialmodelingprep.com/");
+      const [{ priceAnalytics }, { withProvenance }] = await Promise.all([import("@/lib/terminal/price"), import("@/lib/market/provenance")]);
+      const run = await withProvenance(() => priceAnalytics(ticker.toUpperCase()));
+      const p = run.value;
+      // Name the feed that actually answered: FMP, or a backup (Nasdaq, with the S&P 500 tracked by SPY).
+      const feeds = run.providers.length ? run.providers.join(", ") : "Financial Modeling Prep";
+      const src = ctx.addSource(`${p.ticker} daily prices to ${p.asOf} (${feeds}), YouBank risk models`, run.providers.includes("Nasdaq") && !run.providers.includes("FMP") ? `https://www.nasdaq.com/market-activity/stocks/${p.ticker.toLowerCase()}` : "https://financialmodelingprep.com/");
       return J({
         source: src, ticker: p.ticker, asOf: p.asOf, last: p.last, change: p.change, high52: p.high52, low52: p.low52, drawdownFromHigh: r(p.drawdownNow),
         maxDrawdown3y: { ...p.maxDrawdown, value: r(p.maxDrawdown.value) }, vol: p.vol, regime: p.regime,

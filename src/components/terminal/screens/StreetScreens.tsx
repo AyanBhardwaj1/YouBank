@@ -2,9 +2,13 @@
 
 import type { Command } from "@/lib/functions";
 import type { AnalystView, DividendView, EarningsView } from "@/lib/terminal/street";
-import { AiRead, AskAi, BarList, DataTable, fbig, fn, fp, Frame, fsp, Hint, Meter, Pill, SeriesChart, Section, Tile, Tiles, tone, useTerminal, Why } from "../kit";
+import { AiRead, AskAi, BarList, DataTable, fbig, fn, fp, Frame, fsp, Hint, Meter, Pill, SeriesChart, Section, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
 
 type Props = { ticker: string; onRun?: (c: Command) => void };
+
+/** A beat-rate tile's figures; with no quarters on record the posterior is only its prior, so say so. */
+const beatTile = (b: EarningsView["beat"]["eps"]) =>
+  b.n ? { value: fp(b.rate, 0), sub: `80% range ${fp(b.lo, 0)}–${fp(b.hi, 0)} · n=${b.n}` } : { value: "—", sub: "no estimates on record" };
 
 /** EE: the earnings record, how often the company beats (with honest uncertainty), and how the stock reacts. */
 export function EeScreen({ ticker, onRun }: Props) {
@@ -16,11 +20,11 @@ export function EeScreen({ ticker, onRun }: Props) {
         return (
           <div className="flex flex-col gap-3 p-3">
             <Tiles>
-              <Tile label="Next report" value={d.next?.date ?? "—"} sub={d.next?.epsEstimated !== null && d.next?.epsEstimated !== undefined ? `EPS est. ${fn(d.next.epsEstimated)}` : undefined} />
+              <Tile label={d.next?.estimatedDate ? "Next report (estimated)" : "Next report"} value={d.next?.date ?? "—"} sub={d.next?.epsEstimated !== null && d.next?.epsEstimated !== undefined ? `EPS est. ${fn(d.next.epsEstimated)}` : undefined} />
               <Tile label="Revenue est., next" value={d.next?.revenueEstimated ? fbig(d.next.revenueEstimated) : "—"} />
               <Tile label="Typical move on the day" value={fp(d.move.median, 1)} sub={d.move.p80 !== null ? `80% of reactions within ±${fp(d.move.p80, 1)}` : undefined} />
-              <Tile label="EPS beat rate" value={fp(d.beat.eps.rate, 0)} sub={`80% range ${fp(d.beat.eps.lo, 0)}–${fp(d.beat.eps.hi, 0)} · n=${d.beat.eps.n}`} />
-              <Tile label="Revenue beat rate" value={fp(d.beat.revenue.rate, 0)} sub={`80% range ${fp(d.beat.revenue.lo, 0)}–${fp(d.beat.revenue.hi, 0)} · n=${d.beat.revenue.n}`} />
+              <Tile label="EPS beat rate" {...beatTile(d.beat.eps)} />
+              <Tile label="Revenue beat rate" {...beatTile(d.beat.revenue)} />
               <Tile label="Quarters on record" value={String(d.quarters.length)} />
             </Tiles>
             <div className="flex justify-end gap-1.5"><AiRead fn="earnings" params={{ ticker }} /><AskAi onRun={onRun} ticker={ticker} question={`Preview ${ticker}'s next earnings: beat history, the typical move on report days, and what to watch in the release.`} /></div>
@@ -48,7 +52,16 @@ export function EeScreen({ ticker, onRun }: Props) {
             {d.annual.length > 0 && (
               <Section title="Annual consensus">
                 <DataTable rows={d.annual} rowKey={(r) => r.year}
-                  columns={[{ key: "y", label: "Year", align: "left", value: (r) => r.year }, { key: "r", label: "Revenue ($mm)", value: (r) => r.revenueAvg, render: (r) => fn(r.revenueAvg, 0) }, { key: "range", label: "Range", value: (r) => r.revenueLow, render: (r) => `${fn(r.revenueLow, 0)}–${fn(r.revenueHigh, 0)}` }, { key: "e", label: "EPS", value: (r) => r.epsAvg, render: (r) => fn(r.epsAvg) }, { key: "n", label: "Analysts", value: (r) => r.analysts }]} />
+                  columns={[
+                    { key: "y", label: "Year", align: "left", value: (r) => r.year },
+                    // Nasdaq, the backup, has EPS consensus only: no revenue columns without revenue.
+                    ...(d.annual.some((r) => r.revenueAvg !== null) ? [
+                      { key: "r", label: "Revenue ($mm)", value: (r) => r.revenueAvg, render: (r) => fn(r.revenueAvg, 0) },
+                      { key: "range", label: "Range", value: (r) => r.revenueLow, render: (r) => (r.revenueLow === null && r.revenueHigh === null ? "—" : `${fn(r.revenueLow, 0)}–${fn(r.revenueHigh, 0)}`) },
+                    ] satisfies Column<EarningsView["annual"][number]>[] : []),
+                    { key: "e", label: "EPS", value: (r) => r.epsAvg, render: (r) => fn(r.epsAvg) },
+                    { key: "n", label: "Analysts", value: (r) => r.analysts },
+                  ]} />
               </Section>
             )}
             <Why items={[
@@ -77,7 +90,9 @@ export function AnrScreen({ ticker, onRun }: Props) {
               <Tile label="Buy / hold / sell" value={total ? `${d.counts.buy} / ${d.counts.hold} / ${d.counts.sell}` : "—"} sub={total ? `${fp(d.counts.buy / total, 0)} buy` : "no recent ratings"} />
               <Tile label="Upgrades, 90 days" value={String(d.drift.upgrades90)} subTone="text-pos" />
               <Tile label="Downgrades, 90 days" value={String(d.drift.downgrades90)} subTone="text-neg" />
-              <Tile label="Quant rating" value={d.snapshot?.rating ?? "—"} sub={d.snapshot ? `score ${d.snapshot.overallScore}/5` : undefined} />
+              {d.snapshot || !d.consensusRating
+                ? <Tile label="Quant rating" value={d.snapshot?.rating ?? "—"} sub={d.snapshot ? `score ${d.snapshot.overallScore}/5` : undefined} />
+                : <Tile label="Consensus rating" value={d.consensusRating} />}
             </Tiles>
             <div className="flex flex-wrap items-center gap-2"><Pill kind={d.drift.net >= 2 ? "pos" : d.drift.net <= -2 ? "neg" : "muted"}>{d.drift.net >= 2 ? "improving" : d.drift.net <= -2 ? "cooling" : "steady"}</Pill><span className="text-[11px] text-muted">{d.drift.label}</span><span className="ml-auto flex gap-1.5"><AiRead fn="analysts" params={{ ticker }} /><AskAi onRun={onRun} ticker={ticker} question={`Summarize the bull and bear cases the Street is making on ${ticker}, and where the price targets cluster.`} /></span></div>
             <Hint skill="ANR">Wide target dispersion means the Street disagrees about the story, not just the numbers. Drift (upgrades less downgrades) tends to matter more than the level: a crowded buy list has less room to get more bullish.</Hint>
@@ -122,33 +137,45 @@ export function DvdScreen({ ticker, onRun }: Props) {
   return (
     <Frame q={q} what={`${ticker} dividends`}>
       {(d) => {
-        if (!d.payments.length) return <div className="p-4 text-[11px] text-muted">{ticker} has not paid a dividend in the available history.</div>;
+        // AI research, the last backup, finds the current dividend but no payment history.
+        const current = !d.payments.length && d.ttm > 0;
+        if (!d.payments.length && !current) return <div className="p-4 text-[11px] text-muted">{ticker} has not paid a dividend in the available history.</div>;
+        // Filings give fiscal years from the 10-K; payments by ex-date are summed by calendar year.
         const byYear = new Map<string, number>();
-        for (const p of d.payments) byYear.set(p.date.slice(0, 4), (byYear.get(p.date.slice(0, 4)) ?? 0) + p.amount);
+        if (d.annual?.length) for (const a of d.annual) byYear.set(String(a.year), a.amount);
+        else for (const p of d.payments) byYear.set(p.date.slice(0, 4), (byYear.get(p.date.slice(0, 4)) ?? 0) + p.amount);
         const years = [...byYear.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-15);
+        const filings = d.basis === "fiscal quarter";
         return (
           <div className="flex flex-col gap-3 p-3">
             <Tiles>
-              <Tile label="Trailing 12 months" value={fn(d.ttm, 2)} sub={d.frequency || undefined} />
+              <Tile label={current ? "Annual dividend" : "Trailing 12 months"} value={fn(d.ttm, 2)} sub={d.frequency || undefined} />
               <Tile label="Yield" value={fp(d.yield, 2)} />
               <Tile label="Payout ratio" value={fp(d.payout, 0)} sub="of trailing EPS" subTone={d.payout !== null && d.payout > 0.8 ? "text-neg" : "text-muted"} />
-              <Tile label="Growth, 1 / 3 / 5y" value={`${fsp(d.growth.y1, 0)} / ${fsp(d.growth.y3, 0)}`} sub={`5y ${fsp(d.growth.y5, 0)} a year`} />
-              <Tile label="Years without a cut" value={String(d.streakYears)} />
+              {!current && <Tile label="Growth, 1 / 3 / 5y" value={`${fsp(d.growth.y1, 0)} / ${fsp(d.growth.y3, 0)}`} sub={`5y ${fsp(d.growth.y5, 0)} a year`} />}
+              {!current && <Tile label="Years without a cut" value={String(d.streakYears)} sub={filings && d.annual?.length ? `in filings since FY${d.annual[0].year}` : undefined} />}
               <Tile label="Safety" value={`${d.safety.score}/100`} sub={d.safety.label} subTone={d.safety.label === "safe" ? "text-pos" : d.safety.label === "watch" ? "text-chart-emphasis" : "text-neg"} />
             </Tiles>
             <div className="grid gap-4 @3xl:grid-cols-2">
-              <Section title="Dividends per share by calendar year">
-                <SeriesChart x={years.map(([y]) => y)} format={(v) => v.toFixed(2)} height={170} zero lines={[{ name: "Dividend", values: years.map(([, v]) => v) }]} />
-              </Section>
+              {!current && (
+                <Section title={d.annual?.length ? "Dividends per share by fiscal year (10-K)" : "Dividends per share by calendar year"}>
+                  <SeriesChart x={years.map(([y]) => y)} format={(v) => v.toFixed(2)} height={170} zero lines={[{ name: "Dividend", values: years.map(([, v]) => v) }]} />
+                </Section>
+              )}
               <Section title="Safety" right={<AskAi onRun={onRun} ticker={ticker} question={`How safe is ${ticker}'s dividend? Check coverage by earnings and free cash flow, leverage, and management's stated policy.`} />}>
                 <Meter label="Dividend safety" value={d.safety.score / 100} zones={[0.45, 0.7]} invert />
                 <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] text-muted">{d.safety.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
               </Section>
             </div>
             <Hint skill="DVD">Safety starts at 100 and loses points for a stretched payout, earnings that do not cover the dividend, a recent cut and heavy debt. It is a screen: check free cash flow in FA before relying on it.</Hint>
-            <Section title="Payments">
-              <DataTable rows={d.payments} rowKey={(r, i) => `${r.date}-${i}`} max={40} columns={[{ key: "d", label: "Ex-date", align: "left", value: (r) => r.date }, { key: "a", label: "Amount", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }, { key: "p", label: "Paid", value: (r) => r.payDate }]} />
-            </Section>
+            {d.payments.length > 0 && (
+              <Section title={filings ? "Per share, by fiscal quarter (10-K and 10-Q)" : "Payments"}>
+                <DataTable rows={d.payments} rowKey={(r, i) => `${r.date}-${i}`} max={40}
+                  columns={filings
+                    ? [{ key: "d", label: "Quarter ended", align: "left", value: (r) => r.date }, { key: "a", label: "Per share", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }]
+                    : [{ key: "d", label: "Ex-date", align: "left", value: (r) => r.date }, { key: "a", label: "Amount", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }, { key: "p", label: "Paid", value: (r) => r.payDate }]} />
+              </Section>
+            )}
           </div>
         );
       }}

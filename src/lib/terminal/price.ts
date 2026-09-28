@@ -4,7 +4,8 @@
  * weekly, and Welch's slope-winsorized beta), value at risk three ways with a Kupiec backtest,
  * drawdowns and risk-adjusted returns.
  */
-import { closes, history, type Bar } from "@/lib/market/fmp";
+import { closes, history } from "@/lib/market/data";
+import type { Bar } from "@/lib/market/fmp";
 import { correlation, ewmaVariance, garch11, garchForecast, kupiec, maxDrawdown, mean, ols, percentRank, quantile, returns, sharpeSortino, stdev, valueAtRisk, welchBeta } from "@/lib/inference/stats";
 
 const TRADING_DAYS = 252;

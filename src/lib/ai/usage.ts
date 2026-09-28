@@ -15,11 +15,14 @@ export function runAsUser<T>(userId: string, fn: () => T): T {
 
 export const aiUser = () => store.getStore()?.userId ?? null;
 
-/** Record a call; never throws and never delays the caller's result. */
-export function recordUsage(r: { feature: string; provider: string; model: string; effort?: string; usage: Usage }) {
+/**
+ * Record a call; never throws and never delays the caller's result. `extraCostUsd` carries fees that
+ * are not tokens, such as the provider's charge per web search.
+ */
+export function recordUsage(r: { feature: string; provider: string; model: string; effort?: string; usage: Usage; extraCostUsd?: number }) {
   const u = r.usage;
   if (!u.input && !u.output) return;
-  const cost = costOf(r.model, u) ?? 0;
+  const cost = (costOf(r.model, u) ?? 0) + (r.extraCostUsd ?? 0);
   void Promise.resolve().then(() => requireDb().insert(schema.aiUsage).values({
     userId: aiUser(), feature: r.feature.slice(0, 80), provider: r.provider, model: r.model, effort: r.effort ?? "",
     inputTokens: u.input, cachedTokens: u.cached, cacheWriteTokens: u.cacheWrite, outputTokens: u.output, reasoningTokens: u.reasoning, costUsd: cost,

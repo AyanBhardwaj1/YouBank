@@ -14,7 +14,7 @@ const px = (v: number | null) => (v === null ? "—" : Math.abs(v) >= 1000 ? v.t
 function assetColumns(extra: Column<AssetRow>[] = []): Column<AssetRow>[] {
   return [
     ...extra,
-    { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span><span className="text-fg">{r.name}</span> <span className="num text-[10px] text-faint">{r.symbol}</span></span> },
+    { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span><span className="text-fg">{r.name}</span> <span className="num text-[10px] text-faint">{r.symbol}</span>{r.via && <span className="ml-1 rounded border border-line px-1 text-[9.5px] text-muted" title={r.via === "AI research" ? "Latest level researched on the web; no history" : r.via === "ECB fixing" ? "The ECB's daily reference rate" : `Returns of the ${r.via} ETF, which tracks it; the level shown is the ETF's`}>via {r.via}</span>}</span> },
     { key: "price", label: "Last", value: (r) => r.price, render: (r) => px(r.price) },
     { key: "d1", label: "1D", value: (r) => r.d1, render: (r) => <Heat v={r.d1} scale={0.02} /> },
     { key: "z", label: "1D in σ", title: "The day's move divided by the asset's typical daily move over the last year", value: (r) => r.z, render: (r) => <span className={r.z !== null && Math.abs(r.z) >= 2 ? "font-semibold text-chart-emphasis" : "text-muted"}>{r.z === null ? "—" : `${r.z >= 0 ? "+" : ""}${r.z.toFixed(1)}σ`}</span> },
@@ -88,7 +88,7 @@ export function MostScreen({ onRun }: Props) {
 
 /** SECT: sector performance today, over a month and year to date. */
 export function SectScreen({ onRun }: Props) {
-  const q = useTerminal<{ date: string; sectors: { sector: string; d1: number; m1: number | null; ytd: number | null }[] }>("sectors");
+  const q = useTerminal<{ date: string; sectors: { sector: string; d1: number; m1: number | null; ytd: number | null }[]; via?: string }>("sectors");
   return (
     <Frame q={q} what="sector performance">
       {(d) => {
@@ -101,7 +101,7 @@ export function SectScreen({ onRun }: Props) {
               <Tile label="Leader, year to date" value={lead[0]?.sector ?? "—"} sub={fsp(lead[0]?.ytd)} />
               <Tile label="Laggard, year to date" value={lead[lead.length - 1]?.sector ?? "—"} sub={fsp(lead[lead.length - 1]?.ytd)} />
               <Tile label="Breadth today" value={`${d.sectors.filter((s) => s.d1 > 0).length}/${d.sectors.length}`} sub="sectors up" />
-              <Tile label="As of" value={d.date} />
+              <Tile label="As of" value={d.date} sub={d.via ? `via ${d.via}` : undefined} />
             </Tiles>
             <div className="flex justify-end gap-1.5"><AiRead fn="sectors" params={{}} /><AskAi onRun={onRun} ticker="" question="Which sectors are leading and lagging this year, and what does the rotation say about the market's view of growth and rates?" /></div>
             <Hint skill="SECT">Sector returns are the average change of the US-listed stocks in each sector, compounded from daily changes. Leadership that persists over months says more than one day&apos;s ranking.</Hint>
@@ -120,7 +120,7 @@ export function SectScreen({ onRun }: Props) {
 
 /** MA: the latest merger filings, newest first. */
 export function MaScreen({ onRun }: Props) {
-  const q = useTerminal<{ deals: Deal[] }>("deals");
+  const q = useTerminal<{ deals: Deal[]; via?: string }>("deals");
   return (
     <Frame q={q} what="M&A">
       {(d) => {
@@ -130,7 +130,7 @@ export function MaScreen({ onRun }: Props) {
         return (
           <div className="flex flex-col gap-3 p-3">
             <Tiles>
-              <Tile label="Filings listed" value={String(d.deals.length)} />
+              <Tile label="Filings listed" value={String(d.deals.length)} sub={d.via ? `from ${d.via}` : undefined} />
               <Tile label="Newest" value={d.deals[0]?.acceptedDate?.slice(0, 10) ?? "—"} />
               <Tile label="Public targets" value={String(d.deals.filter((x) => x.targetedSymbol).length)} sub="with a listed ticker" />
             </Tiles>

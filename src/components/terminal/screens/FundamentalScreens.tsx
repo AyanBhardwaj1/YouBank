@@ -91,7 +91,7 @@ export function FcstScreen({ ticker, onRun }: Props) {
             <Tiles>
               <Tile label={`Next quarter (${d.labels[0]})`} value={fm(f.point[0])} sub={`80%: ${fm(f.lower80[0])} to ${fm(f.upper80[0])}`} />
               <Tile label="Growth, next quarter y/y" value={fsp(d.growth[0])} subTone={tone(d.growth[0])} sub={`then ${d.growth.slice(1).map((g) => fsp(g, 0)).join(", ")}`} />
-              <Tile label="Street, next quarter" value={d.modelVsStreet ? fm(d.modelVsStreet.street) : "—"} sub={d.modelVsStreet ? `model ${fsp(d.modelVsStreet.gap)} vs Street` : "no estimates on this plan"} subTone={d.modelVsStreet ? tone(d.modelVsStreet.gap) : undefined} />
+              <Tile label={d.consensusSource === "AI research" ? "Street, next quarter (researched)" : "Street, next quarter"} value={d.modelVsStreet ? fm(d.modelVsStreet.street) : "—"} sub={d.modelVsStreet ? `model ${fsp(d.modelVsStreet.gap)} vs Street` : "no consensus available"} subTone={d.modelVsStreet ? tone(d.modelVsStreet.gap) : undefined} title={d.consensusSource === "AI research" ? "Looked up on the web by AI research and checked against its source (see below)" : undefined} />
               <Tile label="Backtest error (MAPE)" value={fp(f.backtest.mape, 1)} sub={`${f.backtest.origins} rolling origins`} />
               <Tile label="80% interval coverage" value={fp(f.backtest.coverage80, 0)} sub="share of past actuals inside" subTone={f.backtest.coverage80 !== null && Math.abs(f.backtest.coverage80 - 0.8) > 0.15 ? "text-neg" : "text-pos"} />
               <Tile label="Model" value={f.model} sub={f.seasonal ? "seasonal (quarterly)" : "no seasonality found"} />
