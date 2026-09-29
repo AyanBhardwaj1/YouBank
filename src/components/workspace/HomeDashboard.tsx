@@ -45,7 +45,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
           </div>
         </Reveal>
 
-        <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
             <Reveal><HomeBrief /></Reveal>
 

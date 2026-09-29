@@ -12,6 +12,7 @@ import { readSse, errorOf } from "@/lib/client/sse";
 import { useCompany } from "@/lib/client/companies";
 import { useCollabSession } from "@/lib/client/collab";
 import type { Source } from "@/components/terminal/Markdown";
+import { Select } from "@/components/ui/Select";
 
 type ToolEvent = { name: string; status: "start" | "end"; summary?: string };
 type RunSummary = { id: number; title: string; createdAt: string; model: string; status: string };
@@ -172,10 +173,10 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
             {tool.kind === "ai" && <ModelPicker value={settings} onChange={setSettings} compact />}
             {status && <span className="text-[11px] text-pos">{status}</span>}
             {runs && runs.length > 0 && (
-              <select value="" onChange={(e) => { const id = Number(e.target.value); if (id) void loadRun(id); }} className="ctl ml-auto border border-line bg-elevated px-2 py-1 text-[11px] text-muted">
+              <Select value="" onChange={(v) => { const id = Number(v); if (id) void loadRun(id); }} className="ctl ml-auto border border-line bg-elevated px-2 py-1 text-[11px] text-muted">
                 <option value="">History ({runs.length})…</option>
                 {runs.map((r) => <option key={r.id} value={r.id}>{new Date(r.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {r.title.slice(0, 40)}</option>)}
-              </select>
+              </Select>
             )}
           </div>
           {tool.kind === "ai" && (busy || events.length > 0 || thinking) && (

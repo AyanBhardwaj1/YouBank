@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog } from "@/components/ui/Dialog";
 
 export type Account = { id: number; address: string; provider: string; status: string; lastSyncAt: string | null; lastError: string; host: string };
 export type MailboxInfo = {
@@ -44,8 +46,14 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
     ].filter(Boolean).join(", ") + `.${r.errors.length ? ` ${r.errors.length} failed: ${r.errors[0]}` : ""}`);
     ctx.refresh();
   });
-  const disconnect = (a: Account) => ctx.run(`dc-${a.id}`, async () => {
-    if (!window.confirm(`Disconnect ${a.address}? Its stored ${a.provider === "imap" ? "password is" : "tokens are"} deleted. Threads already read stay in your CRM.`)) return;
+  const disconnect = async (a: Account) => {
+    const yes = await confirmDialog({
+      title: `Disconnect ${a.address}?`, body: `Its stored ${a.provider === "imap" ? "password is" : "tokens are"} deleted. Threads already read stay in your CRM.`,
+      confirmLabel: "Disconnect", tone: "danger",
+    });
+    if (yes) await disconnectNow(a);
+  };
+  const disconnectNow = (a: Account) => ctx.run(`dc-${a.id}`, async () => {
     await api(`/api/crm/accounts/${a.id}`, { method: "DELETE" });
     ctx.say(`Disconnected ${a.address}`); ctx.refresh();
   });
@@ -88,10 +96,10 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
         <div className="mt-3 border-t border-line pt-3">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Provider">
-              <select value={connecting.preset} onChange={(e) => setConnecting({ ...connecting, preset: e.target.value })} className={input}>
+              <Select value={connecting.preset} onChange={(v) => setConnecting({ ...connecting, preset: v })} className={input}>
                 {Object.entries(info.presets).map(([k, p]) => <option key={k} value={k}>{p.label}</option>)}
                 <option value="custom">Other (enter servers)</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Email address"><input value={connecting.email} onChange={(e) => setConnecting({ ...connecting, email: e.target.value })} placeholder="you@company.com" className={input} /></Field>
             <Field label="App password" hint="Not your normal password.">

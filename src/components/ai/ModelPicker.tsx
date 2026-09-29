@@ -2,6 +2,7 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { EFFORTS, MODELS, type Effort, type ModelDef } from "@/lib/ai/models";
+import { Select } from "@/components/ui/Select";
 
 export type AiSettings = { model?: string; effort?: Effort };
 type Catalog = { providers: string[]; models: (ModelDef & { available: boolean })[] };
@@ -40,13 +41,13 @@ export function ModelPicker({ value, onChange, compact = false }: { value: AiSet
   if (compact) {
     return (
       <span className="flex items-center gap-1 text-[11px] text-muted">
-        <select value={value.model ?? ""} onChange={(e) => onChange({ ...value, model: e.target.value })} className="ctl max-w-[170px] border border-line bg-elevated px-1.5 py-1 text-fg" title="Model">
+        <Select value={value.model ?? ""} onChange={(v) => onChange({ ...value, model: v })} className="ctl max-w-[170px] border border-line bg-elevated px-1.5 py-1 text-fg" title="Model">
           {models.map((m) => <option key={m.id} value={m.id}>{m.label}{m.recommended ? " ★" : ""}</option>)}
-        </select>
+        </Select>
         {(current?.effort ?? true) && (
-          <select value={value.effort ?? "medium"} onChange={(e) => onChange({ ...value, effort: e.target.value as Effort })} className="ctl border border-line bg-elevated px-1.5 py-1 text-fg" title="Reasoning effort">
+          <Select value={value.effort ?? "medium"} onChange={(v) => onChange({ ...value, effort: v as Effort })} className="ctl border border-line bg-elevated px-1.5 py-1 text-fg" title="Reasoning effort">
             {EFFORTS.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
-          </select>
+          </Select>
         )}
       </span>
     );

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { resolveChart, resolveMarker, resolveTable, resolveValue } from "@/lib/studio/deck";
 import type { Engine } from "@/lib/studio/engine";
 import type { Patch } from "@/lib/studio/ops";
@@ -201,8 +202,8 @@ export function DeckView({ doc, engine, current, setCurrent, onEdit, comments, r
               {!readOnly && <>
                 <button type="button" title="Move up" onClick={() => moveSlide(-1)} className="ctl border border-line px-1.5 py-1 hover:border-accent/60">↑</button>
                 <button type="button" title="Move down" onClick={() => moveSlide(1)} className="ctl border border-line px-1.5 py-1 hover:border-accent/60">↓</button>
-                <button type="button" onClick={() => { const t = window.prompt("Comment on this slide (the agent can turn it):"); if (t && id) onEdit([{ op: "comments", comments: [...comments, { id: newId("cm"), target: { kind: "slide", slide: id }, text: t, author: "you", at: new Date().toISOString() }] }], "Commented on a slide"); }} className="ctl border border-line px-2 py-1 hover:border-accent/60">Comment</button>
-                <button type="button" onClick={() => { if (id && window.confirm("Delete this slide?")) { onEdit([{ op: "slide_delete", id }], "Deleted a slide"); } }} className="ctl border border-line px-2 py-1 text-muted hover:border-neg/60 hover:text-neg">Delete</button>
+                <button type="button" onClick={async () => { const t = await promptDialog({ title: "Comment on this slide", body: "The agent can act on it when you ask.", placeholder: "e.g. Tighten the headline and move the chart left", multiline: true, confirmLabel: "Comment" }); if (t && id) onEdit([{ op: "comments", comments: [...comments, { id: newId("cm"), target: { kind: "slide", slide: id }, text: t, author: "you", at: new Date().toISOString() }] }], "Commented on a slide"); }} className="ctl border border-line px-2 py-1 hover:border-accent/60">Comment</button>
+                <button type="button" onClick={async () => { if (id && await confirmDialog({ title: "Delete this slide?", body: "Undo brings it back.", confirmLabel: "Delete slide", tone: "danger" })) { onEdit([{ op: "slide_delete", id }], "Deleted a slide"); } }} className="ctl border border-line px-2 py-1 text-muted hover:border-neg/60 hover:text-neg">Delete</button>
               </>}
             </div>
             <div className="shadow-lg"><SlideView slide={slide} index={index} theme={deck.theme} engine={engine} width={Math.max(320, w)} selected={selEl} onSelectEl={setSelEl} readOnly={readOnly} flash={flashSlide === id}

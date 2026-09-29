@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { confirmDialog } from "@/components/ui/Dialog";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { STUDIO_ROLES } from "@/lib/studio/roles";
 import { TEMPLATES, type TemplateId } from "@/lib/studio/templates";
@@ -131,7 +132,7 @@ export function StudioHome() {
                 <span className="text-[11px] text-muted">{d.sheets} sheet{d.sheets === 1 ? "" : "s"} · {d.slides} slide{d.slides === 1 ? "" : "s"}</span>
                 {d.teamId && <span className="ctl bg-accent-soft px-1.5 text-[10px] text-accent">team</span>}
                 <span className="w-[70px] text-right text-[11px] text-muted">{ago(d.updatedAt)}</span>
-                {d.mine && <button type="button" title="Delete" onClick={async () => { if (!window.confirm(`Delete "${d.title}"?`)) return; await fetch(`/api/studio/${d.id}`, { method: "DELETE" }); setDocs((x) => x?.filter((y) => y.id !== d.id) ?? null); }} className="text-[11px] text-muted hover:text-neg">Delete</button>}
+                {d.mine && <button type="button" title="Delete" onClick={async () => { if (!(await confirmDialog({ title: `Delete "${d.title}"?`, body: d.teamId ? "It is removed for your team too." : undefined, confirmLabel: "Delete", tone: "danger" }))) return; await fetch(`/api/studio/${d.id}`, { method: "DELETE" }); setDocs((x) => x?.filter((y) => y.id !== d.id) ?? null); }} className="text-[11px] text-muted hover:text-neg">Delete</button>}
               </div>
             ))}
           </div>

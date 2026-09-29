@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { DEFAULT_STEPS, LEAD_STATUS_LABEL, type CampaignStep, type LeadStatus } from "@/lib/crm/model";
 import { Empty, Field, api, btn, input, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog } from "@/components/ui/Dialog";
 
 type Stats = {
   leads: number; byStatus: Record<string, number>; contacted: number; replied: number; replyRate: number | null;
@@ -101,9 +103,9 @@ function CampaignForm({ value, onChange }: { value: typeof NEW_CAMPAIGN; onChang
         <Field label="Drafts per day, at most"><input type="number" min={1} max={50} value={value.dailyCap} onChange={(e) => onChange({ ...value, dailyCap: Number(e.target.value) })} className={input} /></Field>
       </div>
       <Field label="Sending" hint="Autopilot still holds anything it is unsure about, and only sends inside your sending hours and daily limit.">
-        <select value={value.sendMode} onChange={(e) => onChange({ ...value, sendMode: e.target.value })} className={input}>
+        <Select value={value.sendMode} onChange={(v) => onChange({ ...value, sendMode: v })} className={input}>
           {Object.entries(SEND_MODE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
+        </Select>
       </Field>
       <label className="flex items-start gap-2 text-[11.5px]">
         <input type="checkbox" checked={value.consentRegions} onChange={(e) => onChange({ ...value, consentRegions: e.target.checked })} className="mt-0.5" />
@@ -224,10 +226,10 @@ function CampaignDetail({ id, ctx, onBack, onDrafted }: { id: number; ctx: Panel
             : <button type="button" disabled={!!ctx.busy} onClick={() => patch({ status: "paused" }, "Paused. Nothing more is drafted until you resume.")} className={btn.ghost}>Pause</button>}
           <button type="button" disabled={!!ctx.busy || c.status !== "active"} onClick={prepare} className={btn.primary}>{ctx.busy === "prepare" ? "Writing…" : "Draft due steps"}</button>
           <button type="button" disabled={!!ctx.busy} onClick={() => setEditing(editing ? null : { name: c.name, goal: c.goal, icp: c.icp, instructions: c.instructions, steps: c.steps, dailyCap: c.dailyCap, sendMode: c.sendMode, consentRegions: c.consentRegions })} className={btn.link}>Edit</button>
-          <button type="button" disabled={!!ctx.busy} onClick={() => ctx.run("del-campaign", async () => {
-            if (!window.confirm(`Delete "${c.name}"? Its unsent drafts are withdrawn. Emails already sent stay in your inbox.`)) return;
-            await api(`/api/crm/campaigns/${id}`, { method: "DELETE" }); onBack(); ctx.refresh();
-          })} className={btn.danger}>Delete</button>
+          <button type="button" disabled={!!ctx.busy} onClick={async () => {
+            if (!(await confirmDialog({ title: `Delete "${c.name}"?`, body: "Its unsent drafts are withdrawn. Emails already sent stay in your inbox.", confirmLabel: "Delete campaign", tone: "danger" }))) return;
+            await ctx.run("del-campaign", async () => { await api(`/api/crm/campaigns/${id}`, { method: "DELETE" }); onBack(); ctx.refresh(); });
+          }} className={btn.danger}>Delete</button>
         </div>
       </div>
 

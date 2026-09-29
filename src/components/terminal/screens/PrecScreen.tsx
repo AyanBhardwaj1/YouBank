@@ -5,6 +5,7 @@ import type { Command } from "@/lib/functions";
 import type { FtsHit } from "@/lib/edgar/fulltext";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { StatTile } from "../StatTile";
+import { Select } from "@/components/ui/Select";
 
 type Result = { total: number; matched: number; rows: FtsHit[]; query: { phrase: string; keywords: string; from: string; to: string; forms: string[] } };
 
@@ -44,9 +45,9 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-1.5 text-[11px]">
-        <select value={phrase} onChange={(e) => setPhrase(e.target.value)} className="ctl border border-line bg-elevated px-1.5 py-1 text-fg focus:border-accent/60 focus:outline-none">
+        <Select value={phrase} onChange={(v) => setPhrase(v)} className="ctl border border-line bg-elevated px-1.5 py-1 text-fg focus:border-accent/60 focus:outline-none">
           {PHRASES.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
-        </select>
+        </Select>
         <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="sector keywords" className="ctl w-48 border border-line bg-bg px-2 py-1 text-fg placeholder:text-faint focus:border-accent/60 focus:outline-none" />
         <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="num ctl border border-line bg-bg px-1.5 py-1 text-fg focus:border-accent/60 focus:outline-none" />
         {onRun && <button type="button" onClick={() => onRun({ ticker: ticker ?? "SNOW", fn: "TOOL", arg: "precedent-transactions" })} className="ctl border border-accent/50 px-2 py-1 text-accent hover:bg-accent-soft">✦ Extract terms and multiples</button>}

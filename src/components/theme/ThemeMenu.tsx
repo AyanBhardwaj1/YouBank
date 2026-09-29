@@ -7,7 +7,7 @@ import { ThemeThumb } from "./ThemePicker";
 import { Icon } from "@/components/ui/Icon";
 
 /** Compact style switcher for headers and navs: a swatch button that opens a preview grid. */
-export function ThemeMenu({ align = "right" }: { align?: "left" | "right" }) {
+export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: { align?: "left" | "right"; /** When the style's name shows beside the swatches. */ nameClass?: string }) {
   const { theme, themeId, setTheme, preview } = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -24,7 +24,7 @@ export function ThemeMenu({ align = "right" }: { align?: "left" | "right" }) {
       <button type="button" onClick={() => setOpen((o) => !o)} title={`Style: ${theme.name}`} aria-label="Change style"
         className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg">
         <Icon name="Palette" className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">{theme.name}</span>
+        <span className={nameClass}>{theme.name}</span>
         <span className="flex gap-0.5">
           {[theme.vars.accent, theme.vars.chart1, theme.vars.panel].map((c, i) => <span key={i} className="h-2.5 w-2.5 rounded-sm border border-line" style={{ background: c }} />)}
         </span>

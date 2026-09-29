@@ -5,6 +5,7 @@ import type { Command } from "@/lib/functions";
 import type { CreditView, DebtView } from "@/lib/terminal/fundamentals";
 import type { WaccView } from "@/lib/terminal/wacc";
 import { AiRead, AskAi, BarList, DataTable, fm, fn, fp, Frame, fx, Hint, Histogram, Pill, SeriesChart, Section, Tile, Tiles, Tornado, useTerminal, Why } from "../kit";
+import { Select } from "@/components/ui/Select";
 
 type Props = { ticker: string; onRun?: (c: Command) => void };
 const ZONE: Record<string, "pos" | "warn" | "neg"> = { safe: "pos", grey: "warn", distress: "neg" };
@@ -140,9 +141,9 @@ export function WaccScreen({ ticker, onRun }: Props) {
               <input type="number" step={0.25} min={2} max={10} value={erp} onChange={(e) => setErp(Number(e.target.value) || 5)} className="num w-16 ctl border border-line bg-bg px-1.5 py-0.5 text-right text-fg" />%
             </label>
             <label className="flex items-center gap-1.5 text-[11px] text-muted">Beta
-              <select value={method} onChange={(e) => setMethod(e.target.value as "blume" | "welch")} className="ctl border border-line bg-bg px-1 py-0.5 text-fg">
+              <Select value={method} onChange={(v) => setMethod(v as "blume" | "welch")} className="ctl border border-line bg-bg px-1 py-0.5 text-fg">
                 <option value="blume">2y weekly, Blume</option><option value="welch">1y daily, Welch</option>
-              </select>
+              </Select>
             </label>
           </div>
           <Tiles>

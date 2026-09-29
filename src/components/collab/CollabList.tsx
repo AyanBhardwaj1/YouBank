@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { Select } from "@/components/ui/Select";
 
 type Session = { id: number; title: string; kind: string; refId: string; teamId: number | null; status: string; ownerId: string; updatedAt: string };
 type Team = { id: number; name: string };
@@ -62,15 +63,15 @@ export function CollabList({ needsMigration, me, sessions, teams, tools }: {
                 Pick what you want to work on together. Share it with a team and anyone on it can join; leave it unshared and it stays yours.
               </p>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
-                <select value={toolId} onChange={(e) => setToolId(e.target.value)}
+                <Select value={toolId} onChange={(v) => setToolId(v)}
                   className="ctl min-w-[240px] flex-1 border border-line bg-bg/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60">
                   {tools.map((t) => <option key={t.id} value={t.id}>{t.title}{t.kind === "calc" ? " (calculator)" : ""}</option>)}
-                </select>
-                <select value={teamId} onChange={(e) => setTeamId(e.target.value)}
+                </Select>
+                <Select value={teamId} onChange={(v) => setTeamId(v)}
                   className="ctl border border-line bg-bg/60 px-2 py-1.5 text-[12px] outline-none focus:border-accent/60">
                   <option value="">Just me</option>
                   {teams.map((t) => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
-                </select>
+                </Select>
                 <button type="button" onClick={start} disabled={busy || !toolId}
                   className="ctl bg-fg px-3 py-1.5 text-[12px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">
                   {busy ? "Starting…" : "Start"}

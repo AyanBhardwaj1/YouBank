@@ -4,10 +4,12 @@ import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { isThemeId } from "@/lib/themes";
 import { MODELS, normalizePrefs } from "@/lib/ai/models";
+import { normalizeNavPrefs } from "@/lib/nav";
+import type { RoleId } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
-/** Per-account preferences kept in profiles.extra: { theme, ai: { provider, model, effort } }. */
+/** Per-account preferences kept in profiles.extra: { theme, ai: { provider, model, effort }, nav: { pinned, labels, dock } }. */
 export async function GET() {
   return guarded(async (user) => {
     const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
@@ -17,10 +19,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return guarded(async (user) => {
-    const body = (await req.json().catch(() => null)) as { theme?: string; ai?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { theme?: string; ai?: unknown; nav?: unknown } | null;
     if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
     const db = requireDb();
-    const [row] = await db.select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
+    const [row] = await db.select({ extra: schema.profiles.extra, role: schema.profiles.role }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
     const extra: Record<string, unknown> = { ...(row?.extra ?? {}) };
     if (typeof body.theme === "string" && isThemeId(body.theme)) extra.theme = body.theme;
     if (body.ai !== undefined) {
@@ -28,6 +30,7 @@ export async function POST(req: Request) {
       if (ai.model && !MODELS.some((m) => m.id === ai.model)) return NextResponse.json({ error: `Unknown model ${ai.model}` }, { status: 400 });
       extra.ai = { ...((extra.ai as object) ?? {}), ...ai };
     }
+    if (body.nav !== undefined) extra.nav = normalizeNavPrefs(body.nav, (row?.role ?? "banker") as RoleId);
     if (!row) {
       // Preferences before onboarding completes: create a stub profile row.
       await db.insert(schema.profiles).values({ userId: user.id, email: user.email, name: user.name, role: "banker", extra }).onConflictDoUpdate({ target: schema.profiles.userId, set: { extra } });

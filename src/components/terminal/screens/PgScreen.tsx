@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Command } from "@/lib/functions";
 import { PEER_GROUPS, type PeerGroup } from "@/lib/static-data";
 import { createPeerGroup, deletePeerGroup, useDbPeerGroups, type DbPeerGroup } from "@/lib/client/persistence";
+import { confirmDialog } from "@/components/ui/Dialog";
 
 export function PgScreen({ onRun }: { onRun: (c: Command) => void }) {
   const { groups: dbGroups, error } = useDbPeerGroups();
@@ -54,7 +55,7 @@ export function PgScreen({ onRun }: { onRun: (c: Command) => void }) {
         )}
         <div className="mt-3 flex items-center justify-between border-t border-line pt-2 text-[10.5px] text-muted">
           <span>Click a ticker to open its comps with this group.</span>
-          {saved && <button type="button" onClick={() => { if (window.confirm(`Delete "${g.name}"?`)) void deletePeerGroup((g as DbPeerGroup).dbId); }} className="text-muted hover:text-neg">delete</button>}
+          {saved && <button type="button" onClick={async () => { if (await confirmDialog({ title: `Delete the peer group "${g.name}"?`, body: "Comps sheets saved from it keep their tickers.", confirmLabel: "Delete group", tone: "danger" })) void deletePeerGroup((g as DbPeerGroup).dbId); }} className="text-muted hover:text-neg">delete</button>}
         </div>
       </div>
     );

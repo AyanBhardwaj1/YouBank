@@ -17,6 +17,8 @@ import { DealTracker, LeagueTable, RadarBoard, type BriefData, type DealsData, t
 import { DashboardLayout, HybridLayout, MagazineLayout, WireLayout, type LayoutProps } from "./layouts";
 import { StoryCard } from "./StoryCard";
 import { StoryPeek } from "./StoryReader";
+import { useSubNav } from "@/lib/subnav";
+import { Select } from "@/components/ui/Select";
 
 type View = "today" | "deals" | "radar" | "saved";
 const EDITION_ICON: Record<EditionId, React.ReactNode> = {
@@ -28,6 +30,7 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
   const router = useRouter();
   const now = useNow();
   const [view, setView] = useState<View>(initialView);
+  useSubNav("/app/news", (v) => { if (v === "today" || v === "deals" || v === "radar" || v === "saved") setView(v); });
   const [category, setCategory] = useState("");
   const [query, setQuery] = useState({ typed: "", applied: "" });
   const [desk, setDesk] = useState("");
@@ -91,9 +94,9 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex min-w-0 items-center gap-2">
               <Newspaper className="h-4 w-4 shrink-0 text-accent" />
-              <select value={desk || deskId} onChange={(e) => setDesk(e.target.value === data?.ownDesk.id ? "" : e.target.value)} className="nr-head max-w-[260px] truncate bg-transparent text-[15px] text-fg outline-none" aria-label="Desk">
+              <Select value={desk || deskId} onChange={(v) => setDesk(v === data?.ownDesk.id ? "" : v)} className="nr-head max-w-[260px] truncate bg-transparent text-[15px] text-fg outline-none" aria-label="Desk">
                 {data ? data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>) : <option>Newsroom</option>}
-              </select>
+              </Select>
               <span className="hidden items-center gap-1.5 text-[11px] text-muted md:flex"><span className="pulse-ring inline-block h-1.5 w-1.5 rounded-full bg-pos" />{data && now ? `updated ${ago(data.generatedAt, now)}` : "live"}</span>
             </div>
             <nav className="flex items-center gap-0.5" aria-label="Newsroom views">
@@ -124,8 +127,8 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
               <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                 <div className="flex flex-wrap items-center gap-4 pt-2.5 text-[11.5px]">
                   <span className="text-muted">Mix and match:</span>
-                  <label className="flex items-center gap-1.5">Look<select value={look} onChange={(e) => chooseLook(e.target.value as LookId)} className="rounded-md border border-line bg-elevated px-1.5 py-0.5">{(Object.keys(LOOKS) as LookId[]).map((l) => <option key={l} value={l}>{LOOKS[l]}</option>)}</select></label>
-                  <label className="flex items-center gap-1.5">Layout<select value={layout} onChange={(e) => chooseLayout(e.target.value as LayoutId)} className="rounded-md border border-line bg-elevated px-1.5 py-0.5">{(Object.keys(LAYOUTS) as LayoutId[]).map((l) => <option key={l} value={l}>{LAYOUTS[l].label}</option>)}</select></label>
+                  <label className="flex items-center gap-1.5">Look<Select value={look} onChange={(v) => chooseLook(v as LookId)} className="rounded-md border border-line bg-elevated px-1.5 py-0.5">{(Object.keys(LOOKS) as LookId[]).map((l) => <option key={l} value={l}>{LOOKS[l]}</option>)}</Select></label>
+                  <label className="flex items-center gap-1.5">Layout<Select value={layout} onChange={(v) => chooseLayout(v as LayoutId)} className="rounded-md border border-line bg-elevated px-1.5 py-0.5">{(Object.keys(LAYOUTS) as LayoutId[]).map((l) => <option key={l} value={l}>{LAYOUTS[l].label}</option>)}</Select></label>
                   {advanced && <button type="button" onClick={() => { setOverride((o) => ({ ...o, advanced: false })); savePrefs({ advanced: false, edition }); }} className="text-muted underline-offset-2 hover:text-fg hover:underline">Back to the {EDITIONS[edition].label} edition</button>}
                   <span className="text-faint">Saved to your profile. More in Settings, News and alerts.</span>
                 </div>

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { CONTACT_KINDS, KIND_LABEL, type ContactKind } from "@/lib/crm/model";
 import { Empty, Field, ago, api, btn, input, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog } from "@/components/ui/Dialog";
 
 type Signal = { id: number; title: string; url: string; strength: string };
 type Contact = {
@@ -57,9 +59,9 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
             <Field label="Name"><input value={adding.name} onChange={(e) => setAdding({ ...adding, name: e.target.value })} className={input} /></Field>
             <Field label="Company" hint="Matched against the startup directory when it can be."><input value={adding.company} onChange={(e) => setAdding({ ...adding, company: e.target.value })} className={input} /></Field>
             <Field label="Who they are">
-              <select value={adding.kind} onChange={(e) => setAdding({ ...adding, kind: e.target.value })} className={input}>
+              <Select value={adding.kind} onChange={(v) => setAdding({ ...adding, kind: v })} className={input}>
                 {CONTACT_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-              </select>
+              </Select>
             </Field>
           </div>
           <div className="mt-2">
@@ -112,7 +114,7 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
             <div className="mt-2 flex flex-wrap gap-3">
               {notes?.id !== c.id && <button type="button" onClick={() => setNotes({ id: c.id, text: c.notes })} className={btn.link}>{c.notes ? "Edit notes" : "Add notes"}</button>}
               {c.optedOutAt
-                ? <button type="button" disabled={!!ctx.busy} onClick={() => { if (window.confirm(`${c.name || c.email} asked not to be contacted. Allow outreach to them again?`)) void patch(c.id, { optedOut: false }, "They can be contacted again."); }} className={btn.link}>Allow contact again</button>
+                ? <button type="button" disabled={!!ctx.busy} onClick={async () => { if (await confirmDialog({ title: `Allow outreach to ${c.name || c.email} again?`, body: "They asked not to be contacted. Only continue if they have told you otherwise.", confirmLabel: "Allow contact", tone: "danger" })) void patch(c.id, { optedOut: false }, "They can be contacted again."); }} className={btn.link}>Allow contact again</button>
                 : <button type="button" disabled={!!ctx.busy} onClick={() => patch(c.id, { optedOut: true }, "Marked do not contact. Pending outreach to them was withdrawn.")} className={btn.danger}>Do not contact</button>}
             </div>
           </article>

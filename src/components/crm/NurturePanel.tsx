@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { CONTACT_KINDS, KIND_LABEL } from "@/lib/crm/model";
 import { Empty, Field, ago, api, btn, input, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog } from "@/components/ui/Dialog";
 
 type Rule = {
   id: number; name: string; enabled: boolean; cadenceDays: number; anchor: string; kinds: string[];
@@ -41,8 +43,10 @@ export function NurturePanel({ ctx, onDrafted }: { ctx: PanelCtx; onDrafted: () 
     await api(`/api/crm/nurture/${r.id}`, { method: "PATCH", body: JSON.stringify({ enabled: !r.enabled }) });
     ctx.refresh();
   });
-  const remove = (r: Rule) => ctx.run(`del-${r.id}`, async () => {
-    if (!window.confirm(`Delete "${r.name}"? Drafts it already wrote stay in the review queue.`)) return;
+  const remove = async (r: Rule) => {
+    if (await confirmDialog({ title: `Delete "${r.name}"?`, body: "Drafts it already wrote stay in the review queue.", confirmLabel: "Delete rule", tone: "danger" })) await removeNow(r);
+  };
+  const removeNow = (r: Rule) => ctx.run(`del-${r.id}`, async () => {
     await api(`/api/crm/nurture/${r.id}`, { method: "DELETE" });
     ctx.refresh();
   });
@@ -73,19 +77,19 @@ export function NurturePanel({ ctx, onDrafted }: { ctx: PanelCtx; onDrafted: () 
             <Field label="Name"><input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} className={input} /></Field>
             <Field label="Quiet for at least (days)"><input type="number" min={14} value={editing.cadenceDays} onChange={(e) => setEditing({ ...editing, cadenceDays: Number(e.target.value) })} className={input} /></Field>
             <Field label="Counting from">
-              <select value={editing.anchor} onChange={(e) => setEditing({ ...editing, anchor: e.target.value })} className={input}>
+              <Select value={editing.anchor} onChange={(v) => setEditing({ ...editing, anchor: v })} className={input}>
                 <option value="last_sent">Your last email to them</option>
                 <option value="last_contact">The last email either way</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Drafts per day, at most"><input type="number" min={1} max={25} value={editing.dailyCap} onChange={(e) => setEditing({ ...editing, dailyCap: Number(e.target.value) })} className={input} /></Field>
             <Field label="At least this many emails exchanged" hint="Filters out one-off contacts."><input type="number" min={1} value={editing.minExchanges} onChange={(e) => setEditing({ ...editing, minExchanges: Number(e.target.value) })} className={input} /></Field>
             <Field label="Sending">
-              <select value={editing.sendMode} onChange={(e) => setEditing({ ...editing, sendMode: e.target.value })} className={input}>
+              <Select value={editing.sendMode} onChange={(v) => setEditing({ ...editing, sendMode: v })} className={input}>
                 <option value="default">Use my autopilot setting</option>
                 <option value="approve">Ask me before each note</option>
                 <option value="auto">Autopilot when confident</option>
-              </select>
+              </Select>
             </Field>
             <div className="sm:col-span-1 lg:col-span-3">
               <span className="text-[11px] font-semibold">Applies to</span>

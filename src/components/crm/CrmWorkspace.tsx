@@ -15,6 +15,9 @@ import { MailboxBar, type MailboxInfo } from "./MailboxBar";
 import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
+import { promptDialog } from "@/components/ui/Dialog";
+import { useSubNav } from "@/lib/subnav";
 
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
@@ -79,6 +82,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
+  useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -267,10 +271,10 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
                         </p>
                         {c && <p className="mt-0.5 truncate text-[11px] text-muted">{c.name || c.email}{c.title ? `, ${c.title}` : ""}</p>}
                         {d.nextStep && <p className="mt-1.5 text-[11px]"><span className="text-muted">Next:</span> {d.nextStep}</p>}
-                        <select value={d.stage} disabled={!!busy} onChange={(e) => move(d.id, e.target.value as Stage)}
+                        <Select value={d.stage} disabled={!!busy} onChange={(v) => move(d.id, v as Stage)}
                           className="mt-2 w-full ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11px] outline-none focus:border-accent/60">
                           {pipeline.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
-                        </select>
+                        </Select>
                       </article>
                     );
                   })}
@@ -303,7 +307,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
                   <button type="button" disabled={!!busy} onClick={() => draftFor(t.id)} className={btn.primary}>
                     {busy === `draft-${t.id}` ? "Writing…" : "Draft a reply"}
                   </button>
-                  <button type="button" disabled={!!busy} onClick={() => { const i = window.prompt("What should the reply do? e.g. \"propose Tuesday at 2pm\" or \"decline politely, not a fit\""); if (i) draftFor(t.id, i); }}
+                  <button type="button" disabled={!!busy} onClick={async () => { const i = await promptDialog({ title: "Draft a reply with an instruction", label: "What should the reply do?", placeholder: "e.g. Propose Tuesday at 2pm, or decline politely: not a fit", confirmLabel: "Draft reply" }); if (i?.trim()) draftFor(t.id, i.trim()); }}
                     className={btn.ghost}>Draft with an instruction</button>
                   <button type="button" disabled={!!busy} onClick={() => reprocess(t.id)} className={btn.link}>{busy === `proc-${t.id}` ? "Reading…" : "Re-read"}</button>
                 </div>

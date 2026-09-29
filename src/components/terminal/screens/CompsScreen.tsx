@@ -11,6 +11,8 @@ import { derive, fmtMoney, fmtNum, fmtPct, fmtX, mean, median, type Derived } fr
 import { HBar } from "@/components/charts/HBar";
 import { Scatter } from "@/components/charts/Scatter";
 import type { AiStatus } from "../Terminal";
+import { Select } from "@/components/ui/Select";
+import { promptDialog } from "@/components/ui/Dialog";
 
 type Tier = "target" | "core" | "adjacent";
 type Row = { c: CompanyData; d: Derived; tier: Tier; rationale?: string };
@@ -148,7 +150,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
 
   const saveGroup = async () => {
     const current = groups.find((g) => g.id === groupId);
-    const name = window.prompt("Save peer group as", current?.id === "ai" ? `${target.ticker} peers (AI)` : `${target.ticker} peers`);
+    const name = (await promptDialog({ title: "Save peer group", label: "Name", defaultValue: current?.id === "ai" ? `${target.ticker} peers (AI)` : `${target.ticker} peers`, confirmLabel: "Save group" }))?.trim();
     if (!name) return;
     try {
       const g = await createPeerGroup({ name, description: current?.description ?? "", members: members.filter((m) => !excluded.has(m.ticker)) });
@@ -157,7 +159,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
   };
 
   const persistSheet = async () => {
-    const name = window.prompt("Save sheet as", `${target.ticker} trading comps`);
+    const name = (await promptDialog({ title: "Save comps sheet", label: "Name", defaultValue: `${target.ticker} trading comps`, confirmLabel: "Save sheet" }))?.trim();
     if (!name) return;
     try {
       const snapshot = all.map((r) => ({ ticker: r.c.ticker, tier: r.tier, ev: r.d.ev, evRevLtm: r.d.evRevLtm, evRevNtm: r.d.evRevNtm, growth: r.d.revenueGrowth, gm: r.d.grossMargin, fcfm: r.d.fcfMargin, ltmEnd: r.c.ltm.periodEnd, price: r.c.price?.last ?? null }));
@@ -228,11 +230,11 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5 text-[11px]">
         <label className="flex items-center gap-1.5 text-muted">
           Peer group
-          <select value={groupId} onChange={(e) => { setGroupId(e.target.value); setExcluded(new Set()); }}
+          <Select value={groupId} onChange={(v) => { setGroupId(v); setExcluded(new Set()); }}
             className="max-w-[220px] rounded border border-line bg-elevated px-1.5 py-0.5 text-fg focus:border-accent/60 focus:outline-none">
             {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             <option value="watchlist">Watchlist</option>
-          </select>
+          </Select>
         </label>
         <button type="button" onClick={proposePeers} disabled={proposing || !ai?.configured}
           title={ai?.configured ? `Ask ${ai.provider} for a tiered peer set` : "Add an OpenAI or Anthropic key to enable"}
@@ -247,12 +249,12 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
           <button type="button" onClick={saveGroup} className="rounded border border-line px-2 py-0.5 text-muted hover:border-accent/50 hover:text-accent">Save group</button>
         )}
         <button type="button" onClick={persistSheet} className="rounded border border-line px-2 py-0.5 text-muted hover:border-accent/50 hover:text-accent">{sheetId ? "Update sheet" : "Save sheet"}</button>
-        <select value="" onFocus={() => { if (!sheets) listSheets().then(setSheets).catch(() => setSheets([])); }} onChange={(e) => { const id = Number(e.target.value); if (id) void openSheet(id); }}
+        <Select value="" onOpen={() => { if (!sheets) listSheets().then(setSheets).catch(() => setSheets([])); }} onChange={(v) => { const id = Number(v); if (id) void openSheet(id); }}
           className="rounded border border-line bg-elevated px-1.5 py-0.5 text-muted focus:border-accent/60 focus:outline-none">
           <option value="">Open sheet…</option>
           {(sheets ?? []).map((sh) => <option key={sh.id} value={sh.id}>{sh.name} · {sh.targetTicker} · {sh.createdBy}</option>)}
           {sheets && sheets.length === 0 && <option disabled>No saved sheets</option>}
-        </select>
+        </Select>
         {excluded.size > 0 && <button type="button" onClick={() => setExcluded(new Set())} className="text-info hover:underline">Restore {excluded.size} removed</button>}
         {status && <span className="text-pos">{status}</span>}
         {aiError && <span className="text-neg">{aiError}</span>}

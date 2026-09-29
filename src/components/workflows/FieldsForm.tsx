@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import type { Field, Inputs } from "@/lib/workflows/types";
 import type { TickerRow } from "@/lib/types";
+import { Select } from "@/components/ui/Select";
 
 const ctl = "ctl w-full border border-line bg-bg px-2.5 py-1.5 text-[12.5px] text-fg placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20";
 
@@ -63,9 +64,9 @@ export function FieldsForm({ fields, values, onChange, columns = 2 }: { fields: 
             {f.type === "textarea" && <textarea value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)} rows={5} placeholder={f.placeholder} className={`${ctl} resize-y`} />}
             {f.type === "csv" && <CsvInput field={f} value={String(v ?? "")} onChange={(x) => set(f.key, x)} />}
             {f.type === "select" && (
-              <select value={String(v ?? f.options?.[0] ?? "")} onChange={(e) => set(f.key, e.target.value)} className={ctl}>
+              <Select value={String(v ?? f.options?.[0] ?? "")} onChange={(v) => set(f.key, v)} className={ctl}>
                 {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
+              </Select>
             )}
             {f.type === "multiselect" && (
               <div className="flex flex-wrap gap-1.5">

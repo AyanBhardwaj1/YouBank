@@ -6,6 +6,8 @@ import { AiScreen } from "@/components/terminal/screens/AiScreen";
 import type { AiStatus } from "@/components/terminal/Terminal";
 import type { FormDFiling } from "@/lib/vc/formd";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { Select } from "@/components/ui/Select";
+import { useSubNav } from "@/lib/subnav";
 
 type Startup = {
   id: number; source: string; sourceId: string; name: string; oneLiner: string; description: string; website: string; url: string; logo: string; program: string; status: string;
@@ -17,9 +19,10 @@ type Facets = { sources: { source: string; n: number }[]; countries: { country: 
 const SOURCE_LABEL: Record<string, string> = { yc: "YC", a16z: "a16z", thiel: "Thiel", hn: "Show HN", formd: "Form D", web: "Web", user: "Added" };
 const SOURCE_STYLE: Record<string, string> = { yc: "bg-accent-soft text-accent", a16z: "bg-info/15 text-info", thiel: "bg-pos/15 text-pos", hn: "bg-elevated text-fg/80", formd: "bg-neg/10 text-neg", web: "bg-raised text-muted", user: "bg-raised text-muted" };
 
-export function VcWorkspace() {
+export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const { profile } = useWorkspace();
-  const [tab, setTab] = useState<"directory" | "formd">("directory");
+  const [tab, setTab] = useState<"directory" | "formd">(initialTab === "formd" ? "formd" : "directory");
+  useSubNav("/app/vc", (v) => { if (v === "directory" || v === "formd") setTab(v); });
   const [facets, setFacets] = useState<Facets | null>(null);
   const [q, setQ] = useState(""); const [source, setSource] = useState(""); const [country, setCountry] = useState(""); const [program, setProgram] = useState(""); const [industry, setIndustry] = useState(""); const [hiring, setHiring] = useState(false);
   const [page, setPage] = useState(1);
@@ -101,17 +104,17 @@ export function VcWorkspace() {
                 {(facets?.sources ?? []).map((s) => chip(source === s.source, () => { setSource(source === s.source ? "" : s.source); setPage(1); }, SOURCE_LABEL[s.source] ?? s.source, s.n))}
               </div>
               <div className="flex gap-1.5">
-                <select value={country} onChange={(e) => { setCountry(e.target.value); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
+                <Select value={country} onChange={(v) => { setCountry(v); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
                   <option value="">All countries</option>{facets?.countries.map((c) => <option key={c.country} value={c.country}>{c.country} ({c.n})</option>)}
-                </select>
-                <select value={program} onChange={(e) => { setProgram(e.target.value); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
+                </Select>
+                <Select value={program} onChange={(v) => { setProgram(v); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
                   <option value="">All programs / batches</option>{facets?.programs.map((p) => <option key={p.program} value={p.program}>{p.program} ({p.n})</option>)}
-                </select>
+                </Select>
               </div>
               <div className="flex items-center gap-1.5">
-                <select value={industry} onChange={(e) => { setIndustry(e.target.value); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
+                <Select value={industry} onChange={(v) => { setIndustry(v); setPage(1); }} className="min-w-0 flex-1 rounded border border-line bg-elevated px-1.5 py-1 text-fg">
                   <option value="">All industries</option>{facets?.industries.map((i) => <option key={i.industry} value={i.industry}>{i.industry} ({i.n})</option>)}
-                </select>
+                </Select>
                 <label className="flex items-center gap-1 text-muted"><input type="checkbox" checked={hiring} onChange={(e) => { setHiring(e.target.checked); setPage(1); }} /> Hiring</label>
               </div>
               <div className="flex items-center justify-between">

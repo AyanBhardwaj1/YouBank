@@ -11,6 +11,7 @@ import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 import { NewsSettings } from "@/components/news/NewsSettings";
+import { useSubNav } from "@/lib/subnav";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -23,6 +24,7 @@ type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
+  useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [routing, setRouting] = useState(prefs.routing !== false);
   const { profile, config } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();

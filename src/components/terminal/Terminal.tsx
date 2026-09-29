@@ -12,6 +12,7 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { useAiSettings } from "@/components/ai/ModelPicker";
 import { HelpOverlay } from "./HelpOverlay";
 import { prefetchFunction, recordSkill } from "./kit";
+import { useSubNav } from "@/lib/subnav";
 
 export type OpenPanel = Command & { id: number; openedAt?: number };
 export type AiStatus = { configured: boolean; provider: string; model: string; reason?: string; label?: string };
@@ -69,6 +70,9 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
   };
 
   const openFn = (fn: FunctionCode) => run({ ticker: activeTicker, fn, via: "click" });
+
+  // The sidebar's terminal workflows open here as panels, beside the ones already open.
+  useSubNav("/app/terminal", (code) => { if (isFunctionCode(code)) run({ ticker: "", fn: code, via: "click" }); });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

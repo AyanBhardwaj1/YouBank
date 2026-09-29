@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { DialogHost } from "@/components/ui/Dialog";
 import { THEME_COOKIE, themeById } from "@/lib/themes";
 import { currentUser } from "@/lib/auth/user";
 
@@ -32,7 +33,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" data-theme={theme.id} className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full">
-        <ThemeProvider initial={theme.id} signedIn={!!user}>{children}</ThemeProvider>
+        <ThemeProvider initial={theme.id} signedIn={!!user}>{children}<DialogHost /></ThemeProvider>
       </body>
     </html>
   );

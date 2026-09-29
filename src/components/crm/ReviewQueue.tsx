@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { confirmDialog } from "@/components/ui/Dialog";
 import { DRAFT_KIND_LABEL, type DraftKind } from "@/lib/crm/model";
 import { Graduations } from "./EngineInsights";
 import { Suggestions } from "./Suggestions";
@@ -61,9 +62,13 @@ export function ReviewQueue({ ctx, drafts, canSend, autopilotOn }: { ctx: PanelC
   });
   const skip = (q: Question) => ctx.run(`q-${q.id}`, async () => { await api(`/api/crm/questions/${q.id}`, { method: "DELETE" }); ctx.refresh(); });
 
-  const send = (d: Draft) => ctx.run(`send-${d.id}`, async () => {
+  const send = async (d: Draft) => {
+    const to = d.toAddresses.map((a) => a.address).join(", ");
+    if (!(await confirmDialog({ title: "Send this email now?", body: `To ${to}. Sending cannot be undone.`, confirmLabel: "Send now" }))) return;
+    await sendNow(d);
+  };
+  const sendNow = (d: Draft) => ctx.run(`send-${d.id}`, async () => {
     const current = editing?.id === d.id ? editing : { subject: d.subject, body: d.body };
-    if (!window.confirm(`Send this to ${d.toAddresses.map((a) => a.address).join(", ")} now?\n\nThis cannot be undone.`)) return;
     const r = await api<{ to: string[]; from: string }>(`/api/crm/drafts/${d.id}/send`, { method: "POST", body: JSON.stringify({ subject: current.subject, body: current.body }) });
     setEditing(null); ctx.say(`Sent to ${r.to.join(", ")} from ${r.from}`); ctx.refresh();
   });
@@ -76,8 +81,11 @@ export function ReviewQueue({ ctx, drafts, canSend, autopilotOn }: { ctx: PanelC
     await api(`/api/crm/drafts/${editing.id}`, { method: "PATCH", body: JSON.stringify({ subject: editing.subject, body: editing.body }) });
     setEditing(null); ctx.say("Saved. Edited drafts wait for you to send them."); ctx.refresh();
   });
-  const discard = (d: Draft) => ctx.run(`discard-${d.id}`, async () => {
-    if (d.kind === "campaign" && !window.confirm("Discarding a campaign email takes this lead out of the sequence. Continue?")) return;
+  const discard = async (d: Draft) => {
+    if (d.kind === "campaign" && !(await confirmDialog({ title: "Discard this campaign email?", body: "Discarding it takes this lead out of the sequence.", confirmLabel: "Discard", tone: "danger" }))) return;
+    await discardNow(d);
+  };
+  const discardNow = (d: Draft) => ctx.run(`discard-${d.id}`, async () => {
     await api(`/api/crm/drafts/${d.id}`, { method: "DELETE" });
     ctx.say(d.kind === "campaign" ? "Discarded, and the lead is out of the sequence." : "Draft discarded"); ctx.refresh();
   });

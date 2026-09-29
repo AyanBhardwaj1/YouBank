@@ -13,6 +13,8 @@ import { newId, type CellStyle } from "@/lib/studio/types";
 import { DeckView } from "./DeckView";
 import { Grid, cellSel, selRange, type Sel } from "./Grid";
 import { useStudio, type LogItem } from "./useStudio";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 
 const TOOL: Record<string, string> = {
   read_range: "Reading", write_cells: "Writing cells", format_cells: "Formatting", fill: "Filling formulas", insert_or_delete: "Moving rows and columns",
@@ -93,8 +95,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   if (!doc || !engine || !meta || !sheet) return <div className="grid h-full place-items-center text-[12px] text-muted">Opening the model…</div>;
 
   const active = sheet.cells[A1(sel.ar, sel.ac)];
-  const addComment = () => {
-    const t = window.prompt(`Comment on ${sheet.name}!${selRange(sel)} (the agent can turn it):`);
+  const addComment = async () => {
+    const t = await promptDialog({ title: `Comment on ${sheet.name}!${selRange(sel)}`, body: "The agent can act on it when you ask.", placeholder: "e.g. Check this growth rate against guidance", multiline: true, confirmLabel: "Comment" });
     if (t) edit([{ op: "comments", comments: [...doc.comments, { id: newId("cm"), target: { kind: "cell", sheet: sheet.id, cell: A1(sel.ar, sel.ac) }, text: t, author: meta.me.name, at: new Date().toISOString() }] }], "Commented on a cell");
   };
   const go = (sheetName: string, cell: string) => {
@@ -158,10 +160,10 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
             <input ref={docInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void onDocument(f); }} />
           </span>
           {meta.mine && meta.teams.length > 0 && (
-            <select value={meta.teamId ?? ""} onChange={(e) => { void fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: e.target.value ? Number(e.target.value) : null }) }).then(() => st.reload()); }} className="ctl border border-line bg-bg px-1.5 py-1 text-[11px] text-fg">
+            <Select value={meta.teamId ?? ""} onChange={(v) => { void fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: v ? Number(v) : null }) }).then(() => st.reload()); }} className="ctl border border-line bg-bg px-1.5 py-1 text-[11px] text-fg">
               <option value="">Private</option>
               {meta.teams.map((t) => <option key={t.id} value={t.id}>Shared: {t.name}</option>)}
-            </select>
+            </Select>
           )}
         </span>
       </div>
@@ -174,10 +176,10 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
           {tabNow === "model" ? (
             <>
               <div className="flex flex-wrap items-center gap-1 border-b border-line bg-panel px-2 py-1 text-[11.5px]">
-                <select value={active?.s?.nf ?? "General"} onChange={(e) => style({ nf: e.target.value === "General" ? undefined : e.target.value })} className="ctl border border-line bg-bg px-1.5 py-0.5 text-[11.5px]">
+                <Select value={active?.s?.nf ?? "General"} onChange={(v) => style({ nf: v === "General" ? undefined : v })} className="ctl border border-line bg-bg px-1.5 py-0.5 text-[11.5px]">
                   {NUMBER_FORMATS.map((f) => <option key={f.nf} value={f.nf}>{f.label}</option>)}
                   {active?.s?.nf && !NUMBER_FORMATS.some((f) => f.nf === active.s?.nf) && <option value={active.s.nf}>{active.s.nf}</option>}
-                </select>
+                </Select>
                 <button type="button" onClick={() => style({ b: !active?.s?.b })} className={`ctl border border-line px-2 py-0.5 font-bold ${active?.s?.b ? "bg-accent-soft text-accent" : ""}`}>B</button>
                 <button type="button" onClick={() => style({ i: !active?.s?.i })} className={`ctl border border-line px-2 py-0.5 italic ${active?.s?.i ? "bg-accent-soft text-accent" : ""}`}>I</button>
                 <span className="mx-1 h-4 w-px bg-line" />
@@ -201,11 +203,11 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               </div>
               <div className="flex items-center gap-0.5 overflow-x-auto border-t border-line bg-panel px-1.5 py-1 text-[11.5px]">
                 {doc.workbook.order.map((sid) => (
-                  <button key={sid} type="button" onClick={() => setSheetId(sid)} onDoubleClick={() => { const n = window.prompt("Rename sheet", doc.workbook.sheets[sid].name); if (n && n !== doc.workbook.sheets[sid].name) edit(renameSheet(doc, doc.workbook.sheets[sid].name, n)); }}
+                  <button key={sid} type="button" onClick={() => setSheetId(sid)} onDoubleClick={async () => { const was = doc.workbook.sheets[sid].name; const n = (await promptDialog({ title: "Rename sheet", label: "Sheet name", defaultValue: was, confirmLabel: "Rename" }))?.trim(); if (n && n !== was) edit(renameSheet(doc, was, n)); }}
                     className={`ctl whitespace-nowrap px-2.5 py-0.5 ${sid === sheet.id ? "bg-bg font-semibold text-fg shadow-sm" : "text-muted hover:text-fg"}`}>{doc.workbook.sheets[sid].name}</button>
                 ))}
                 <button type="button" title="Add a sheet" onClick={() => { const { patch, sheet: s } = addSheet(doc, "Sheet"); edit([patch]); setSheetId(s.id); }} className="ctl px-2 py-0.5 text-muted hover:text-fg">+</button>
-                {doc.workbook.order.length > 1 && <button type="button" title="Delete this sheet" onClick={() => { if (window.confirm(`Delete sheet "${sheet.name}"? Formulas pointing at it will show #REF!.`)) { edit(deleteSheet(doc, sheet.name)); setSheetId(null); } }} className="ml-auto ctl px-2 py-0.5 text-muted hover:text-neg">Delete sheet</button>}
+                {doc.workbook.order.length > 1 && <button type="button" title="Delete this sheet" onClick={async () => { if (await confirmDialog({ title: `Delete sheet "${sheet.name}"?`, body: "Formulas pointing at it will show #REF!. Undo brings it back.", confirmLabel: "Delete sheet", tone: "danger" })) { edit(deleteSheet(doc, sheet.name)); setSheetId(null); } }} className="ml-auto ctl px-2 py-0.5 text-muted hover:text-neg">Delete sheet</button>}
               </div>
             </>
           ) : (
@@ -365,7 +367,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
                     <p className="text-[10.5px] text-muted">{c.createdByName || "Someone"} · {ago(c.createdAt)}</p>
                     <div className="mt-1 flex gap-3 text-[10.5px]">
                       <button type="button" onClick={() => void compare(c.id)} className="text-muted underline hover:text-fg">{diffs[c.id] ? "Hide changes" : "What changed since"}</button>
-                      <button type="button" onClick={() => { if (window.confirm(`Go back to "${c.name}"? The model and deck return to that point, as one change you can undo.`)) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
+                      <button type="button" onClick={async () => { if (await confirmDialog({ title: `Go back to "${c.name}"?`, body: "The model and deck return to that point, as one change you can undo.", confirmLabel: "Restore" })) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
                     </div>
                     {diffs[c.id] && <DiffView d={diffs[c.id]} go={go} />}
                   </li>

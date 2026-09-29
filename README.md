@@ -978,6 +978,17 @@ Graduation offers appear at the top of the queue.
 
   Components use design tokens only. `scripts/gen-themes.ts` regenerates `src/app/themes.css` from
   `src/lib/themes.ts`.
+- **The top bar and the sidebar.** Each person pins the features they use to the top bar, in their own
+  order, with names or icons only; the page they are on shows as a dashed tab when it is not pinned. The
+  sidebar (the button at the left, or ⌘/Ctrl+\\) holds every feature, the workflows inside them
+  (terminal functions, Newsroom views, Relationships tabs, settings) and the tools picked for their role,
+  with search across all of it. It opens over the page or docks beside it. When a workflow's page is
+  already open, it switches view in place, so open panels stay put. Saved in `profiles.extra.nav`
+  (`src/lib/nav.ts`).
+- **Built-in controls.** Dropdowns (`src/components/ui/Select.tsx`) and confirmation and text-entry
+  dialogs (`src/components/ui/Dialog.tsx`) replace the browser's own: themed like everything else,
+  animated, with keyboard support, search in long lists, and type-to-confirm for deletions that
+  affect a whole team.
 
 ---
 

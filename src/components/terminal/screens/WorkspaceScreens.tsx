@@ -6,6 +6,7 @@ import type { PortfolioView } from "@/lib/terminal/portfolio";
 import type { Filter, Metric, ScreenRow } from "@/lib/terminal/screen";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { BarList, DataTable, fm, fn, fp, Frame, fsp, Heatmap, Hint, Meter, Pill, postTerminal, recordSkill, Section, terminalUrl, Tile, Tiles, tone, useSkills, Why, type Column, type Sources } from "../kit";
+import { Select } from "@/components/ui/Select";
 
 type Props = { onRun?: (c: Command) => void; arg?: string; activeTicker: string };
 
@@ -84,7 +85,7 @@ export function EqsScreen({ onRun, arg }: Props) {
               {filters.map((f, i) => (
                 <span key={`${f.metric}-${i}`} className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent-soft px-2 py-0.5">
                   {metrics[f.metric].label}
-                  <select value={f.op} onChange={(e) => void rerun(filters.map((x, k) => (k === i ? { ...x, op: e.target.value as Filter["op"] } : x)))} className="bg-transparent text-accent">{OPS.map((o) => <option key={o} value={o}>{o}</option>)}</select>
+                  <Select value={f.op} onChange={(v) => void rerun(filters.map((x, k) => (k === i ? { ...x, op: v as Filter["op"] } : x)))} className="bg-transparent text-accent">{OPS.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
                   <input type="number" defaultValue={metrics[f.metric].format === "pct" ? +(f.value * 100).toFixed(2) : f.value} onBlur={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) void rerun(filters.map((x, k) => (k === i ? { ...x, value: metrics[f.metric].format === "pct" ? v / 100 : v } : x))); }} className="num w-16 bg-transparent text-right text-fg focus:outline-none" />
                   {metrics[f.metric].format === "pct" ? "%" : metrics[f.metric].format === "money" ? "$mm" : ""}
                   <button type="button" onClick={() => void rerun(filters.filter((_, k) => k !== i))} className="text-muted hover:text-neg" aria-label="Remove filter">×</button>

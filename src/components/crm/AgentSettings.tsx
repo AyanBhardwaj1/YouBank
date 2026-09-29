@@ -9,6 +9,7 @@ import {
 import { MODE_LABEL, MODES, type Mode } from "@/lib/crm/model";
 import { EngineInsights } from "./EngineInsights";
 import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
+import { Select } from "@/components/ui/Select";
 
 type Settings = {
   mode: Mode; modeChosen: boolean; about: string; signature: string; internalDomains: string[]; effectiveInternalDomains: string[];
@@ -168,9 +169,9 @@ export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
             </span>
           </Field>
           <Field label="Time zone">
-            <select value={ap.window.tz} onChange={(e) => setAp({ window: { ...ap.window, tz: e.target.value } })} className={input}>
+            <Select value={ap.window.tz} onChange={(v) => setAp({ window: { ...ap.window, tz: v } })} className={input}>
               {(tzList.includes(ap.window.tz) ? tzList : [ap.window.tz, ...tzList]).map((z) => <option key={z} value={z}>{z}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <div className="mt-2.5 flex flex-wrap gap-4 text-[12px]">

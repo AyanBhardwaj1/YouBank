@@ -11,6 +11,7 @@ import { Bell, Check, Hash, Mail, MonitorSmartphone } from "lucide-react";
 import { useState } from "react";
 import type { Channel, EditionId, LayoutId, LookId, NewsPrefs } from "@/lib/news/prefs";
 import { post, useApi } from "./client";
+import { Select } from "@/components/ui/Select";
 
 type PrefsResponse = {
   prefs: Omit<NewsPrefs, "slack"> & { slackConnected: boolean };
@@ -110,8 +111,8 @@ export function NewsSettings() {
         <div className="mt-3"><Toggle on={p.advanced} label="Advanced: choose the look and the layout separately" onChange={(v) => save({ advanced: v })} /></div>
         {p.advanced && (
           <div className="mt-3 flex flex-wrap gap-6">
-            <label className="text-[12px] text-muted">Look <select value={p.look} onChange={(e) => save({ look: e.target.value as LookId })} className="ml-1.5 rounded-md border border-line bg-elevated px-2 py-1 text-fg">{(Object.keys(data.looks) as LookId[]).map((l) => <option key={l} value={l}>{data.looks[l]}</option>)}</select></label>
-            <label className="text-[12px] text-muted">Layout <select value={p.layout} onChange={(e) => save({ layout: e.target.value as LayoutId })} className="ml-1.5 rounded-md border border-line bg-elevated px-2 py-1 text-fg">{(Object.keys(data.layouts) as LayoutId[]).map((l) => <option key={l} value={l}>{data.layouts[l].label}: {data.layouts[l].blurb}</option>)}</select></label>
+            <label className="text-[12px] text-muted">Look <Select value={p.look} onChange={(v) => save({ look: v as LookId })} className="ml-1.5 rounded-md border border-line bg-elevated px-2 py-1 text-fg">{(Object.keys(data.looks) as LookId[]).map((l) => <option key={l} value={l}>{data.looks[l]}</option>)}</Select></label>
+            <label className="text-[12px] text-muted">Layout <Select value={p.layout} onChange={(v) => save({ layout: v as LayoutId })} className="ml-1.5 rounded-md border border-line bg-elevated px-2 py-1 text-fg">{(Object.keys(data.layouts) as LayoutId[]).map((l) => <option key={l} value={l}>{data.layouts[l].label}: {data.layouts[l].blurb}</option>)}</Select></label>
           </div>
         )}
       </Row>
@@ -125,16 +126,16 @@ export function NewsSettings() {
       </Row>
 
       <Row title="Desk" hint={`Your desk comes from your profile (${data.ownDesk.label}). Read another group's news here or from the Newsroom's header.`}>
-        <select value={p.desk || data.ownDesk.id} onChange={(e) => save({ desk: e.target.value === data.ownDesk.id ? "" : e.target.value })} className="rounded-md border border-line bg-elevated px-2 py-1 text-[12px]">
+        <Select value={p.desk || data.ownDesk.id} onChange={(v) => save({ desk: v === data.ownDesk.id ? "" : v })} className="rounded-md border border-line bg-elevated px-2 py-1 text-[12px]">
           {data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>)}
-        </select>
+        </Select>
       </Row>
 
       <Row title="Morning brief" hint="Written once a day for your desk, with a section for your watchlist and network. Always in the app; also where you choose.">
         <div className="flex flex-wrap items-center gap-4">
           <Toggle on={p.brief.enabled} label="Send me the morning brief" onChange={(v) => save({ brief: { ...p.brief, enabled: v } })} />
           <label className="text-[12px] text-muted">at <input type="time" value={p.brief.time} onChange={(e) => save({ brief: { ...p.brief, time: e.target.value } })} className="ml-1 rounded-md border border-line bg-elevated px-1.5 py-0.5 text-fg" /></label>
-          <select value={p.brief.timezone} onChange={(e) => save({ brief: { ...p.brief, timezone: e.target.value } })} className="rounded-md border border-line bg-elevated px-1.5 py-0.5 text-[12px]">{[...new Set([p.brief.timezone, ...ZONES])].map((z) => <option key={z} value={z}>{z.replace("_", " ")}</option>)}</select>
+          <Select value={p.brief.timezone} onChange={(v) => save({ brief: { ...p.brief, timezone: v } })} className="rounded-md border border-line bg-elevated px-1.5 py-0.5 text-[12px]">{[...new Set([p.brief.timezone, ...ZONES])].map((z) => <option key={z} value={z}>{z.replace("_", " ")}</option>)}</Select>
         </div>
         <div className="mt-3 flex flex-wrap gap-4">
           {(["email", "push", "slack"] as Channel[]).map((c) => <Toggle key={c} on={p.brief.channels.includes(c)} label={c === "email" ? "Email" : c === "push" ? "Browser push" : "Slack"} onChange={(v) => save({ brief: { ...p.brief, channels: setChannels(p.brief.channels, c, v) } })} />)}
@@ -155,7 +156,7 @@ export function NewsSettings() {
         </div>
         <div className="mt-3 flex items-center gap-2 text-[12px] text-muted">
           <Toggle on={!!p.alerts.quiet} label="Quiet hours" onChange={(v) => save({ alerts: { ...p.alerts, quiet: v ? { from: 22, to: 7 } : null } })} />
-          {p.alerts.quiet && <><select value={p.alerts.quiet.from} onChange={(e) => save({ alerts: { ...p.alerts, quiet: { ...p.alerts.quiet!, from: Number(e.target.value) } } })} className="rounded-md border border-line bg-elevated px-1 py-0.5">{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}</select> to <select value={p.alerts.quiet.to} onChange={(e) => save({ alerts: { ...p.alerts, quiet: { ...p.alerts.quiet!, to: Number(e.target.value) } } })} className="rounded-md border border-line bg-elevated px-1 py-0.5">{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}</select><span className="text-faint">urgent alerts still come through</span></>}
+          {p.alerts.quiet && <><Select value={p.alerts.quiet.from} onChange={(v) => save({ alerts: { ...p.alerts, quiet: { ...p.alerts.quiet!, from: Number(v) } } })} className="rounded-md border border-line bg-elevated px-1 py-0.5">{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}</Select> to <Select value={p.alerts.quiet.to} onChange={(v) => save({ alerts: { ...p.alerts, quiet: { ...p.alerts.quiet!, to: Number(v) } } })} className="rounded-md border border-line bg-elevated px-1 py-0.5">{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}</Select><span className="text-faint">urgent alerts still come through</span></>}
         </div>
       </Row>
 

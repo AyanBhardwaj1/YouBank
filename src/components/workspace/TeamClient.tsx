@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { ROLE_BLURB, ROLE_LABEL, assignableBy, can, outranks, type TeamRole } from "@/lib/teams/roles";
+import { Select } from "@/components/ui/Select";
+import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 
 type Me = { id: string; email: string; name: string };
 type Team = { id: number; name: string; slug: string; role: TeamRole; memberCount: number; createdAt: string };
@@ -84,10 +86,16 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
     reload(); say("Role updated");
   });
 
-  const removeMember = (userId: string, label: string) => run(async () => {
+  const removeMember = async (userId: string, label: string) => {
     if (selected === null) return;
     const leaving = userId === me.id;
-    if (!window.confirm(leaving ? "Leave this team? You will lose access to everything shared with it." : `Remove ${label} from this team?`)) return;
+    const yes = await confirmDialog(leaving
+      ? { title: "Leave this team?", body: "You will lose access to everything shared with it.", confirmLabel: "Leave team", tone: "danger" }
+      : { title: `Remove ${label} from this team?`, body: "They lose access to everything shared with it.", confirmLabel: "Remove", tone: "danger" });
+    if (yes) await doRemove(userId, label, leaving);
+  };
+  const doRemove = (userId: string, label: string, leaving: boolean) => run(async () => {
+    if (selected === null) return;
     await api(`/api/teams/${selected}/members`, { method: "DELETE", body: JSON.stringify({ userId }) });
     if (leaving) {
       setTeams((cur) => cur.filter((t) => t.id !== selected));
@@ -109,9 +117,16 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
     say("Team renamed");
   });
 
-  const destroy = (name: string) => run(async () => {
+  const destroy = async (name: string) => {
     if (selected === null) return;
-    if (window.prompt(`Deleting "${name}" removes it for everyone. Shared work becomes personal again rather than being deleted.\n\nType the team name to confirm:`) !== name) return;
+    const typed = await promptDialog({
+      title: `Delete "${name}"?`, body: "It is removed for everyone. Shared work becomes personal again rather than being deleted.",
+      label: "Type the team name to confirm:", match: name, confirmLabel: "Delete team", tone: "danger",
+    });
+    if (typed !== null) await doDestroy(name);
+  };
+  const doDestroy = (name: string) => run(async () => {
+    if (selected === null) return;
     await api(`/api/teams/${selected}`, { method: "DELETE" });
     setTeams((cur) => cur.filter((t) => t.id !== selected));
     setSelected(null); setDetail(null); say(`Deleted ${name}`);
@@ -201,7 +216,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                 </div>
                 {can(myRole, "invite") && (
                   <button type="button" disabled={busy}
-                    onClick={() => { const n = window.prompt("Rename team", team?.name ?? ""); if (n) rename(n); }}
+                    onClick={async () => { const n = await promptDialog({ title: "Rename team", label: "Team name", defaultValue: team?.name ?? "", confirmLabel: "Rename" }); if (n && n.trim() !== team?.name) rename(n); }}
                     className="ctl border border-line px-2.5 py-1.5 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg disabled:opacity-50">Rename</button>
                 )}
               </header>
@@ -224,10 +239,10 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                           </td>
                           <td className="px-3 py-2">
                             {mayEdit ? (
-                              <select value={m.role} disabled={busy} onChange={(e) => changeRole(m.userId, e.target.value as TeamRole)}
+                              <Select value={m.role} disabled={busy} onChange={(v) => changeRole(m.userId, v as TeamRole)}
                                 className="ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11.5px] outline-none focus:border-accent/60">
                                 {assignableBy(myRole).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                              </select>
+                              </Select>
                             ) : (
                               <span className="text-muted" title={ROLE_BLURB[m.role]}>{ROLE_LABEL[m.role]}</span>
                             )}
@@ -256,10 +271,10 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                     <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} type="email" placeholder="colleague@firm.com"
                       onKeyDown={(e) => { if (e.key === "Enter" && inviteEmail.trim()) invite(); }}
                       className="ctl min-w-[220px] flex-1 border border-line bg-elevated/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60" />
-                    <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as TeamRole)}
+                    <Select value={inviteRole} onChange={(v) => setInviteRole(v as TeamRole)}
                       className="ctl border border-line bg-elevated/60 px-2 py-1.5 text-[12px] outline-none focus:border-accent/60">
                       {INVITABLE(myRole).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                    </select>
+                    </Select>
                     <button type="button" onClick={invite} disabled={busy || !inviteEmail.trim()}
                       className="ctl bg-fg px-3 py-1.5 text-[12px] font-semibold text-bg transition hover:bg-white disabled:opacity-50">Create invite</button>
                   </div>
