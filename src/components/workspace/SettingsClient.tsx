@@ -10,17 +10,19 @@ import { ROLES } from "@/lib/roles";
 import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
+import { NewsSettings } from "@/components/news/NewsSettings";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
   { id: "ai", label: "AI model", icon: "Cpu" },
+  { id: "news", label: "News and alerts", icon: "Newspaper" },
   { id: "desk", label: "My desk", icon: "Layout" },
   { id: "data", label: "Data and privacy", icon: "Database" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-export function SettingsClient({ email, prefs }: { email: string; prefs: AiPrefs }) {
-  const [tab, setTab] = useState<Tab>("style");
+export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   const [routing, setRouting] = useState(prefs.routing !== false);
   const { profile, config } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
@@ -52,6 +54,8 @@ export function SettingsClient({ email, prefs }: { email: string; prefs: AiPrefs
             <div className="mt-4"><ThemePicker /></div>
           </section>
         )}
+
+        {tab === "news" && <NewsSettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

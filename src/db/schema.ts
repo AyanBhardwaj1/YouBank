@@ -1,4 +1,4 @@
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
 
@@ -793,3 +793,142 @@ export const aiUsage = pgTable("ai_usage", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("ai_usage_user_idx").on(t.userId, t.createdAt)]);
 
+
+/* ---------------- Newsroom ---------------- */
+
+/** Polite polling state for each feed or query: conditional-request validators and backoff. */
+export const newsFeeds = pgTable("news_feeds", {
+  url: text("url").primaryKey(),
+  kind: text("kind").notNull(),
+  etag: text("etag").notNull().default(""),
+  lastModified: text("last_modified").notNull().default(""),
+  lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }),
+  nextFetchAt: timestamp("next_fetch_at", { withTimezone: true }).notNull().defaultNow(),
+  failCount: integer("fail_count").notNull().default(0),
+  lastError: text("last_error").notNull().default(""),
+  itemsSeen: integer("items_seen").notNull().default(0),
+}, (t) => [index("news_feeds_next_idx").on(t.nextFetchAt)]);
+
+export type NewsItemMeta = Record<string, unknown>;
+
+/** Every article, filing, release, paper, model or launch seen. `key` is the canonical URL or the accession. */
+export const newsItems = pgTable("news_items", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(),
+  url: text("url").notNull(),
+  title: text("title").notNull(),
+  snippet: text("snippet").notNull().default(""),
+  source: text("source").notNull(),
+  domain: text("domain").notNull().default(""),
+  kind: text("kind").notNull(), // article | filing | release | gov | paper | repo | model | launch | research
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  desks: jsonb("desks").$type<string[]>().notNull().default([]),
+  tickers: jsonb("tickers").$type<string[]>().notNull().default([]),
+  meta: jsonb("meta").$type<NewsItemMeta>().notNull().default({}),
+  clusterId: integer("cluster_id"),
+  /** Title embedding, 256 dimensions quantized to int8, base64. Cleared after a few days. */
+  embedding: text("embedding"),
+}, (t) => [
+  uniqueIndex("news_items_key_uidx").on(t.key),
+  index("news_items_published_idx").on(t.publishedAt),
+  index("news_items_cluster_idx").on(t.clusterId),
+]);
+
+export type NewsEntity = { name: string; ticker?: string; kind: "company" | "investor" | "person" | "agency" | "fund"; role?: string };
+export type NewsSummary = { bullets: string[]; numbers: { label: string; value: string }[]; why: string; watch?: string; model?: string; fromText?: boolean };
+
+/** A story: one or more items about the same event, with its summary and the desks it matters to. */
+export const newsClusters = pgTable("news_clusters", {
+  id: serial("id").primaryKey(),
+  headline: text("headline").notNull(),
+  category: text("category").notNull().default("general"),
+  importance: doublePrecision("importance").notNull().default(0),
+  desks: jsonb("desks").$type<string[]>().notNull().default([]),
+  tickers: jsonb("tickers").$type<string[]>().notNull().default([]),
+  entities: jsonb("entities").$type<NewsEntity[]>().notNull().default([]),
+  summary: jsonb("summary").$type<NewsSummary | null>(),
+  sourceCount: integer("source_count").notNull().default(1),
+  kinds: jsonb("kinds").$type<string[]>().notNull().default([]),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  enrichedAt: timestamp("enriched_at", { withTimezone: true }),
+  centroid: text("centroid"),
+}, (t) => [index("news_clusters_first_seen_idx").on(t.firstSeenAt), index("news_clusters_updated_idx").on(t.updatedAt)]);
+
+export type DealAdvisor = { firm: string; side: string; role: string };
+
+/** Announced deals and raises parsed from stories and filings: YouBank's own deal database. */
+export const newsDeals = pgTable("news_deals", {
+  id: serial("id").primaryKey(),
+  clusterId: integer("cluster_id").notNull(),
+  kind: text("kind").notNull(), // acquisition | merger | take_private | ipo | raise | debt | bankruptcy | spin_off | tender
+  acquirer: text("acquirer").notNull().default(""),
+  acquirerTicker: text("acquirer_ticker").notNull().default(""),
+  target: text("target").notNull().default(""),
+  targetTicker: text("target_ticker").notNull().default(""),
+  valueUsd: doublePrecision("value_usd"),
+  perShare: doublePrecision("per_share"),
+  consideration: text("consideration").notNull().default(""),
+  premium: doublePrecision("premium"),
+  unaffectedPrice: doublePrecision("unaffected_price"),
+  evEbitda: doublePrecision("ev_ebitda"),
+  evRevenue: doublePrecision("ev_revenue"),
+  round: text("round").notNull().default(""),
+  investors: jsonb("investors").$type<string[]>().notNull().default([]),
+  advisors: jsonb("advisors").$type<DealAdvisor[]>().notNull().default([]),
+  sector: text("sector").notNull().default(""),
+  status: text("status").notNull().default("announced"),
+  announcedAt: timestamp("announced_at", { withTimezone: true }).notNull(),
+  sourceUrl: text("source_url").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("news_deals_cluster_uidx").on(t.clusterId), index("news_deals_announced_idx").on(t.announcedAt)]);
+
+/** The morning brief per desk per day, research briefs per desk per slot, and the weekly tech radar. */
+export const newsBriefs = pgTable("news_briefs", {
+  id: serial("id").primaryKey(),
+  desk: text("desk").notNull(),
+  kind: text("kind").notNull(), // morning | research | radar
+  slot: text("slot").notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  model: text("model").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("news_briefs_desk_kind_slot_uidx").on(t.desk, t.kind, t.slot)]);
+
+/** What each person did with a story, and the "why it matters to you" note written for them. */
+export const newsUserItems = pgTable("news_user_items", {
+  userId: text("user_id").notNull(),
+  clusterId: integer("cluster_id").notNull(),
+  readAt: timestamp("read_at", { withTimezone: true }),
+  savedAt: timestamp("saved_at", { withTimezone: true }),
+  hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+  why: jsonb("why").$type<{ text: string; model: string; at: string } | null>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.clusterId] }), index("news_user_items_saved_idx").on(t.userId, t.savedAt)]);
+
+/** Alerts and briefs for the bell, with where each was delivered. `key` dedupes per person. */
+export const newsNotifications = pgTable("news_notifications", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  key: text("key").notNull(),
+  kind: text("kind").notNull(), // alert | brief | radar | system
+  title: text("title").notNull(),
+  body: text("body").notNull().default(""),
+  url: text("url").notNull().default(""),
+  clusterId: integer("cluster_id"),
+  urgent: boolean("urgent").notNull().default(false),
+  delivered: jsonb("delivered").$type<Record<string, string>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp("read_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("news_notifications_user_key_uidx").on(t.userId, t.key), index("news_notifications_user_idx").on(t.userId, t.createdAt)]);
+
+/** Browser push subscriptions, one per device. */
+export const newsPushSubs = pgTable("news_push_subs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  endpoint: text("endpoint").notNull(),
+  keys: jsonb("keys").$type<{ p256dh: string; auth: string }>().notNull(),
+  userAgent: text("user_agent").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("news_push_subs_endpoint_uidx").on(t.endpoint), index("news_push_subs_user_idx").on(t.userId)]);

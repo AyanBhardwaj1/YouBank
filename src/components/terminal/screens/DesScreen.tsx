@@ -7,6 +7,7 @@ import { Columns } from "@/components/charts/Columns";
 import type { Snapshot } from "@/lib/terminal/snapshot";
 import { StatTile } from "../StatTile";
 import { ResearchNote, SourceBadge, useTerminal } from "../kit";
+import { CompanyNewsStrip } from "./NewsScreens";
 
 export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: (cmd: Command) => void }) {
   const d = derive(c);
@@ -90,12 +91,13 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-2">
-        {(["FA", "COMPS", "FIL", "AI"] as const).map((fn) => (
+        {(["FA", "COMPS", "CN", "FIL", "AI"] as const).map((fn) => (
           <button key={fn} type="button" onClick={() => onRun({ ticker: c.ticker, fn })}
             className="num rounded border border-line bg-elevated px-2 py-1 text-[11px] font-semibold text-muted hover:border-accent/50 hover:text-accent">{c.ticker} {fn}</button>
         ))}
         <a href={c.sources.factsUrl} target="_blank" rel="noreferrer" className="ml-auto text-[10px] text-muted hover:text-info">XBRL source ↗</a>
       </div>
+      <CompanyNewsStrip ticker={c.ticker} onRun={onRun} />
       {s?.research && <><div className="-mx-3"><SourceBadge sources={snap.sources} /></div><ResearchNote research={s.research} /></>}
     </div>
   );

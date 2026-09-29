@@ -289,13 +289,13 @@ async function runAnthropic(a: LoopArgs): Promise<string> {
 /** A file sent with a structured call: a PDF, or a PNG, JPEG, WebP or GIF image. `data` is base64. */
 export type Attachment = { name: string; mime: string; data: string };
 
-export async function structured<T>(schema: z.ZodType<T>, name: string, system: string, prompt: string, opts?: { prefs?: AiPrefs | null; override?: AiOverride; files?: Attachment[]; maxTokens?: number; task?: AiTask }): Promise<{ data: T; provider: string; model: string }> {
+export async function structured<T>(schema: z.ZodType<T>, name: string, system: string, prompt: string, opts?: { prefs?: AiPrefs | null; override?: AiOverride; files?: Attachment[]; maxTokens?: number; task?: AiTask; /** Give up after this long (background jobs); the SDK default is ten minutes. */ timeoutMs?: number }): Promise<{ data: T; provider: string; model: string }> {
   const cfg = resolveAi(opts?.prefs, routeFor(opts?.task, opts?.prefs, opts?.override));
   if (cfg.provider === "none") throw new Error(cfg.reason);
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const files = opts?.files ?? [];
   if (cfg.provider === "openai") {
-    const client = new OpenAI({ apiKey: cfg.apiKey });
+    const client = new OpenAI({ apiKey: cfg.apiKey, ...(opts?.timeoutMs ? { timeout: opts.timeoutMs, maxRetries: 1 } : {}) });
     const input: string | OpenAI.Responses.ResponseInput = files.length
       ? [{
           role: "user",
@@ -316,7 +316,7 @@ export async function structured<T>(schema: z.ZodType<T>, name: string, system: 
     recordUsage({ feature: name, provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u?.output_tokens ?? 0, reasoning: u?.output_tokens_details?.reasoning_tokens ?? 0 } });
     return { data: schema.parse(JSON.parse(res.output_text)), provider: cfg.provider, model: cfg.model };
   }
-  const client = new Anthropic({ apiKey: cfg.apiKey });
+  const client = new Anthropic({ apiKey: cfg.apiKey, ...(opts?.timeoutMs ? { timeout: opts.timeoutMs, maxRetries: 1 } : {}) });
   const content: Anthropic.ContentBlockParam[] = [
     ...files.map((f): Anthropic.ContentBlockParam => (f.mime === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data }, title: f.name }

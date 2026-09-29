@@ -53,7 +53,7 @@ async function writeCache(key: string, data: unknown) {
 export async function edgarJson<T>(url: string, cacheKey: string, ttlMs: number): Promise<T> {
   const cached = await readCache<T>(cacheKey, ttlMs);
   if (cached) return cached;
-  const res = await throttle(() => fetch(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store" }));
+  const res = await throttle(() => fetch(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", signal: AbortSignal.timeout(25_000) }));
   if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
   const data = (await res.json()) as T;
   await writeCache(cacheKey, data);
@@ -63,11 +63,16 @@ export async function edgarJson<T>(url: string, cacheKey: string, ttlMs: number)
 export const HOUR = 3_600_000;
 export const DAY = 24 * HOUR;
 
+/** A throttled request to sec.gov with the User-Agent SEC requires, uncached: for live feeds polled often. */
+export function edgarFetch(url: string, timeoutMs = 25_000): Promise<Response> {
+  return throttle(() => fetch(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", signal: AbortSignal.timeout(timeoutMs) }));
+}
+
 /** Fetch a text/HTML document from sec.gov with the same throttle and User-Agent; cached on disk as text. */
 export async function edgarText(url: string, cacheKey: string, ttlMs: number): Promise<string> {
   const cached = await cacheGet(`edgar:${cacheKey}`);
   if (cached) return cached;
-  const res = await throttle(() => fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" }));
+  const res = await throttle(() => fetch(url, { headers: { "User-Agent": UA }, cache: "no-store", signal: AbortSignal.timeout(25_000) }));
   if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
   const text = await res.text();
   await cacheSet(`edgar:${cacheKey}`, text, ttlMs);

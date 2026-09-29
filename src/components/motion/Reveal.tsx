@@ -2,13 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 
-/** Adds the "in" class when the element scrolls into view (CSS handles the transition). */
+/**
+ * Adds the "in" class when the element scrolls into view (CSS handles the transition). It starts out
+ * hidden on the server and in the browser alike, so hydration matches.
+ */
 export function Reveal({ children, className = "", delay = 0, as: Tag = "div", once = true }: { children: React.ReactNode; className?: string; delay?: number; as?: "div" | "section" | "li" | "article"; once?: boolean }) {
   const ref = useRef<HTMLElement | null>(null);
-  const [inView, setInView] = useState(() => typeof IntersectionObserver === "undefined");
+  const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") { queueMicrotask(() => setInView(true)); return; }
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
         if (e.isIntersecting) { setInView(true); if (once) io.disconnect(); }

@@ -10,6 +10,7 @@ import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
+import { HomeBrief } from "@/components/news/HomeBrief";
 import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
 
 type Run = { id: number; toolId: string; title: string; model: string; status: string; createdAt: string; durationMs: number };
@@ -46,6 +47,8 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
 
         <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
+            <Reveal><HomeBrief /></Reveal>
+
             <Reveal>
               <section>
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Start here</h2><Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link></div>

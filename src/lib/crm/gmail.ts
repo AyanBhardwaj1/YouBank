@@ -238,28 +238,33 @@ export function newMessageId(fromAddress: string): string {
   return `<${randomUUID()}@${fromAddress.split("@")[1] || "youbank.local"}>`;
 }
 
-/** RFC 2822 with UTF-8 subjects encoded, base64url for the Gmail API. */
-export function buildRaw(msg: { to: string[]; subject: string; body: string; inReplyTo?: string; references?: string[]; messageId?: string }): string {
+/** RFC 2822 with UTF-8 subjects encoded, base64url for the Gmail API. With `html`, a multipart/alternative message. */
+export function buildRaw(msg: { to: string[]; subject: string; body: string; html?: string; inReplyTo?: string; references?: string[]; messageId?: string }): string {
   const subject = /[^\x20-\x7E]/.test(msg.subject)
     ? `=?UTF-8?B?${Buffer.from(msg.subject, "utf8").toString("base64")}?=`
     : msg.subject;
   const references = [...(msg.references ?? []), ...(msg.inReplyTo && !(msg.references ?? []).includes(msg.inReplyTo) ? [msg.inReplyTo] : [])];
+  const boundary = `yb_${randomUUID().replace(/-/g, "")}`;
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64").replace(/.{76}/g, "$&\r\n");
   const lines = [
     `To: ${msg.to.join(", ")}`,
     `Subject: ${subject}`,
     ...(msg.messageId ? [`Message-ID: ${msg.messageId}`] : []),
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
+    msg.html ? `Content-Type: multipart/alternative; boundary="${boundary}"` : 'Content-Type: text/plain; charset="UTF-8"',
     ...(msg.inReplyTo ? [`In-Reply-To: ${msg.inReplyTo}`] : []),
     ...(references.length ? [`References: ${references.join(" ")}`] : []),
     "",
-    msg.body,
+    ...(msg.html
+      ? [`--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", b64(msg.body),
+         `--${boundary}`, 'Content-Type: text/html; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", b64(msg.html), `--${boundary}--`]
+      : [msg.body]),
   ];
   return Buffer.from(lines.join("\r\n"), "utf8").toString("base64url");
 }
 
-/** Send one message. Called only from sendDraft, which enforces who may send what. */
-export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; threadId?: string | null; inReplyTo?: string; references?: string[]; messageId?: string }) {
+/** Send one message. Called only from sendDraft (which enforces who may send what) and the Newsroom's own-inbox delivery. */
+export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; html?: string; threadId?: string | null; inReplyTo?: string; references?: string[]; messageId?: string }) {
   return call<{ id: string; threadId: string }>(token, "/messages/send", {
     method: "POST",
     headers: { "content-type": "application/json" },

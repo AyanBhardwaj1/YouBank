@@ -10,6 +10,7 @@ import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
+import { NotificationBell } from "@/components/news/NotificationBell";
 
 export function AppNav({ email }: { email: string }) {
   const path = usePathname();
@@ -20,6 +21,7 @@ export function AppNav({ email }: { email: string }) {
   const items = [
     { href: "/app", label: "Home", icon: "Home" },
     { href: "/app/terminal", label: "Terminal", icon: "Terminal" },
+    { href: "/app/news", label: "Newsroom", icon: "Newspaper" },
     { href: "/app/tools", label: "Tools", icon: "Wand2" },
     { href: "/app/studio", label: "Studio", icon: "FileSpreadsheet" },
     ...(profile.role === "vc" || profile.role === "pe" ? [{ href: "/app/vc", label: "Private markets", icon: "Rocket" }] : []),
@@ -47,6 +49,7 @@ export function AppNav({ email }: { email: string }) {
       </nav>
       <div className="ml-auto flex items-center gap-1.5">
         {status?.configured && <span className="num hidden text-[10.5px] text-muted xl:inline" title={`Model ${status.model}, reasoning ${status.effort}`}>{status.label ?? status.model}</span>}
+        <NotificationBell />
         <ThemeMenu />
         <div className="relative">
           <button type="button" onClick={() => setMenu((m) => !m)} className="ctl flex items-center gap-1.5 border border-line px-2 py-1 text-muted hover:border-accent/50 hover:text-fg">

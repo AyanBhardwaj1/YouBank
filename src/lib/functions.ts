@@ -28,8 +28,11 @@ export const FUNCTIONS = {
   FIL: { label: "Filings", hint: "SEC filings (EDGAR)", group: "company" },
   EVT: { label: "Events", hint: "8-K events and filing timeline", group: "company" },
   INS: { label: "Insiders", hint: "Form 4 insider transactions", group: "company" },
+  CN: { label: "Company news", hint: "News, filings and deals about a company", group: "company" },
   XBRL: { label: "XBRL explorer", hint: "Any reported concept, charted", group: "company" },
   AI: { label: "AI", hint: "Chat over the current screen", group: "company", args: true },
+  TOP: { label: "Top news", hint: "Your desk's top stories, ranked for you", group: "market" },
+  NI: { label: "News by topic", hint: "NI ENERGY, NI MA, NI IPO, NI private credit", group: "market", args: true },
   WEI: { label: "World indices", hint: "Equity indices worldwide, moves as z-scores", group: "market" },
   MOST: { label: "Movers", hint: "Most active, top gainers and losers", group: "market" },
   SECT: { label: "Sectors", hint: "Sector performance: day, month, year to date", group: "market" },
@@ -91,19 +94,19 @@ export function functionsForProfile(p: Pick<Profile, "role" | "specialty">): Fun
   const s = p.specialty;
   switch (p.role) {
     case "banker":
-      if (s === "Restructuring") return ["DES", "CAP", "DDIS", "IRAT", "FA", "QUAL", "FIL", "EVT", "COMPS", "AI", "TOOLS"];
-      if (s === "Leveraged finance" || s === "DCM") return ["DES", "CAP", "IRAT", "DDIS", "WACC", "FA", "GC", "COMPS", "EVT", "AI", "TOOLS"];
-      if (s === "ECM") return ["DES", "GP", "FA", "COMPS", "EE", "ANR", "WEI", "FIL", "AI", "TOOLS"];
-      return ["DES", "FA", "COMPS", "PREC", "WACC", "MA", "FIL", "EVT", "AI", "TOOLS"];
-    case "pe": return ["DES", "FA", "COMPS", "CAP", "IRAT", "WACC", "PREC", "MA", "AI", "TOOLS"];
-    case "vc": return ["DES", "COMPS", "FA", "FCST", "EQS", "FIL", "AI", "TOOLS"];
+      if (s === "Restructuring") return ["DES", "CAP", "DDIS", "IRAT", "FA", "QUAL", "FIL", "EVT", "COMPS", "TOP", "AI", "TOOLS"];
+      if (s === "Leveraged finance" || s === "DCM") return ["DES", "CAP", "IRAT", "DDIS", "WACC", "FA", "GC", "COMPS", "EVT", "TOP", "AI", "TOOLS"];
+      if (s === "ECM") return ["DES", "GP", "FA", "COMPS", "EE", "ANR", "WEI", "FIL", "TOP", "AI", "TOOLS"];
+      return ["DES", "FA", "COMPS", "PREC", "WACC", "MA", "FIL", "EVT", "TOP", "AI", "TOOLS"];
+    case "pe": return ["DES", "FA", "COMPS", "CAP", "IRAT", "WACC", "PREC", "MA", "TOP", "AI", "TOOLS"];
+    case "vc": return ["DES", "COMPS", "FA", "FCST", "EQS", "FIL", "TOP", "AI", "TOOLS"];
     case "markets":
-      if (s === "Distressed & credit") return ["DES", "CAP", "IRAT", "DDIS", "QUAL", "RISK", "GC", "EVT", "AI", "TOOLS"];
-      return ["DES", "GP", "FA", "EE", "ANR", "RISK", "BETA", "WEI", "ECO", "EQS", "AI", "TOOLS"];
-    case "corpfin": return ["DES", "FA", "COMPS", "CAP", "WACC", "DDIS", "GC", "EVT", "AI", "TOOLS"];
-    case "consultant": return ["DES", "FA", "COMPS", "FCST", "SECT", "EQS", "ECO", "AI", "TOOLS"];
-    case "accountant": return ["DES", "FA", "QUAL", "XBRL", "FIL", "EVT", "COMPS", "AI", "TOOLS"];
+      if (s === "Distressed & credit") return ["DES", "CAP", "IRAT", "DDIS", "QUAL", "RISK", "GC", "EVT", "TOP", "AI", "TOOLS"];
+      return ["DES", "GP", "FA", "EE", "ANR", "RISK", "BETA", "WEI", "ECO", "EQS", "TOP", "AI", "TOOLS"];
+    case "corpfin": return ["DES", "FA", "COMPS", "CAP", "WACC", "DDIS", "GC", "EVT", "TOP", "AI", "TOOLS"];
+    case "consultant": return ["DES", "FA", "COMPS", "FCST", "SECT", "EQS", "ECO", "TOP", "AI", "TOOLS"];
+    case "accountant": return ["DES", "FA", "QUAL", "XBRL", "FIL", "EVT", "COMPS", "TOP", "AI", "TOOLS"];
     case "student":
-    default: return ["DES", "FA", "GP", "COMPS", "WACC", "IRAT", "ECO", "LEARN", "AI", "TOOLS"];
+    default: return ["DES", "FA", "GP", "COMPS", "WACC", "IRAT", "ECO", "LEARN", "TOP", "AI", "TOOLS"];
   }
 }

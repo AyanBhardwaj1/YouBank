@@ -19,6 +19,8 @@ pnpm exec eslint src --ext .ts,.tsx || fail=1
 
 step "inference"
 pnpm exec tsx scripts/test-inference.ts > /tmp/youbank-test-inference.log 2>&1 && tail -1 /tmp/youbank-test-inference.log || { cat /tmp/youbank-test-inference.log; fail=1; }
+step "newsroom"
+pnpm exec tsx scripts/test-news.ts > /tmp/youbank-test-news.log 2>&1 && tail -1 /tmp/youbank-test-news.log || { cat /tmp/youbank-test-news.log; fail=1; }
 
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1

@@ -183,3 +183,41 @@ body {
 .studio-glow { position: absolute; inset: 0; pointer-events: none; background: #ffd54f; animation: studio-glow 1.3s ease-out both; }
 @keyframes studio-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .studio-cursor { animation: studio-cursor 1.1s ease-in-out infinite; }
+
+/* ---------------- Newsroom looks ----------------
+   One set of components, four looks: each look sets type, scale, density and surfaces through variables.
+   Terminal (Bloomberg): mono, dense, ruled rows. Editorial (FT, The Information): serif display, air, hairlines.
+   Brief (Axios, Morning Brew): heavy sans lead-ins, cards, emphasis. Modern (Apple News, Linear): soft depth, round, crisp. */
+.nr {
+  --nr-head: var(--font-sans); --nr-head-weight: 600; --nr-head-track: -0.01em; --nr-head-lh: 1.2;
+  --nr-lead: 28px; --nr-h2: 17px; --nr-h3: 14px; --nr-body: 13px; --nr-body-lh: 1.55;
+  --nr-radius: var(--radius); --nr-card: var(--panel); --nr-border: var(--line); --nr-shadow: none; --nr-pad: 14px; --nr-gap: 12px;
+}
+.nr[data-look="terminal"] { --nr-head: var(--font-mono); --nr-head-weight: 500; --nr-head-track: 0; --nr-head-lh: 1.3; --nr-lead: 17px; --nr-h2: 13px; --nr-h3: 12.5px; --nr-body: 12px; --nr-body-lh: 1.45; --nr-radius: 2px; --nr-card: transparent; --nr-pad: 8px; --nr-gap: 0px; }
+.nr[data-look="editorial"] { --nr-head: var(--font-display); --nr-head-weight: 400; --nr-head-track: -0.012em; --nr-head-lh: 1.08; --nr-lead: 50px; --nr-h2: 27px; --nr-h3: 20px; --nr-body: 14.5px; --nr-body-lh: 1.62; --nr-radius: 0px; --nr-card: transparent; --nr-pad: 18px; --nr-gap: 26px; }
+.nr[data-look="brief"] { --nr-head: var(--font-sans); --nr-head-weight: 800; --nr-head-track: -0.022em; --nr-head-lh: 1.14; --nr-lead: 32px; --nr-h2: 19px; --nr-h3: 15px; --nr-body: 13.5px; --nr-body-lh: 1.6; --nr-radius: 12px; --nr-pad: 16px; --nr-gap: 14px; }
+.nr[data-look="modern"] { --nr-head: var(--font-sans); --nr-head-weight: 650; --nr-head-track: -0.018em; --nr-head-lh: 1.18; --nr-lead: 34px; --nr-h2: 17.5px; --nr-h3: 14.5px; --nr-body: 13px; --nr-body-lh: 1.58; --nr-radius: 20px; --nr-card: color-mix(in srgb, var(--panel) 86%, transparent); --nr-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 14px 36px -20px rgb(0 0 0 / 0.45); --nr-pad: 16px; --nr-gap: 14px; }
+.nr-head { font-family: var(--nr-head); font-weight: var(--nr-head-weight); letter-spacing: var(--nr-head-track); line-height: var(--nr-head-lh); }
+.nr-lead { font-size: var(--nr-lead); }
+.nr-h2 { font-size: var(--nr-h2); }
+.nr-h3 { font-size: var(--nr-h3); }
+.nr-body { font-size: var(--nr-body); line-height: var(--nr-body-lh); }
+.nr-card { background: var(--nr-card); border: 1px solid var(--nr-border); border-radius: var(--nr-radius); box-shadow: var(--nr-shadow); }
+.nr[data-look="editorial"] .nr-card { border-width: 1px 0 0 0; }
+.nr[data-look="terminal"] .nr-card { border-width: 0 0 1px 0; }
+.nr[data-look="modern"] .nr-card { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.nr-kicker { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.nr[data-look="terminal"] .nr-kicker { font-family: var(--font-mono); letter-spacing: 0.04em; }
+.nr[data-look="editorial"] .nr-kicker { letter-spacing: 0.14em; color: var(--accent); }
+.nr[data-look="brief"] .nr-kicker { color: var(--accent); }
+.nr-rule { border-top: 1px solid var(--line); }
+.nr[data-look="editorial"] .nr-rule { border-top: 2px solid var(--fg); }
+@keyframes nr-flash { from { background-color: color-mix(in srgb, var(--accent) 24%, transparent); } to { background-color: transparent; } }
+.nr-flash { animation: nr-flash 2.2s ease-out; }
+.nr-flip { perspective: 1200px; }
+.nr-flip-inner { transform-style: preserve-3d; transition: transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.nr-flip-inner.flipped { transform: rotateY(180deg); }
+.nr-face { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.nr-face-back { transform: rotateY(180deg); }
+.nr[data-motion="off"] *, .nr[data-motion="off"] *::before, .nr[data-motion="off"] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .nr-flash { animation: none; } .nr-flip-inner { transition: none; } }

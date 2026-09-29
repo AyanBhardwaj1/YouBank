@@ -53,6 +53,9 @@ const EcoScreen = dynamic(() => import("./screens/MacroScreens").then((m) => m.E
 const EqsScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.EqsScreen), { loading: ScreenLoading });
 const PortScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.PortScreen), { loading: ScreenLoading });
 const LearnScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.LearnScreen), { loading: ScreenLoading });
+const TopScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.TopScreen), { loading: ScreenLoading });
+const CnScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.CnScreen), { loading: ScreenLoading });
+const NiScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.NiScreen), { loading: ScreenLoading });
 
 type Props = {
   panel: OpenPanel;
@@ -94,6 +97,9 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "EE": return <EeScreen ticker={t} onRun={onRun} />;
       case "ANR": return <AnrScreen ticker={t} onRun={onRun} />;
       case "DVD": return <DvdScreen ticker={t} onRun={onRun} />;
+      case "TOP": return <TopScreen />;
+      case "NI": return <NiScreen onRun={onRun} arg={panel.arg} />;
+      case "CN": return <CnScreen ticker={t} onRun={onRun} />;
       case "WEI": return <WeiScreen onRun={onRun} />;
       case "FXC": return <FxcScreen onRun={onRun} />;
       case "CMDTY": return <CmdtyScreen onRun={onRun} />;
@@ -117,7 +123,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
     }
   })();
 
-  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
+  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">

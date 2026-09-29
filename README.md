@@ -30,6 +30,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Tools](#tools)
    - [Company and filing data](#company-and-filing-data)
    - [Private markets](#private-markets)
+   - [Newsroom](#newsroom)
    - [AI assistant](#ai-assistant)
    - [Studio: live models and decks](#studio-live-models-and-decks)
    - [Relationships: the email agent](#relationships-the-email-agent)
@@ -229,6 +230,50 @@ It also lists Form D raises with amounts and officers.
 A nightly job (`/api/cron/sync`, 06:00 UTC) refreshes the directory:
 - Show HN and Form D, for the last three days;
 - the YC, a16z and Thiel lists.
+
+### Newsroom
+
+`/app/news` is a news desk for each profile: every group of an investment bank (energy gets EIA reports,
+OPEC, pipeline and LNG approvals; restructuring gets bankruptcies and missed coupons; ECM gets IPO
+filings and pricings), private equity, venture, public markets, corporate finance, consulting,
+accounting and students. Every ten minutes it reads about ninety free sources and turns them into
+stories:
+
+- **Publisher feeds.** Bloomberg, the WSJ, the FT, NYT DealBook, CNBC, Axios, Semafor, TechCrunch,
+  STAT, the Industry Dive titles, trade press. Headlines and links only; articles are never
+  republished. Open pages (not paywalled, allowed by robots.txt) may be read to write a better summary,
+  but their text is never stored or shown.
+- **Filing signals** from EDGAR's latest-filings feed, often before the press: 8-K items that matter
+  (merger agreements, bankruptcies, restatements, auditor changes, changes of control), IPO filings and
+  pricings, 13D stakes, tender offers, going-private filings, merger proxies, late filings, and Form D
+  raises and fund closes.
+- **Regulators and wires.** Federal Register rules (FERC, FDA, SEC, the Fed, FCC…), the Fed, SEC, FDA,
+  EIA, BLS and BEA, and the PR Newswire, GlobeNewswire and Business Wire press-release feeds.
+- **The tech radar.** Hugging Face daily papers and trending models, GitHub's fastest-rising
+  repositories, Show HN launches.
+- **Research briefs.** Twice a day, a small model with web search looks for each active desk's stories
+  that have no feed (Reuters, AP); a story is kept only if its page was retrieved and is recent.
+
+The same event from many outlets becomes one story (headline embeddings plus word and figure overlap,
+calibrated on live headlines), ranked for each person by desk fit, importance, watchlist, the
+companies where their contacts work, follows, mutes and freshness, with the reason shown. A small model
+reads the important stories once: bullets, key numbers, why it matters, companies (tickers checked
+against SEC's list) and deal terms. Deals and raises fill a tracker with the premium to the unaffected
+close and implied multiples from SEC figures, and advisor league tables.
+
+- **Four editions**, chosen in the header or in Settings: Terminal (a Bloomberg-style wire), Editorial
+  (an FT-style magazine), Brief (an Axios-style morning brief with the wire alongside) and Modern (an
+  Apple News-style dashboard). With the advanced switch, any look goes with any layout. Stories open in
+  a side peek or on their own page; motion is rich, subtle or off (and off under reduced motion).
+- **The morning brief**, written once a day per desk with a "for you" section, on Home, in the app, and
+  by email (from your own connected mailbox), browser push or Slack.
+- **Alerts** for watchlist companies (urgent for a bankruptcy, restatement or takeover), companies
+  where your contacts work (also raised in Relationships as a reason to reconnect, drafted on approval),
+  $1B+ deals and top stories for your desk, with quiet hours.
+- **In the terminal**: `TOP` (your desk's top stories), `CN` (company news), `NI <topic>`, and the
+  latest news on `DES`.
+- **The AI budget** is capped at $25 a month (`NEWS_AI_BUDGET_USD`), in tiers: personal notes pause
+  first, then research, then briefs; past the cap the Newsroom still works without a model.
 
 ### AI assistant
 
@@ -953,6 +998,8 @@ Graduation offers appear at the top of the queue.
 
   Neon Function "autopilot" ◄── schedule trigger (every 5 min)
         └──► POST /api/cron/autopilot  (Authorization: Bearer AUTOPILOT_SECRET)
+  Neon Function "news" ◄── schedule trigger (every 10 min)
+        └──► POST /api/cron/news       (the Newsroom: sources, stories, alerts, briefs)
 ```
 
 **The mail loop:**
@@ -1083,6 +1130,10 @@ bash scripts/preflight.sh                                         # everything t
 | `AUTOPILOT_SECRET` | for autopilot | Bearer token the heartbeat sends to `/api/cron/autopilot` (`CRON_SECRET` is also accepted) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Gmail API connection via OAuth; the redirect defaults to `<origin>/api/crm/gmail/callback` |
 | `AUTOPILOT_SPOT_CHECK_RATE` | no | Overrides the spot-check rate (tests only) |
+| `NEWS_AI_BUDGET_USD` | no | The Newsroom's monthly AI cap; default `25` |
+| `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
+| `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
+| `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
 
 ---
@@ -1123,7 +1174,7 @@ bash scripts/preflight.sh                                         # everything t
 2. **Database.** Apply any new migration to production, then check for drift:
    ```bash
    set -a; . ./.env.local; set +a
-   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0008_office.sql
+   DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0011_newsroom.sql
    pnpm exec drizzle-kit push        # should report no changes
    ```
 3. **Build and ship:**
@@ -1139,7 +1190,13 @@ bash scripts/preflight.sh                                         # everything t
      --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
    neon triggers create --function-slug autopilot --name autopilot-heartbeat --cron '*/5 * * * *'
    ```
-6. **Verify.**
+6. **The Newsroom heartbeat**, the same way:
+   ```bash
+   neon functions deploy news --src neon/news.ts \
+     --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
+   neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
+   ```
+7. **Verify.**
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
 
@@ -1154,6 +1211,7 @@ bash scripts/preflight.sh                                         # everything t
 | Outreach (53 tests) | `pnpm exec tsx scripts/test-outreach.ts` | Follow-up, stale-deal and nurture candidate rules; funding-signal matching; company normalisation; sequence steps; the consent guard |
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
+| Newsroom (63 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
@@ -1161,7 +1219,7 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, tool packs, production build |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
 production.
@@ -1331,6 +1389,7 @@ YouBank/
 | Doc | What |
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
+| [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
 | [docs/04-comps-engine-spec.md](docs/04-comps-engine-spec.md) | Comps engine spec |
