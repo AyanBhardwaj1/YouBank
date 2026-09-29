@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
-import { radarView } from "@/lib/news/views";
+import { radarScreen } from "@/lib/news/radar/view";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-/** The tech radar: this week's top papers, rising repositories, trending models and launches. */
-export async function GET() {
-  return guarded(async () => NextResponse.json(await radarView()));
+/** A sector's radar (?sector=energy), or the person's own: lanes, the sector's deals and the map. Technology is the tech radar. */
+export async function GET(req: Request) {
+  return guarded(async (user) => {
+    const v = await radarScreen(user.id, new URL(req.url).searchParams.get("sector") ?? undefined);
+    return v ? NextResponse.json(v) : NextResponse.json({ error: "Finish onboarding first" }, { status: 409 });
+  });
 }

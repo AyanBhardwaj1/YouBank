@@ -13,6 +13,7 @@ Code: `src/lib/news/` (pipeline), `src/components/news/` (interface), `src/app/a
 | Regulators and statistics | Federal Register (rules from FERC, DOE, EPA, FDA, CMS, SEC, the Fed, FDIC, OCC, CFPB, FCC, IRS, FTC), Fed, SEC, FDA, EIA, CFPB, BLS, BEA | Public-domain text |
 | SEC filings | EDGAR's latest-filings feed by form | Public records, with the link to EDGAR |
 | Tech radar | Hugging Face papers and models, GitHub search, Show HN (Algolia) | Public APIs |
+| Sector radars | Federal Register (FERC, DOE, NRC, Federal Reserve, ITC, BIS, USTR, EPA, DOT, OSHA, FTC, CPSC, FCC, HUD, FHFA), ClinicalTrials.gov, openFDA, PubMed, FDIC, CPSC recalls, EIA, DOE OSTI, the Fed's papers, NBER, arXiv | Public records and abstracts, linked |
 | Reuters and AP | GDELT, best effort (it throttles shared addresses), and research briefs | Headline and link |
 
 Every feed was checked live on 2026-09-28; dead, blocked and stale ones were dropped (Nasdaq's RSS
@@ -64,6 +65,34 @@ their own lane so the ten-requests-a-second limit is respected.
    and the target's SEC figures. League tables count named advisors.
 6. **Alerts, briefs, research, retention.** See below. Items are kept 30 days, embeddings 4 days,
    stories 120 days unless saved or a deal.
+
+## Radars
+
+Every sector has a radar of what comes before the news, chosen per person (the default is their desk's
+sector; Technology is the tech radar). Lanes by sector:
+
+| Sector | Lanes |
+|---|---|
+| Energy | Pipelines and projects (FERC, DOE and NRC notices read as milestones: application, environmental review, impact statement, approval; LNG exports; nuclear licensing), research and analysis (EIA, DOE OSTI) |
+| Healthcare | New industry Phase 2 and 3 trials (last three weeks, with enrollment and countries), FDA approvals (original NDAs and BLAs, NMEs and priority reviews marked), trial results in major journals |
+| Financials | Bank deals filed with the Fed (each application in the Federal Register notice: applicant, target, states, Reserve Bank, comment deadline), FDIC failures, research (Fed papers and notes, NBER, arXiv) |
+| Industrials | Trade cases and export controls (ITC cases with the exporting countries, Entity List, USTR), EPA, DOT and OSHA rules, robotics research |
+| Consumer | CPSC recalls (units, where sold, where made), trade and tariffs, FTC and CPSC rules |
+| Media and telecom | FCC rules, networking research |
+| Real estate | HUD and FHFA rules, housing and property research |
+
+Routine filings are left out (airworthiness directives, state air plans, FM allotments, pesticide
+tolerances, information collections). Each radar also shows the sector's deals of the last 30 days and
+a map: bubbles count the places the lanes name (trial countries, the states in a bank application,
+exporters) and the places named in the week's stories for the sector, read with a gazetteer that
+handles ambiguity ("Georgia" is the state in text and the country in trial records; "British thermal
+units" is not Britain); arcs are movements the sources state (exporters to the US, one state's bank
+buying another's, where a recalled product was made). Coastlines and state lines are Natural Earth and
+US Census shapes (public domain, via world-atlas and us-atlas), tinted with the theme's tokens.
+
+Radars are built from their sources, cached for two days and rebuilt when older than three hours by
+the Newsroom pass (two per pass); a source that does not answer keeps its last good lane. arXiv is read
+by category listing only (it rate-limits abstract searches), one request every three seconds.
 
 ## Ranking
 

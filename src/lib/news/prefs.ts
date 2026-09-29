@@ -4,6 +4,7 @@
  * and where alerts go. Kept in profiles.extra.news, defaulted from the role.
  */
 import type { Profile, RoleId } from "@/lib/roles";
+import { SECTOR_KEYS, type SectorKey } from "./desks";
 
 export type LookId = "terminal" | "editorial" | "brief" | "modern";
 export type LayoutId = "wire" | "magazine" | "hybrid" | "dashboard";
@@ -34,6 +35,8 @@ export type NewsPrefs = {
   motion: "rich" | "subtle" | "off";
   /** A desk to read other than your own (a banker covering a second group). Empty means your own. */
   desk: string;
+  /** The sector radar to show ("tech", "energy", ...). Empty means your desk's sector. */
+  radar: SectorKey | "";
   brief: { enabled: boolean; time: string; timezone: string; channels: Channel[] };
   alerts: {
     enabled: boolean; watchlist: boolean; network: boolean; filings: boolean; bigDeals: boolean;
@@ -53,7 +56,7 @@ const ROLE_EDITION: Record<RoleId, EditionId> = {
 export function defaultNewsPrefs(p: Pick<Profile, "role">): NewsPrefs {
   const edition = ROLE_EDITION[p.role] ?? "brief";
   return {
-    edition, advanced: false, look: EDITIONS[edition].look, layout: EDITIONS[edition].layout, reading: "peek", motion: "rich", desk: "",
+    edition, advanced: false, look: EDITIONS[edition].look, layout: EDITIONS[edition].layout, reading: "peek", motion: "rich", desk: "", radar: "",
     brief: { enabled: true, time: "07:00", timezone: "America/New_York", channels: [] },
     alerts: { enabled: true, watchlist: true, network: true, filings: true, bigDeals: true, threshold: 0.8, channels: [], quiet: { from: 22, to: 7 } },
     follows: { tickers: [], topics: [] },
@@ -87,6 +90,7 @@ export function normalizeNewsPrefs(raw: unknown, p: Pick<Profile, "role">): News
     reading: r.reading === "page" ? "page" : "peek",
     motion: r.motion === "subtle" || r.motion === "off" ? r.motion : "rich",
     desk: typeof r.desk === "string" ? r.desk.slice(0, 40) : "",
+    radar: typeof r.radar === "string" && (SECTOR_KEYS as string[]).includes(r.radar) ? (r.radar as SectorKey) : "",
     brief: {
       enabled: b.enabled !== false,
       time: typeof b.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(b.time) ? b.time : d.brief.time,

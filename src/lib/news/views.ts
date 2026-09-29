@@ -1,4 +1,4 @@
-/** What the Newsroom's screens and the terminal read: stories ranked for a person, one story in full, the brief, deals, the radar. */
+/** What the Newsroom's screens and the terminal read: stories ranked for a person, one story in full, the brief, deals. The radar is in ./radar/view.ts. */
 import { and, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { NewsSummary } from "@/db/schema";
@@ -126,14 +126,6 @@ export async function dealsView(opts: { days?: number; kinds?: string[]; sectors
   const deals = (await recentDeals({ days: opts.days ?? 30, kinds: opts.kinds, sectors: opts.sectors, limit: 200 })).filter((d) => opts.kinds?.includes("stake") || d.kind !== "stake").slice(0, 150);
   const year = await recentDeals({ days: 365, limit: 2000 });
   return { deals, league: { financial: leagueTable(year, "financial"), legal: leagueTable(year, "legal") } };
-}
-
-export async function radarView() {
-  const since = new Date(Date.now() - 8 * 86_400_000);
-  const rows = await requireDb().select().from(schema.newsItems).where(and(gte(schema.newsItems.publishedAt, since), inArray(schema.newsItems.kind, ["paper", "repo", "model", "launch"]))).orderBy(desc(schema.newsItems.publishedAt)).limit(400);
-  const byWeight = (a: ItemRow, b: ItemRow) => Number(b.meta.weight ?? 0) - Number(a.meta.weight ?? 0);
-  const pick = (kind: string, n: number) => rows.filter((r) => r.kind === kind).sort(byWeight).slice(0, n).map((r) => ({ id: r.id, title: r.title, snippet: r.snippet, url: r.url, source: r.source, at: r.publishedAt.toISOString(), meta: r.meta, clusterId: r.clusterId }));
-  return { papers: pick("paper", 12), repos: pick("repo", 12), models: pick("model", 10), launches: pick("launch", 12) };
 }
 
 /** News about one company (terminal CN and the DES strip). */

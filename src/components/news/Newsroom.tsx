@@ -2,7 +2,7 @@
 
 /**
  * The Newsroom. One feed ranked for this person, worn in any of four editions (or any look with any
- * layout, with the advanced switch), with the morning brief, the deal tracker, the tech radar and saved
+ * layout, with the advanced switch), with the morning brief, the deal tracker, the sector radar and saved
  * stories as views. Stories open in a side peek or on their own page, as the person prefers.
  */
 import { useRouter } from "next/navigation";
@@ -13,7 +13,9 @@ import { CATEGORY_LABEL, type Category } from "@/lib/news/classify";
 import type { StoryCard as Story } from "@/lib/news/views";
 import { EDITIONS, LAYOUTS, LOOKS, type EditionId, type LayoutId, type LookId } from "@/lib/news/prefs";
 import { ago, MotionContext, post, useApi, useEffectiveMotion, useFeed, useNow, useSparks } from "./client";
-import { DealTracker, LeagueTable, RadarBoard, type BriefData, type DealsData, type RadarData } from "./Boards";
+import { DealTracker, LeagueTable, type BriefData, type DealsData } from "./Boards";
+import type { RadarScreen } from "@/lib/news/radar/view";
+import { RadarView } from "./Radar";
 import { DashboardLayout, HybridLayout, MagazineLayout, WireLayout, type LayoutProps } from "./layouts";
 import { StoryCard } from "./StoryCard";
 import { StoryPeek } from "./StoryReader";
@@ -37,6 +39,8 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
   const [peek, setPeek] = useState<number | null>(initialStory);
   const [override, setOverride] = useState<{ edition?: EditionId; look?: LookId; layout?: LayoutId; advanced?: boolean }>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // The sector radar on screen; empty until chosen here, so the server shows the saved or desk default.
+  const [radarSector, setRadarSector] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -49,12 +53,16 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
   const layout: LayoutId = advanced ? override.layout ?? prefs?.layout ?? EDITIONS[edition].layout : EDITIONS[edition].layout;
   const motionLevel = useEffectiveMotion(prefs?.motion ?? "rich");
   const deskId = data?.desk.id ?? "";
-  const showRadar = !!data && (data.desk.lenses.includes("radar") || data.desk.lenses.includes("vc") || data.desk.sectors.includes("tech"));
 
   // The brief feeds every layout of Today (the wire uses its market tape).
   const brief = useApi<BriefData>(view === "today" && deskId ? `/api/news/brief?desk=${encodeURIComponent(deskId)}` : null, 5 * 60_000);
   const deals = useApi<DealsData>((view === "deals" || layout === "dashboard") ? `/api/news/deals?days=${view === "deals" ? 60 : 30}` : null, 5 * 60_000);
-  const radar = useApi<RadarData>((view === "radar" || (layout === "dashboard" && showRadar)) ? "/api/news/radar" : null, 15 * 60_000);
+  const radar = useApi<RadarScreen>((view === "radar" || layout === "dashboard") ? `/api/news/radar${radarSector ? `?sector=${radarSector}` : ""}` : null, 15 * 60_000);
+  const chooseRadar = (sector: string) => {
+    setRadarSector(sector);
+    void post("/api/news/prefs", { prefs: { radar: sector === radar.data?.own ? "" : sector } }).catch(() => undefined);
+  };
+  const showRadar = !!radar.data;
 
   const stories = useMemo(() => data?.stories ?? [], [data]);
   const tickers = useMemo(() => [...stories.slice(0, 60).flatMap((s) => s.tickers.slice(0, 1)), ...(brief.data?.forYou ?? []).flatMap((s) => s.tickers.slice(0, 1)), ...Object.values(brief.data?.cards ?? {}).flatMap((s) => s.tickers.slice(0, 1))], [stories, brief.data]);
@@ -163,7 +171,7 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
                     <div className="space-y-4">{deals.data && <><div className="nr-card p-[var(--nr-pad)]"><LeagueTable rows={deals.data.league.financial} title="Financial advisors, last 12 months" /></div><div className="nr-card p-[var(--nr-pad)]"><LeagueTable rows={deals.data.league.legal} title="Legal advisors, last 12 months" /></div></>}</div>
                   </div>
                 )}
-                {view === "radar" && <div className="mx-auto max-w-[1440px] px-5 py-6"><h2 className="nr-head nr-h2 mb-1 text-fg">Tech radar</h2><p className="mb-4 text-[11.5px] text-muted">What researchers and builders are paying attention to this week, before it is news: Hugging Face daily papers and trending models, GitHub&apos;s fastest-rising repositories, and Show HN launches.</p>{radar.data ? <RadarBoard data={radar.data} /> : <div className="shimmer h-64 rounded" />}</div>}
+                {view === "radar" && <RadarView data={radar.data ?? null} now={now} onChoose={chooseRadar} onOpenCluster={(id) => open(id)} />}
               </motion.div>
             </AnimatePresence>
           )}

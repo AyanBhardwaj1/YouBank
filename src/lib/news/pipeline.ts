@@ -19,6 +19,7 @@ import { currentFeedUrl, fetchFilings } from "./sources/edgar";
 import { fetchGdelt } from "./sources/gdelt";
 import { federalRegisterUrl, fetchFederalRegister } from "./sources/gov";
 import { fetchRadar } from "./sources/radar";
+import { warmRadars } from "./radar";
 import { fetchRss } from "./sources/rss";
 import { researchDesk } from "./sources/research";
 import { assignItems, clusterCandidates, clustersToEnrich, createCluster, feedStates, insertItems, itemsOf, mergeDuplicates, prune, recentClusters, refreshCluster, saveFeedState, setEmbeddings, unclusteredItems } from "./store";
@@ -45,7 +46,7 @@ async function pool<T>(xs: T[], n: number, deadline: number, f: (x: T) => Promis
   }));
 }
 
-export type TickReport = { ms: number; fetched: number; failed: number; newItems: number; clustered: number; newStories: number; enriched: number; merged: number; alerts: number; briefs: number; delivered: number; researched: number; pruned: boolean; errors: string[] };
+export type TickReport = { ms: number; fetched: number; failed: number; newItems: number; clustered: number; newStories: number; enriched: number; merged: number; alerts: number; briefs: number; delivered: number; researched: number; radars: number; pruned: boolean; errors: string[] };
 
 /** Poll due sources and store what is new. */
 async function ingest(deadline: number, report: TickReport) {
@@ -187,7 +188,7 @@ async function research(users: string[], deadline: number, report: TickReport) {
 
 export async function tick(origin: string, budgetMs = 250_000): Promise<TickReport> {
   const started = Date.now();
-  const report: TickReport = { ms: 0, fetched: 0, failed: 0, newItems: 0, clustered: 0, newStories: 0, enriched: 0, merged: 0, alerts: 0, briefs: 0, delivered: 0, researched: 0, pruned: false, errors: [] };
+  const report: TickReport = { ms: 0, fetched: 0, failed: 0, newItems: 0, clustered: 0, newStories: 0, enriched: 0, merged: 0, alerts: 0, briefs: 0, delivered: 0, researched: 0, radars: 0, pruned: false, errors: [] };
   if (await cacheGet("news:tick-lock")) { report.errors.push("another pass is running"); return report; }
   await cacheSet("news:tick-lock", String(started), Math.min(budgetMs + 30_000, 300_000));
   const at = (share: number) => started + budgetMs * share;
@@ -203,6 +204,7 @@ export async function tick(origin: string, budgetMs = 250_000): Promise<TickRepo
     for (const u of users) { if (Date.now() > alertsEnd) break; report.alerts += await alertsFor(u, origin).catch(() => 0); }
     await briefs(users, origin, until(0.92, 0.06), report).catch((e) => report.errors.push(`briefs: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
     await research(users, until(0.97, 0.03), report).catch((e) => report.errors.push(`research: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
+    report.radars = await warmRadars(until(0.99, 0.08)).catch((e) => { report.errors.push(`radar: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return 0; });
     const ny = localParts(new Date(), "America/New_York");
     const pruneKey = `news:pruned:${ny.date}`;
     if (ny.hour >= 3 && !(await cacheGet(pruneKey))) { await prune().catch(() => undefined); await cacheSet(pruneKey, "1", 2 * 86_400_000); report.pruned = true; }

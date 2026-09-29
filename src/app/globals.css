@@ -221,3 +221,10 @@ body {
 .nr-face-back { transform: rotateY(180deg); }
 .nr[data-motion="off"] *, .nr[data-motion="off"] *::before, .nr[data-motion="off"] *::after { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .nr-flash { animation: none; } .nr-flip-inner { transition: none; } }
+
+/* Radar map: dashes that run along trade and deal arcs, and a pulse on the busiest places. */
+@keyframes radar-flow { to { stroke-dashoffset: -14; } }
+.radar-flow { animation: radar-flow 1.2s linear infinite; }
+@keyframes radar-pulse { 0% { transform: scale(1); opacity: 0.85; } 100% { transform: scale(2.6); opacity: 0; } }
+.radar-pulse { transform-box: fill-box; transform-origin: center; animation: radar-pulse 2.4s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .radar-flow, .radar-pulse { animation: none; } }

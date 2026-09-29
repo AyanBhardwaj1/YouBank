@@ -6,7 +6,7 @@ import { encryptToken, encryptionReady } from "@/lib/crm/crypto";
 import { budgetStatus } from "@/lib/news/budget";
 import { deskBrief } from "@/lib/news/brief";
 import { alertEmail, briefEmail, briefSlack, emailSelf, isSlackWebhook, pushReady, pushToUser, slackPost } from "@/lib/news/deliver";
-import { allDesks } from "@/lib/news/desks";
+import { allDesks, SECTOR_KEYS, SECTOR_LABEL } from "@/lib/news/desks";
 import { EDITIONS, LAYOUTS, LOOKS, normalizeNewsPrefs, publicPrefs } from "@/lib/news/prefs";
 import { readerFor } from "@/lib/news/reader";
 
@@ -31,6 +31,7 @@ export async function GET() {
     return NextResponse.json({
       prefs: publicPrefs(ctx.prefs), editions: EDITIONS, looks: LOOKS, layouts: LAYOUTS,
       desks: allDesks().map((d) => ({ id: d.id, label: d.label })), ownDesk: { id: ctx.ownDesk.id, label: ctx.ownDesk.label },
+      sectors: SECTOR_KEYS.map((id) => ({ id, label: id === "tech" ? "Technology" : SECTOR_LABEL[id] })), ownSector: ctx.desk.sectors[0] ?? ctx.ownDesk.sectors[0] ?? "tech",
       channels: { email: box ? { address: box.address, provider: box.provider } : null, push: { ready: pushReady(), key: process.env.NEWS_VAPID_PUBLIC_KEY ?? "", devices: n }, slack: { ready: encryptionReady() } },
       budget,
     });

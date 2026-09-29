@@ -249,8 +249,24 @@ stories:
   raises and fund closes.
 - **Regulators and wires.** Federal Register rules (FERC, FDA, SEC, the Fed, FCC…), the Fed, SEC, FDA,
   EIA, BLS and BEA, and the PR Newswire, GlobeNewswire and Business Wire press-release feeds.
-- **The tech radar.** Hugging Face daily papers and trending models, GitHub's fastest-rising
-  repositories, Show HN launches.
+- **A radar for every sector.** Early signals before they are news, each linked to its source, a map
+  of where they are happening (bubbles by place, arcs for trade flows and cross-state bank deals), and
+  the sector's deals. Each person picks a sector; the default is their desk's.
+  - Technology: the tech radar (Hugging Face daily papers and trending models, GitHub's fastest-rising
+    repositories, Show HN launches).
+  - Energy: gas pipelines, LNG terminals and export applications, hydro and nuclear projects moving
+    through FERC, DOE and NRC, at each step; EIA analysis and DOE-funded research.
+  - Healthcare: new industry Phase 2 and 3 trials with where they enroll (ClinicalTrials.gov), FDA
+    approvals with new molecular entities and priority reviews marked (openFDA), and Phase 2 and 3
+    results in NEJM, The Lancet, JAMA, Nature Medicine and JCO (PubMed).
+  - Financials: bank mergers, acquisitions and changes in control awaiting the Fed, with comment
+    deadlines (read from Federal Register notices); FDIC failures; Fed, NBER and arXiv research.
+  - Industrials and consumer: ITC anti-dumping and patent import cases with the countries involved,
+    Entity List changes and USTR actions; EPA, DOT, OSHA, FTC and CPSC rules; CPSC recalls with
+    units, where sold and where made; robotics research.
+  - Media and telecom, real estate: FCC, HUD and FHFA rules in motion; networking and housing research.
+  Built from public sources, cached a day and refreshed by the Newsroom pass; a source that does not
+  answer keeps its last good lane.
 - **Research briefs.** Twice a day, a small model with web search looks for each active desk's stories
   that have no feed (Reuters, AP); a story is kept only if its page was retrieved and is recent.
 
@@ -1222,7 +1238,7 @@ bash scripts/preflight.sh                                         # everything t
 | Outreach (53 tests) | `pnpm exec tsx scripts/test-outreach.ts` | Follow-up, stale-deal and nurture candidate rules; funding-signal matching; company normalisation; sequence steps; the consent guard |
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
-| Newsroom (63 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
+| Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |

@@ -27,7 +27,7 @@ export const FEATURES: NavFeature[] = [
   },
   {
     id: "news", href: "/app/news", label: "Newsroom", icon: "Newspaper", blurb: "News for your desk, deals and filings",
-    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Tech radar"), tab("/app/news", "view", "saved", "Saved")],
+    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Radar"), tab("/app/news", "view", "saved", "Saved")],
   },
   { id: "tools", href: "/app/tools", label: "Tools", icon: "Wand2", blurb: "Calculators and AI workflows" },
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },

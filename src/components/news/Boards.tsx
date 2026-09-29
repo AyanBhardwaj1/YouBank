@@ -3,7 +3,7 @@
 /**
  * The Newsroom's boards: the morning brief, the market watch (numbers tick when they change, a tape
  * scrolls in the Terminal and Brief looks), the calendar, the deal tracker with advisor league tables,
- * and the tech radar.
+ * and the tech radar (sector radars are in Radar.tsx).
  */
 import { motion } from "motion/react";
 import { ArrowUpRight, CalendarDays, Flame, GitFork, MessageSquare, Star, ThumbsUp } from "lucide-react";

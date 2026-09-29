@@ -18,6 +18,7 @@ type PrefsResponse = {
   editions: Record<EditionId, { label: string; look: LookId; layout: LayoutId; inspired: string; blurb: string }>;
   looks: Record<LookId, string>; layouts: Record<LayoutId, { label: string; blurb: string }>;
   desks: { id: string; label: string }[]; ownDesk: { id: string; label: string };
+  sectors: { id: string; label: string }[]; ownSector: string;
   channels: { email: { address: string; provider: string } | null; push: { ready: boolean; key: string; devices: number }; slack: { ready: boolean } };
   budget: { spentUsd: number; budgetUsd: number; paused: string[] };
 };
@@ -128,6 +129,12 @@ export function NewsSettings() {
       <Row title="Desk" hint={`Your desk comes from your profile (${data.ownDesk.label}). Read another group's news here or from the Newsroom's header.`}>
         <Select value={p.desk || data.ownDesk.id} onChange={(v) => save({ desk: v === data.ownDesk.id ? "" : v })} className="rounded-md border border-line bg-elevated px-2 py-1 text-[12px]">
           {data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>)}
+        </Select>
+      </Row>
+      <Row title="Radar" hint="Early signals for a sector: projects before regulators, trials and approvals, bank deals before the Fed, trade cases, recalls. Technology is the tech radar.">
+        <Select value={p.radar || ""} onChange={(v) => save({ radar: v as NewsPrefs["radar"] })} className="rounded-md border border-line bg-elevated px-2 py-1 text-[12px]">
+          <option value="">Follow my desk ({data.sectors.find((x) => x.id === data.ownSector)?.label ?? "Technology"})</option>
+          {data.sectors.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
         </Select>
       </Row>
 

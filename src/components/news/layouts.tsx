@@ -10,13 +10,15 @@ import { useMemo, type RefObject } from "react";
 import { CATEGORY_LABEL, type Category } from "@/lib/news/classify";
 import type { StoryCard as Story } from "@/lib/news/views";
 import { useMotionLevel, type Spark } from "./client";
-import { BriefBlock, CalendarList, DealTracker, LeagueTable, MarketWatch, RadarBoard, TickerTape, type BriefData, type DealsData, type RadarData } from "./Boards";
+import { BriefBlock, CalendarList, DealTracker, LeagueTable, MarketWatch, TickerTape, type BriefData, type DealsData } from "./Boards";
+import type { RadarScreen } from "@/lib/news/radar/view";
+import { RadarTile } from "./Radar";
 import { StoryCard } from "./StoryCard";
 
 export type LayoutProps = {
   stories: Story[]; fresh: Set<number>; sparks: Map<string, Spark | null>; now: number;
   onOpen: (s: Story) => void; onSave: (s: Story) => void; onOpenCluster: (id: number) => void; onCategory: (c: string) => void;
-  brief: BriefData | null; deals: DealsData | null; radar: RadarData | null; deskLabel: string; showRadar: boolean;
+  brief: BriefData | null; deals: DealsData | null; radar: RadarScreen | null; deskLabel: string; showRadar: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -182,7 +184,7 @@ export function DashboardLayout(p: LayoutProps) {
         <div className="space-y-1">{filings.length ? filings.map((s) => <StoryCard key={s.id} story={s} variant="compact" sparks={p.sparks} now={p.now} onOpen={p.onOpen} />) : <p className="text-[11.5px] text-muted">No filings for your desk yet today.</p>}</div>
       </Tile>
       <Tile i={5} title="League table, financial advisors">{p.deals ? <LeagueTable rows={p.deals.league.financial} title="Last 12 months" /> : <div className="shimmer h-32 rounded" />}</Tile>
-      {p.showRadar && p.radar && <Tile i={6} title="Tech radar" className="md:col-span-2 xl:col-span-4"><RadarBoard data={{ papers: p.radar.papers.slice(0, 4), repos: p.radar.repos.slice(0, 4), models: p.radar.models.slice(0, 4), launches: p.radar.launches.slice(0, 4) }} /></Tile>}
+      {p.showRadar && p.radar && <Tile i={6} title={p.radar.title} className="md:col-span-2 xl:col-span-4"><RadarTile data={p.radar} now={p.now} /></Tile>}
     </div>
   );
 }

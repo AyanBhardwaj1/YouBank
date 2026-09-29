@@ -25,6 +25,10 @@ import { acceptStory } from "@/lib/news/sources/research";
 import { parseFeed } from "@/lib/news/sources/rss";
 import { monogramOf } from "@/components/news/DataArt";
 import { nameKey } from "@/lib/edgar/tickers";
+import { rankEntries } from "@/lib/news/radar";
+import { countryId, placesIn, stateId } from "@/lib/news/radar/places";
+import { approvalEntries, bankApplications, energyNotice, recallEntries, tradeCase, trialEntries, type FrDoc } from "@/lib/news/radar/sources";
+import { radarMap } from "@/lib/news/radar/view";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -157,6 +161,53 @@ async function main() {
   check("Slack webhooks only", isSlackWebhook("https://hooks.slack.com/services/T0/B0/xyz") && !isSlackWebhook("https://evil.example/hooks.slack.com/services/x"));
   const email = briefEmail({ desk: "bank:energy", deskLabel: "Energy & power", slot: "2026-09-28", title: "Oil <spikes> & gas", intro: "Intro", items: [{ clusterId: 9, headline: "A & B", lines: ["line"], why: "why", category: "deals", sources: 2, tickers: [] }], watch: [], calendar: [], generatedAt: "", model: "m" }, [], "https://app.example", "Monday");
   check("the brief email escapes HTML and links stories", email.html.includes("Oil &lt;spikes&gt; &amp; gas") && email.html.includes("https://app.example/app/news/story/9") && email.subject === "Energy & power brief: Oil <spikes> & gas");
+
+  console.log("sector radars");
+  const doc = (title: string, extra: Partial<FrDoc> = {}): FrDoc => ({ title, abstract: null, html_url: `https://www.federalregister.gov/d/${title.length}`, publication_date: "2026-09-29", type: "Notice", ...extra });
+  const gp = energyNotice(doc("Guardian Pipeline, LLC; Notice of Schedule for the Preparation of an Environmental Assessment for the Guardian 3 Expansion Project"), "FERC");
+  const rg = energyNotice(doc("Rio Grande LNG, LLC, Rio Grande LNG Train 4, LLC; Notice of Schedule for the Preparation of an Environmental Assessment for the Proposed Rio Grande LNG Train 4 Expansion Project"), "FERC");
+  const nrc = energyNotice(doc("Constellation Energy Generation, LLC; Christopher M. Crane Clean Energy Center; Environmental Assessment and Finding of No Significant Impact"), "NRC");
+  check("FERC, DOE and NRC notices become project milestones; paperwork does not", gp?.title === "Guardian Pipeline: Guardian 3 Expansion Project" && gp.tags.join() === "Gas pipeline,Environmental review"
+    && rg?.title === "Rio Grande LNG: Rio Grande LNG Train 4 Expansion Project" && rg.tags[0] === "LNG" && rg.places.includes("us:TX")
+    && nrc?.title === "Constellation Energy Generation: Christopher M. Crane Clean Energy Center" && nrc.tags.join() === "Nuclear,Environmental review done"
+    && energyNotice(doc("Great River Hydro, LLC; Notice of Application for Temporary Variance Accepted for Filing"), "FERC") === null
+    && energyNotice(doc("Natural Gas Pipeline Company of America, LLC; Horizon Pipeline Company, L.L.C.; Notice of Scoping Period"), "FERC")?.title === "Natural Gas Pipeline Company of America", [gp, rg, nrc]);
+  const fed = `A. Federal Reserve Bank of Chicago (Jane Doe) 230 South LaSalle Street, Chicago, Illinois 60690-1414. Comments ... not later than October 28, 2026.
+    1. 1870 Holdings, Inc., Monmouth, Illinois; to merge with Rushville Bancshares, Inc., and thereby indirectly acquire Rushville State Bank, both of Rushville, Illinois.
+    B. Federal Reserve Bank of Richmond (John Roe) 701 East Byrd Street, Richmond, Virginia 23219.
+    1. First Bancorp, Southern Pines, North Carolina; to acquire First Carolina Bancshares Corporation, and thereby indirectly acquire First Carolina Bank, both of Rock Hill, South Carolina.
+    2. Hometown Financial Group, Inc., Easthampton, Massachusetts (\`\`Applicant''); a newly-formed Maryland corporation, to become a bank holding company by acquiring TruNorth Bank, Easthampton, Massachusetts (\`\`Bank''), in connection with the conversion.
+    Board of Governors of the Federal Reserve System.`;
+  const apps = bankApplications(fed, "https://fr/x", "2026-09-28");
+  check("Fed notices become bank deals: acquirer, target, states, district and comment deadline", apps.length === 3
+    && apps[0].title === "1870 Holdings, Inc. to merge with Rushville Bancshares, Inc." && apps[0].tags.join() === "Merger,Comments by October 28" && apps[0].snippet.includes("Federal Reserve Bank of Chicago")
+    && apps[1].title === "First Bancorp to acquire First Carolina Bancshares Corporation" && apps[1].flow?.from[0] === "us:NC" && apps[1].flow?.to === "us:SC" && apps[1].snippet.includes("Richmond")
+    && apps[2].title === "Hometown Financial Group, Inc. to form a holding company for TruNorth Bank" && apps[2].places.join() === "us:MA", apps);
+  const itc = tradeCase(doc("Methionine From France, Japan, and Spain; Institution of Antidumping Duty Investigations and Scheduling of Preliminary Phase Investigations"));
+  check("ITC cases name the product and the exporting countries, flowing to the US", itc?.title === "Methionine from France, Japan and Spain" && itc.tags[0] === "New trade case" && itc.flow?.from.join() === "c:FR,c:JP,c:ES" && itc.flow?.to === "c:US"
+    && tradeCase(doc("Certain Dynamic Random Access Memory (DRAM) Devices; Notice of Institution of Investigation"))?.tags[0] === "Patent import case"
+    && tradeCase(doc("Wooden Fence Pickets From China; Scheduling of the Final Phase Hearing Meeting")) === null, itc);
+  const study = { protocolSection: { identificationModule: { nctId: "NCT1", briefTitle: "A Trial of X-1 Versus Placebo" }, sponsorCollaboratorsModule: { leadSponsor: { name: "Acme Bio, Inc." } }, designModule: { phases: ["PHASE3"], enrollmentInfo: { count: 450 } }, statusModule: { studyFirstPostDateStruct: { date: "2026-09-29" } }, conditionsModule: { conditions: ["Ulcerative Colitis (UC)"] }, armsInterventionsModule: { interventions: [{ name: "Placebo", type: "DRUG" }, { name: "X-1", type: "DRUG" }] }, contactsLocationsModule: { locations: [{ country: "United States" }, { country: "Korea, Republic of" }, { country: "Georgia" }] } } };
+  const [tr] = trialEntries([study]);
+  check("new trials: sponsor, drug (not the placebo), condition, phase, enrollment and countries", tr.title === "Acme Bio: X-1 in Ulcerative Colitis" && tr.tags[0] === "Phase 3" && tr.metric === "450 patients" && tr.places.join() === "c:US,c:KR,c:GE" && tr.url === "https://clinicaltrials.gov/study/NCT1", tr);
+  const fda = approvalEntries([
+    { application_number: "NDA220185", sponsor_name: "NUVALENT", products: [{ brand_name: "JIDEYTRO", active_ingredients: [{ name: "ZIDESAMTINIB" }] }], submissions: [{ submission_type: "ORIG", submission_status: "AP", submission_status_date: "20260722", review_priority: "PRIORITY", submission_class_code_description: "Type 1 - New Molecular Entity" }] },
+    { application_number: "ANDA078905", sponsor_name: "ZYDUS", submissions: [{ submission_type: "ORIG", submission_status: "AP", submission_status_date: "20260801" }] },
+    { application_number: "NDA000001", sponsor_name: "OLD", submissions: [{ submission_type: "ORIG", submission_status: "AP", submission_status_date: "20110131" }] },
+  ], "20260701", "20260929");
+  check("FDA approvals: original NDAs and BLAs in the window only, with priority and NMEs marked", fda.length === 1 && fda[0].title === "Jideytro (Nuvalent)" && fda[0].tags.join() === "New drug,New molecular entity,Priority review" && fda[0].at.startsWith("2026-07-22"), fda);
+  const [rc] = recallEntries([{ RecallID: 1, RecallDate: "2026-09-24T00:00:00", Title: "ABC Trading Recalls Light-Up Toys Due to Risk of Burns", Products: [{ NumberOfUnits: "About 43,674" }], Retailers: [{ Name: "Sold Online At:\nAmazon.com in May 2026 for $25." }], ManufacturerCountries: [{ Country: "China" }] }]);
+  check("recalls: units, where sold, and where made, flowing to the US", rc.title === "ABC Trading Recalls Light-Up Toys" && rc.metric === "43,674 units" && rc.snippet.startsWith("Sold at Amazon.com") && rc.flow?.from[0] === "c:CN", rc);
+  check("places: longest names first, set-aside phrases, acronyms by case", placesIn("New Mexico and Texas output rose; Mexico imports fell").join() === "us:NM,us:TX,c:MX"
+    && placesIn("prices in British thermal units across the Indian Ocean").length === 0 && placesIn("North Korea tested; Korea exports grew").join() === "c:KP,c:KR"
+    && placesIn("the eu said").length === 0 && placesIn("the EU said").join() === "eu" && placesIn("Rio Grande LNG and Cushing").join() === "us:TX,us:OK", placesIn("New Mexico and Texas output rose; Mexico imports fell"));
+  check("structured country and state names", countryId("Korea, Republic of") === "c:KR" && countryId("Georgia") === "c:GE" && countryId("United States") === "c:US" && stateId("IL") === "us:IL" && stateId("Georgia") === "us:GA");
+  const lanes = [{ id: "banks", title: "", blurb: "", icon: "", sources: "", status: "ok" as const, entries: apps }];
+  const rm = radarMap(lanes, [{ id: 7, headline: "Texas bank deal", text: "A Texas lender agreed to buy a bank in Illinois" }]);
+  check("the map counts places from lanes and stories, and keeps flows", rm.points.find((p) => p.id === "us:IL")?.count === 2 && rm.points.find((p) => p.id === "us:TX")?.items[0].clusterId === 7 && rm.flows.length === 1 && rm.flows[0].from === "us:NC", rm);
+  const t0 = Date.parse("2026-09-29T12:00:00Z");
+  const ranked = rankEntries([{ ...apps[2], weight: 0.36, at: "2026-09-29T12:00:00Z" }, { ...apps[0], weight: 0.62, at: "2026-09-20T12:00:00Z" }], t0);
+  check("radar ranking: weight first, freshness second", ranked[0].weight === 0.62, ranked.map((r) => r.weight));
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
