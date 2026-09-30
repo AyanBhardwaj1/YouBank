@@ -14,6 +14,7 @@ import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";
 import { routeFor, type AiTask } from "./route";
 import { aiUser, recordUsage } from "./usage";
 import { describeFailure } from "@/lib/errors";
+import { fitToSchema } from "./fit";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AgentEvent =
@@ -344,7 +345,7 @@ export async function structured<T>(schema: z.ZodType<T>, name: string, system: 
     });
     const u = res.usage;
     recordUsage({ feature: name, provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u?.output_tokens ?? 0, reasoning: u?.output_tokens_details?.reasoning_tokens ?? 0 } });
-    return { data: schema.parse(JSON.parse(res.output_text)), provider: cfg.provider, model: cfg.model };
+    return { data: schema.parse(fitToSchema(JSON.parse(res.output_text), jsonSchema)), provider: cfg.provider, model: cfg.model };
   }
   const client = new Anthropic({ apiKey: cfg.apiKey, timeout: opts?.timeoutMs ?? STRUCTURED_TIMEOUT_MS, maxRetries: 1 });
   const content: Anthropic.ContentBlockParam[] = [
@@ -363,7 +364,7 @@ export async function structured<T>(schema: z.ZodType<T>, name: string, system: 
   const mu = res.usage;
   recordUsage({ feature: name, provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: { input: (mu.input_tokens ?? 0) + (mu.cache_read_input_tokens ?? 0) + (mu.cache_creation_input_tokens ?? 0), cached: mu.cache_read_input_tokens ?? 0, cacheWrite: mu.cache_creation_input_tokens ?? 0, output: mu.output_tokens ?? 0, reasoning: 0 } });
   const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("");
-  return { data: schema.parse(JSON.parse(text)), provider: cfg.provider, model: cfg.model };
+  return { data: schema.parse(fitToSchema(JSON.parse(text), jsonSchema)), provider: cfg.provider, model: cfg.model };
 }
 
 /* ---------------- Peer proposal (kept for the comps screen) ---------------- */
