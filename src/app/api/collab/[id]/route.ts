@@ -29,7 +29,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       { action?: string; patch?: Record<string, unknown>; field?: string } | null;
 
     if (body?.action === "close") { await closeSession(user, id); return NextResponse.json({ ok: true }); }
-    await requireSession(user, id);
+    // Presence is open to anyone who may look; changing the shared state needs edit rights.
+    await requireSession(user, id, body?.patch && typeof body.patch === "object" ? "edit" : "view");
 
     // Presence changes wake this instance's followers, so a focus shows up at once for them.
     if (body?.action === "leave") { await leave(id, user.id); touch(sessionFeed(id)); return NextResponse.json({ ok: true }); }

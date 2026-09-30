@@ -2,7 +2,8 @@ import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
 import { touch } from "@/lib/realtime/feed";
-import { Forbidden, myTeamIds } from "@/lib/teams/db";
+import { Forbidden, membership, myTeamIds } from "@/lib/teams/db";
+import { can } from "@/lib/teams/roles";
 
 export type SessionRow = typeof schema.collabSessions.$inferSelect;
 export type EventRow = typeof schema.collabEvents.$inferSelect;
@@ -14,26 +15,33 @@ export const PRESENCE_WINDOW_MS = 40_000;
 /* ---------------- Access ---------------- */
 
 /**
- * A session shared with a team is open to that team; one without a team belongs to its owner alone.
- * Every route goes through this so the rule lives in one place.
+ * A session shared with a team is open to that team, by role: viewers may look, members and up may
+ * change it (as in Studio). One without a team belongs to its owner alone. Every route goes through
+ * this so the rule lives in one place.
  */
-export async function requireSession(user: CurrentUser, sessionId: number): Promise<SessionRow> {
+export async function requireSession(user: CurrentUser, sessionId: number, mode: "view" | "edit" = "view"): Promise<SessionRow> {
   const [s] = await requireDb().select().from(schema.collabSessions).where(eq(schema.collabSessions.id, sessionId));
-  if (!s) throw new Forbidden("That session does not exist");
-  if (s.ownerId === user.id) return s;
-  if (s.teamId && (await myTeamIds(user.id)).includes(s.teamId)) return s;
-  throw new Forbidden(s.teamId
-    ? "That session is shared with a team you are not on"
-    : "That session is private to the person who started it");
+  await checkAccess(user, s, mode);
+  return s;
 }
 
 /** The same check reading two columns, not the shared state: for the live stream. */
-export async function requireSessionAccess(user: CurrentUser, sessionId: number): Promise<void> {
+export async function requireSessionAccess(user: CurrentUser, sessionId: number, mode: "view" | "edit" = "view"): Promise<void> {
   const [s] = await requireDb().select({ ownerId: schema.collabSessions.ownerId, teamId: schema.collabSessions.teamId }).from(schema.collabSessions).where(eq(schema.collabSessions.id, sessionId));
+  await checkAccess(user, s, mode);
+}
+
+async function checkAccess(user: CurrentUser, s: { ownerId: string; teamId: number | null } | undefined, mode: "view" | "edit") {
   if (!s) throw new Forbidden("That session does not exist");
   if (s.ownerId === user.id) return;
-  if (s.teamId && (await myTeamIds(user.id)).includes(s.teamId)) return;
-  throw new Forbidden("You do not have access to that session");
+  if (s.teamId) {
+    const m = await membership(s.teamId, user.id);
+    if (m && can(m.role, mode)) return;
+    if (m) throw new Forbidden("Viewers can look at this session but not change it");
+  }
+  throw new Forbidden(s.teamId
+    ? "That session is shared with a team you are not on"
+    : "That session is private to the person who started it");
 }
 
 /** The live-stream key for a session: writes on this instance wake its followers. */
@@ -44,8 +52,10 @@ export const sessionFeed = (sessionId: number) => `collab:${sessionId}`;
 export async function createSession(user: CurrentUser, fields: {
   kind?: string; refId?: string; title?: string; teamId?: number | null; state?: Record<string, unknown>;
 }): Promise<SessionRow> {
-  if (fields.teamId != null && !(await myTeamIds(user.id)).includes(fields.teamId)) {
-    throw new Forbidden("You are not on that team");
+  if (fields.teamId != null) {
+    const m = await membership(fields.teamId, user.id);
+    if (!m) throw new Forbidden("You are not on that team");
+    if (!can(m.role, "edit")) throw new Forbidden("Viewers cannot start sessions for the team");
   }
   const [row] = await requireDb().insert(schema.collabSessions).values({
     ownerId: user.id, teamId: fields.teamId ?? null,
