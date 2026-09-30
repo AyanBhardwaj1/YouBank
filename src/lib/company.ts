@@ -4,6 +4,7 @@ import { fyeLabel, getSubmissions, recentFilings, submissionsUrl } from "./edgar
 import { factsUrl, fiscalLabel, getCompanyFacts, instantAt, latestEnd, ltmAt, addMonths, pickConcept, quarterAt, quarterEnds, rowsFor, extensionConcepts, recentCoverage, type CompanyFacts, type Fact } from "./edgar/facts";
 import { quoteProfile } from "./market/data";
 import { applyManualInputs } from "@/db/manual";
+import { aiUser } from "@/lib/ai/context";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 
@@ -99,7 +100,16 @@ function sharesOutstanding(cf: CompanyFacts, concepts: Record<string, string>): 
 
 const COMPANY_TTL_MS = 6 * 3_600_000;
 
+/** A company with the caller's own manual estimates applied (the person comes from the request context). */
 export async function getCompanyData(tickerRaw: string): Promise<CompanyData | null> {
+  const base = await companyBase(tickerRaw);
+  if (!base) return null;
+  const [withInputs] = await applyManualInputs([base], aiUser());
+  return withInputs;
+}
+
+/** The shared record: filings and fundamentals (cached six hours) with a fresh price. A private copy. */
+async function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   const ticker = tickerRaw.toUpperCase().trim();
   let base: CompanyData | null = null;
   if (db) {
@@ -127,8 +137,7 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
     }
     base = structuredClone(base);
   }
-  const [withInputs] = await applyManualInputs([base]);
-  return withInputs;
+  return base;
 }
 
 async function assembleCompany(tickerRaw: string): Promise<CompanyData | null> {
@@ -228,20 +237,23 @@ async function assembleCompany(tickerRaw: string): Promise<CompanyData | null> {
   };
 }
 
-/** Resolve several tickers with bounded concurrency. Failures are reported per ticker. */
+/** Resolve several tickers with bounded concurrency, then the caller's manual estimates in one query. Failures are reported per ticker. */
 export async function getCompanies(tickers: string[], concurrency = 4): Promise<Record<string, CompanyData | { error: string }>> {
   const out: Record<string, CompanyData | { error: string }> = {};
+  const found: CompanyData[] = [];
   const queue = [...new Set(tickers.map((t) => t.toUpperCase()))];
   await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
     while (queue.length) {
       const t = queue.shift()!;
       try {
-        const c = await getCompanyData(t);
+        const c = await companyBase(t);
         out[t] = c ?? { error: "Unknown ticker" };
+        if (c) found.push(c);
       } catch (e) {
         out[t] = { error: e instanceof Error ? e.message : String(e) };
       }
     }
   }));
+  await applyManualInputs(found, aiUser());
   return out;
 }
