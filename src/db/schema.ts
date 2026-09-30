@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
@@ -87,7 +88,7 @@ export const kvCache = pgTable("kv_cache", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
+}, (t) => [index("kv_cache_expires_idx").on(t.expiresAt)]);
 
 /** Assembled company records, cached to avoid re-parsing multi-megabyte XBRL facts on every request. */
 export const companyCache = pgTable("company_cache", {
@@ -393,6 +394,8 @@ export const crmDrafts = pgTable("crm_drafts", {
   index("crm_drafts_thread_idx").on(t.threadId),
   index("crm_drafts_lead_idx").on(t.campaignLeadId),
   index("crm_drafts_scheduled_idx").on(t.userId, t.scheduledFor),
+  // The platform-wide "contacted in the last 30 days" check on campaign first touches.
+  index("crm_drafts_campaign_sent_idx").on(t.sentAt).where(sql`kind = 'campaign' and status = 'sent'`),
 ]);
 
 /**
@@ -791,7 +794,7 @@ export const aiUsage = pgTable("ai_usage", {
   reasoningTokens: integer("reasoning_tokens").notNull().default(0),
   costUsd: doublePrecision("cost_usd").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("ai_usage_user_idx").on(t.userId, t.createdAt)]);
+}, (t) => [index("ai_usage_user_idx").on(t.userId, t.createdAt), index("ai_usage_created_idx").on(t.createdAt)]);
 
 
 /* ---------------- Newsroom ---------------- */

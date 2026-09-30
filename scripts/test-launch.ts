@@ -122,6 +122,19 @@ async function main() {
   check("a timeout reads as one", describeFailure(late).status === 504 && publicMessage(late) === TOO_SLOW);
   console.error = quiet;
 
+  console.log("cache");
+  process.env.YOUBANK_NO_DISK_CACHE = "1";
+  const { cacheJson } = await import("@/lib/cache");
+  let upstream = 0;
+  const fetchQuote = () => new Promise<number>((r) => setTimeout(() => r(++upstream), 20));
+  const [q1, q2, q3] = await Promise.all([cacheJson("t:quote", 60_000, fetchQuote), cacheJson("t:quote", 60_000, fetchQuote), cacheJson("t:quote", 60_000, fetchQuote)]);
+  check("concurrent misses share one upstream call", upstream === 1 && q1 === 1 && q2 === 1 && q3 === 1, { upstream });
+  let tries = 0;
+  const down = async () => { tries++; throw new Error("upstream down"); };
+  await cacheJson("t:down", 60_000, down).catch(() => undefined);
+  await cacheJson("t:down", 60_000, down).catch(() => undefined);
+  check("a failure is remembered briefly instead of retried per request", tries === 1, { tries });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }
