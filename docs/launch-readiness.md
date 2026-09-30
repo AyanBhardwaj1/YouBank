@@ -41,6 +41,7 @@ night of launch.
 | D7 | P2 | Per-user lists without `LIMIT`: contacts, deals, drafts, playbook, campaigns; a global Form D scan per run. | `src/lib/crm/db.ts:387`, `src/lib/crm/actions.ts:74,105,111`, `src/lib/crm/knowledge.ts:22` | Heavy users. | Limits and pagination. |
 | D8 | P2 | Each Studio patch rewrites the whole stored document (one atomic `jsonb_set` per patch). | `src/lib/studio/db.ts:89-165` | Big models edited fast. | One statement per commit. |
 | D9 | P2 | Migrations are applied by hand with no journal, and the SQL is split on `;`. | `scripts/apply-sql.mts` | Drift between environments. | A `schema_migrations` table. |
+| D11 | P1 | **No query timeout.** Each query is an HTTPS request to Neon and the driver sets none, so a stalled connection holds its request, and on Vercel its function, until the platform kills it. Found by the load test: during a network blip one request hung for fifteen minutes. | `src/db/index.ts` | Any network stall between the functions and Neon. | A 30-second timeout on every query. |
 
 **Connections:** `neon-http` goes through Neon's proxy, which pools on its side, so the limit is
 compute CPU, not the connection count. **Transactions:** Studio edits are atomic per patch, and the
@@ -107,6 +108,7 @@ cookie.
 | A9 | P2 | Registering a push endpoint that already exists moves it to the caller. | `src/app/api/news/push/route.ts:23-24` | Only update the caller's row. |
 | A10 | P2 | Office pairing start has one global limit (60 a minute), so anyone can block pairing for everyone. | `src/lib/office/auth.ts:22-23` | A per-IP limit. |
 | A11 | P2 | The mailbox form accepts any IMAP/SMTP host and port and the server connects there. The mail clients wait for a server greeting, so internal HTTP services cannot be driven, but it works as a port scanner from your IPs. | `src/app/api/crm/accounts/route.ts:23-29`, `src/lib/crm/imap.ts:57-80` | Reject private, loopback and link-local addresses after the DNS lookup. |
+| A13 | P1 | **Sessions refresh only on page loads.** The short-lived signed session cookie (five minutes by default) was re-minted only by the page proxy and the auth routes. So someone who kept a page open (the bell, the feed and the terminal poll every minute) made every poll after it expired ask Neon Auth for their session, from our servers' addresses. Neon Auth rate-limits those calls and does not see the person's own address: in the load test, from one address, about 17 a second drew 429s and those people were signed out. | `src/proxy.ts`, `src/lib/auth/server.ts` | A few thousand people keeping pages open. | Re-mint in the proxy for API routes too; trust the cookie for 15 minutes. Never rotate `NEON_AUTH_COOKIE_SECRET` under traffic (everyone would re-mint at once). |
 | A12 | P2 | `/api/ai/status` needs no sign-in and returns the provider and model (and setup hints when no key is set). `/api/prefs` and `/api/profile` return `profiles.extra` as stored, including the owner's own encrypted Slack webhook. | `src/app/api/ai/status/route.ts`, `src/app/api/prefs/route.ts:16,40`, `src/app/api/profile/route.ts:12` | Guard it; filter `extra`. |
 
 ### 5. Abuse and cost controls
@@ -149,6 +151,7 @@ Checked against the built `.next` output (sizes raw / gzip).
 | K6 | P2 | **Edge caching is not possible as built**: every data route requires sign-in, so a CDN cannot share responses without making that data public (a product decision). A few routes set browser `private, max-age`. | `src/app/api/terminal/[fn]/route.ts:26,89` | The shared server caches (K2, D4); `stale-while-revalidate` on the private headers. |
 | K7 | P2 | **Images.** No `next/image`; the VC directory loads 50 to 100 third-party logos eagerly; unused brand PNGs sit in `public/`. | `src/components/vc/VcWorkspace.tsx:133` | `loading="lazy"`. |
 | K8 | P2 | **Bug: Newsroom sparklines** request at most 24 symbols and never fetch the rest. | `src/components/news/client.ts:64,76` | Fetch in batches. |
+| K9 | P2 | **Newsroom layout shift** is 0.144 (Google's "needs improvement" band is 0.1 to 0.25), measured on a local build: the feed's cards shift as they load. The other main pages score 0.000 to 0.011. | `src/components/news/Newsroom.tsx` | Reserve the feed's space while it loads. |
 
 ### 8. Config and deploy hygiene
 
@@ -283,6 +286,8 @@ is P2.
 | V2, V3 background | `7e56297` | Autopilot (6) and the nightly agent (4) run in bounded pools. |
 | G6, A6 headers | `7a76665` | HSTS, nosniff, referrer and permissions policies, and no `X-Powered-By`. Framing is denied except for the add-in's two pages. |
 | D6, G2 region and env | `a292d01` | Functions run in `cle1` next to the database. The environment is checked at startup. Uncaught server errors are logged. |
+| A13 sessions (found by the load test) | `e1474c0`, `26060d7` | The session cookie is trusted for 15 minutes (`NEON_AUTH_SESSION_DATA_TTL`). API routes pass through the proxy, which re-mints it once and hands it back; they still answer 401 themselves. |
+| D11 query timeout (found by the load test) | `96ad81d` | Every database query gives up after 30 seconds. |
 
 Production also got `ADMIN_EMAILS` (the founder), so the personal AI cap does not apply to the
 owner.
@@ -303,12 +308,123 @@ V6 lazy imports; A4 wording; A7 removed members' invites; A8 atomic invite redem
 endpoint ownership; A11 private-address block for mail servers; A12 guard `/api/ai/status` and
 filter `profiles.extra`; C11 zod schemas on the remaining bodies; E3 layout fallback and panel error
 boundaries; E5 is fixed in the agent route; K3–K7 bundles, re-renders, waterfalls, edge caching and
-images; G4 remove `stripe`; G5 `server-only` guards.
+images; K9 the Newsroom's layout shift; G4 remove `stripe`; G5 `server-only` guards.
 
 ## Load test
 
-Filled in after the load test.
+### How it ran
+
+- **Builds.** Two local production builds (`next start`): the code before this pass (`58415e9`) and after it. They ran one at a time against the same copy of production: the Neon `office-test` branch, with migration 0012 added for the "after" runs.
+- **Sandbox.** Everything ran inside `scripts/load/offline.mjs`. Outbound requests could reach only the branch's own database and auth. OpenAI answered with a canned, streamed reply, and FMP, SEC, Nasdaq and every other service were refused, so no real quota or account was touched.
+- **Load.** 60 signed-in users (created through the app's own sign-up and onboarding) with 1 to 3 seconds of think time. The mix:
+  - page loads;
+  - the Newsroom feed and the notification bell;
+  - company data for five tickers;
+  - deals, the brief and Studio documents;
+  - 5% AI chat.
+
+  Meanwhile 20 open Studio documents each had a teammate editing a cell every 5 seconds. Each run lasted 60 seconds after a warm-up.
+- **Sessions.** Each run started with freshly minted session cookies, the way a browser has them.
+- **Latency.** Latency includes the round trip from this machine to Neon; production functions sit next to the database (`cle1`). Compare the two columns with each other, not with production.
+
+The test measures what each request and open tab costs at a fixed load. It does not find the breaking point; the ceiling below comes from those costs multiplied out.
+
+### Results
+
+| | Before | After |
+|---|---|---|
+| Requests a second / errors | 23.8 / 0% | 25.4 / 0% |
+| Latency p50 / p95 (all requests) | 101 / 935 ms | **71** / 1,050 ms |
+| Database queries a second | 162.7 | **122.2** (−25%) |
+| Database queries per request | 6.85 | **4.80** (−30%) |
+| Newsroom feed p50 / p95 | 589 / 810 ms | **165 / 305 ms** |
+| Deal tracker p50 | 102 ms | **5 ms** |
+| Morning brief p50 | 298 ms | **197 ms** |
+| Company data (5 tickers) p50 | 194 ms | **145 ms** |
+| Page loads (`/app`, `/app/news`) p50 | 61 to 65 ms | 60 to 61 ms |
+| An edit reaching another open tab, p50 / p95 | 472 / 785 ms | **194 / 222 ms** |
+| An open, quiet Studio tab: database queries a second | 1.56 | **0.63** in its first minute, **0.2** after (the pace eases off); **0** when the tab is hidden |
+| Stream reconnections | every 45 s | every 120 s |
+| People whose session cookie expired: Neon Auth calls | about one per API request (327 for 60 people in 30 s) | about three per person per 15 minutes (180 for 60 people) |
+
+Notes:
+- **p95.** p95 is set by the mock AI chat (about a second of streaming by design) in both builds. After the pass, a chat run also checks the spend limits and takes a run slot, which is three or four more database round trips. That is about 140 ms from this machine, and a few milliseconds next to the database.
+- **Studio documents.** The document load now reads the stream cursor before the document, one sequential round trip more (see section 2), for correctness.
+- **Everyone's cookie expiring at once.** In the stale-session test all 60 cookies had expired at the same moment. The burst of re-mints from one address pushed p95 to 7.9 s while Neon Auth caught up. Real cookies expire at different times; this is why the runbook says never to rotate `NEON_AUTH_COOKIE_SECRET` under traffic.
+- **What the test itself found.** Two P1s:
+  - A13: the session refresh signed people out;
+  - D11: a query hung for fifteen minutes.
+
+  Both are fixed above.
+
+### Core Web Vitals (after, desktop, local build, cold cache, median of 3)
+
+| Page | Time to first byte | First paint | Largest paint | Layout shift | JavaScript |
+|---|---|---|---|---|---|
+| `/app` | 76 ms | 116 ms | 452 ms | 0.011 | 271 KB |
+| `/app/news` | 68 ms | 120 ms | 960 ms | **0.144** (K9) | 289 KB |
+| `/app/terminal` | 66 ms | 128 ms | 868 ms | 0.002 | 301 KB |
+| `/app/studio/[id]` | 69 ms | 116 ms | 364 ms | 0.000 | 306 KB |
+
+These are good on a fast desktop connection. On a slow phone network, largest paint grows with the 270 to 306 KB of JavaScript (K3). Interaction latency (INP) needs a person clicking and was not measured.
+
+### Ceiling, revisited
+
+Measured per unit, after the pass:
+- 4.8 queries per request (was 6.85);
+- about 0.2 queries a second per open, quiet document (was 1.56), and none for hidden tabs;
+- a Newsroom feed that reads shared, lean candidates (egress down about 90% by column choice alone).
+
+The estimate stands at **5,000 to 10,000 concurrent users** once Neon (4 to 8 CU) and Vercel Pro are in place. Past that, the next limits are:
+- database CPU: a slider in Neon, plus design C for the streams;
+- Neon Auth's rate limit on session refreshes: about N / 900 a second for N people. Ask Neon for the limit on your plan before a big launch.
 
 ## Launch-day runbook
 
-Filled in after the load test.
+### Before opening the doors
+
+1. **Plans.** Neon on Launch or Scale with a 4 CU maximum or more; Vercel on Pro. Both are in [Infra](#infrastructure-you-set-up).
+2. **Environment.** After the deploy, open Vercel → Logs and search for `environment check`. It should say nothing is missing.
+3. **Smoke test.** The home page loads, and `/app` redirects to sign-in. `curl -sI https://youbank-nu.vercel.app/` shows `strict-transport-security` and `x-frame-options`, and `x-vercel-id` starts with `cle1`.
+4. **Secrets.** Do not rotate `NEON_AUTH_COOKIE_SECRET`, or any other secret, on launch day.
+
+### What to watch
+
+| Signal | Where | Healthy | Act when |
+|---|---|---|---|
+| 5xx rate | Vercel → Observability → Functions | under 0.5% | over 1% for five minutes |
+| p95 latency | Vercel Observability, per route | pages under 1 s; API under 1.5 s (chat and runs are longer) | doubles |
+| Failures | Vercel Logs, search `"level":"error"` | a trickle | one `ref` or `message` repeating |
+| Signed-out bursts | Vercel Logs, search `429 Too Many Requests` (Neon Auth session refresh) | none | any |
+| Database | Neon → Monitoring: CPU, compute size, connections | under 70% of the maximum CU | pinned at the maximum |
+| Database storage and egress | Neon → Billing | within plan | nearing plan |
+| AI spend today | the query below | under `AI_GLOBAL_DAILY_USD` | over 70% of it by midday |
+| Market data | kv row `fmp:daily-limit` present | absent | present: FMP is out and Nasdaq is serving |
+| SEC | kv row `edgar:backoff` present | absent | present: SEC asked us to slow down |
+
+AI spend so far today (UTC), and the top spenders:
+
+```sql
+select round(sum(cost_usd)::numeric, 2) as usd_today from ai_usage where created_at >= date_trunc('day', now() at time zone 'utc');
+select user_id, round(sum(cost_usd)::numeric, 2) as usd from ai_usage where created_at >= date_trunc('day', now() at time zone 'utc') group by 1 order by 2 desc limit 10;
+```
+
+### Levers
+
+Change a value in Vercel → Settings → Environment Variables (Production), then redeploy: environment
+changes reach only new deployments. Run `vercel --prod`, or use "Redeploy" on the current
+deployment. Neon compute changes apply at once.
+
+| Problem | Lever, in order |
+|---|---|
+| AI spend climbing | Lower `AI_GLOBAL_DAILY_USD` (for example to 50); lower `AI_USER_DAILY_USD`; set `AI_ALLOWED_MODELS=gpt-5.6-luna,gpt-5.6-terra` to stop the expensive models; set `AI_DISABLED=1` to stop all AI (the app keeps working). Lower `NEWS_AI_BUDGET_USD` for the Newsroom's own spend. |
+| Database CPU or load | Raise the Neon maximum CU (immediate). Set `STREAM_MODE=slow` (live updates poll five times less). Set `AUTOPILOT_POOL=2` and `AGENT_POOL=1` to slow the background passes. |
+| Neon Auth 429s, people signed out | Raise `NEON_AUTH_SESSION_DATA_TTL` (seconds; up to 3600) and ask Neon about the rate limit. |
+| Market data blocked or wrong | `MARKET_BACKUP=off` stops the Nasdaq fallback (prices fall back to what is cached). |
+| SEC throttling (`edgar:backoff`) | Nothing to flip: every instance waits a minute. If it repeats, check `EDGAR_USER_AGENT` has a real contact email. |
+
+### Rolling back
+
+- **Code.** Vercel → Deployments → the previous production deployment → **Promote to Production** (instant). The CLI equivalent is `vercel rollback`.
+- **Database.** Migration 0012 only added indexes; nothing to undo. No other schema changed in this pass.
+- **Environment levers.** Set them back and redeploy.
