@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadUserContext } from "@/lib/ai/persona";
+import { rateLimit } from "@/lib/locks";
 import { guardedFor } from "@/lib/office/auth";
 import { commit, docData, requireDoc } from "@/lib/studio/db";
 import { attachmentFrom, readMarkup } from "@/lib/studio/documents";
@@ -12,6 +13,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
     if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    await rateLimit(`studio-read:${user.id}`, 20, 3_600_000, "Many documents have been read this hour. Try again later.");
     const form = await req.formData().catch(() => null);
     const file = form?.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "Attach the marked-up PDF or photo" }, { status: 400 });

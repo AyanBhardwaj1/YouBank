@@ -3,6 +3,7 @@ import { guarded } from "@/lib/auth/user";
 import { listAccounts, saveImapAccount, toSafe } from "@/lib/crm/accounts";
 import { encryptionReady } from "@/lib/crm/crypto";
 import { MAIL_PRESETS } from "@/lib/crm/imap";
+import { rateLimit } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
       imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number; username?: string;
     } | null;
     if (!body?.email || !body.password) return NextResponse.json({ error: "Email and app password are required" }, { status: 400 });
+    await rateLimit(`mail-connect:${user.id}`, 10, 3_600_000, "Too many connection attempts this hour. Check the settings and try again later.");
     try {
       const account = await saveImapAccount(user.id, { ...body, email: body.email, password: body.password });
       return NextResponse.json(toSafe(account), { status: 201 });

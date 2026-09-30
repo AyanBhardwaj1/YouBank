@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { considerDraft } from "@/lib/crm/autopilot";
+import { rateLimit } from "@/lib/locks";
 import {
   addLeads, deleteCampaign, getCampaign, parseLeadList, prepareCampaign, qualifyCampaign, updateCampaign, type LeadInput,
 } from "@/lib/crm/campaigns";
@@ -54,6 +55,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const r = await addLeads(user.id, id, leads);
       return NextResponse.json({ ...r, skipped: r.skipped + unreadable });
     }
+    if (body?.action === "qualify" || body?.action === "prepare") await rateLimit(`crm-draft:${user.id}`, 20, 3_600_000, "Drafting has run many times this hour. Try again later.");
     if (body?.action === "qualify") return NextResponse.json(await qualifyCampaign(user.id, id, Date.now() + 250_000));
     if (body?.action === "prepare") {
       const r = await prepareCampaign(user.id, id, Date.now() + 250_000);

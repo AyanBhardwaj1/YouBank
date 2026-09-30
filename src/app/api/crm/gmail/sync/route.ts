@@ -4,6 +4,7 @@ import { getAccount, listAccounts } from "@/lib/crm/accounts";
 import { afterTriage, sendDue } from "@/lib/crm/autopilot";
 import { claimLock, releaseLock } from "@/lib/crm/settings";
 import { syncAccount } from "@/lib/crm/sync";
+import { rateLimit } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as { accountId?: number; max?: number } | null;
     const account = body?.accountId ? await getAccount(user.id, body.accountId) : (await listAccounts(user.id))[0];
     if (!account) return NextResponse.json({ error: "No mailbox is connected" }, { status: 400 });
+    await rateLimit(`mail-sync:${user.id}`, 20, 3_600_000, "The mailbox has been read many times this hour. It also syncs on its own, so try again later.");
     // The heartbeat may be working on this mailbox right now; never read it twice at once.
     if (!(await claimLock(user.id, 5))) {
       return NextResponse.json({ error: "The agent is reading your mailbox right now. Try again in a minute." }, { status: 409 });

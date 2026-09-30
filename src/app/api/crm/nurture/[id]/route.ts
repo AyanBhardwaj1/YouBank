@@ -4,6 +4,7 @@ import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { considerDraft } from "@/lib/crm/autopilot";
 import { deleteRule, previewRule, runRule, updateRule } from "@/lib/crm/nurture";
+import { rateLimit } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -42,6 +43,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const body = (await req.json().catch(() => null)) as { action?: string } | null;
     const rule = await ruleFor(user.id, id);
     if (body?.action === "run") {
+      await rateLimit(`crm-draft:${user.id}`, 20, 3_600_000, "Drafting has run many times this hour. Try again later.");
       const r = await runRule(user.id, rule, Date.now() + 250_000);
       let scheduled = 0;
       for (const d of r.draftIds) if ((await considerDraft(user.id, d)).scheduled) scheduled++;

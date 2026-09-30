@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { rateLimit } from "@/lib/locks";
 import { fullTextSearch } from "@/lib/edgar/fulltext";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,8 @@ export const maxDuration = 60;
 
 /** Live precedent-transaction candidates from EDGAR full-text search over merger disclosure. */
 export async function GET(req: Request) {
-  return guarded(async () => {
+  return guarded(async (user) => {
+    await rateLimit(`sec-search:${user.id}`, 30, 600_000, "Too many SEC searches in the last few minutes. Try again shortly.");
     const url = new URL(req.url);
     const keywords = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
     const from = url.searchParams.get("from") ?? new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10);

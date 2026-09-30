@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { withinRate } from "@/lib/locks";
 import { encryptToken, encryptionReady } from "@/lib/crm/crypto";
 import { budgetStatus } from "@/lib/news/budget";
 import { deskBrief } from "@/lib/news/brief";
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
     const origin = new URL(req.url).origin;
 
     if (typeof body.test === "string") {
+      if (!(await withinRate(`news-test:${user.id}`, 6, 3_600_000))) return NextResponse.json({ ok: false, message: "Several tests went out this hour. Try again later." });
       const ctx = await readerFor(user.id);
       if (!ctx) return NextResponse.json({ error: "Finish onboarding first" }, { status: 409 });
       try {

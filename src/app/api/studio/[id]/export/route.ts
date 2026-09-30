@@ -1,3 +1,4 @@
+import { withinRate } from "@/lib/locks";
 import { requestUser } from "@/lib/office/auth";
 import { docData, requireDoc } from "@/lib/studio/db";
 import { Engine } from "@/lib/studio/engine";
@@ -14,6 +15,7 @@ export const maxDuration = 60;
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await requestUser(req);
   if (!user) return new Response("Sign in required", { status: 401 });
+  if (!(await withinRate(`studio-export:${user.id}`, 30, 600_000))) return new Response("Many files have been built in the last few minutes. Try again shortly.", { status: 429 });
   const id = Number((await ctx.params).id);
   const format = new URL(req.url).searchParams.get("format") === "pptx" ? "pptx" : "xlsx";
   let row;

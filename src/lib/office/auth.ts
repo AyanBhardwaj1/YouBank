@@ -18,9 +18,10 @@ const PAIRING_MS = 10 * 60_000;
 /** The add-in asks to connect: it gets a code to show and a secret to poll with. */
 export async function startPairing(host: string) {
   const db = requireDb();
-  // Anyone can ask for a code, so keep the table small and the endpoint unattractive to hammer.
+  // Anyone can ask for a code, so keep the table small and the endpoint unattractive to hammer
+  // (each caller is also limited per minute by the route).
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.officePairings).where(sql`${schema.officePairings.createdAt} > now() - interval '1 minute'`);
-  if (n > 60) throw Object.assign(new Error("Too many connection attempts. Try again in a minute."), { status: 429 });
+  if (n > 300) throw Object.assign(new Error("Too many connection attempts. Try again in a minute."), { status: 429 });
   if (Math.random() < 0.05) await db.delete(schema.officePairings).where(sql`${schema.officePairings.expiresAt} < now() - interval '1 day'`);
   const poll = randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + PAIRING_MS);
