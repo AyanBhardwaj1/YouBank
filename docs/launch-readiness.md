@@ -258,7 +258,52 @@ New environment variables (all optional, with safe defaults):
 
 ## What is fixed and what is left
 
-Filled in as the fixes land.
+All P0s and P1s that code can fix are fixed and deployed. What is left needs an account owner, or
+is P2.
+
+### Fixed
+
+| Finding | Commit | What changed |
+|---|---|---|
+| C1 AI spend | `5bf7168` | Checked before every model call: per-person and global daily caps, and `AI_DISABLED`. Two long runs at once per person. Runs stop between turns at the cap. Usage is written with `after()`. Unpriced models are costed by a high estimate. Web research and VC discovery are now recorded. |
+| C5 Studio agent | `85c8fb4` | One run per document (a lease), 409 otherwise. |
+| C4, V4, A10 limits | `fb82625` | Per-person rate limits on the CRM agent, drafting, mail sync and connect, VC discovery, SEC searches, Studio reading and export, and news tests. Office pairing is limited per caller. |
+| C2 chat input | `a68d8e0` | Message and history caps, `AI_ALLOWED_MODELS`, and cancel-on-close for chat and tools. |
+| C3/A2 VC sync | `6d51149` | Needs `CRON_SECRET` or `ADMIN_EMAILS`; one run per source at a time. |
+| V5 | `089dafc` | Constant-time secret checks on the last two cron routes. |
+| A1 manual inputs | `28a1d4b` | Private to the author, the note is capped, and inputs are read in one query per company batch. |
+| Section 2, D5, K1 streams | `a9afe80` | One shared, activity-paced poll per document per instance, and `STREAM_MODE=slow`. Connections last two minutes. Access checks read two columns. Hidden tabs pause after 30 s. Collab starts from its loaded state. Metadata refreshes are light and debounced. |
+| D2, K2, E2 Newsroom | `8ad32d6` | Shared, lean candidate stories. Cached networks. The unread `news:seen` write is removed. Deals, radar, facets and counts are memoized. Polling pauses when hidden and backs off. |
+| K8 | `def6469` | All sparklines load, not just the first 24. |
+| E1, O1 errors | `9626f03` | Internal errors become a reference and one JSON log line (Sentry when `SENTRY_DSN` is set). Messages written for people pass through. |
+| C8 timeouts | `175448b` | AI calls: 120 s per turn (240 s for structured calls), one retry, and cancel reaches the SDK. Upstream fetches: 10–30 s timeouts. |
+| D3, D4, E4, D10 cache and indexes | `630b9c7` | Single-flight loads, a bounded memory layer, 30 s failure memory, and batched cleanup. Migration 0012 (three indexes) is **applied to production**. |
+| C7 EDGAR | `4651173` | A per-second budget shared across instances, a global back-off on 429/403, and the SEC feed's User-Agent. |
+| A3, A5 access | `50316bf` | Collab honours team roles. Peer groups read only the caller's members. |
+| V2, V3 background | `7e56297` | Autopilot (6) and the nightly agent (4) run in bounded pools. |
+| G6, A6 headers | `7a76665` | HSTS, nosniff, referrer and permissions policies, and no `X-Powered-By`. Framing is denied except for the add-in's two pages. |
+| D6, G2 region and env | `a292d01` | Functions run in `cle1` next to the database. The environment is checked at startup. Uncaught server errors are logged. |
+
+Production also got `ADMIN_EMAILS` (the founder), so the personal AI cap does not apply to the
+owner.
+
+### Left, needing an account owner (see [Infra](#infrastructure-you-set-up))
+
+- D1/V1: Neon Launch or Scale, and Vercel Pro. These are the two things most likely to cut the site
+  off under launch traffic.
+- G1: a separate Preview database and keys.
+- C10: a paid FMP plan with a display licence.
+- C9: email verification in Neon Auth.
+- Sentry: create a project and set `SENTRY_DSN`.
+
+### Left, P2 (after launch)
+
+D7 limits and pagination on per-user lists; D8 batched Studio writes; D9/G3 a migration journal;
+V6 lazy imports; A4 wording; A7 removed members' invites; A8 atomic invite redemption; A9 push
+endpoint ownership; A11 private-address block for mail servers; A12 guard `/api/ai/status` and
+filter `profiles.extra`; C11 zod schemas on the remaining bodies; E3 layout fallback and panel error
+boundaries; E5 is fixed in the agent route; K3–K7 bundles, re-renders, waterfalls, edge caching and
+images; G4 remove `stripe`; G5 `server-only` guards.
 
 ## Load test
 
