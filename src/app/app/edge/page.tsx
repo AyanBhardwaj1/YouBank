@@ -7,9 +7,9 @@ import { EdgeWorkspace, type EdgeView } from "@/components/edge/EdgeWorkspace";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
 
-const VIEWS = new Set<EdgeView>(["feed", "map", "whatif"]);
+const VIEWS = new Set<EdgeView>(["feed", "canvases", "map", "whatif"]);
 
-/** Edge: ?view=feed|map|whatif. Before the beta is on, the page explains Edge and offers the switch. */
+/** Edge: ?view=feed|canvases|map|whatif. Before the beta is on, the page explains Edge and offers the switch. */
 export default async function EdgePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await currentUser();
   if (!user) redirect("/sign-in");

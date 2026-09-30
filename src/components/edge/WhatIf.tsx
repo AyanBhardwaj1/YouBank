@@ -8,6 +8,7 @@
 import dynamic from "next/dynamic";
 import { AlertTriangle, ArrowRight, Loader2, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Select } from "@/components/ui/Select";
 import { fmtNum, useApi, type AssetCollection, type EdgeState, type Proforma } from "./client";
 import type { CountyShade, MapParty } from "./EarthMap";
 import { MapLoading } from "./MapView";
@@ -69,9 +70,9 @@ export function WhatIf({ state, initial }: { state: EdgeState; initial: { partie
         {names.length < 4 && <button type="button" onClick={() => setNames((cur) => [...cur, ""])} className="ctl flex items-center gap-1 border border-dashed border-line px-2 py-1.5 text-[12px] text-muted hover:text-fg"><Plus className="h-3.5 w-3.5" /> Company</button>}
         <label className="block text-[11px] text-muted">
           <span>Where</span>
-          <select value={place} onChange={(e) => setPlace(e.target.value)} className="ctl mt-1 block border border-line bg-bg px-2 py-1.5 text-[12.5px] text-fg outline-none focus:border-accent/60">
+          <Select value={place} onChange={setPlace} aria-label="Where" className="ctl mt-1 block border border-line bg-bg px-2 py-1.5 text-left text-[12.5px] text-fg outline-none focus:border-accent/60">
             {state.places.map((x) => <option key={x.key} value={x.key}>{x.name}</option>)}
-          </select>
+          </Select>
         </label>
         <button type="submit" disabled={running} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg disabled:opacity-50">
           {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="h-3.5 w-3.5" />} Draw the combination

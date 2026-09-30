@@ -235,3 +235,14 @@ body {
 .edge-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip, .edge-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip, .edge-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: var(--panel); }
 .edge-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--panel); }
 .edge-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--panel); }
+
+/* Edge canvas (React Flow) in the theme's surfaces. */
+.edge-flow .react-flow { --xy-background-color: var(--bg); --xy-node-background-color: transparent; --xy-node-border: none; --xy-edge-stroke: var(--line-strong); --xy-connectionline-stroke: var(--accent); --xy-attribution-background-color: transparent; }
+.edge-flow .react-flow__node { background: transparent; border: none; padding: 0; box-shadow: none; }
+.edge-flow .react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.edge-flow .react-flow__controls-button { background: var(--panel); border-bottom: 1px solid var(--line); color: var(--fg); fill: var(--fg); }
+.edge-flow .react-flow__controls-button:hover { background: var(--elevated); }
+.edge-flow .react-flow__minimap { border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.edge-flow .react-flow__edge.selected .react-flow__edge-path { stroke: var(--accent) !important; }
+.edge-flow .react-flow__handle { transition: transform 0.1s; }
+.edge-flow .react-flow__handle:hover { transform: scale(1.3); }

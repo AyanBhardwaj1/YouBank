@@ -6,6 +6,7 @@
  */
 import { Building2, Map as MapIcon, Plus, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
+import { Select } from "@/components/ui/Select";
 import { api, ago, post, type EdgeState, type Watch } from "./client";
 
 export function WatchPanel({ state, now, onChanged }: { state: EdgeState; now: number; onChanged: () => void }) {
@@ -84,9 +85,9 @@ export function WatchPanel({ state, now, onChanged }: { state: EdgeState; now: n
             <datalist id="edge-companies">{state.companies.map((c) => <option key={c.ticker} value={c.ticker}>{c.company}: {c.assets} mapped assets</option>)}</datalist>
           </>
         ) : (
-          <select value={place} onChange={(e) => setPlace(e.target.value)} aria-label="Place" className="ctl w-full border border-line bg-bg px-2 py-1.5 text-[12.5px] outline-none focus:border-accent/60">
+          <Select value={place} onChange={setPlace} aria-label="Place" className="ctl w-full border border-line bg-bg px-2 py-1.5 text-left text-[12.5px] outline-none focus:border-accent/60">
             {state.places.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
+          </Select>
         )}
         <button type="submit" disabled={full || !!busy || (kind === "company" && !ticker.trim())} className="ctl flex w-full items-center justify-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg transition disabled:opacity-40">
           <Plus className="h-3.5 w-3.5" /> {full ? "Watch limit reached" : "Watch"}

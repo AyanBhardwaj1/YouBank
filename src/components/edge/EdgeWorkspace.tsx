@@ -11,14 +11,15 @@ import { Radar as RadarIcon } from "lucide-react";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useSubNav } from "@/lib/subnav";
+import { CanvasHome } from "./canvas/CanvasHome";
 import { FeedView } from "./FeedView";
 import { MapView } from "./MapView";
 import { MODULES, useEdgeState, useNow, type EdgeCard, type ProformaVisual } from "./client";
 import { WatchPanel } from "./WatchPanel";
 import { WhatIf } from "./WhatIf";
 
-export type EdgeView = "feed" | "map" | "whatif";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
+export type EdgeView = "feed" | "canvases" | "map" | "whatif";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
 
 export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView }) {
   const now = useNow();
@@ -76,6 +77,7 @@ export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView
           <div className={`mt-4 grid gap-4 ${view === "feed" ? "xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}>
             <main className="min-w-0">
               {view === "feed" && <FeedView state={state} now={now} onMap={showOnMap} onOpenDeal={openDeal} onBlend={edge.reload} />}
+              {view === "canvases" && <CanvasHome />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} now={now} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
             </main>
