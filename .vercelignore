@@ -1,0 +1,2 @@
+# The Modal ML service deploys on its own (modal deploy ml/edge_ml.py); keep it out of the web upload.
+ml/
