@@ -814,6 +814,14 @@ def _ocr(img, lang: str, scale: float = 1.0) -> tuple[str, list]:
     return "\n".join(out), words
 
 
+def _glued(text: str) -> bool:
+    """Whether a page's text lost its spaces ("wefindthatalmost..."): too many implausibly long words."""
+    words = text.split()
+    if len(words) < 20:
+        return False
+    return sum(1 for w in words if len(w) > 22) / len(words) > 0.08
+
+
 def _parse_pdf(data: bytes, ocr: str, lang: str, deadline: float) -> tuple[list, str, int, bool]:
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
@@ -829,6 +837,19 @@ def _parse_pdf(data: bytes, ocr: str, lang: str, deadline: float) -> tuple[list,
                 text = page.extract_text() or ""
             except Exception:
                 text = ""
+            if _glued(text):
+                # Some fonts leave word gaps under pdfplumber's default tolerance; a tighter one splits them,
+                # and PDFium's own text layer is the last resort.
+                try:
+                    alt = page.extract_text(x_tolerance=1) or ""
+                    if alt and not _glued(alt):
+                        text = alt
+                    else:
+                        alt = pdfium.PdfDocument(data)[i].get_textpage().get_text_range() or ""
+                        if alt and not _glued(alt):
+                            text = alt
+                except Exception:
+                    pass
             tables = []
             if time.monotonic() < deadline:
                 try:
