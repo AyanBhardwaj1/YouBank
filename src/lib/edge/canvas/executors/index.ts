@@ -4,6 +4,7 @@
  */
 import "./sources";
 import "./earth";
+import "./documents";
 import "./outputs";
 
 export { availableTypes } from "../engine";

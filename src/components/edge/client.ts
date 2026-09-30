@@ -44,6 +44,13 @@ export type ProformaVisual = {
   proforma: Pick<Proforma, "place" | "parties" | "combined" | "overlap" | "counties" | "divestitures">;
 };
 
+export type FilingVisual = {
+  type: "filing_change"; ticker: string; name: string; form: string; section: string;
+  current: { filed: string; url: string } | null; prior: { filed: string; url: string } | null;
+  counts: { added: number; removed: number; changed: number; unchanged: number };
+  summary: string[]; samples: { status: "added" | "removed" | "changed"; text: string; before?: string }[];
+};
+
 export type AssetFeature = {
   type: "Feature"; id: number;
   geometry: { type: string; coordinates: unknown };
@@ -64,7 +71,7 @@ export function confidenceLabel(c: number): { label: string; tone: "pos" | "acce
 
 export const MODULES = [
   { id: "earth", label: "Earth", tech: "GeoAI", icon: "Globe", live: true, blurb: "Satellite change at plants and pipelines, and deal maps" },
-  { id: "documents", label: "Documents", tech: "RAG", icon: "FileSearch", live: false, blurb: "Cited answers across filings, calls and data rooms" },
+  { id: "documents", label: "Documents", tech: "RAG", icon: "FileSearch", live: true, blurb: "Cited answers across filings, calls and data rooms" },
   { id: "networks", label: "Networks", tech: "GNN", icon: "Network", live: false, blurb: "Ownership, boards, supply chains and deals as a graph" },
   { id: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", live: false, blurb: "Simulated markets and company what-ifs, always labeled" },
 ] as const;

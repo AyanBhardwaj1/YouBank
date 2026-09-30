@@ -2,15 +2,16 @@
 
 /**
  * Edge feed cards. Each finding shows its visual first (a before/after wipe for ground change, the
- * county screen for a deal), then what it means, how sure Edge is and why, and where every part came
- * from, with the audit trail one click away.
+ * county screen for a deal, the edits to a watched company's risk factors), then what it means, how
+ * sure Edge is and why, and where every part came from, with the audit trail one click away.
  */
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowUpRight, ChevronDown, Download, Map as MapIcon, MapPin, Sparkles, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, ChevronDown, Download, Map as MapIcon, MapPin, Radar, Sparkles, Users } from "lucide-react";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Compare } from "./Compare";
-import { ago, confidenceLabel, fmtNum, type EdgeCard, type GroundVisual, type ProformaVisual } from "./client";
+import { wordDiff } from "@/lib/edge/docs/text";
+import { ago, confidenceLabel, fmtNum, type EdgeCard, type FilingVisual, type GroundVisual, type ProformaVisual } from "./client";
 
 export function Confidence({ value }: { value: number }) {
   const { label, tone } = confidenceLabel(value);
@@ -175,8 +176,59 @@ export function ProformaCard({ card, index, now, onOpen }: { card: EdgeCard; ind
   );
 }
 
-export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void; onOpenDeal?: (card: EdgeCard) => void }) {
+const STATUS_STYLE: Record<string, { label: string; bar: string; text: string }> = {
+  added: { label: "New", bar: "bg-pos", text: "text-pos" }, removed: { label: "Dropped", bar: "bg-neg", text: "text-neg" }, changed: { label: "Reworded", bar: "bg-info", text: "text-info" },
+};
+
+export function FilingCard({ card, index, now, onOpen }: { card: EdgeCard; index: number; now: number; onOpen?: (card: EdgeCard) => void }) {
+  const v = card.visual as FilingVisual;
+  const c = v.counts;
+  const total = c.added + c.removed + c.changed + c.unchanged || 1;
+  return (
+    <Shell card={card} index={index} kicker={`Documents · filing change · ${v.ticker}`} icon="FileSearch">
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div>
+          <div className="flex h-2 overflow-hidden rounded-full bg-line" aria-hidden>
+            {[["bg-pos", c.added], ["bg-info", c.changed], ["bg-neg", c.removed], ["bg-chart-dim", c.unchanged]].map(([cls, n], i) => (n ? <span key={i} className={`${cls} h-full`} style={{ width: `${((n as number) / total) * 100}%` }} /> : null))}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 text-[10.5px]"><span className="text-pos">{c.added} new</span><span className="text-info">{c.changed} reworded</span><span className="text-neg">{c.removed} dropped</span><span className="text-muted">{c.unchanged} unchanged</span></div>
+        </div>
+        {v.summary.length > 0 ? <ul className="space-y-1 border-l-2 border-accent pl-2.5 text-[12px] leading-relaxed">{v.summary.slice(0, 3).map((s, i) => <li key={i}>{s}</li>)}</ul> : <p className="text-[12.5px] leading-relaxed text-muted">{card.summary}</p>}
+        <ul className="space-y-1.5">
+          {v.samples.slice(0, 2).map((x, i) => {
+            const st = STATUS_STYLE[x.status] ?? STATUS_STYLE.added;
+            return (
+              <li key={i} className="flex gap-2 rounded-md border border-line bg-elevated/30 p-2 text-[11.5px] leading-relaxed">
+                <span className={`w-1 shrink-0 rounded-full ${st.bar}`} aria-hidden />
+                <div className="min-w-0"><span className={`mr-1 text-[10px] font-semibold uppercase tracking-wider ${st.text}`}>{st.label}</span>
+                  {x.status === "changed" && x.before
+                    ? <span className="line-clamp-4">{wordDiff(x.before, x.text).map((p, j) => <span key={j} className={p.t === "add" ? "text-pos" : p.t === "del" ? "text-neg line-through" : "text-muted"}>{p.s} </span>)}</span>
+                    : <span className={`line-clamp-4 ${x.status === "removed" ? "text-muted line-through decoration-neg/40" : ""}`}>{x.text}</span>}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+          {v.prior && <a href={v.prior.url} target="_blank" rel="noreferrer" className="num hover:text-fg">{v.form} {v.prior.filed}</a>}
+          <ArrowRight className="h-3 w-3" />
+          {v.current && <a href={v.current.url} target="_blank" rel="noreferrer" className="num hover:text-fg">{v.form} {v.current.filed}</a>}
+        </div>
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Filed {now && v.current ? ago(v.current.filed, now) : v.current?.filed ?? ""} · SEC EDGAR</span>
+          {onOpen && <button type="button" onClick={() => onOpen(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><Radar className="h-3 w-3" /> Every change</button>}
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void }) {
   if (props.card.kind === "deal_proforma") return <ProformaCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenDeal} />;
   if (props.card.kind === "ground_change") return <GroundCard card={props.card} index={props.index} now={props.now} onMap={props.onMap} />;
+  if (props.card.kind === "filing_change") return <FilingCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenRadar} />;
   return null;
 }

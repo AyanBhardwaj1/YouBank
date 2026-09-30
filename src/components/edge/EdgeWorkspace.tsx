@@ -2,9 +2,10 @@
 
 /**
  * Edge: an alternative-data edge from four frontier techniques, as modules. The feed shows what changed
- * at the things a person watches; the map shows the region itself; the what-if draws any combination
- * of companies. Earth (GeoAI) is live; Documents, Networks and Scenarios arrive next and plug into the
- * same feed, watches and canvases.
+ * at the things a person watches; Documents answers from filings, calls and data rooms with checked
+ * quotes; the map shows the region itself; the what-if draws any combination of companies. Earth
+ * (GeoAI) and Documents (RAG) are live; Networks and Scenarios arrive next and plug into the same
+ * feed, watches and canvases.
  */
 import { motion } from "motion/react";
 import { Radar as RadarIcon } from "lucide-react";
@@ -12,22 +13,24 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useSubNav } from "@/lib/subnav";
 import { CanvasHome } from "./canvas/CanvasHome";
+import { DocumentsView, type DocsOpen } from "./docs/DocumentsView";
 import { FeedView } from "./FeedView";
 import { MapView } from "./MapView";
-import { MODULES, useEdgeState, useNow, type EdgeCard, type ProformaVisual } from "./client";
+import { MODULES, useEdgeState, useNow, type EdgeCard, type FilingVisual, type ProformaVisual } from "./client";
 import { WatchPanel } from "./WatchPanel";
 import { WhatIf } from "./WhatIf";
 
-export type EdgeView = "feed" | "canvases" | "map" | "whatif";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
+export type EdgeView = "feed" | "canvases" | "documents" | "map" | "whatif";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
 
-export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView }) {
+export function EdgeWorkspace({ initialView = "feed", initialDocs = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null }) {
   const now = useNow();
   const [view, setView] = useState<EdgeView>(initialView);
   useSubNav("/app/edge", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as EdgeView); });
   const edge = useEdgeState();
   const [focus, setFocus] = useState<{ card: EdgeCard; key: number } | null>(null);
   const [deal, setDeal] = useState<{ parties: string[]; place?: string; key: number } | null>(null);
+  const [docs, setDocs] = useState<DocsOpen | null>(initialDocs);
 
   const showOnMap = (card: EdgeCard) => { setFocus({ card, key: Date.now() }); setView("map"); };
   const openDeal = (card: EdgeCard) => {
@@ -35,8 +38,14 @@ export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView
     setDeal({ parties: v.parties.map((p) => p.tickers[0] ?? p.label), place: v.place, key: Date.now() });
     setView("whatif");
   };
+  const openRadar = (card: EdgeCard) => {
+    const v = card.visual as FilingVisual;
+    setDocs({ tab: "radar", radar: { ticker: v.ticker, form: v.form, section: v.section }, key: Date.now() });
+    setView("documents");
+  };
 
   const state = edge.data;
+  const watchedTickers = [...new Set((state?.watches ?? []).map((w) => w.target.ticker).filter((t): t is string => !!t))];
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1400px] px-4 py-4 md:px-5">
@@ -76,8 +85,9 @@ export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView
         ) : (
           <div className={`mt-4 grid gap-4 ${view === "feed" ? "xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}>
             <main className="min-w-0">
-              {view === "feed" && <FeedView state={state} now={now} onMap={showOnMap} onOpenDeal={openDeal} onBlend={edge.reload} />}
+              {view === "feed" && <FeedView state={state} now={now} onMap={showOnMap} onOpenDeal={openDeal} onOpenRadar={openRadar} onBlend={edge.reload} />}
               {view === "canvases" && <CanvasHome />}
+              {view === "documents" && <DocumentsView key={docs?.key ?? 0} tickers={watchedTickers} open={docs} />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} now={now} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
             </main>
@@ -87,6 +97,8 @@ export function EdgeWorkspace({ initialView = "feed" }: { initialView?: EdgeView
                 <div className="panel hidden p-3 text-[11.5px] leading-relaxed text-muted xl:block">
                   <div className="font-semibold text-fg">How Earth works</div>
                   <p className="mt-1">Every day Edge compares each watched plant with the same place a year before in Sentinel-2 imagery (10 m), keeps changes that are compact and clear of cloud, shadow and vegetation, and describes what it sees. New Newsroom deals that touch your companies are drawn as pro-forma maps.</p>
+                  <div className="mt-2 font-semibold text-fg">How Documents works</div>
+                  <p className="mt-1">When a company you watch files a 10-K or 10-Q, Edge compares its risk factors with the previous one and posts what was added, dropped and reworded, in the filing&apos;s own words.</p>
                 </div>
               </div>
             )}

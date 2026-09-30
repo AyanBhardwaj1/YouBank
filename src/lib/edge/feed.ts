@@ -38,9 +38,9 @@ export function sizeOf(kind: string, magnitude: number): number {
   return Math.max(0, Math.min(1, magnitude));
 }
 
-/** Satellite changes are rarely in the news; a deal is, though not its map. Fades over a month. Pure. */
+/** Satellite changes are rarely in the news; a deal is, though not its map; a filing is public, its edits rarely reported. Fades over a month. Pure. */
 export function noveltyOf(kind: string, ageDays: number): number {
-  const base = kind === "ground_change" ? 0.9 : kind === "deal_proforma" ? 0.45 : 0.6;
+  const base = kind === "ground_change" ? 0.9 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : 0.6;
   return base * (0.5 + 0.5 * Math.exp(-ageDays / 30));
 }
 

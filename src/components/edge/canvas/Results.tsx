@@ -126,6 +126,7 @@ function AnswerView({ v }: { v: Answer }) {
     <div>
       <MemoText markdown={v.text} sources={v.citations.map((c) => ({ n: c.n, label: `${c.title}${c.page ? `, p. ${c.page}` : ""}`, url: c.url }))} onCite={(n) => document.getElementById(`cite-${n}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} />
       <ol className="mt-3 space-y-1.5 border-t border-line pt-2">{v.citations.map((c) => <li key={c.n} id={`cite-${c.n}`} className="text-[11px]"><span className="num mr-1 text-accent">[{c.n}]</span><span className="text-muted">{c.title}{c.page ? `, p. ${c.page}` : ""}</span><div className="mt-0.5 border-l-2 border-accent/40 pl-2 text-muted">“{c.quote}”</div></li>)}</ol>
+      {v.answerId ? <a href={`/app/edge?view=documents&answer=${v.answerId}`} className="mt-2 inline-block text-[11.5px] text-accent hover:underline">Open the evidence board and sources</a> : null}
     </div>
   );
 }

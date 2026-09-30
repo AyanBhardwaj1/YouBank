@@ -20,7 +20,7 @@ const SIGNALS: { key: keyof Blend; label: string; hint: string }[] = [
   { key: "confidence", label: "Confidence", hint: "How sure Edge is" },
 ];
 
-export function FeedView({ state, now, onMap, onOpenDeal, onBlend }: { state: EdgeState; now: number; onMap: (c: EdgeCard) => void; onOpenDeal: (c: EdgeCard) => void; onBlend: () => void }) {
+export function FeedView({ state, now, onMap, onOpenDeal, onOpenRadar, onBlend }: { state: EdgeState; now: number; onMap: (c: EdgeCard) => void; onOpenDeal: (c: EdgeCard) => void; onOpenRadar: (c: EdgeCard) => void; onBlend: () => void }) {
   const [scope, setScope] = useState<Scope | "all">("all");
   const [tuning, setTuning] = useState(false);
   const [blend, setBlend] = useState(state.blend);
@@ -105,7 +105,7 @@ export function FeedView({ state, now, onMap, onOpenDeal, onBlend }: { state: Ed
       )}
       {cards.length > 0 && (
         <div className="mt-3 grid items-start gap-3 lg:grid-cols-2">
-          {cards.map((c, i) => <EdgeCardView key={c.id} card={c} index={i} now={now} onMap={onMap} onOpenDeal={onOpenDeal} />)}
+          {cards.map((c, i) => <EdgeCardView key={c.id} card={c} index={i} now={now} onMap={onMap} onOpenDeal={onOpenDeal} onOpenRadar={onOpenRadar} />)}
         </div>
       )}
       {feed.data && cards.length < feed.data.total && (

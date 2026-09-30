@@ -9,6 +9,8 @@ import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
 import { flushUsage } from "./infra/usage";
 import { tickMonitors } from "./monitors";
 import { applyRefinement, startRefine } from "./refine";
+import { finishIngest, startIngest } from "./docs/uploads";
+import { setDoc } from "./docs/store";
 import "./runtime";
 
 const asSteps = (step: unknown) => step as Steps;
@@ -44,4 +46,26 @@ export const detectionRefine = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, detectionRefine];
+/** Read an uploaded document or recording: parse or transcribe on the ML service, then embed the passages. */
+export const docIngest = inngest.createFunction(
+  { id: "edge-doc-ingest", triggers: { event: "edge/doc.uploaded" }, concurrency: 2, retries: 1 },
+  async ({ event, step }) => {
+    const s = metered(asSteps(step));
+    const docId = Number((event.data as { docId: number }).docId);
+    const first = await s.run("start", async () => {
+      try { return await startIngest(docId); }
+      catch (e) { await setDoc(docId, { status: "failed", error: String((e as Error).message ?? e).slice(0, 300) }); return { done: true as const }; }
+    });
+    if ("done" in first) return { docId, done: true };
+    const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: first.wait.task === "audio.transcribe" ? "60m" : "20m", if: doneFor(first.wait.callId) });
+    return s.run("finish", async () => {
+      const done = (ev?.data as MlDone | undefined) ?? null;
+      noteMlCost(done?.costUsd);
+      await finishIngest(docId, done);
+      await flushUsage();
+      return { docId };
+    });
+  },
+);
+
+export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest];

@@ -1,6 +1,7 @@
 /**
  * Checks for Edge: satellite change detection on synthetic scenes, the deal screen, party matching,
- * watches, feed ranking, the audit trail and the beta gate. No network, no database.
+ * watches, feed ranking, the audit trail, the beta gate, the canvas, the free tiers, and Documents
+ * (quote checking, highlighting, diffs, chunking, retrieval fusion, topics, tone). No network, no database.
  *   pnpm exec tsx scripts/test-edge.ts
  */
 import { changeBetween, changeConfidence, classesFrom, normalize, seasonGap } from "@/lib/edge/change";
@@ -20,6 +21,18 @@ import { allowance, resetsOn } from "@/lib/edge/infra/usage";
 import { partsForRange, PART_BYTES, signingTime } from "@/lib/edge/infra/r2";
 import { statusUrl } from "@/lib/edge/infra/ml";
 import { judge } from "@/lib/edge/refine";
+import { clockOf, locateQuote, normText, quoteFound, wordDiff } from "@/lib/edge/docs/text";
+import { quoteFound as answerQuoteFound } from "@/lib/edge/docs/answer";
+import { passagesFromFiling, passagesFromPages, passagesFromTranscript, sectionText, splitText, tableText } from "@/lib/edge/docs/chunk";
+import { fuse } from "@/lib/edge/docs/retrieve";
+import { diffSections, paragraphs } from "@/lib/edge/docs/changes";
+import { kmeans, pca2 } from "@/lib/edge/docs/topics";
+import { keepNarrative } from "@/lib/edge/docs/sources";
+import { mimeOf } from "@/lib/edge/docs/uploads";
+import { bySpeaker, toneOf, toneShift, turnAt, type Turn } from "@/lib/edge/docs/tone";
+import { filingMagnitude, filingTitle } from "@/lib/edge/docs/filingwatch";
+import { fitToSchema } from "@/lib/ai/fit";
+import { z } from "zod";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -210,6 +223,109 @@ async function main() {
   const no = judge({ prithvi: { blobs: [{ z: -0.5 }] }, sam: { blobs: [{ iou: 0.95 }] } }, [{ pixels: 100 }], 0.5);
   check("disagreement doubts and lowers confidence", no.refinement.verdict === "doubtful" && no.confidence < 0.5, no);
   check("missing model answers leave confidence alone", judge({}, [{ pixels: 10 }], 0.4).confidence === 0.4);
+
+  {
+  console.log("documents: quotes");
+  const passage = "Volumes on our Permian gathering systems rose 12% year over year, driven by new well connections in the Delaware Basin. We expect 2026 growth capital of $1.1 billion.";
+  check("an exact quote is found", quoteFound("rose 12% year over year, driven by new well connections", passage));
+  check("quote marks, case and spacing do not matter", quoteFound("“We  EXPECT 2026 growth capital of $1.1 billion”", passage));
+  check("a sentence-ending full stop does not block a match", quoteFound("in the Delaware Basin.", passage) && normText("$1.1 billion.") === "$1.1 billion");
+  check("an invented quote is rejected", !quoteFound("volumes fell 12% on weaker drilling activity", passage));
+  check("a changed number is rejected", !quoteFound("rose 15% year over year, driven by new well connections", passage));
+  check("a quote too short to mean anything is rejected", !quoteFound("rose", passage));
+  const long = "Volumes on our Permian gathering systems rose 12% year over year driven by the new well connections in the Delaware Basin";
+  check("a long quote with a word off still counts", quoteFound(long, passage));
+  check("answers use the same checker", answerQuoteFound === quoteFound);
+  check("an omission marked with an ellipsis still counts", quoteFound("Volumes on our Permian gathering systems rose 12% … We expect 2026 growth capital of $1.1 billion", passage));
+  check("a dropped negation is never forgiven", !quoteFound("we do expect to raise the dividend this year", "We do not expect to raise the dividend this year.") && quoteFound("we do not expect to raise the dividend", "We do not expect to raise the dividend this year."));
+  check("a word hyphenated across a line still matches", quoteFound("rely on midstream infrastructure owned by third parties", "We rely on midstream infra-\nstructure owned by third parties.") && quoteFound("infrastructure owned by third parties", "We rely on midstream infra-\nstructure owned by third parties."));
+  check("the pieces around an ellipsis must come in order", !quoteFound("We expect 2026 growth capital … Volumes on our Permian gathering systems rose", passage));
+  check("a Japanese quote is checked in the original", quoteFound("当社のパーミアン盆地での生産量は前年比12%増加しました", "第3四半期において、当社のパーミアン盆地での生産量は前年比12%増加しました。") && !quoteFound("当社の生産量は減少しました", "第3四半期において、当社のパーミアン盆地での生産量は前年比12%増加しました。"));
+  check("accented Spanish is checked in the original", quoteFound("los volúmenes aumentaron un 12% interanual", "En el trimestre, los volúmenes aumentaron un 12% interanual gracias a nuevas conexiones."));
+  check("full-width digits match ordinary ones", normText("１２％") === "12%");
+
+  console.log("documents: highlighting");
+  const items = ["Item 1A. Risk Factors", "Our business depends on", "natural gas production in the Permian", "Basin, which may decline.", "Other text"];
+  const at = locateQuote(items, "depends on natural gas production in the Permian Basin");
+  check("a quote spanning PDF text items marks exactly those items", at.join() === "1,2,3", at);
+  const hy = locateQuote(["We rely on midstream infra-", "structure owned by third parties to move our", "products to market."], "We rely on midstream infrastructure owned by third parties to move our products to market");
+  check("a hyphenated line break still finds the quote", hy.includes(1) && hy.includes(2), hy);
+  check("nothing is marked when the quote is absent", locateQuote(items, "the weather in Norway was unusually warm this year").length === 0);
+  const words = "The company expects capital spending of about $2 billion next year".split(/(\s+)/);
+  const w = locateQuote(words, "capital spending of about $2 billion");
+  check("a quote inside a passage marks its words", w.length > 0 && words.slice(Math.min(...w), Math.max(...w) + 1).join("") === "capital spending of about $2 billion", w);
+
+  console.log("documents: diffs");
+  const d = wordDiff("We may be unable to obtain financing on acceptable terms", "We may be unable to obtain additional financing on favorable terms");
+  check("a word diff keeps shared words and marks edits", d.some((p) => p.t === "add" && p.s.includes("additional")) && d.some((p) => p.t === "del" && p.s === "acceptable") && d.some((p) => p.t === "add" && p.s === "favorable") && d.filter((p) => p.t === "same").map((p) => p.s).join(" ").startsWith("We may be unable to obtain"), d);
+  check("identical text is one unchanged run", JSON.stringify(wordDiff("a b c", "a b c")) === JSON.stringify([{ t: "same", s: "a b c" }]));
+  check("an empty side is all added", wordDiff("", "new words")[0].t === "add");
+  const prior = ["Cybersecurity incidents could disrupt our operations, damage our systems and harm our reputation with customers.", "Our pipelines are subject to extensive federal and state regulation, which could limit the rates we charge.", "We depend on a small number of customers for a large share of our revenue and cash flow each year."].join("\n");
+  const current = ["Cybersecurity incidents, including ransomware attacks, could disrupt our operations, damage our systems and harm our reputation with customers.", "Our pipelines are subject to extensive federal and state regulation, which could limit the rates we charge.", "Tariffs on imported steel and other materials could raise the cost of our growth projects materially."].join("\n");
+  const r = diffSections(prior, current);
+  check("the radar finds one added, one removed, one reworded and one unchanged paragraph", r.counts.added === 1 && r.counts.removed === 1 && r.counts.changed === 1 && r.counts.unchanged === 1, r.counts);
+  check("a reworded paragraph carries its earlier version", r.rows.find((x) => x.status === "changed")?.before?.startsWith("Cybersecurity incidents could") === true);
+  check("added paragraphs are listed first", r.rows[0].status === "added" && /Tariffs/.test(r.rows[0].text));
+  check("headings and scraps are not paragraphs", paragraphs("ITEM 1A\nShort line\nA real paragraph about risk that is long enough to be compared with the same paragraph a year before.").length === 1);
+
+  console.log("documents: passages");
+  const longText = Array.from({ length: 30 }, (_, i) => `Sentence number ${i} explains one more fact about the company's operations in some detail.`).join(" ");
+  const parts = splitText(`${longText}\n\nA short closing paragraph.`);
+  check("long text is cut near a thousand characters", parts.length >= 2 && parts.every((p) => p.length <= 1400), parts.map((p) => p.length));
+  check("cuts overlap so a fact split across them lands whole", parts.length >= 2 && parts[1].includes(parts[0].slice(-40).trim().split(" ").slice(-2).join(" ")));
+  const vocab = new Set(`${longText} A short closing paragraph.`.split(/\s+/));
+  check("every passage starts at a whole word", parts.every((p) => vocab.has(p.split(/\s+/)[0])), parts.map((p) => p.slice(0, 12)));
+  const runOn = splitText(Array.from({ length: 400 }, (_, i) => `word${i}`).join(" "));
+  check("a run-on without full stops is cut between words", runOn.length >= 2 && runOn.every((p) => p.length <= 1400 && /^word\d+/.test(p) && /word\d+$/.test(p)), runOn.map((p) => [p.slice(0, 8), p.slice(-8)]));
+  const pages = passagesFromPages([{ n: 3, text: "Revenue grew.", tables: [[["Year", "Revenue"], ["2025", "1,200"]]] }, { n: 4, text: "Costs fell." }]);
+  check("page passages keep their page numbers and tables become rows", pages[0].page === 3 && pages[0].text.includes("Year | Revenue") && pages[1].page === 4, pages);
+  check("empty table rows are dropped", tableText([["", " "], ["a", "b"]]) === "a | b");
+  const filing = "Table of contents\nItem 1A. Risk Factors 12\nItem 7. Management's Discussion 40\n\nItem 1A. Risk Factors\nWe face many risks in our business that could hurt results.\n\nItem 7. Management's Discussion and Analysis\nRevenue rose on higher volumes.";
+  check("a section is read past the table of contents", sectionText(filing, "Risk factors").startsWith("We face many risks"));
+  const q10 = "Part II\nItem 1A. Risk Factors\nThere have been no material changes to our risk factors except the following new risk about tariffs.\n\nItem 2. Unregistered Sales of Equity Securities and Use of Proceeds\nNone.\n\nItem 6. Exhibits\n31.1 Certification";
+  check("a 10-Q's risk factors end at the next item, whatever it is", sectionText(q10, "Risk factors") === "There have been no material changes to our risk factors except the following new risk about tariffs.", sectionText(q10, "Risk factors"));
+  const fp = passagesFromFiling(filing);
+  check("filing passages know their section", fp.some((p) => p.section === "Risk factors" && p.text.includes("many risks")) && fp.some((p) => p.section === "MD&A" && p.text.includes("higher volumes")), fp.map((p) => p.section));
+  const tp = passagesFromTranscript([{ start: 0, end: 5, text: "Good morning and welcome.", speaker: "Operator" }, { start: 5, end: 9, text: "Thanks.", speaker: "Jane Doe, CFO" }, { start: 9, end: 20, text: "Volumes were strong.", speaker: "Jane Doe, CFO" }]);
+  check("transcripts become speaker turns with times", tp.length === 2 && tp[1].speaker === "Jane Doe, CFO" && tp[1].tStart === 5 && tp[1].tEnd === 20 && tp[1].text === "Thanks. Volumes were strong.", tp);
+  const many = [...Array.from({ length: 5 }, (_, i) => ({ ord: i, section: "Financial statements" })), { ord: 5, section: "Risk factors" }, { ord: 6, section: "MD&A" }];
+  const kept = keepNarrative(many, 3);
+  check("big filings keep their narrative sections first, in order", kept.length === 3 && kept.map((p) => p.section).join() === "Financial statements,Risk factors,MD&A" && kept[0].ord === 0, kept);
+
+  console.log("documents: retrieval, topics, files, tone");
+  const f = fuse([[1, 2, 3], [3, 1, 4], [1]]);
+  check("rank fusion favours what several searches agree on", f[0].id === 1 && f[1].id === 3 && f[f.length - 1].id === 4, f);
+  const pts: number[][] = [];
+  for (let i = 0; i < 20; i++) pts.push([10 + (i % 3) * 0.1, 0, 0, i % 2 ? 0.1 : 0]);
+  for (let i = 0; i < 20; i++) pts.push([0, 10 + (i % 3) * 0.1, 0, i % 2 ? 0.1 : 0]);
+  const xy = pca2(pts);
+  const km = kmeans(xy, 2);
+  check("two groups of passages land in two clusters", new Set(km.slice(0, 20)).size === 1 && new Set(km.slice(20)).size === 1 && km[0] !== km[39], km);
+  check("files are typed by name when the browser gives no type", mimeOf("deck.pptx", "").includes("presentationml") && mimeOf("call.m4a", "application/octet-stream") === "audio/mp4" && mimeOf("scan.TIF", "") === "image/tiff" && mimeOf("x.pdf", "application/pdf") === "application/pdf" && mimeOf("note.msg", "") === "application/vnd.ms-outlook");
+  const turns: Turn[] = [{ from: 0, t: 0, speaker: "Operator", hedging: 0, tone: 0.2, note: "" }, { from: 3, t: 30, speaker: "CFO", hedging: 0.6, tone: 0.1, note: "cautious on guidance" }, { from: 9, t: 95, speaker: "CFO", hedging: 0.2, tone: 0.5, note: "" }];
+  check("the turn under a moment is the last one started", turnAt(turns, 40)?.note === "cautious on guidance" && turnAt(turns, 95)?.hedging === 0.2 && turnAt(turns, null) === null);
+  const sp = bySpeaker(turns);
+  check("speakers are averaged, the busiest first", sp[0].speaker === "CFO" && sp[0].turns === 2 && sp[0].hedging === 0.4, sp);
+  const later: Turn[] = [{ from: 0, t: 0, speaker: "cfo", hedging: 0.7, tone: -0.2, note: "" }];
+  const shift = toneShift(turns, later);
+  check("a speaker's hedging and tone shift between calls", shift.length === 1 && shift[0].hedging === 0.3 && shift[0].tone === -0.5, shift);
+  check("the viewer's tone summary has the turn and the averages", toneOf(turns, 31).turn?.speaker === "CFO" && toneOf(turns, 31).overall.hedging === 0.27);
+  check("clocks read as m:ss and h:mm:ss", clockOf(65) === "1:05" && clockOf(3725) === "1:02:05");
+
+  console.log("structured answers");
+  const Lines = z.object({ lines: z.array(z.object({ text: z.string(), tags: z.array(z.string()).max(2) })).max(3), note: z.string().nullable(), table: z.object({ rows: z.array(z.array(z.string())).max(2) }).nullable().optional() });
+  const js = z.toJSONSchema(Lines) as Record<string, unknown>;
+  const raw = { lines: Array.from({ length: 5 }, (_, i) => ({ text: `l${i}`, tags: ["a", "b", "c"] })), note: null, table: { rows: [["1"], ["2"], ["3"]] } };
+  const fitted = Lines.safeParse(fitToSchema(raw, js));
+  check("over-long lists are trimmed to the schema instead of failing", fitted.success && fitted.data.lines.length === 3 && fitted.data.lines[0].tags.length === 2 && fitted.data.table?.rows.length === 2, fitted.success ? fitted.data : fitted.error.issues);
+  check("everything else is still validated", !Lines.safeParse(fitToSchema({ lines: [{ text: 1, tags: [] }], note: null }, js)).success);
+  check("trimming leaves the model's answer untouched", raw.lines.length === 5 && raw.table.rows.length === 3);
+
+  console.log("documents: feed cards");
+  check("a filing's size grows with its edits and caps at one", filingMagnitude({ added: 2, removed: 1, changed: 2, unchanged: 40 }) === 0.2 && filingMagnitude({ added: 30, removed: 0, changed: 0, unchanged: 0 }) === 1);
+  check("the card title counts the edits", filingTitle("Energy Transfer", "10-K", { added: 3, removed: 1, changed: 0, unchanged: 9 }) === "Energy Transfer's new 10-K: 3 risk factors added, 1 dropped" && filingTitle("X", "10-Q", { added: 1, removed: 0, changed: 2, unchanged: 0 }) === "X's new 10-Q: 1 risk factor added, 2 reworded");
+  check("a filing change is fresher news than a deal and less than a satellite change", noveltyOf("filing_change", 0) < noveltyOf("ground_change", 0) && noveltyOf("filing_change", 0) > noveltyOf("deal_proforma", 0));
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
