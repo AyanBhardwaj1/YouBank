@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, doublePrecision, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigserial, boolean, customType, doublePrecision, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
 
@@ -935,3 +935,76 @@ export const newsPushSubs = pgTable("news_push_subs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("news_push_subs_endpoint_uidx").on(t.endpoint), index("news_push_subs_user_idx").on(t.userId)]);
+
+/* ---------------- Edge ---------------- */
+
+/** A PostGIS geometry (WGS84). Written and read as GeoJSON through SQL (ST_GeomFromGeoJSON, ST_AsGeoJSON). */
+const geometry = customType<{ data: string; driverData: string }>({ dataType: () => "geometry(Geometry, 4326)" });
+
+/** Pipelines, plants and sites. Public maps are shared (ownerId null); uploaded or drawn assets are private. */
+export const edgeAssets = pgTable("edge_assets", {
+  id: serial("id").primaryKey(),
+  source: text("source").notNull(),
+  sourceId: text("source_id").notNull(),
+  kind: text("kind").notNull(), // pipeline | processing_plant | site | ...
+  name: text("name").notNull().default(""),
+  operator: text("operator").notNull().default(""),
+  company: text("company").notNull().default(""),
+  ticker: text("ticker").notNull().default(""),
+  status: text("status").notNull().default(""),
+  attrs: jsonb("attrs").$type<Record<string, unknown>>().notNull().default({}),
+  geom: geometry("geom").notNull(),
+  ownerId: text("owner_id"),
+  teamId: integer("team_id"),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull().defaultNow(),
+  /** When Edge last compared this site's imagery; sites are checked least recently first. */
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("edge_assets_source_uq").on(t.source, t.sourceId), index("edge_assets_ticker_idx").on(t.ticker), index("edge_assets_owner_idx").on(t.ownerId)]);
+
+export type EdgeWatchTarget = { ticker?: string; company?: string; bbox?: [number, number, number, number]; place?: string; name?: string; query?: string };
+
+/** What a person (or their team) follows. */
+export const edgeWatches = pgTable("edge_watches", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  kind: text("kind").notNull(), // company | place | person | theme
+  label: text("label").notNull(),
+  target: jsonb("target").$type<EdgeWatchTarget>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+}, (t) => [index("edge_watches_user_idx").on(t.userId), index("edge_watches_team_idx").on(t.teamId)]);
+
+export type EdgeSource = { name: string; url: string; license: string; retrievedAt: string; method: string; modelVersion?: string };
+
+/** One finding: a card in the Edge feed. From public data it is shared; from a person's own data it is theirs. */
+export const edgeDetections = pgTable("edge_detections", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(),
+  kind: text("kind").notNull(), // ground_change | deal_proforma | ...
+  module: text("module").notNull(), // earth | networks | documents | scenarios
+  title: text("title").notNull(),
+  summary: text("summary").notNull().default(""),
+  why: text("why").notNull().default(""),
+  confidence: real("confidence").notNull().default(0.5),
+  magnitude: real("magnitude").notNull().default(0),
+  tickers: jsonb("tickers").$type<string[]>().notNull().default([]),
+  assetIds: jsonb("asset_ids").$type<number[]>().notNull().default([]),
+  bbox: jsonb("bbox").$type<[number, number, number, number] | null>(),
+  visual: jsonb("visual").$type<Record<string, unknown>>().notNull().default({}),
+  ownerId: text("owner_id"),
+  observedAt: timestamp("observed_at", { withTimezone: true }),
+  detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_detections_key_uq").on(t.key), index("edge_detections_detected_idx").on(t.detectedAt)]);
+
+/** The audit trail: where every datum came from, under what license, when, and by what method. */
+export const edgeProvenance = pgTable("edge_provenance", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  subject: text("subject").notNull(), // asset:12 | detection:5
+  sourceName: text("source_name").notNull(),
+  sourceUrl: text("source_url").notNull().default(""),
+  license: text("license").notNull().default(""),
+  method: text("method").notNull().default(""),
+  modelVersion: text("model_version").notNull().default(""),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("edge_provenance_subject_idx").on(t.subject)]);
