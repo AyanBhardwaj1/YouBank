@@ -48,3 +48,7 @@ next-env.d.ts
 # local data cache (EDGAR, FMP)
 .cache
 .vercel
+
+# Local Python environment for the Modal ML service (ml/)
+ml/.venv/
+__pycache__/

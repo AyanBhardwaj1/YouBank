@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigserial, boolean, customType, doublePrecision, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, customType, date, doublePrecision, halfvec, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
 
@@ -1008,3 +1008,249 @@ export const edgeProvenance = pgTable("edge_provenance", {
   modelVersion: text("model_version").notNull().default(""),
   retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("edge_provenance_subject_idx").on(t.subject)]);
+
+/* ---------------- Edge platform (0014): canvas, runs, documents, graph, scenarios ---------------- */
+
+const tsvector = customType<{ data: string }>({ dataType: () => "tsvector" });
+const ts = (name: string) => timestamp(name, { withTimezone: true });
+
+/** Files in Cloudflare R2. Uploads arrive in 4 MB parts under r2_key/p/<n>; `parts` counts them. */
+export const edgeFiles = pgTable("edge_files", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id"),
+  teamId: integer("team_id"),
+  kind: text("kind").notNull(), // upload | imagery | artifact | transcript | model | export
+  name: text("name").notNull().default(""),
+  mime: text("mime").notNull().default(""),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  r2Key: text("r2_key").notNull(),
+  parts: integer("parts").notNull().default(0),
+  status: text("status").notNull().default("uploading"), // uploading | stored | processing | ready | failed
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_files_key_uq").on(t.r2Key), index("edge_files_owner_idx").on(t.ownerId, t.kind)]);
+
+/** Monthly use of the free tiers (service modal | inngest | r2; metric usd | executions | bytes | class_a | class_b). */
+export const edgeUsage = pgTable("edge_usage", {
+  month: text("month").notNull(),
+  service: text("service").notNull(),
+  metric: text("metric").notNull(),
+  value: doublePrecision("value").notNull().default(0),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.month, t.service, t.metric] })]);
+
+export type CanvasGraph = { nodes: unknown[]; edges: unknown[]; viewport?: { x: number; y: number; zoom: number } };
+
+export const edgeCanvases = pgTable("edge_canvases", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  teamId: integer("team_id"),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  graph: jsonb("graph").$type<CanvasGraph>().notNull().default({ nodes: [], edges: [] }),
+  template: text("template").notNull().default(""),
+  parentId: integer("parent_id"),
+  branch: text("branch").notNull().default(""),
+  version: integer("version").notNull().default(0),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  deletedAt: ts("deleted_at"),
+}, (t) => [index("edge_canvases_owner_idx").on(t.ownerId, t.updatedAt), index("edge_canvases_team_idx").on(t.teamId)]);
+
+export const edgeCanvasEvents = pgTable("edge_canvas_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  canvasId: integer("canvas_id").notNull(),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(), // patch | checkpoint | restore | run
+  version: integer("version").notNull().default(0),
+  label: text("label").notNull().default(""),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("edge_canvas_events_canvas_idx").on(t.canvasId, t.id)]);
+
+export const edgeRuns = pgTable("edge_runs", {
+  id: serial("id").primaryKey(),
+  canvasId: integer("canvas_id").notNull(),
+  ownerId: text("owner_id").notNull(),
+  trigger: text("trigger").notNull().default("manual"), // manual | monitor | onboarding
+  status: text("status").notNull().default("queued"), // queued | running | done | failed | cancelled
+  graph: jsonb("graph").$type<CanvasGraph>().notNull(),
+  outputs: jsonb("outputs").$type<Record<string, unknown>>().notNull().default({}),
+  cost: jsonb("cost").$type<Record<string, number>>().notNull().default({}),
+  error: text("error").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("edge_runs_canvas_idx").on(t.canvasId, t.createdAt), index("edge_runs_owner_idx").on(t.ownerId, t.createdAt)]);
+
+export const edgeRunSteps = pgTable("edge_run_steps", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  runId: integer("run_id").notNull(),
+  nodeId: text("node_id").notNull(),
+  step: text("step").notNull().default(""),
+  status: text("status").notNull().default("queued"),
+  summary: text("summary").notNull().default(""),
+  preview: jsonb("preview").$type<Record<string, unknown>>().notNull().default({}),
+  output: jsonb("output").$type<unknown>(),
+  artifactKey: text("artifact_key").notNull().default(""),
+  cost: jsonb("cost").$type<Record<string, number>>().notNull().default({}),
+  error: text("error").notNull().default(""),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("edge_run_steps_run_idx").on(t.runId, t.id)]);
+
+export const edgeMonitors = pgTable("edge_monitors", {
+  id: serial("id").primaryKey(),
+  canvasId: integer("canvas_id").notNull(),
+  ownerId: text("owner_id").notNull(),
+  schedule: text("schedule").notNull().default("daily"), // daily | weekly
+  alert: text("alert").notNull().default("digest"), // immediate | digest
+  active: boolean("active").notNull().default(true),
+  nextRunAt: ts("next_run_at").notNull().defaultNow(),
+  lastRunId: integer("last_run_id"),
+  lastSignal: jsonb("last_signal").$type<Record<string, unknown> | null>(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_monitors_canvas_uq").on(t.canvasId), index("edge_monitors_due_idx").on(t.active, t.nextRunAt)]);
+
+export const edgeStories = pgTable("edge_stories", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  teamId: integer("team_id"),
+  runId: integer("run_id"),
+  title: text("title").notNull(),
+  slug: text("slug").notNull(),
+  sections: jsonb("sections").$type<unknown[]>().notNull().default([]),
+  visibility: text("visibility").notNull().default("private"), // private | team | link
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_stories_slug_uq").on(t.slug), index("edge_stories_owner_idx").on(t.ownerId, t.createdAt)]);
+
+/** A document. ownerId "" is the shared public corpus (filings); otherwise private to that person (or their team). */
+export const edgeDocs = pgTable("edge_docs", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull().default(""),
+  teamId: integer("team_id"),
+  source: text("source").notNull(), // sec | upload | audio | web | workspace | newsroom
+  externalId: text("external_id").notNull(),
+  title: text("title").notNull().default(""),
+  url: text("url").notNull().default(""),
+  fileId: integer("file_id"),
+  mime: text("mime").notNull().default(""),
+  lang: text("lang").notNull().default(""),
+  pages: integer("pages").notNull().default(0),
+  durationSec: real("duration_sec").notNull().default(0),
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("queued"), // queued | parsing | indexing | ready | failed
+  error: text("error").notNull().default(""),
+  chunks: integer("chunks").notNull().default(0),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  indexedAt: ts("indexed_at"),
+}, (t) => [uniqueIndex("edge_docs_ext_uq").on(t.source, t.externalId, t.ownerId), index("edge_docs_owner_idx").on(t.ownerId, t.createdAt)]);
+
+export const edgeChunks = pgTable("edge_chunks", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  docId: integer("doc_id").notNull(),
+  ord: integer("ord").notNull(),
+  page: integer("page").notNull().default(0),
+  tStart: real("t_start"),
+  tEnd: real("t_end"),
+  speaker: text("speaker").notNull().default(""),
+  section: text("section").notNull().default(""),
+  text: text("text").notNull(),
+  embedding: halfvec("embedding", { dimensions: 512 }),
+  tsv: tsvector("tsv"),
+}, (t) => [uniqueIndex("edge_chunks_doc_ord_uq").on(t.docId, t.ord)]);
+
+export const edgeAnswers = pgTable("edge_answers", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  question: text("question").notNull(),
+  mode: text("mode").notNull().default("strict"),
+  scope: jsonb("scope").$type<Record<string, unknown>>().notNull().default({}),
+  answer: jsonb("answer").$type<Record<string, unknown>>().notNull().default({}),
+  cost: jsonb("cost").$type<Record<string, number>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("edge_answers_owner_idx").on(t.ownerId, t.createdAt)]);
+
+export const edgeNodes = pgTable("edge_nodes", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // company | person | fund | subsidiary | firm
+  name: text("name").notNull(),
+  norm: text("norm").notNull(),
+  ticker: text("ticker").notNull().default(""),
+  cik: text("cik").notNull().default(""),
+  attrs: jsonb("attrs").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("edge_nodes_norm_idx").on(t.norm)]);
+
+export const edgeLinks = pgTable("edge_links", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  src: integer("src").notNull(),
+  dst: integer("dst").notNull(),
+  kind: text("kind").notNull(), // director | officer | holder | subsidiary | customer | supplier | acquired | invested | advised | lent
+  weight: real("weight").notNull().default(1),
+  attrs: jsonb("attrs").$type<Record<string, unknown>>().notNull().default({}),
+  sourceName: text("source_name").notNull().default(""),
+  sourceUrl: text("source_url").notNull().default(""),
+  asOf: date("as_of"),
+  ended: date("ended"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_links_uq").on(t.src, t.dst, t.kind), index("edge_links_src_idx").on(t.src, t.kind), index("edge_links_dst_idx").on(t.dst, t.kind)]);
+
+export const edgeModels = pgTable("edge_models", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(), // gnn-deals
+  version: text("version").notNull(),
+  status: text("status").notNull().default("training"), // training | ready | failed
+  metrics: jsonb("metrics").$type<Record<string, unknown>>().notNull().default({}),
+  artifactKey: text("artifact_key").notNull().default(""),
+  trainedAt: ts("trained_at").notNull().defaultNow(),
+});
+
+export const edgePredictions = pgTable("edge_predictions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  modelId: integer("model_id").notNull(),
+  kind: text("kind").notNull(), // acquirer | target
+  subject: integer("subject").notNull(),
+  candidate: integer("candidate").notNull(),
+  score: real("score").notNull(),
+  rank: integer("rank").notNull(),
+  reasons: jsonb("reasons").$type<unknown[]>().notNull().default([]),
+}, (t) => [index("edge_predictions_subject_idx").on(t.subject, t.kind, t.modelId)]);
+
+export const edgeScenarios = pgTable("edge_scenarios", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  teamId: integer("team_id"),
+  title: text("title").notNull(),
+  kind: text("kind").notNull(), // market | company | gap | practice
+  driver: text("driver").notNull().default("none"), // replay | event | shock | tail | none
+  spec: jsonb("spec").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("draft"), // draft | preview | refining | ready | failed
+  preview: jsonb("preview").$type<Record<string, unknown>>().notNull().default({}),
+  resultKey: text("result_key").notNull().default(""),
+  realism: jsonb("realism").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("edge_scenarios_owner_idx").on(t.ownerId, t.updatedAt)]);
+
+export const edgeAlerts = pgTable("edge_alerts", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  subject: text("subject").notNull(), // detection:12 | run:5
+  kind: text("kind").notNull(), // immediate | digest
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_alerts_uq").on(t.userId, t.subject, t.kind)]);
+
+export const edgePushes = pgTable("edge_pushes", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  target: text("target").notNull(), // studio:12 | office
+  source: text("source").notNull(), // run:5:node-3 | scenario:4 | answer:9
+  kind: text("kind").notNull(), // map | network | scenario | memo | table
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status").notNull().default("pending"), // pending | accepted | dismissed | superseded
+  createdAt: ts("created_at").notNull().defaultNow(),
+  decidedAt: ts("decided_at"),
+}, (t) => [index("edge_pushes_target_idx").on(t.target, t.status)]);
+
