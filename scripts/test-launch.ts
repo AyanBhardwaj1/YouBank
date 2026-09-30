@@ -8,6 +8,7 @@ import { costOf } from "@/lib/ai/pricing";
 import { follow, followedCount, pollDelay, touch } from "@/lib/realtime/feed";
 import { memo } from "@/lib/memo";
 import { describeFailure, looksInternal, OUR_SIDE, publicMessage, TOO_SLOW } from "@/lib/errors";
+import { pool, poolSize } from "@/lib/pool";
 import { pollBackoff } from "@/components/news/client";
 
 let pass = 0, fail = 0;
@@ -134,6 +135,15 @@ async function main() {
   await cacheJson("t:down", 60_000, down).catch(() => undefined);
   await cacheJson("t:down", 60_000, down).catch(() => undefined);
   check("a failure is remembered briefly instead of retried per request", tries === 1, { tries });
+
+  console.log("background passes");
+  let running = 0, peak = 0;
+  const done = await pool([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 3, async (n) => { running++; peak = Math.max(peak, running); await nap(10); running--; return n * 2; });
+  check("a pool keeps at most its size in flight", peak === 3, { peak });
+  check("results keep their order", done.join() === "2,4,6,8,10,12,14,16,18,20", done);
+  const cut = await pool([1, 2, 3, 4, 5, 6], 2, async (n) => { await nap(25); return n; }, Date.now() + 40);
+  check("no new work starts after the deadline", cut.length > 0 && cut.length < 6, cut);
+  check("pool sizes from the environment are bounded", poolSize("50", 6) === 20 && poolSize("abc", 6) === 6 && poolSize("0", 6) === 6 && poolSize("3", 6) === 3);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
