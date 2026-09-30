@@ -233,3 +233,92 @@ polished.
 - **Metering.** Each run records its cost (AI, ML seconds, storage).
 - **Accounts the founder creates.** Modal, Inngest and Cloudflare R2. Their keys go in `.env.local`
   and are then pushed to Vercel.
+
+## Build status
+
+| Milestone | Scope | Status |
+|---|---|---|
+| 1 | Edge tab and beta switch, watches, the feed, Earth · GeoAI on the Permian (EIA maps, Sentinel-2 before and after, the deal pro-forma map) | Built (2026-09-30) |
+| 2 | Canvas and run engine | Next |
+| 3 | Documents · RAG | |
+| 4 | Networks · GNN | |
+| 5 | Scenarios · Synthetic data | |
+| 6 | Integrations (Terminal, Newsroom, Studio, CRM), story mode, monitors and alerts, onboarding canvas | |
+
+### What milestone 1 does
+
+- **Switch.** Settings, Labs, "Try the Edge beta" (or the button on `/app/edge`). Turning it on pins
+  the tab, seeds three watches (the Permian, then the person's firm and watchlist names that have
+  mapped assets, falling back to ET and KMI) and checks them straight away. Turning it off hides the
+  tab and stops the daily checks for that person; their watches are kept.
+- **Watches.** Companies (by ticker) and places (the Permian, Delaware and Midland basins, the Waha
+  hub, or a drawn box under about 500 km across). Five each during the beta. Team members' watches
+  show in each other's feeds.
+- **Feed** (`/api/edge/feed`). Findings that touch the person's watches and their team's, plus
+  trending ones (counts of watchers only, never who). Ranked by relevance, size, novelty and
+  confidence, weighted per role and tunable with sliders. Twelve months of history, 20 cards a page.
+- **Ground change** (`src/lib/edge/detect.ts`, `change.ts`). Each watched company's plants,
+  least recently checked first, compared with the same 2.5 km box a year earlier in the clearest
+  Sentinel-2 scenes (10 m). How a change is found:
+  - The newer image is normalized on the pixels that did not change.
+  - Sentinel-2's scene classes remove cloud, shadow and vegetation.
+  - New bare ground must be much brighter, above the scene's median and pale (caliche, gravel,
+    concrete). New dark surfaces must lose 40% of their brightness and not be plant green.
+  - Only compact blobs count, and a box that changed everywhere is skipped.
+  - A card needs one change of at least 0.5 ha and a confidence of at least 0.25. A small vision
+    model describes the change within the AI caps.
+- **Deal pro-forma** (`proforma.ts`, `dealwatch.ts`). For any two to four companies, or
+  automatically for Newsroom acquisitions and mergers where both sides own mapped assets, it computes:
+  - each side's pipeline kilometres, plants and processing capacity;
+  - counties both operate in and neighbouring counties;
+  - pipelines within a kilometre of each other, and plants within 25 km;
+  - each county's processing HHI before and after, screened at 1,800 with a +100 change (2023
+    Merger Guidelines), naming the smaller side's plants in flagged counties as likely divestitures.
+- **Map.** MapLibre on OpenFreeMap vector tiles, with a Sentinel-2 mosaic of the last 45 days from
+  zoom 8. Pipelines and plants are coloured by watched company or deal side. Counties are shaded by
+  the screen. Browsers without WebGL get a message instead of a map.
+- **Audit trail.** Every card records its sources (name, URL, license, method, model version,
+  retrieval time) in `edge_provenance`. "Audit trail (CSV)" on the card exports them.
+- **Daily pass.** `/api/cron/edge` at 07:30 UTC. It refreshes the maps weekly, checks each distinct
+  watched target of beta users not checked in 20 hours, then scans the last three weeks of deals.
+
+### How the detector was checked
+
+Eight sites were read by eye against the overlay, then 13 findings across ET, EPD, OKE and TRGP. At
+the final settings:
+
+| Site | What is there | Result |
+|---|---|---|
+| Orla (ET) | Two new ponds and two round tanks | Found, confidence 0.75 |
+| South Eddy Cryo (EPD) | A new white pad beside the plant | Found, 0.83 |
+| Mentone | A drained pit | Found, 0.43 |
+| Panther (ET) | A new pad with equipment | Found, 0.41 |
+| High Plains (TRGP) | The plant pad extended | Found, 0.27 (a greener year before) |
+| Rebel (ET) | A new access road | Found, 0.27 |
+| Bone Springs (ET) | A pond filled; irrigated fields greened | The pond found; fields ignored |
+| Red Bluff, Arrowhead | Nothing new | Quiet |
+| Sale Ranch | A wet year against a dry one (creeks, tracks) | Quiet |
+| Snyder (KMI) | Ploughed farm fields | Quiet |
+
+Two false-positive patterns drove the rules. Vegetation darkening once made Red Bluff report 110 ha
+of change. Tan soil brightening (farm fields, a dry year) triggered on farmland. Full-distribution
+brightness matching was replaced after a synthetic test showed it erases a new pad that is the
+brightest thing in view. `scripts/test-edge.ts` (56 checks, in preflight) covers these cases on
+synthetic scenes.
+
+### Known limits and follow-ups
+
+- **Imagery is hotlinked.** Card images are rendered on request by Microsoft Planetary Computer's
+  data API. Once the Cloudflare R2 keys are in, crops move to R2 so heavy traffic does not lean on
+  MPC.
+- **The data is old or coarse in places.**
+  - EIA plant capacities are from 2017.
+  - The EIA pipeline map has transmission and intrastate lines, not most gathering, so a gatherer
+    like Targa shows no pipeline kilometres.
+  - A county is a rough antitrust market. Cards say so.
+- **Only the Permian is mapped so far.** Other basins need their asset maps loaded (the same EIA
+  layers cover the U.S.).
+- **Detection is pixel-based.** The Prithvi or Segment Anything models on Modal replace or confirm
+  it once the Modal keys are in. The pixel method stays as the free fallback.
+- **MPC is sometimes slow.** One pass saw a request take over a minute. Every check has a deadline,
+  and a site that times out is simply checked on the next pass.
