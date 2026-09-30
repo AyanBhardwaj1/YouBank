@@ -7,6 +7,7 @@ import { applyManualInputs } from "@/db/manual";
 import { aiUser } from "@/lib/ai/context";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
+import { describeFailure } from "@/lib/errors";
 
 const MM = 1e6;
 const mm = (v: number | null | undefined) => (v === null || v === undefined ? null : Math.round((v / MM) * 10) / 10);
@@ -250,7 +251,7 @@ export async function getCompanies(tickers: string[], concurrency = 4): Promise<
         out[t] = c ?? { error: "Unknown ticker" };
         if (c) found.push(c);
       } catch (e) {
-        out[t] = { error: e instanceof Error ? e.message : String(e) };
+        out[t] = { error: describeFailure(e, 502, "company").message };
       }
     }
   }));

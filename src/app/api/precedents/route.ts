@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { fullTextSearch } from "@/lib/edgar/fulltext";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
       const rows = [...byEntity.values()].sort((a, b) => (a.filed < b.filed ? 1 : -1));
       return NextResponse.json({ total: r.total, matched: r.hits.length, rows, query: { phrase, keywords, from, to, forms } });
     } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+      return errorResponse(e, 502);
     }
   });
 }

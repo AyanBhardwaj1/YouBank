@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireDb, schema } from "@/db";
 import { latestManualInputs, MAX_NOTE_CHARS } from "@/db/manual";
 import { guarded } from "@/lib/auth/user";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 const FIELDS = new Set(["ntm_revenue", "ntm_ebitda"]);
@@ -26,6 +27,6 @@ export async function POST(req: Request) {
     const note = typeof body.note === "string" ? body.note.trim().slice(0, MAX_NOTE_CHARS) : "";
     const [row] = await db.insert(schema.manualInputs).values({ ticker, field: body.field, value, note, enteredBy: user.name || user.email || "analyst", userId: user.id }).returning();
     return NextResponse.json(row);
-  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  } catch (e) { return errorResponse(e); }
   });
 }

@@ -13,6 +13,7 @@ import { aiBlocked, guardAi, takeRunSlot } from "./limits";
 import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";
 import { routeFor, type AiTask } from "./route";
 import { aiUser, recordUsage } from "./usage";
+import { describeFailure } from "@/lib/errors";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AgentEvent =
@@ -106,14 +107,15 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   return { text, sources };
 }
 
+/** A failed run as the person sees it: provider errors by kind, anything internal as a logged reference. */
 export function describeError(e: unknown): string {
   if (e instanceof Anthropic.AuthenticationError) return "Anthropic: invalid API key";
   if (e instanceof Anthropic.RateLimitError) return "Anthropic: rate limited, retry shortly";
-  if (e instanceof Anthropic.APIError) return `Anthropic API error ${e.status}: ${e.message}`;
+  if (e instanceof Anthropic.APIError) return describeFailure(new Error(`Anthropic API error ${e.status}: ${e.message}`), 502, "anthropic").message;
   if (e instanceof OpenAI.AuthenticationError) return "OpenAI: invalid API key";
   if (e instanceof OpenAI.RateLimitError) return "OpenAI: rate limited, retry shortly";
-  if (e instanceof OpenAI.APIError) return `OpenAI API error ${e.status}: ${e.message}`;
-  return e instanceof Error ? e.message : String(e);
+  if (e instanceof OpenAI.APIError) return describeFailure(new Error(`OpenAI API error ${e.status}: ${e.message}`), 502, "openai").message;
+  return describeFailure(e, 502, "ai-run").message;
 }
 
 /* ---------------- OpenAI (Responses API: streaming, function tools, native web search, reasoning) ---------------- */

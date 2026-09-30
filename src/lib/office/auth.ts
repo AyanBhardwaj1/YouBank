@@ -12,6 +12,7 @@ import { newCode, normalizeCode } from "./codes";
 import { runAsUser } from "@/lib/ai/usage";
 import { isAdmin } from "@/lib/auth/admin";
 import { currentUser, type CurrentUser } from "@/lib/auth/user";
+import { errorResponse } from "@/lib/errors";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const PAIRING_MS = 10 * 60_000;
@@ -101,8 +102,5 @@ export async function guardedFor(req: Request, fn: (user: CurrentUser) => Promis
   const user = await requestUser(req);
   if (!user) return Response.json({ error: "Sign in required. In Excel or PowerPoint, connect the add-in to YouBank again." }, { status: 401 });
   try { return await runAsUser(user.id, () => fn(user), { admin: isAdmin(user) }); }
-  catch (e) {
-    const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : 500;
-    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status });
-  }
+  catch (e) { return errorResponse(e); }
 }

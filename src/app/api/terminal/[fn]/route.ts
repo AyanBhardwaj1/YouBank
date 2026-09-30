@@ -15,6 +15,7 @@ import { applyFilters, METRICS, parseScreen, universe, type Filter, type Metric 
 import { recordSkill, SKILLS, skillsView, type Evidence } from "@/lib/terminal/skills";
 import { analystView, dividendView, earningsView } from "@/lib/terminal/street";
 import { waccView } from "@/lib/terminal/wacc";
+import { describeFailure } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -68,8 +69,8 @@ async function compute(fn: string, p: URLSearchParams, userId: string): Promise<
 
 function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
   const planLimited = e instanceof MarketDataError;
-  const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : planLimited ? 402 : 502;
-  return NextResponse.json({ error: e instanceof Error ? e.message : String(e), planLimited, ...extra }, { status, headers });
+  const f = describeFailure(e, planLimited ? 402 : 502);
+  return NextResponse.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), planLimited, ...extra }, { status: f.status, headers });
 }
 
 /** The sources an answer used, for the screen's badge: providers and notes such as "S&P 500 tracked by the SPY ETF". */

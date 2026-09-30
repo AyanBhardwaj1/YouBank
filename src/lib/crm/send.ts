@@ -5,6 +5,7 @@ import { ingestThread, type DraftRow } from "./db";
 import { openMailbox, type SentMail } from "./mailbox";
 import { nextDueAfter, normalizeSteps } from "./model";
 import { getSettings } from "./settings";
+import { describeFailure } from "@/lib/errors";
 
 export type SentBy = "you" | "autopilot";
 
@@ -44,7 +45,7 @@ export async function sendDraft(userId: string, draftId: number, origin: string,
   try {
     return await deliver(userId, draft, origin, edits, by);
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = describeFailure(e, 502, "send").message;
     await db.update(schema.crmDrafts).set({ status: "pending", lastError: message.slice(0, 500), attempts: draft.attempts + 1 })
       .where(eq(schema.crmDrafts.id, draft.id));
     throw e;

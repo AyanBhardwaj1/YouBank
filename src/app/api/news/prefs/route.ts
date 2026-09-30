@@ -10,6 +10,7 @@ import { alertEmail, briefEmail, briefSlack, emailSelf, isSlackWebhook, pushRead
 import { allDesks, SECTOR_KEYS, SECTOR_LABEL } from "@/lib/news/desks";
 import { EDITIONS, LAYOUTS, LOOKS, normalizeNewsPrefs, publicPrefs } from "@/lib/news/prefs";
 import { readerFor } from "@/lib/news/reader";
+import { describeFailure } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: true, message: "Posted to Slack." });
         }
       } catch (e) {
-        return NextResponse.json({ ok: false, message: e instanceof Error ? e.message : String(e) });
+        return NextResponse.json({ ok: false, message: describeFailure(e, 400, "news-test").message });
       }
       return NextResponse.json({ error: "Unknown test" }, { status: 400 });
     }

@@ -4,6 +4,7 @@ import { docData, requireDoc } from "@/lib/studio/db";
 import { Engine } from "@/lib/studio/engine";
 import { exportPptx } from "@/lib/studio/pptx";
 import { exportXlsx } from "@/lib/studio/xlsx";
+import { describeFailure } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -19,7 +20,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const id = Number((await ctx.params).id);
   const format = new URL(req.url).searchParams.get("format") === "pptx" ? "pptx" : "xlsx";
   let row;
-  try { row = await requireDoc(user, id); } catch (e) { return new Response(e instanceof Error ? e.message : "Forbidden", { status: 403 }); }
+  try { row = await requireDoc(user, id); } catch (e) { const f = describeFailure(e, 403); return new Response(f.message, { status: f.status }); }
   const doc = docData(row);
   const engine = new Engine(doc.workbook);
   const buf = format === "pptx" ? await exportPptx(doc, engine) : await exportXlsx(doc, engine);

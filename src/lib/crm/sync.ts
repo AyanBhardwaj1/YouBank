@@ -4,6 +4,7 @@ import type { AccountRow } from "./accounts";
 import { ingestThreadDelta, processThread, supersedeReplies, type ThreadRow } from "./db";
 import type { FetchedThread } from "./gmail";
 import { openMailbox } from "./mailbox";
+import { describeFailure } from "@/lib/errors";
 
 export type SyncResult = { fetched: number; ingested: number; triaged: number; skipped: number; youReplied: number; errors: string[] };
 
@@ -46,7 +47,7 @@ export async function syncAccount(userId: string, account: AccountRow, origin: s
     let changes;
     try { changes = await mailbox.changes(account.cursor, { max: opts.max ?? 25 }); }
     catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = describeFailure(e, 502, "mail-sync").message;
       await db.update(schema.emailAccounts).set({ lastError: message.slice(0, 500) }).where(eq(schema.emailAccounts.id, account.id));
       throw e;
     }
@@ -81,7 +82,7 @@ export async function syncAccount(userId: string, account: AccountRow, origin: s
           out.skipped++;
         }
       } catch (e) {
-        out.errors.push(`${fetched.subject || fetched.providerThreadId}: ${e instanceof Error ? e.message : String(e)}`);
+        out.errors.push(`${fetched.subject || fetched.providerThreadId}: ${describeFailure(e, 502, "mail-sync").message}`);
       }
     }
 

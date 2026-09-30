@@ -7,6 +7,7 @@ import { getSettings } from "./settings";
 import { prepareCampaign } from "./campaigns";
 import { runRule } from "./nurture";
 import { markRun } from "./settings";
+import { describeFailure } from "@/lib/errors";
 
 export type AgentRunResult = {
   signals: number; followUps: number; checkIns: number;
@@ -29,7 +30,7 @@ export async function runAgent(userId: string, deadline = Date.now() + 240_000):
   const db = requireDb();
   const out: AgentRunResult = { signals: 0, followUps: 0, checkIns: 0, nurture: { drafted: 0, skipped: 0 }, campaigns: { drafted: 0, waitingForEmail: 0 }, scheduled: 0, errors: [], stoppedEarly: false };
   const attempt = async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
-    try { return await fn(); } catch (e) { out.errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`); return null; }
+    try { return await fn(); } catch (e) { out.errors.push(`${label}: ${describeFailure(e, 502, `agent:${label}`).message}`); return null; }
   };
 
   out.signals = (await attempt("signals", () => scanSignals(userId))) ?? 0;

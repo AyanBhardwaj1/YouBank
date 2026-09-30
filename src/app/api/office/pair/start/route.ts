@@ -1,5 +1,6 @@
 import { withinRate } from "@/lib/locks";
 import { startPairing } from "@/lib/office/auth";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,6 @@ export async function POST(req: Request) {
     const p = await startPairing(host);
     return Response.json({ ...p, approveUrl: `${new URL(req.url).origin}/office/connect?code=${p.code}` });
   } catch (e) {
-    const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : 500;
-    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status });
+    return errorResponse(e);
   }
 }

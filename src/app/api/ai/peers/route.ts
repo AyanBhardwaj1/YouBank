@@ -6,6 +6,7 @@ import { structuredJson } from "@/lib/ai/agent";
 import { PEER_PROMPT } from "@/lib/ai/prompts";
 import { guarded } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     };
     return NextResponse.json({ summary: data.summary, core: await keep(data.core), adjacent: await keep(data.adjacent), provider, model });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
+    return errorResponse(e, 502);
   }
   });
 }

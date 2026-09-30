@@ -29,6 +29,7 @@ import { inferenceTools } from "./inference-tools";
 import { NF, TEMPLATES, finFrom, type TemplateId } from "./templates";
 import { SLIDE_H, SLIDE_W, newId, type CellStyle, type ChartKind, type RangeLink, type Slide, type SlideEl, type StudioDocData } from "./types";
 import { isErr } from "./values";
+import { describeFailure } from "@/lib/errors";
 
 export type StudioStreamEvent =
   | { t: "patch"; id: number; patches: Patch[]; label: string; actor: string; runId: string }
@@ -700,7 +701,7 @@ async function runStudio(o: RunInput): Promise<void> {
     await finishRun(runId, status, text || failed, stats);
     o.emit({ t: "done", runId, summary: text, model, stats });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = describeFailure(e, 500, "studio-agent").message;
     await finishRun(runId, "error", message, s.stats).catch(() => undefined);
     o.emit({ t: "error", message });
     o.emit({ t: "done", runId, summary: "", model, stats: s.stats });

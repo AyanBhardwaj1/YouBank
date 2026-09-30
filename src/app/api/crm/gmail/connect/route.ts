@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/user";
 import { encryptionReady } from "@/lib/crm/crypto";
 import { authUrl, googleConfig } from "@/lib/crm/gmail";
+import { describeFailure } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
     url = authUrl(googleConfig(origin), state);
     (await cookies()).set(OAUTH_STATE_COOKIE, state, { httpOnly: true, secure: origin.startsWith("https"), sameSite: "lax", path: "/", maxAge: 600 });
   } catch (e) {
-    return NextResponse.redirect(`${origin}/app/crm?error=${encodeURIComponent(e instanceof Error ? e.message : String(e))}`);
+    return NextResponse.redirect(`${origin}/app/crm?error=${encodeURIComponent(describeFailure(e, 400, "gmail-connect").message)}`);
   }
   return NextResponse.redirect(url);
 }

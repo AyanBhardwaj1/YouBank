@@ -14,6 +14,7 @@ import { conceptSeries, findConcepts } from "../edgar/series";
 import { resolveTicker } from "../edgar/tickers";
 import { insiderTransactions } from "../edgar/insiders";
 import { evaluateScript } from "../calc";
+import { logError } from "@/lib/errors";
 
 export type Source = { id: string; label: string; url: string };
 export type ToolCtx = { addSource: (label: string, url: string) => string };
@@ -234,6 +235,15 @@ export const calcTool = def({
 
 export const ALL_TOOLS = [getCompanyTool, compsTool, searchCompaniesTool, searchFilingTool, readFilingTool, readDocumentTool, fullTextTool, recentFilingsTool, xbrlSeriesTool, insiderTool, calcTool, webResearchTool, formDTool, startupsTool] as unknown as ToolDef<unknown>[];
 
+/**
+ * A tool failure as the model sees it: the real message (an EDGAR 404 tells it to try another form),
+ * except database failures, whose SQL and values it must never repeat to the person.
+ */
+export function toolError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return /^Failed query:|NeonDbError|DrizzleQueryError/i.test(`${message} ${e instanceof Error ? e.name : ""}`) ? `The database did not answer (ref ${logError(e, { where: "ai-tool" })}); continue without this.` : message;
+}
+
 /** Run a tool by name with schema validation; errors are returned as strings so the model can recover. */
 export async function runTool(name: string, rawInput: unknown, ctx: ToolCtx, defs: ToolDef<unknown>[] = ALL_TOOLS): Promise<{ output: string; isError: boolean }> {
   const tool = defs.find((t) => t.name === name) ?? ALL_TOOLS.find((t) => t.name === name);
@@ -243,6 +253,6 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolCtx, def
   try {
     return { output: await tool.run(parsed.data, ctx), isError: false };
   } catch (e) {
-    return { output: JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), isError: true };
+    return { output: JSON.stringify({ error: toolError(e) }), isError: true };
   }
 }

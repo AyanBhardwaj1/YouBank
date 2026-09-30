@@ -3,6 +3,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { guarded } from "@/lib/auth/user";
 import { requireDb, schema } from "@/db";
 import type { MemberJson } from "@/db/schema";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function GET() {
       id: `db-${g.id}`, dbId: g.id, name: g.name, description: g.description, createdBy: g.createdBy, createdAt: g.createdAt,
       members: members.filter((m) => m.groupId === g.id).map((m) => ({ ticker: m.ticker, tier: m.tier as MemberJson["tier"], rationale: m.rationale })),
     })));
-  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  } catch (e) { return errorResponse(e); }
   });
 }
 
@@ -31,6 +32,6 @@ export async function POST(req: Request) {
     const [g] = await db.insert(schema.peerGroups).values({ name, description: body?.description ?? "", createdBy: user.name || user.email || "analyst", userId: user.id }).returning();
     await db.insert(schema.peerGroupMembers).values(members.map((m) => ({ ...m, groupId: g.id })));
     return NextResponse.json({ id: `db-${g.id}`, dbId: g.id, name: g.name, description: g.description, members });
-  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  } catch (e) { return errorResponse(e); }
   });
 }

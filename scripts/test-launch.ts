@@ -7,6 +7,7 @@ import { blockedAt, fitMessages } from "@/lib/ai/limits";
 import { costOf } from "@/lib/ai/pricing";
 import { follow, followedCount, pollDelay, touch } from "@/lib/realtime/feed";
 import { memo } from "@/lib/memo";
+import { describeFailure, looksInternal, OUR_SIDE, publicMessage, TOO_SLOW } from "@/lib/errors";
 import { pollBackoff } from "@/components/news/client";
 
 let pass = 0, fail = 0;
@@ -99,6 +100,27 @@ async function main() {
   check("failures double the wait", pollBackoff(60_000, 1) === 120_000 && pollBackoff(60_000, 2) === 240_000);
   check("the wait tops out at ten minutes", pollBackoff(60_000, 20) === 600_000);
   check("a slow poll never waits less than its own pace", pollBackoff(900_000, 3) === 900_000);
+
+  console.log("error messages");
+  const quiet = console.error;
+  console.error = () => undefined;
+  const drizzle = Object.assign(new Error('Failed query: select "id" from "profiles" where "email" = $1\nparams: someone@example.com'), { name: "DrizzleQueryError" });
+  check("a database error is withheld", looksInternal(drizzle.message, drizzle.name) && publicMessage(drizzle).startsWith(OUR_SIDE));
+  const f = describeFailure(drizzle, 400);
+  check("…as a 500 with a reference in the message", f.status === 500 && !!f.ref && f.message.includes(f.ref!) && !f.message.includes("someone@"), f);
+  check("a URL is withheld", looksInternal("EDGAR 403 for https://data.sec.gov/submissions/CIK0000320193.json"));
+  check("a secret's name is withheld", looksInternal("set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env.local"));
+  check("a network failure is withheld", looksInternal("fetch failed") && looksInternal("connect ECONNREFUSED 10.0.0.1:5432"));
+  check("a plain message for people passes", publicMessage(new Error("This draft was already sent")) === "This draft was already sent");
+  check("a mail sign-in hint passes", !looksInternal("IMAP sign-in was refused. Use an app password, not your normal password, and check the address. For Gmail: 2-Step Verification must be on, then create one at myaccount.google.com/apppasswords."));
+  const forbidden = Object.assign(new Error("That model is private to the person who made it"), { status: 403 });
+  const g = describeFailure(forbidden);
+  check("a 4xx keeps its status and message, unlogged", g.status === 403 && g.message === forbidden.message && !g.ref, g);
+  const h = describeFailure(new Error("No mailbox is connected"), 400);
+  check("a message for people takes the route's usual status", h.status === 400 && h.message === "No mailbox is connected", h);
+  const late = Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+  check("a timeout reads as one", describeFailure(late).status === 504 && publicMessage(late) === TOO_SLOW);
+  console.error = quiet;
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

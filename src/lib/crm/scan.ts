@@ -1,4 +1,5 @@
 import { DAY_MS, OPEN_STAGES, REPLY_WORTHY, normalizeCompany, type Category, type Stage } from "./model";
+import { describeFailure } from "@/lib/errors";
 
 /**
  * What the agent looks for when it scans the CRM: conversations waiting on the other side, deals gone
@@ -132,7 +133,7 @@ export async function pool<T, R>(items: T[], size: number, deadline: number, fn:
   const worker = async () => {
     while (i < items.length && Date.now() < deadline) {
       const item = items[i++];
-      try { done.push(await fn(item)); } catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+      try { done.push(await fn(item)); } catch (e) { errors.push(describeFailure(e, 502, "scan").message); }
     }
   };
   await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));

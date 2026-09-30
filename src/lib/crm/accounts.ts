@@ -3,6 +3,7 @@ import { requireDb, schema } from "@/db";
 import { decryptToken, encryptToken, encryptionReady } from "./crypto";
 import { googleConfig, profile, refreshAccessToken } from "./gmail";
 import { MAIL_PRESETS, verifyMailbox, type ImapSettings } from "./imap";
+import { describeFailure } from "@/lib/errors";
 
 export type AccountRow = typeof schema.emailAccounts.$inferSelect;
 /** What the UI is allowed to see: never the tokens or the password. */
@@ -104,7 +105,7 @@ export async function accessTokenFor(account: AccountRow, origin: string): Promi
     }).where(eq(schema.emailAccounts.id, account.id));
     return t.access_token;
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = describeFailure(e, 502, "token-refresh").message;
     await db.update(schema.emailAccounts).set({ status: "needs_reauth", lastError: message.slice(0, 500) })
       .where(eq(schema.emailAccounts.id, account.id));
     throw new Error(`This mailbox needs to be reconnected: ${message}`);

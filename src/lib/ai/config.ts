@@ -42,7 +42,7 @@ export function resolveAi(prefs?: AiPrefs | null, override?: AiOverride): AiConf
     const researchModel = prefs?.researchModel ?? process.env.OPENAI_RESEARCH_MODEL?.trim() ?? "gpt-5.4-mini";
     return { provider, model, apiKey, effort, researchModel };
   }
-  return { provider: "none", reason: "set OPENAI_API_KEY or ANTHROPIC_API_KEY in .env.local" };
+  return { provider: "none", reason: "AI is not set up yet: an administrator needs to add an OpenAI or Anthropic key." };
 }
 
 /** Environment-only resolution, for background jobs with no user context. */

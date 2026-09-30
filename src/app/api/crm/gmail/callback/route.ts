@@ -4,6 +4,7 @@ import { currentUser } from "@/lib/auth/user";
 import { addressFor, saveAccount } from "@/lib/crm/accounts";
 import { exchangeCode, googleConfig } from "@/lib/crm/gmail";
 import { OAUTH_STATE_COOKIE } from "../connect/route";
+import { describeFailure } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
     });
     return back({ connected: address });
   } catch (e) {
-    return back({ error: e instanceof Error ? e.message : String(e) });
+    // Never put internal error text in a URL (browser history, request logs, Referer).
+    return back({ error: describeFailure(e, 400, "gmail-callback").message });
   }
 }

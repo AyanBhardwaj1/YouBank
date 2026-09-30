@@ -2,6 +2,7 @@ import { lease } from "@/lib/locks";
 import { requestUser } from "@/lib/office/auth";
 import { runStudioAgent, type StudioStreamEvent } from "@/lib/studio/agent";
 import { requireDoc } from "@/lib/studio/db";
+import { errorResponse, logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -17,7 +18,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const id = Number((await ctx.params).id);
   if (!Number.isInteger(id)) return Response.json({ error: "bad id" }, { status: 400 });
-  try { await requireDoc(user, id, "edit"); } catch (e) { return Response.json({ error: e instanceof Error ? e.message : "Forbidden" }, { status: 403 }); }
+  try { await requireDoc(user, id, "edit"); } catch (e) { return errorResponse(e, 403); }
   const body = (await req.json().catch(() => null)) as { instruction?: string; effort?: "fast" | "balanced" | "thorough"; selection?: { sheet?: string; range?: string }; history?: { role: "user" | "assistant"; content: string }[] } | null;
   const instruction = body?.instruction?.trim();
   if (!instruction) return Response.json({ error: "Say what to do" }, { status: 400 });
@@ -34,7 +35,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           history: (body?.history ?? []).filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string").slice(-6).map((m) => ({ role: m.role, content: m.content.slice(0, 4000) })),
           emit, signal: req.signal,
         });
-      } catch {
+      } catch (e) {
+        logError(e, { where: "studio-agent" });
         emit({ t: "error", message: "The agent could not start. Try again in a moment." });
       } finally {
         await release();

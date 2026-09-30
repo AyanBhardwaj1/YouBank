@@ -8,12 +8,12 @@
  * models built on them, never FRED series.
  */
 import { z } from "zod";
-import { def, type ToolDef } from "./tools";
+import { def, toolError, type ToolDef } from "./tools";
 
 const J = (x: unknown) => JSON.stringify(x);
 const r = (v: number | null | undefined, d = 4) => (v === null || v === undefined || !Number.isFinite(v) ? null : Number(v.toFixed(d)));
 const secUrl = (cik?: string) => (cik ? `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik.padStart(10, "0")}.json` : "https://www.sec.gov/edgar/search/");
-const fail = (e: unknown) => J({ error: e instanceof Error ? e.message : String(e), planLimited: (e as { constructor?: { name?: string } })?.constructor?.name === "MarketDataError" });
+const fail = (e: unknown) => J({ error: toolError(e), planLimited: (e as { constructor?: { name?: string } })?.constructor?.name === "MarketDataError" });
 
 export const priceRiskTool = def({
   name: "get_price_risk",

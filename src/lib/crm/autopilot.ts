@@ -15,6 +15,7 @@ import { openMailbox, type Mailbox } from "./mailbox";
 import { sendDraft } from "./send";
 import { claimLock, getSettings, internalDomains, releaseLock, type SettingsRow } from "./settings";
 import { syncAccount, type SyncResult } from "./sync";
+import { describeFailure } from "@/lib/errors";
 
 /**
  * The autopilot: the part of the agent that acts on its own.
@@ -286,7 +287,7 @@ export async function sendDue(userId: string, origin: string, deadline: number):
         sentTimes.push(new Date());
         out.sent++;
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
+        const message = describeFailure(e, 502, "autopilot-send").message;
         out.failed++;
         out.errors.push(`${draft.subject}: ${message}`);
         const [after] = await db.select({ attempts: schema.crmDrafts.attempts }).from(schema.crmDrafts).where(eq(schema.crmDrafts.id, draft.id));
@@ -319,7 +320,7 @@ export async function tick(userId: string, origin: string, deadline: number): Pr
   const out: TickResult = { locked: false, synced: [], replies: { drafted: 0, scheduled: 0 }, followUps: 0, campaigns: { drafted: 0, scheduled: 0 }, queue: null, errors: [] };
   if (!(await claimLock(userId, 5))) { out.locked = true; return out; }
   const attempt = async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
-    try { return await fn(); } catch (e) { out.errors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`); return null; }
+    try { return await fn(); } catch (e) { out.errors.push(`${label}: ${describeFailure(e, 502, `autopilot:${label}`).message}`); return null; }
   };
   try {
     const settings = await getSettings(userId);

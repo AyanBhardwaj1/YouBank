@@ -3,6 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { guarded } from "@/lib/auth/user";
 import { requireDb, schema } from "@/db";
 import type { MemberJson } from "@/db/schema";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,6 @@ export async function POST(req: Request) {
     }
     const [row] = await db.insert(schema.compsSheets).values({ ...values, createdBy: user.name || user.email || "analyst", userId: user.id }).returning();
     return NextResponse.json(row);
-  } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 }); }
+  } catch (e) { return errorResponse(e); }
   });
 }

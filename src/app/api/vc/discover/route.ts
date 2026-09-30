@@ -3,6 +3,7 @@ import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { discoverStartups } from "@/lib/vc/sources/web";
 import { upsertStartups, searchStartups } from "@/lib/vc/directory";
+import { errorResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -19,6 +20,6 @@ export async function POST(req: Request) {
       const names = rows.map((r) => r.name);
       const found = names.length ? (await searchStartups({ source: "web", pageSize: 100 })).rows.filter((r) => names.includes(r.name)) : [];
       return NextResponse.json({ written, rows: found });
-    } catch (e) { return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 }); }
+    } catch (e) { return errorResponse(e, 502); }
   });
 }
