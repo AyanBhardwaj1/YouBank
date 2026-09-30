@@ -1,3 +1,5 @@
+import { cronAuthorized } from "@/lib/auth/admin";
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
@@ -6,8 +8,7 @@ export const maxDuration = 300;
  * so it cannot be used to burn function minutes: curl -H "Authorization: Bearer $CRON_SECRET" ".../api/health/duration?s=75"
  */
 export async function GET(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!cronAuthorized(req)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   const seconds = Math.min(120, Math.max(1, Number(new URL(req.url).searchParams.get("s") ?? 5)));
