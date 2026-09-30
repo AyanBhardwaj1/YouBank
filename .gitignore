@@ -52,3 +52,4 @@ next-env.d.ts
 # Local Python environment for the Modal ML service (ml/)
 ml/.venv/
 __pycache__/
+ml/__pycache__/
