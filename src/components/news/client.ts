@@ -19,17 +19,38 @@ export const post = <T,>(url: string, body: unknown) => api<T>(url, { method: "P
 
 const qs = (p: Record<string, string | undefined | null>) => Object.entries(p).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
 
-/** A fetch that re-runs when `url` changes, keeping the last answer while the next loads. */
+/** How long to wait before the next poll after `failures` failures in a row: doubling, up to ten minutes. Pure, for tests. */
+export const pollBackoff = (pollMs: number, failures: number) => Math.min(pollMs * 2 ** Math.min(failures, 6), Math.max(pollMs, 600_000));
+
+/**
+ * A fetch that re-runs when `url` changes, keeping the last answer while the next loads. With `pollMs`
+ * it refreshes on that interval while the tab is in view: a hidden tab skips its polls and refreshes
+ * once when shown again, and failures (an outage, a rate limit) back off instead of hammering.
+ */
 export function useApi<T>(url: string | null, pollMs = 0) {
   const [state, setState] = useState<{ url: string | null; data: T | null; error: string | null }>({ url: null, data: null, error: null });
   const [nonce, setNonce] = useState(0);
   useEffect(() => {
     if (!url) return;
     let live = true;
-    const load = () => api<T>(url).then((data) => { if (live) setState({ url, data, error: null }); }).catch((e) => { if (live) setState((s) => ({ url, data: s.data, error: e instanceof Error ? e.message : String(e) })); });
+    let failures = 0;
+    let due = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (!live || !pollMs) return;
+      timer = setTimeout(() => {
+        if (document.visibilityState === "hidden") due = true;
+        else void load();
+      }, pollBackoff(pollMs, failures));
+    };
+    const load = () => api<T>(url)
+      .then((data) => { failures = 0; if (live) setState({ url, data, error: null }); })
+      .catch((e) => { failures++; if (live) setState((s) => ({ url, data: s.data, error: e instanceof Error ? e.message : String(e) })); })
+      .finally(schedule);
+    const onVisibility = () => { if (document.visibilityState !== "hidden" && due) { due = false; void load(); } };
     void load();
-    const t = pollMs ? setInterval(load, pollMs) : null;
-    return () => { live = false; if (t) clearInterval(t); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { live = false; if (timer) clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [url, pollMs, nonce]);
   return { data: state.data, error: state.error, loading: state.url !== url, reload: () => setNonce((n) => n + 1) };
 }

@@ -6,6 +6,8 @@ import { modelAllowed } from "@/lib/ai/config";
 import { blockedAt, fitMessages } from "@/lib/ai/limits";
 import { costOf } from "@/lib/ai/pricing";
 import { follow, followedCount, pollDelay, touch } from "@/lib/realtime/feed";
+import { memo } from "@/lib/memo";
+import { pollBackoff } from "@/components/news/client";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -80,6 +82,23 @@ async function main() {
   stopA(); stopB();
   await nap(30);
   check("the poll stops when nobody follows", followedCount() === 0);
+
+  console.log("shared reads and polling");
+  let loads = 0;
+  const slow = () => new Promise<number>((r) => setTimeout(() => r(++loads), 20));
+  const [x, y] = await Promise.all([memo("t:1", 50, slow), memo("t:1", 50, slow)]);
+  check("callers asking at once share one load", loads === 1 && x === 1 && y === 1, { loads, x, y });
+  check("a fresh value is reused", (await memo("t:1", 50, slow)) === 1 && loads === 1);
+  await nap(60);
+  check("an expired value is loaded again", (await memo("t:1", 50, slow)) === 2);
+  let failures = 0;
+  await memo("t:2", 1_000, async () => { failures++; throw new Error("down"); }).catch(() => undefined);
+  await memo("t:2", 1_000, async () => { failures++; return 1; });
+  check("a failure is not kept", failures === 2);
+  check("polling keeps its pace while healthy", pollBackoff(60_000, 0) === 60_000);
+  check("failures double the wait", pollBackoff(60_000, 1) === 120_000 && pollBackoff(60_000, 2) === 240_000);
+  check("the wait tops out at ten minutes", pollBackoff(60_000, 20) === 600_000);
+  check("a slow poll never waits less than its own pace", pollBackoff(900_000, 3) === 900_000);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

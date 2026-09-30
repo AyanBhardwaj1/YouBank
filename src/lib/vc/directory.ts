@@ -1,5 +1,6 @@
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { memo } from "@/lib/memo";
 
 export type StartupRow = typeof schema.startups.$inferSelect;
 export type NewStartup = Omit<typeof schema.startups.$inferInsert, "id" | "syncedAt">;
@@ -48,7 +49,10 @@ export async function searchStartups(qy: StartupQuery) {
   return { total, page, pageSize, rows };
 }
 
-export async function startupFacets() {
+/** Filter counts for the directory: five aggregates over every startup, so built once per instance every ten minutes (the directory changes nightly). */
+export const startupFacets = () => memo("vc:facets", 600_000, buildFacets);
+
+async function buildFacets() {
   const db = requireDb();
   const sources = await db.select({ source: schema.startups.source, n: sql<number>`count(*)::int` }).from(schema.startups).groupBy(schema.startups.source);
   const countries = await db.select({ country: schema.startups.country, n: sql<number>`count(*)::int` }).from(schema.startups).where(sql`${schema.startups.country} <> ''`).groupBy(schema.startups.country).orderBy(desc(sql`count(*)`)).limit(60);

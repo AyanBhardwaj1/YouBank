@@ -2,7 +2,7 @@
 import { and, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { NewsSummary } from "@/db/schema";
-import { cacheSet } from "@/lib/cache";
+import { memo } from "@/lib/memo";
 import { deskBrief, forYou } from "./brief";
 import { CATEGORY_LABEL, type Category } from "./classify";
 import { recentDeals, leagueTable, type DealRow } from "./deals";
@@ -10,7 +10,7 @@ import { allDesks, SECTOR_LABEL, LENS_LABEL, type Desk } from "./desks";
 import { publicPrefs } from "./prefs";
 import { rank } from "./rank";
 import { readerFor, type ReaderContext } from "./reader";
-import { itemsOf, recentClusters, type ClusterRow, type ItemRow } from "./store";
+import { itemsOf, sharedRecentClusters, type ClusterRow, type ItemRow } from "./store";
 
 export type SourceRef = { name: string; domain: string; kind: string; url: string; at: string; via?: string };
 export type DealBrief = Pick<DealRow, "kind" | "acquirer" | "acquirerTicker" | "target" | "targetTicker" | "valueUsd" | "perShare" | "consideration" | "premium" | "evEbitda" | "evRevenue" | "round" | "investors" | "advisors" | "status">;
@@ -69,7 +69,6 @@ export async function feedView(userId: string, opts: { desk?: string; category?:
   if (!ctx) return null;
   const desk = (opts.desk && allDesks().find((d) => d.id === opts.desk)) || ctx.desk;
   const reader = { ...ctx.reader, desk };
-  await cacheSet(`news:seen:${userId}`, String(Date.now()), 30 * 86_400_000).catch(() => undefined);
   let clusters: ClusterRow[];
   if (opts.saved) {
     const saved = await requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.savedAt} is not null`)).orderBy(desc(schema.newsUserItems.savedAt)).limit(200);
@@ -78,7 +77,7 @@ export async function feedView(userId: string, opts: { desk?: string; category?:
     const q = `%${opts.q.trim().replace(/[%_]/g, "")}%`;
     clusters = await requireDb().select().from(schema.newsClusters).where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - 30 * 86_400_000)), ilike(schema.newsClusters.headline, q))).orderBy(desc(schema.newsClusters.updatedAt)).limit(200);
   } else {
-    clusters = await recentClusters(opts.hours ?? 72, 800, 0.12);
+    clusters = await sharedRecentClusters(Math.min(Math.max(Math.round(opts.hours ?? 72), 1), 168), 800, 0.12);
   }
   const hidden = new Set((await requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.hiddenAt} is not null`))).map((r) => r.id));
   let ranked = rank(reader, clusters.filter((c) => !hidden.has(c.id)));
@@ -116,16 +115,24 @@ export async function briefView(userId: string, deskId?: string) {
   if (!ctx) return null;
   const desk = (deskId && allDesks().find((d) => d.id === deskId)) || ctx.desk;
   const brief = await deskBrief(desk);
-  const mine = forYou({ ...ctx.reader, desk }, await recentClusters(30, 600, 0.2), 5);
+  const mine = forYou({ ...ctx.reader, desk }, await sharedRecentClusters(30, 600, 0.2), 5);
   const cards = await cardsFor(userId, [...mine, ...(await requireDb().select().from(schema.newsClusters).where(inArray(schema.newsClusters.id, brief.items.map((i) => i.clusterId).length ? brief.items.map((i) => i.clusterId) : [-1])))]);
   return { brief, forYou: cards.slice(0, mine.length), cards: Object.fromEntries(cards.slice(mine.length).map((c) => [c.id, c])) };
 }
 
+/** The deal tracker and the year's league tables: the same for everyone, so built once per instance every two minutes. */
 export async function dealsView(opts: { days?: number; kinds?: string[]; sectors?: string[] } = {}) {
-  // Ownership stakes (13D filers) stay in the database but out of the tracker unless asked for.
-  const deals = (await recentDeals({ days: opts.days ?? 30, kinds: opts.kinds, sectors: opts.sectors, limit: 200 })).filter((d) => opts.kinds?.includes("stake") || d.kind !== "stake").slice(0, 150);
-  const year = await recentDeals({ days: 365, limit: 2000 });
-  return { deals, league: { financial: leagueTable(year, "financial"), legal: leagueTable(year, "legal") } };
+  const days = Math.min(Math.max(Math.round(opts.days ?? 30), 1), 365);
+  const kinds = [...(opts.kinds ?? [])].sort(), sectors = [...(opts.sectors ?? [])].sort();
+  return memo(`news:deals:${days}:${kinds.join(",")}:${sectors.join(",")}`, 120_000, async () => {
+    // Ownership stakes (13D filers) stay in the database but out of the tracker unless asked for.
+    const deals = (await recentDeals({ days, kinds: kinds.length ? kinds : undefined, sectors: sectors.length ? sectors : undefined, limit: 200 })).filter((d) => kinds.includes("stake") || d.kind !== "stake").slice(0, 150);
+    const { financial, legal } = await memo("news:league", 600_000, async () => {
+      const year = await recentDeals({ days: 365, limit: 2000 });
+      return { financial: leagueTable(year, "financial"), legal: leagueTable(year, "legal") };
+    });
+    return { deals, league: { financial, legal } };
+  });
 }
 
 /** News about one company (terminal CN and the DES strip). */

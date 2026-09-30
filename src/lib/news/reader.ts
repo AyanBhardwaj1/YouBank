@@ -1,6 +1,7 @@
 /** Everything needed to rank stories for one person: their profile, preferences, desk, watchlist and network. */
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { memo } from "@/lib/memo";
 import { workspaceFor, type Profile, type RoleId } from "@/lib/roles";
 import { allDesks, deskFor, type Desk } from "./desks";
 import { normalizeNewsPrefs, type NewsPrefs } from "./prefs";
@@ -37,6 +38,7 @@ export async function readerFor(userId: string): Promise<ReaderContext | null> {
   const profile = profileOf(p);
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const prefs = normalizeNewsPrefs(extra.news, profile);
-  const parts = readerFromParts(profile, prefs, await networkOf(userId).catch(() => new Map()));
+  // Contacts change slowly; the feed polls every minute. Five minutes of reuse per instance.
+  const parts = readerFromParts(profile, prefs, await memo(`news:network:${userId}`, 300_000, () => networkOf(userId)).catch(() => new Map()));
   return { userId, email: p.email, name: p.name, profile, prefs, extra, ...parts };
 }

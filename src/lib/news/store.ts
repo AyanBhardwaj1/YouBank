@@ -3,12 +3,13 @@
  * interactive transactions): items insert once by key, a story's figures are recomputed from its
  * items rather than incremented, and retention deletes by age.
  */
-import { and, desc, eq, gte, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { amountIn, importanceOf, readWords, type Category } from "./classify";
 import { cosine as cosineOf, figures, mergeCentroid, packVector, sharesFigure, unpackVector, type ClusterCand } from "./cluster";
 import type { Tag, Tier } from "./desks";
 import type { RawItem } from "./types";
+import { memo } from "@/lib/memo";
 
 export type ItemRow = typeof schema.newsItems.$inferSelect;
 export type ClusterRow = typeof schema.newsClusters.$inferSelect;
@@ -157,17 +158,27 @@ export async function clustersToEnrich(limit: number, minImportance = 0.42): Pro
     .orderBy(desc(schema.newsClusters.importance)).limit(limit);
 }
 
+/** A story's items for display, without the embedding (clustering reads that with its own query). */
 export async function itemsOf(clusterIds: number[]): Promise<ItemRow[]> {
   if (!clusterIds.length) return [];
-  return requireDb().select().from(schema.newsItems).where(inArray(schema.newsItems.clusterId, clusterIds)).orderBy(schema.newsItems.publishedAt);
+  return requireDb().select({ ...getTableColumns(schema.newsItems), embedding: sql<string | null>`null` }).from(schema.newsItems)
+    .where(inArray(schema.newsItems.clusterId, clusterIds)).orderBy(schema.newsItems.publishedAt);
 }
 
-/** Recent stories for ranking: everything that moved in the window, most recent first. */
+/**
+ * Recent stories for ranking: everything that moved in the window, most recent first, without the
+ * centroid (clustering reads that with its own query). The feed and brief ask with the same window for
+ * everyone, so one read per instance a minute serves them all; results are shared, never mutated.
+ */
 export async function recentClusters(hours: number, limit = 600, minImportance = 0): Promise<ClusterRow[]> {
   const since = new Date(Date.now() - hours * 3_600_000);
-  return requireDb().select().from(schema.newsClusters).where(and(gte(schema.newsClusters.updatedAt, since), gte(schema.newsClusters.importance, minImportance)))
+  return requireDb().select({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` }).from(schema.newsClusters)
+    .where(and(gte(schema.newsClusters.updatedAt, since), gte(schema.newsClusters.importance, minImportance)))
     .orderBy(desc(schema.newsClusters.updatedAt)).limit(limit);
 }
+
+export const sharedRecentClusters = (hours: number, limit: number, minImportance: number) =>
+  memo(`news:recent:${hours}:${limit}:${minImportance}`, 60_000, () => recentClusters(hours, limit, minImportance));
 
 /* ---------------- Retention ---------------- */
 

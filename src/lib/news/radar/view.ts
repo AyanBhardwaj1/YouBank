@@ -7,6 +7,7 @@
  */
 import { and, desc, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { memo } from "@/lib/memo";
 import { recentDeals } from "../deals";
 import { SECTOR_KEYS, SECTOR_LABEL, SECTOR_OF, type SectorKey } from "../desks";
 import { readerFor } from "../reader";
@@ -80,16 +81,20 @@ export async function radarScreen(userId: string, requested?: string): Promise<R
   const sector: SectorKey = requested && (requested === "tech" || isSectorRadar(requested)) ? (requested as SectorKey) : chosen || own;
   const common: Common = { sectors: SECTORS, own, chosen };
   if (sector === "tech" || !isSectorRadar(sector)) {
-    return { ...common, kind: "tech", sector: "tech", title: "Tech radar", blurb: "What researchers and builders are paying attention to this week, before it is news: Hugging Face daily papers and trending models, GitHub's fastest-rising repositories, and Show HN launches.", ...(await techRadar()) };
+    return { ...common, kind: "tech", sector: "tech", title: "Tech radar", blurb: "What researchers and builders are paying attention to this week, before it is news: Hugging Face daily papers and trending models, GitHub's fastest-rising repositories, and Show HN launches.", ...(await memo("news:tech-radar", 300_000, techRadar)) };
   }
   const def = RADARS[sector];
-  const [build, deals, stories] = await Promise.all([
-    radarLanes(sector),
-    recentDeals({ days: 30, sectors: [sector], limit: 40 }).then((d) => d.filter((x) => x.kind !== "stake").slice(0, 10)).catch(() => []),
-    requireDb().select({ id: schema.newsClusters.id, headline: schema.newsClusters.headline, summary: schema.newsClusters.summary }).from(schema.newsClusters)
-      .where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - 7 * 86_400_000)), sql`${schema.newsClusters.desks} @> ${JSON.stringify([sector])}::jsonb`))
-      .orderBy(desc(schema.newsClusters.importance)).limit(250).catch(() => []),
-  ]);
-  const map = radarMap(build.lanes, stories.map((s) => ({ id: s.id, headline: s.headline, text: `${s.headline} ${(s.summary?.bullets ?? []).join(" ")}` })));
-  return { ...common, kind: "sector", sector, title: def.title, blurb: def.blurb, region: def.region, builtAt: build.builtAt, lanes: build.lanes, deals, map };
+  // Everything below is the same for everyone who opens this sector: built once per instance every five minutes.
+  const shared = await memo(`news:radar-view:${sector}`, 300_000, async () => {
+    const [build, deals, stories] = await Promise.all([
+      radarLanes(sector),
+      recentDeals({ days: 30, sectors: [sector], limit: 40 }).then((d) => d.filter((x) => x.kind !== "stake").slice(0, 10)).catch(() => []),
+      requireDb().select({ id: schema.newsClusters.id, headline: schema.newsClusters.headline, summary: schema.newsClusters.summary }).from(schema.newsClusters)
+        .where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - 7 * 86_400_000)), sql`${schema.newsClusters.desks} @> ${JSON.stringify([sector])}::jsonb`))
+        .orderBy(desc(schema.newsClusters.importance)).limit(250).catch(() => []),
+    ]);
+    const map = radarMap(build.lanes, stories.map((s) => ({ id: s.id, headline: s.headline, text: `${s.headline} ${(s.summary?.bullets ?? []).join(" ")}` })));
+    return { builtAt: build.builtAt, lanes: build.lanes, deals, map };
+  });
+  return { ...common, kind: "sector", sector, title: def.title, blurb: def.blurb, region: def.region, ...shared };
 }
