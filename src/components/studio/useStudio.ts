@@ -72,10 +72,19 @@ export function useStudio(id: number) {
     return d.cursor;
   }, [id, bump]);
 
+  /** Runs, history and team: a light read that leaves the document itself alone. */
   const refreshMeta = useCallback(async () => {
-    const d = await J<Meta>(await fetch(`/api/studio/${id}`)).catch(() => null);
+    const d = await J<Pick<Meta, "runs" | "history" | "teamId">>(await fetch(`/api/studio/${id}?meta=1`)).catch(() => null);
     if (d) setMeta((m) => (m ? { ...m, runs: d.runs, history: d.history, teamId: d.teamId } : m));
   }, [id]);
+
+  /** The same, for changes streaming in from others: one refresh covers every change in a two-second window. */
+  const metaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshMetaSoon = useCallback(() => {
+    if (metaTimer.current) return;
+    metaTimer.current = setTimeout(() => { metaTimer.current = null; void refreshMeta(); }, 2_000);
+  }, [refreshMeta]);
+  useEffect(() => () => { if (metaTimer.current) clearTimeout(metaTimer.current); }, []);
 
   /** Apply patches that arrived from elsewhere (the agent or another person), with a reveal and glow. */
   const receive = useCallback((eventId: number, patches: Patch[], reveal: boolean) => {
@@ -116,24 +125,46 @@ export function useStudio(id: number) {
     return () => clearInterval(t);
   }, [bump]);
 
-  // Load, then follow everyone else's edits.
+  // Load, then follow everyone else's edits while the page is in view. A tab left in the background
+  // closes its stream after a short grace period and, shown again, resumes from the last change it saw.
   useEffect(() => {
     let es: EventSource | null = null;
     let closed = false;
+    let last = 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    const open = () => {
+      if (es || closed) return;
+      es = new EventSource(`/api/studio/${id}/stream?since=${last}`);
+      es.addEventListener("change", (m) => {
+        const e = JSON.parse((m as MessageEvent).data) as { id: number; patches: Patch[]; actor: string; runId: string; label: string };
+        last = Math.max(last, e.id);
+        // My own edits were applied the moment I made them; replaying them could briefly undo a later keystroke.
+        if (e.actor === me.current && !e.runId) { applied.current.add(e.id); return; }
+        if (!applied.current.has(e.id)) { receive(e.id, e.patches, e.actor === "agent"); refreshMetaSoon(); }
+      });
+    };
+    const shut = () => { es?.close(); es = null; };
+    const onVisibility = () => {
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (document.visibilityState === "hidden") hideTimer = setTimeout(shut, 30_000);
+      else open();
+    };
     const t = setTimeout(() => {
       load().then((cursor) => {
         if (closed) return;
-        es = new EventSource(`/api/studio/${id}/stream?since=${cursor}`);
-        es.addEventListener("change", (m) => {
-          const e = JSON.parse((m as MessageEvent).data) as { id: number; patches: Patch[]; actor: string; runId: string; label: string };
-          // My own edits were applied the moment I made them; replaying them could briefly undo a later keystroke.
-          if (e.actor === me.current && !e.runId) { applied.current.add(e.id); return; }
-          if (!applied.current.has(e.id)) { receive(e.id, e.patches, e.actor === "agent"); refreshMeta(); }
-        });
+        last = cursor;
+        if (document.visibilityState !== "hidden") open();
+        document.addEventListener("visibilitychange", onVisibility);
       }).catch((e) => setError(e instanceof Error ? e.message : String(e)));
     }, 0);
-    return () => { closed = true; clearTimeout(t); es?.close(); };
-  }, [id, load, receive, refreshMeta]);
+    return () => {
+      closed = true;
+      clearTimeout(t);
+      if (hideTimer) clearTimeout(hideTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      shut();
+    };
+  }, [id, load, receive, refreshMetaSoon]);
 
   /** A person's edit: applied now, saved in the background with its undo. */
   const edit = useCallback(async (patches: Patch[], label?: string) => {

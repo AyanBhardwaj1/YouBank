@@ -5,6 +5,7 @@
 import { modelAllowed } from "@/lib/ai/config";
 import { blockedAt, fitMessages } from "@/lib/ai/limits";
 import { costOf } from "@/lib/ai/pricing";
+import { follow, followedCount, pollDelay, touch } from "@/lib/realtime/feed";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -53,6 +54,32 @@ async function main() {
   check("a listed model is allowed", modelAllowed("gpt-5.6-luna"));
   check("an unlisted model is not", !modelAllowed("gpt-5.5-pro"));
   if (was === undefined) delete process.env.AI_ALLOWED_MODELS; else process.env.AI_ALLOWED_MODELS = was;
+
+  console.log("live-update streams");
+  check("fast right after activity", pollDelay(0, false) === 1_000 && pollDelay(14_000, false) === 1_000);
+  check("easing off while quiet", pollDelay(30_000, false) === 2_500);
+  check("slowest after a quiet minute", pollDelay(120_000, false) === 5_000 && pollDelay(3_600_000, false) === 5_000);
+  check("STREAM_MODE=slow stretches the pace five times", pollDelay(0, true) === 5_000 && pollDelay(120_000, true) === 25_000);
+
+  const log: { id: number }[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  let polls = 0;
+  const load = async (since: number) => { polls++; return { events: log.filter((e) => e.id > since) }; };
+  const nap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const got: Record<string, number[]> = { a: [], b: [] };
+  const stopA = follow("test:1", 0, load, ({ events }) => { got.a.push(...events.map((e) => e.id)); });
+  await nap(30);
+  check("a follower receives the log from its cursor", got.a.join() === "1,2,3", got.a);
+  const stopB = follow("test:1", 2, load, ({ events }) => { got.b.push(...events.map((e) => e.id)); });
+  await nap(30);
+  check("a newcomer is served at once from its own cursor", got.b.join() === "3", got.b);
+  check("two followers of one log share a poll", followedCount() === 1 && polls === 2, { polls, followed: followedCount() });
+  log.push({ id: 4 });
+  touch("test:1");
+  await nap(30);
+  check("a write wakes the followers, each sees it once", got.a.join() === "1,2,3,4" && got.b.join() === "3,4", got);
+  stopA(); stopB();
+  await nap(30);
+  check("the poll stops when nobody follows", followedCount() === 0);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

@@ -1,14 +1,15 @@
 import { and, asc, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
+import { touch } from "@/lib/realtime/feed";
 import { Forbidden, myTeamIds } from "@/lib/teams/db";
 
 export type SessionRow = typeof schema.collabSessions.$inferSelect;
 export type EventRow = typeof schema.collabEvents.$inferSelect;
 export type Presence = { userId: string; name: string; field: string; lastSeenAt: string };
 
-/** Someone who has not checked in within this window is treated as gone. */
-export const PRESENCE_WINDOW_MS = 25_000;
+/** Someone who has not checked in within this window is treated as gone (streams check in every 15 s). */
+export const PRESENCE_WINDOW_MS = 40_000;
 
 /* ---------------- Access ---------------- */
 
@@ -25,6 +26,18 @@ export async function requireSession(user: CurrentUser, sessionId: number): Prom
     ? "That session is shared with a team you are not on"
     : "That session is private to the person who started it");
 }
+
+/** The same check reading two columns, not the shared state: for the live stream. */
+export async function requireSessionAccess(user: CurrentUser, sessionId: number): Promise<void> {
+  const [s] = await requireDb().select({ ownerId: schema.collabSessions.ownerId, teamId: schema.collabSessions.teamId }).from(schema.collabSessions).where(eq(schema.collabSessions.id, sessionId));
+  if (!s) throw new Forbidden("That session does not exist");
+  if (s.ownerId === user.id) return;
+  if (s.teamId && (await myTeamIds(user.id)).includes(s.teamId)) return;
+  throw new Forbidden("You do not have access to that session");
+}
+
+/** The live-stream key for a session: writes on this instance wake its followers. */
+export const sessionFeed = (sessionId: number) => `collab:${sessionId}`;
 
 /* ---------------- Sessions ---------------- */
 
@@ -63,6 +76,7 @@ export async function closeSession(user: CurrentUser, sessionId: number): Promis
 export async function appendEvent(sessionId: number, user: CurrentUser, kind: string, payload: Record<string, unknown>): Promise<EventRow> {
   const [row] = await requireDb().insert(schema.collabEvents)
     .values({ sessionId, userId: user.id, userName: user.name || user.email, kind, payload }).returning();
+  touch(sessionFeed(sessionId));
   return row;
 }
 

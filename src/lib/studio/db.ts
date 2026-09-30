@@ -6,6 +6,7 @@
 import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
+import { touch } from "@/lib/realtime/feed";
 import { Forbidden, membership, myTeamIds } from "@/lib/teams/db";
 import { can } from "@/lib/teams/roles";
 import { applyWithUndo, describePatches, type Patch } from "./ops";
@@ -20,11 +21,23 @@ export const docData = (row: DocRow): StudioDocData => ({ title: row.title, work
 /** Own documents, and documents shared with a team the person is on (viewers may look, not edit). */
 export async function requireDoc(user: CurrentUser, id: number, mode: "view" | "edit" = "view"): Promise<DocRow> {
   const [row] = await requireDb().select().from(schema.studioDocs).where(eq(schema.studioDocs.id, id));
+  await checkAccess(user, row, mode);
+  return row;
+}
+
+/** The same check reading two columns, not the document: for streams and edits that do not need the body. */
+export async function requireDocAccess(user: CurrentUser, id: number, mode: "view" | "edit" = "view"): Promise<{ id: number; ownerId: string; teamId: number | null }> {
+  const [row] = await requireDb().select({ id: schema.studioDocs.id, ownerId: schema.studioDocs.ownerId, teamId: schema.studioDocs.teamId }).from(schema.studioDocs).where(eq(schema.studioDocs.id, id));
+  await checkAccess(user, row, mode);
+  return row;
+}
+
+async function checkAccess(user: CurrentUser, row: { ownerId: string; teamId: number | null } | undefined, mode: "view" | "edit") {
   if (!row) throw new Forbidden("That model does not exist");
-  if (row.ownerId === user.id) return row;
+  if (row.ownerId === user.id) return;
   if (row.teamId) {
     const m = await membership(row.teamId, user.id);
-    if (m && can(m.role, mode === "edit" ? "edit" : "view")) return row;
+    if (m && can(m.role, mode === "edit" ? "edit" : "view")) return;
   }
   throw new Forbidden(row.teamId ? "That model is shared with a team you are not on" : "That model is private to the person who made it");
 }
@@ -71,6 +84,18 @@ export async function eventsSince(docId: number, cursor: number, limit = 200): P
   return requireDb().select().from(schema.studioEvents)
     .where(and(eq(schema.studioEvents.docId, docId), gt(schema.studioEvents.id, cursor))).orderBy(schema.studioEvents.id).limit(limit);
 }
+
+/** Changes after a cursor as the live stream sends them: no undo patches, which only undo needs. */
+export async function changesSince(docId: number, cursor: number, limit = 200) {
+  return requireDb().select({
+    id: schema.studioEvents.id, actor: schema.studioEvents.actor, actorName: schema.studioEvents.actorName, runId: schema.studioEvents.runId,
+    label: schema.studioEvents.label, patches: schema.studioEvents.patches, createdAt: schema.studioEvents.createdAt,
+  }).from(schema.studioEvents)
+    .where(and(eq(schema.studioEvents.docId, docId), gt(schema.studioEvents.id, cursor))).orderBy(schema.studioEvents.id).limit(limit);
+}
+
+/** The live-stream key for a document: writes on this instance wake its followers. */
+export const docFeed = (docId: number) => `studio:${docId}`;
 
 /* ---------------- Writing ---------------- */
 
@@ -154,6 +179,7 @@ export async function commit(docId: number, doc: StudioDocData, patches: Patch[]
   const [row] = await requireDb().insert(schema.studioEvents).values({
     docId, actor: meta.actor, actorName: meta.actorName, runId: meta.runId ?? "", label, patches, undo,
   }).returning({ id: schema.studioEvents.id });
+  touch(docFeed(docId));
   return { id: row.id, patches, label, actor: meta.actor, actorName: meta.actorName, runId: meta.runId ?? "" };
 }
 
@@ -166,6 +192,7 @@ export async function commitRaw(docId: number, patches: Patch[], undo: Patch[], 
   const [row] = await requireDb().insert(schema.studioEvents).values({
     docId, actor: meta.actor, actorName: meta.actorName, runId: meta.runId ?? "", label: meta.label.slice(0, 300), patches, undo,
   }).returning({ id: schema.studioEvents.id });
+  touch(docFeed(docId));
   return row.id;
 }
 

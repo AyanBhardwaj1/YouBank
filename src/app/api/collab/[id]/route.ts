@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
-import { applyPatch, closeSession, heartbeat, latestEventId, leave, presenceFor, requireSession } from "@/lib/collab/db";
+import { applyPatch, closeSession, heartbeat, latestEventId, leave, presenceFor, requireSession, sessionFeed } from "@/lib/collab/db";
+import { touch } from "@/lib/realtime/feed";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
     if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    // The cursor is read before the state, so an edit landing in between is replayed rather than lost.
+    const lastEventId = await latestEventId(id);
     const session = await requireSession(user, id);
-    const [presence, lastEventId] = await Promise.all([presenceFor(id), latestEventId(id)]);
+    const presence = await presenceFor(id);
     return NextResponse.json({ session, presence, lastEventId });
   });
 }
@@ -28,8 +31,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (body?.action === "close") { await closeSession(user, id); return NextResponse.json({ ok: true }); }
     await requireSession(user, id);
 
-    if (body?.action === "leave") { await leave(id, user.id); return NextResponse.json({ ok: true }); }
-    if (body?.action === "heartbeat") return NextResponse.json({ presence: await heartbeat(id, user, body.field ?? "") });
+    // Presence changes wake this instance's followers, so a focus shows up at once for them.
+    if (body?.action === "leave") { await leave(id, user.id); touch(sessionFeed(id)); return NextResponse.json({ ok: true }); }
+    if (body?.action === "heartbeat") {
+      const presence = await heartbeat(id, user, String(body.field ?? "").slice(0, 120));
+      touch(sessionFeed(id));
+      return NextResponse.json({ presence });
+    }
     if (body?.patch && typeof body.patch === "object") {
       const ev = await applyPatch(id, user, body.patch);
       return NextResponse.json({ eventId: ev.id });

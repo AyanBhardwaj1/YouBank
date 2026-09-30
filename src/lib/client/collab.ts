@@ -11,8 +11,10 @@ type Change = { id: number; kind: string; userId: string; userName: string; payl
  * Join a shared session.
  *
  * The browser's EventSource handles reconnection and replays from Last-Event-ID, so the rotating
- * 45-second server connections are invisible here: `connected` only goes false if the stream cannot
- * be re-established at all.
+ * two-minute server connections are invisible here: `connected` only goes false if the stream cannot
+ * be re-established at all. The stream starts from the event the loaded state already includes, and a
+ * tab left in the background closes it after a short grace period, resuming from its last event when
+ * shown again (others see it leave, then return).
  */
 export function useCollabSession(sessionId: number | null, opts?: { selfId?: string; onRemote?: (patch: Record<string, unknown>, from: string) => void }) {
   const [session, setSession] = useState<CollabSession | null>(null);
@@ -30,6 +32,36 @@ export function useCollabSession(sessionId: number | null, opts?: { selfId?: str
 
   useEffect(() => {
     let cancelled = false;
+    let es: EventSource | null = null;
+    let last = 0;
+    let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const open = () => {
+      if (es || cancelled || sessionId === null) return;
+      const s = new EventSource(`/api/collab/${sessionId}/stream?since=${last}`);
+      es = s;
+      s.onopen = () => { if (!cancelled) { setConnected(true); setError(null); } };
+      s.addEventListener("presence", (ev) => {
+        if (!cancelled) setPresence(JSON.parse((ev as MessageEvent).data) as Presence[]);
+      });
+      s.addEventListener("change", (ev) => {
+        if (cancelled) return;
+        const c = JSON.parse((ev as MessageEvent).data) as Change;
+        last = Math.max(last, c.id);
+        if (c.kind !== "patch") return;
+        const patch = (c.payload.patch ?? {}) as Record<string, unknown>;
+        // Our own echo still updates the local mirror, but must not be re-sent.
+        setSession((cur) => (cur ? { ...cur, state: { ...cur.state, ...patch } } : cur));
+        if (c.userId !== mine.current) onRemote.current?.(patch, c.userName || "someone");
+      });
+      s.onerror = () => { if (!cancelled) setConnected(false); };
+    };
+    const shut = () => { es?.close(); es = null; };
+    const onVisibility = () => {
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (document.visibilityState === "hidden") hideTimer = setTimeout(shut, 30_000);
+      else open();
+    };
 
     const load = async () => {
       if (sessionId === null) {
@@ -43,30 +75,20 @@ export function useCollabSession(sessionId: number | null, opts?: { selfId?: str
         if (cancelled) return;
         setSession((body as { session: CollabSession }).session);
         setPresence((body as { presence: Presence[] }).presence);
+        // Follow from the last event the loaded state already includes.
+        last = Number((body as { lastEventId?: number }).lastEventId) || 0;
+        if (document.visibilityState !== "hidden") open();
+        document.addEventListener("visibilitychange", onVisibility);
       } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
     };
     void load();
     if (sessionId === null) return () => { cancelled = true; };
 
-    const es = new EventSource(`/api/collab/${sessionId}/stream`);
-    es.onopen = () => { if (!cancelled) { setConnected(true); setError(null); } };
-    es.addEventListener("presence", (ev) => {
-      if (!cancelled) setPresence(JSON.parse((ev as MessageEvent).data) as Presence[]);
-    });
-    es.addEventListener("change", (ev) => {
-      if (cancelled) return;
-      const c = JSON.parse((ev as MessageEvent).data) as Change;
-      if (c.kind !== "patch") return;
-      const patch = (c.payload.patch ?? {}) as Record<string, unknown>;
-      // Our own echo still updates the local mirror, but must not be re-sent.
-      setSession((cur) => (cur ? { ...cur, state: { ...cur.state, ...patch } } : cur));
-      if (c.userId !== mine.current) onRemote.current?.(patch, c.userName || "someone");
-    });
-    es.onerror = () => { if (!cancelled) setConnected(false); };
-
     return () => {
       cancelled = true;
-      es.close();
+      if (hideTimer) clearTimeout(hideTimer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      shut();
       // Drop out of the presence list immediately rather than waiting for the window to lapse.
       void fetch(`/api/collab/${sessionId}`, {
         method: "POST", headers: { "content-type": "application/json" },
