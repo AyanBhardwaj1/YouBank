@@ -140,6 +140,14 @@ function SignalView({ v }: { v: Signal }) {
   );
 }
 
+/** One value in its own view (what a story section shows). */
+export function ValueView({ value }: { value: unknown }) {
+  const kind = kindOfValue(value);
+  return kind === "memo" ? <MemoView memo={value as Memo} /> : kind === "findings" ? <FindingsView v={value as Findings} /> : kind === "proforma" ? <ProformaView v={value as ProformaValue} />
+    : kind === "table" ? <TableView v={value as Table} /> : kind === "ranking" ? <RankingView v={value as Ranking} /> : kind === "scenario" ? <ScenarioView v={value as Scenario} />
+    : kind === "answer" ? <AnswerView v={value as Answer} /> : kind === "signal" ? <SignalView v={value as Signal} /> : null;
+}
+
 /** Every output of a block, each in its own view. */
 export function Outputs({ outputs, downloads }: { outputs: Record<string, unknown>; downloads: { name: string; url: string }[] }) {
   const entries = Object.entries(outputs);
@@ -153,7 +161,7 @@ export function Outputs({ outputs, downloads }: { outputs: Record<string, unknow
           : kind === "answer" ? <AnswerView v={v as Answer} /> : kind === "signal" ? <SignalView v={v as Signal} />
           : kind === "companies" ? <div className="flex flex-wrap gap-1">{(v as Companies).items.map((c) => <span key={c.ticker} className="num rounded bg-elevated px-1.5 py-0.5 text-[11px]">{c.ticker} · {c.name}</span>)}</div>
           : kind === "places" ? <div className="text-[12px]">{(v as Places).items.map((p) => p.name).join(", ")}</div>
-          : kind === "file" ? null
+          : kind === "file" ? ((v as { url?: string; name?: string }).url ? <a href={(v as { url: string }).url} className="ctl inline-flex items-center gap-1.5 border border-accent/40 bg-accent-soft px-2.5 py-1.5 text-[12px] text-accent hover:underline"><ExternalLink className="h-3.5 w-3.5" />Open the story: {(v as { name?: string }).name}</a> : null)
           : <pre className="max-h-60 overflow-auto rounded bg-bg p-2 text-[10.5px]">{JSON.stringify(v, null, 1).slice(0, 4000)}</pre>;
         return body ? <Fragment key={port}>{body}</Fragment> : null;
       })}

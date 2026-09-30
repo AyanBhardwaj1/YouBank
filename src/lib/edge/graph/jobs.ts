@@ -11,6 +11,7 @@ import { logError } from "@/lib/errors";
 import { record } from "../provenance";
 import { BETA_ON } from "../watches";
 import { sendJob } from "../infra/jobs";
+import { notifyWatchers } from "../notify";
 import { dealsSince, newsroomDeals } from "./deals";
 import { redFlags } from "./findings";
 import { ingestMany } from "./ingest";
@@ -89,7 +90,7 @@ export async function predictionCards(): Promise<number[]> {
 export async function ingestSlice(ciks: string[], deadline: number): Promise<{ left: string[]; done: number; cards: number }> {
   const r = await ingestMany(ciks, deadline - 20_000);
   let cards: number[] = [];
-  try { cards = await flagCards(r.results.map((x) => x.nodeId).filter(Boolean)); } catch (e) { logError(e, { where: "edge-graph-flags" }); }
+  try { cards = await flagCards(r.results.map((x) => x.nodeId).filter(Boolean)); await notifyWatchers(cards); } catch (e) { logError(e, { where: "edge-graph-flags" }); }
   return { left: r.left, done: r.results.length, cards: cards.length };
 }
 

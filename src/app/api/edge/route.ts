@@ -5,6 +5,7 @@ import { guarded } from "@/lib/auth/user";
 import { edgeProfile, MONITOR_LIMIT, saveEdge, WATCH_LIMIT, type Blend } from "@/lib/edge/access";
 import { companiesIn, ensureMaps } from "@/lib/edge/assets";
 import { PLACES } from "@/lib/edge/sources/eia";
+import { starterCanvas } from "@/lib/edge/onboard";
 import { checkWatch, COVERED, listWatches, seedWatches } from "@/lib/edge/watches";
 import { memo } from "@/lib/memo";
 import type { Profile, RoleId } from "@/lib/roles";
@@ -23,7 +24,8 @@ export async function GET() {
 
 /**
  * Turn the beta on or off, or change how the feed is ranked. Turning it on the first time pins the tab,
- * seeds three watches from the person's desk and starts checking them after the response.
+ * seeds three watches from the person's desk, builds and runs a first canvas for their role, and starts
+ * checking the watches, after the response.
  */
 export async function POST(req: Request) {
   return guarded(async (user) => {
@@ -39,7 +41,12 @@ export async function POST(req: Request) {
         const seeded = await seedWatches(user.id, profile);
         prefs = await saveEdge(user.id, { seeded: true });
         const deadline = Date.now() + 50_000;
-        after(async () => { for (const w of seeded) await checkWatch(w, deadline, 2); });
+        const tickers = seeded.filter((w) => w.kind === "company" && w.target.ticker).map((w) => w.target.ticker!);
+        after(async () => {
+          // A first canvas, built for their role and run, then the watches' first checks.
+          await starterCanvas(user, profile.role, tickers);
+          for (const w of seeded) await checkWatch(w, deadline, 2);
+        });
       }
     }
     if (body.blend && typeof body.blend === "object") {

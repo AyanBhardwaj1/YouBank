@@ -22,8 +22,8 @@ export async function trailFor(subjects: string[]) {
 
 const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 
-/** The trail as CSV, one row per source. Pure, for tests. */
-export function trailCsv(rows: { subject: string; sourceName: string; sourceUrl: string; license: string; method: string; modelVersion: string; retrievedAt: Date }[]): string {
-  const head = ["subject", "source", "url", "license", "method", "model_version", "retrieved_at"];
-  return [head.join(","), ...rows.map((r) => [r.subject, r.sourceName, r.sourceUrl, r.license, r.method, r.modelVersion, r.retrievedAt.toISOString()].map(cell).join(","))].join("\n");
+/** The trail as CSV, one row per source (with each subject's title when given). Pure, for tests. */
+export function trailCsv(rows: { subject: string; sourceName: string; sourceUrl: string; license: string; method: string; modelVersion: string; retrievedAt: Date }[], titles?: Map<string, string>): string {
+  const head = ["subject", ...(titles ? ["title"] : []), "source", "url", "license", "method", "model_version", "retrieved_at"];
+  return [head.join(","), ...rows.map((r) => [r.subject, ...(titles ? [titles.get(r.subject) ?? ""] : []), r.sourceName, r.sourceUrl, r.license, r.method, r.modelVersion, r.retrievedAt.toISOString()].map(cell).join(","))].join("\n");
 }

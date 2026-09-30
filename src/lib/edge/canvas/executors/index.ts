@@ -8,5 +8,6 @@ import "./documents";
 import "./networks";
 import "./scenarios";
 import "./outputs";
+import "./story";
 
 export { availableTypes } from "../engine";

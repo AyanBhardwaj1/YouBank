@@ -5,7 +5,7 @@
  * Edge, ranked by a blend they can tune (relevance, size of the change, novelty, confidence).
  */
 import { AnimatePresence, motion } from "motion/react";
-import { Loader2, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
+import { Download, Loader2, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EdgeCardView } from "./Cards";
 import { api, post, useApi, type Blend, type EdgeCard, type EdgeState, type FeedData, type Scope } from "./client";
@@ -67,7 +67,8 @@ export function FeedView({ state, now, onMap, onOpenDeal, onOpenRadar, onOpenNet
             );
           })}
         </div>
-        <button type="button" onClick={() => setTuning((t) => !t)} aria-expanded={tuning} className="ctl ml-auto flex items-center gap-1.5 border border-line px-2.5 py-1 text-[12px] text-muted hover:border-accent/50 hover:text-fg">
+        <a href="/api/edge/audit?all=1" className="ctl ml-auto flex items-center gap-1.5 px-2 py-1 text-[11.5px] text-muted hover:text-fg" title="Every finding in your feed with its sources, licenses, retrieval times and methods"><Download className="h-3.5 w-3.5" /> Audit log</a>
+        <button type="button" onClick={() => setTuning((t) => !t)} aria-expanded={tuning} className="ctl flex items-center gap-1.5 border border-line px-2.5 py-1 text-[12px] text-muted hover:border-accent/50 hover:text-fg">
           <SlidersHorizontal className="h-3.5 w-3.5" /> Tune ranking
         </button>
       </div>

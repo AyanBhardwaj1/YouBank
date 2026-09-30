@@ -247,6 +247,7 @@ function Editor({ id }: { id: number }) {
         </div>
       </header>
       {c.notice && <div className="flex items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-[11.5px] text-accent"><span className="flex-1">{c.notice}</span><button type="button" onClick={() => c.setNotice(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button></div>}
+      <div className="border-b border-line bg-elevated/60 px-3 py-1.5 text-[11.5px] text-muted md:hidden">Canvases are built on a tablet or a computer. Here you can run this one and read its results; the feed, alerts and stories work fully on a phone.</div>
 
       <div className="flex min-h-0 flex-1">
         {!readOnly && (

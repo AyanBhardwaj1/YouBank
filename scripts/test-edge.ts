@@ -43,6 +43,9 @@ import { describeShock, parseShock } from "@/lib/edge/scen/drivers";
 import { copulaSynth, fillGaps, identifiers, tableRealism, type TableIn } from "@/lib/edge/scen/tables";
 import { parseCsv } from "@/lib/edge/scen/run";
 import { eiaDaily, frenchColumns } from "@/lib/edge/scen/data";
+import { isBig } from "@/lib/edge/notify";
+import { composeSections, sectionTitle } from "@/lib/edge/story";
+import { starterTemplate } from "@/lib/edge/onboard";
 import { z } from "zod";
 
 let pass = 0, fail = 0;
@@ -453,6 +456,24 @@ async function main() {
     check("Kenneth French's daily file is read by date", fr.get("2008-09-15")?.[0] === -4.84 && fr.get("2008-09-16")?.[1] === 0.01 && fr.size === 2);
     const eia = eiaDaily("<tr> <td class='B6'>&nbsp;&nbsp;2008 Sep-15 to Sep-19</td> <td class='B3'>95.71</td> <td class='B3'>91.15</td> <td class='B3'></td> <td class='B3'>97.16</td> <td class='B3'>104.55</td> </tr>");
     check("EIA's weekly rows give dated daily prices, skipping holidays", eia.get("2008-09-15") === 95.71 && eia.get("2008-09-16") === 91.15 && !eia.has("2008-09-17") && eia.get("2008-09-19") === 104.55);
+  }
+
+  {
+    console.log("alerts and stories");
+    check("a large, confident ground change alerts now; a small one waits for the digest", isBig({ kind: "ground_change", confidence: 0.75, magnitude: 3.1, visual: {} }) && !isBig({ kind: "ground_change", confidence: 0.75, magnitude: 0.8, visual: {} }) && !isBig({ kind: "ground_change", confidence: 0.4, magnitude: 5, visual: {} }));
+    check("a high red flag alerts now; a medium one waits", isBig({ kind: "graph_flag", confidence: 0.9, magnitude: 0.9, visual: { flag: { severity: "high" } } }) && !isBig({ kind: "graph_flag", confidence: 0.9, magnitude: 0.5, visual: { flag: { severity: "medium" } } }));
+    const sections = composeSections([
+      { title: "Memo", markdown: "text", sources: [] },
+      { question: "Q?", mode: "strict", text: "A", claims: [], citations: [], notFound: false },
+      { items: [{ ticker: "ET", name: "Energy Transfer" }] },
+      { title: "S", driver: "replay", synthetic: true, recipe: "r", seed: 1, horizon: 5, paths: 10, stats: [] },
+      { items: [{ id: 1, title: "Pad", kind: "ground_change", confidence: 0.8, tickers: ["ET"], observedAt: null, summary: "s", sources: [] }] },
+    ]);
+    check("a story runs from the ground to the memo and leaves out bare lists", sections.map((x) => x.kind).join() === "findings,scenario,answer,memo" && sections[0].title === "What changed on the ground" && sections[3].title === "Memo", sections.map((x) => x.kind));
+    const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "net.graph", "docs.ask", "scen.simulate", "source.documents", "docs.changes", "out.export"]);
+    check("a banker's first canvas is the buyer finder once the model has trained, the asset watch before", starterTemplate("banker", true, all) === "buyer-finder" && starterTemplate("banker", false, all) === "asset-watch" && starterTemplate("student", true, all) === "asset-watch");
+    check("a first canvas whose blocks are not ready falls back to the asset watch", starterTemplate("markets", true, new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo"])) === "asset-watch");
+    check("section titles read naturally", sectionTitle("ranking", { finding: "Likely acquirers", subject: "Targa", items: [] }) === "Likely acquirers for Targa");
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

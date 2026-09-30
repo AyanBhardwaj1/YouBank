@@ -3,20 +3,32 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
+import { edgeFeed } from "@/lib/edge/feed";
 import { trailCsv, trailFor } from "@/lib/edge/provenance";
+import { listWatches } from "@/lib/edge/watches";
 
 export const dynamic = "force-dynamic";
 
-/** The audit trail of one finding as CSV: every source, its license, when it was retrieved and by what method. */
+const csvResponse = (csv: string, name: string) => new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}"`, "cache-control": "private, no-store" } });
+
+/**
+ * The audit trail as CSV: every source behind a finding, its license, when it was retrieved and by what
+ * method. ?detection=ID for one card; ?all=1 for every finding in the person's feed (a year back).
+ */
 export async function GET(req: Request) {
   return guarded(async (user) => {
-    await requireEdge(user.id);
-    const id = Number(new URL(req.url).searchParams.get("detection"));
+    const p = await requireEdge(user.id);
+    const q = new URL(req.url).searchParams;
+    if (q.get("all")) {
+      const feed = await edgeFeed(user.id, await listWatches(user.id), p.prefs.blend, { scope: "all", limit: 500 });
+      const titles = new Map(feed.cards.map((c) => [`detection:${c.id}`, c.title]));
+      return csvResponse(trailCsv(await trailFor([...titles.keys()]), titles), `edge-audit-log-${new Date().toISOString().slice(0, 10)}.csv`);
+    }
+    const id = Number(q.get("detection"));
     if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const [d] = await requireDb().select({ id: schema.edgeDetections.id, title: schema.edgeDetections.title }).from(schema.edgeDetections)
       .where(and(eq(schema.edgeDetections.id, id), or(isNull(schema.edgeDetections.ownerId), eq(schema.edgeDetections.ownerId, user.id))));
     if (!d) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const csv = trailCsv(await trailFor([`detection:${d.id}`]));
-    return new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="edge-audit-${d.id}.csv"`, "cache-control": "private, no-store" } });
+    return csvResponse(trailCsv(await trailFor([`detection:${d.id}`])), `edge-audit-${d.id}.csv`);
   });
 }

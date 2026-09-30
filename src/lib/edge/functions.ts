@@ -10,6 +10,7 @@ import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
 import { graphUniverse } from "./graph/universe";
 import { finishRefine as finishScenario, startRefine as startScenario } from "./scen/run";
+import { notifyWatchers } from "./notify";
 import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
 import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
 import { flushUsage } from "./infra/usage";
@@ -117,6 +118,7 @@ export const graphTrain = inngest.createFunction(
       noteMlCost(done?.costUsd);
       const r = await finishTraining(started.modelId, done);
       const cards = r.ok ? await predictionCards() : [];
+      if (cards.length) await notifyWatchers(cards).catch(() => undefined);
       await flushUsage();
       return { ...r, cards: cards.length };
     });

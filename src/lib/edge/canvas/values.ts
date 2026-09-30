@@ -18,7 +18,7 @@ export type Scenario = { id?: number; title: string; driver: string; synthetic: 
 export type Table = { columns: { name: string; type: "num" | "cat" | "text" }[]; rows: (string | number | null)[][]; synthetic?: { recipe: string; seed: number; realism?: number }; title?: string };
 export type Memo = { title: string; markdown: string; sources: { n: number; label: string; url?: string }[] };
 export type Signal = { metric: string; value: number; previous?: number | null; triggered: boolean; detail: string };
-export type FileValue = { name: string; key: string; bytes: number };
+export type FileValue = { name: string; key: string; bytes: number; url?: string };
 
 export type Evidence = { label: string; text: string; url?: string; synthetic?: boolean };
 

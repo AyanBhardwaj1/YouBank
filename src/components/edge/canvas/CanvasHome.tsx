@@ -39,6 +39,7 @@ export function CanvasHome() {
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(null); }
   };
 
+  const stories = useApi<{ stories: { slug: string; title: string; visibility: string; createdAt: string; url: string }[] }>("/api/edge/stories");
   const modulesOf = (types: string[]) => [...new Set(types.map((t) => NODE[t]?.module).filter((m): m is Module => !!m && m !== "source" && m !== "output"))];
 
   return (
@@ -70,6 +71,13 @@ export function CanvasHome() {
           <button type="button" disabled={!!busy} onClick={() => void create({}, "blank")} className="panel flex flex-col items-center justify-center gap-1 border-dashed p-3 text-[12px] text-muted hover:text-fg"><Plus className="h-4 w-4" />Blank canvas</button>
         </div>
       </section>
+
+      {!!stories.data?.stories.length && (
+        <section>
+          <h2 className="mb-2 text-[12.5px] font-semibold">Your stories</h2>
+          <ul className="flex flex-wrap gap-2">{stories.data.stories.slice(0, 8).map((st) => <li key={st.slug}><Link href={st.url} className="panel flex flex-col px-3 py-2 transition hover:border-accent/50"><span className="text-[12.5px] font-medium">{st.title}</span><span className="text-[10.5px] text-muted">{st.visibility === "link" ? "Published" : st.visibility === "team" ? "Shared with a team" : "Private"}{now ? ` · ${ago(st.createdAt, now)}` : ""}</span></Link></li>)}</ul>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 text-[12.5px] font-semibold">Your canvases</h2>

@@ -3,6 +3,7 @@ import { secretsMatch } from "@/lib/crm/crypto";
 import { scanDeals } from "@/lib/edge/dealwatch";
 import { scanFilings } from "@/lib/edge/docs/filingwatch";
 import { graphDaily } from "@/lib/edge/graph/jobs";
+import { notifyWatchers } from "@/lib/edge/notify";
 import { checkDue } from "@/lib/edge/watches";
 import { describeFailure } from "@/lib/errors";
 
@@ -27,8 +28,10 @@ export async function GET(req: Request) {
     const watches = await checkDue(deadline - 60_000);
     const deals = await scanDeals(deadline - 60_000);
     const filings = await scanFilings(deadline - 30_000);
+    // Big findings alert their watchers now; the rest wait for the digest.
+    const alerts = await notifyWatchers([...watches.found, ...deals, ...filings]).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-notify").message }));
     const graph = await graphDaily().catch((e) => ({ error: describeFailure(e, 500, "edge-cron-graph").message }));
-    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, graph });
+    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, alerts, graph });
   } catch (e) {
     return NextResponse.json({ ok: false, error: describeFailure(e, 500, "edge-cron").message }, { status: 500 });
   }
