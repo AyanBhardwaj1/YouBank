@@ -7,10 +7,10 @@ import { EdgeWorkspace, type EdgeView } from "@/components/edge/EdgeWorkspace";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
 
-const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "map", "whatif"]);
+const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif"]);
 
 /**
- * Edge: ?view=feed|canvases|documents|networks|map|whatif. Documents also opens a saved answer
+ * Edge: ?view=feed|canvases|documents|networks|scenarios|map|whatif. Documents also opens a saved answer
  * (&answer=ID) or a company's change radar (&radar=TICKER&form=10-K|10-Q); Networks opens a company
  * (&company=TICKER). Before the beta is on, the page explains Edge and offers the switch.
  */

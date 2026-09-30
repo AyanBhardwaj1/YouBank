@@ -76,7 +76,7 @@ export const MODULES = [
   { id: "earth", label: "Earth", tech: "GeoAI", icon: "Globe", live: true, blurb: "Satellite change at plants and pipelines, and deal maps" },
   { id: "documents", label: "Documents", tech: "RAG", icon: "FileSearch", live: true, blurb: "Cited answers across filings, calls and data rooms" },
   { id: "networks", label: "Networks", tech: "GNN", icon: "Network", live: true, blurb: "Ownership, boards, supply chains and deals as a graph" },
-  { id: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", live: false, blurb: "Simulated markets and company what-ifs, always labeled" },
+  { id: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", live: true, blurb: "Simulated markets and company what-ifs, always labeled" },
 ] as const;
 
 /** A party's colour for a map feature: by ticker, else by a company name inside its operator or parent. */

@@ -9,6 +9,7 @@ import { newsroomDeals } from "./graph/deals";
 import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
 import { graphUniverse } from "./graph/universe";
+import { finishRefine as finishScenario, startRefine as startScenario } from "./scen/run";
 import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
 import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
 import { flushUsage } from "./infra/usage";
@@ -122,4 +123,17 @@ export const graphTrain = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain];
+/** Refine a scenario: ten thousand statistical paths, or two thousand from the diffusion model on the ML service. */
+export const scenarioRefine = inngest.createFunction(
+  { id: "edge-scenario-refine", triggers: { event: "edge/scenario.refine" }, concurrency: 2, retries: 1 },
+  async ({ event, step }) => {
+    const s = metered(asSteps(step));
+    const { id, userId } = event.data as { id: number; userId: string };
+    const started = await s.run("start", () => startScenario(userId, Number(id)));
+    if ("done" in started) return { id, done: true };
+    const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: "20m", if: doneFor(started.callId) });
+    return s.run("finish", async () => { const done = (ev?.data as MlDone | undefined) ?? null; noteMlCost(done?.costUsd); await finishScenario(userId, Number(id), done); await flushUsage(); return { id }; });
+  },
+);
+
+export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine];

@@ -6,6 +6,7 @@ import "./sources";
 import "./earth";
 import "./documents";
 import "./networks";
+import "./scenarios";
 import "./outputs";
 
 export { availableTypes } from "../engine";

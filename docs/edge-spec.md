@@ -242,8 +242,8 @@ polished.
 | 2 | Canvas and run engine; platform services (R2 files, Inngest jobs, the Modal ML service, free-tier meters) | Built (2026-09-30) |
 | 3 | Documents · RAG | Built (2026-09-30) |
 | 4 | Networks · GNN | Built (2026-09-30) |
-| 5 | Scenarios · Synthetic data | Next |
-| 6 | Integrations (Terminal, Newsroom, Studio, CRM), story mode, monitors and alerts, onboarding canvas | |
+| 5 | Scenarios · Synthetic data | Built (2026-09-30) |
+| 6 | Integrations (Terminal, Newsroom, Studio, CRM), story mode, monitors and alerts, onboarding canvas | Next |
 
 ### What milestone 1 does
 
@@ -334,6 +334,38 @@ polished.
 - **Screens** (`src/components/edge/net/`). A force network on a canvas, the map-anchored view and
   the ownership tree, beside tabs for each finding, with every step linked to its filing. Feed
   cards post new red flags of watched companies and changes in their likely buyers.
+
+### What milestone 5 does (Scenarios · Synthetic data)
+
+- **Data** (`src/lib/edge/scen/data.ts`). Tickers' daily returns (Nasdaq first, FMP as the backup),
+  and daily factors since 2000, all public and none from FRED: the U.S. market and oil and gas stocks
+  (Kenneth French's CRSP-based data library), WTI and Henry Hub spot prices (EIA), and the 10-year
+  Treasury yield (the Treasury). Rebuilt weekly into R2.
+- **Market scenarios** (`market.ts`, `models.ts`). Each ticker's betas to the factors on three years
+  of daily returns. Base cases by GARCH(1,1) with a Gaussian copula and Student-t shocks, two
+  regimes (a hidden Markov model), a stationary block bootstrap, or (refined) a diffusion model on
+  the ML service. Drivers: replays of 2008, 2020, the 2022 rate shock and the 2014-16 oil collapse
+  (the factors' real daily moves); written shocks ("oil -30%, rates +150bp", or a sentence a small
+  model maps to moves); scenarios proposed from the Newsroom, Earth and the graph, with citations;
+  and AI-imagined tail risks with their reasoning. Replays and shocks add each ticker's real
+  residual days, resampled. A thousand paths in about a second; "Refine" runs ten thousand (or two
+  thousand from the diffusion model) in the background.
+- **Honesty.** Every result carries its recipe and seed, and a realism check: synthetic days against
+  the real three years (distribution distance, volatility, tails, volatility clustering,
+  correlations), scored out of 100 with warnings. On ET, KMI and TRGP the bootstrap scores about 94,
+  GARCH about 89, factor scenarios about 86 and the diffusion model about 91.
+- **Company what-ifs** (`company.ts`). A company's XBRL history run forward under volume, price and
+  cost shocks that fade at a chosen pace: revenue and EBITDA with their own volatility, costs 30%
+  fixed and taking the share of a price move estimated from the company's own history, free cash
+  flow before interest. Bands per year, the odds of a worse year, and a labeled CSV for Studio.
+- **Synthetic tables and gaps** (`tables.ts`). A Gaussian copula copy (or CTGAN on the ML service for
+  large tables) with realism against the original; identifying columns are replaced, never copied.
+  Missing cells are estimated from the most similar rows, with ranges, and marked as estimates.
+- **Practice data** (`practice.ts`). Fictional companies (names and tickers checked against every
+  listed company) with financials drawn from real energy companies' ratios, prices from resampled
+  real market days, practice documents in the library, and a workbook to download.
+- **Canvas.** The Scenarios block (any driver, for wired-in companies, findings or deals) and the
+  Synthetic data block (a labeled copy of a wired-in table).
 
 ### How the detector was checked
 

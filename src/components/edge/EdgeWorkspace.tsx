@@ -3,9 +3,9 @@
 /**
  * Edge: an alternative-data edge from four frontier techniques, as modules. The feed shows what changed
  * at the things a person watches; Documents answers from filings, calls and data rooms with checked
- * quotes; the map shows the region itself; the what-if draws any combination of companies. Earth
- * (GeoAI) and Documents (RAG) are live; Networks and Scenarios arrive next and plug into the same
- * feed, watches and canvases.
+ * quotes; Networks draws and predicts from the relationship graph; Scenarios simulates what could
+ * happen, labeled synthetic; the map shows the region itself; the what-if draws any combination of
+ * companies. All four modules plug into the same feed, watches and canvases.
  */
 import { motion } from "motion/react";
 import { Radar as RadarIcon } from "lucide-react";
@@ -17,12 +17,13 @@ import { DocumentsView, type DocsOpen } from "./docs/DocumentsView";
 import { FeedView } from "./FeedView";
 import { MapView } from "./MapView";
 import { NetworksView } from "./net/NetworksView";
+import { ScenariosView } from "./scen/ScenariosView";
 import { MODULES, useEdgeState, useNow, type EdgeCard, type FilingVisual, type ProformaVisual } from "./client";
 import { WatchPanel } from "./WatchPanel";
 import { WhatIf } from "./WhatIf";
 
-export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "map" | "whatif";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
+export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
 
 export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null }) {
   const now = useNow();
@@ -92,6 +93,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
               {view === "canvases" && <CanvasHome />}
               {view === "documents" && <DocumentsView key={docs?.key ?? 0} tickers={watchedTickers} open={docs} />}
               {view === "networks" && <NetworksView key={net.key} tickers={watchedTickers} initial={net.ticker} />}
+              {view === "scenarios" && <ScenariosView tickers={watchedTickers} />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} now={now} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
             </main>

@@ -37,6 +37,12 @@ import { eventFlags, exposure as exposureRank, insiderFlags, interlocks, ownersh
 import { companyFeatures, scorecardText, splitDateFor } from "@/lib/edge/graph/train";
 import { pairsFromHits, sameGroup } from "@/lib/edge/graph/deals";
 import { linkSentence } from "@/lib/edge/graph/findings";
+import { autocorr, cholesky, correlation, kurtosis, ks, mean as smean, normCdf, normInv, normals, ols, quantile, realism, rng, std as sstd } from "@/lib/edge/scen/stats";
+import { bootstrapGen, fitGarch, fitRegimes, garchGen, simulate } from "@/lib/edge/scen/models";
+import { describeShock, parseShock } from "@/lib/edge/scen/drivers";
+import { copulaSynth, fillGaps, identifiers, tableRealism, type TableIn } from "@/lib/edge/scen/tables";
+import { parseCsv } from "@/lib/edge/scen/run";
+import { eiaDaily, frenchColumns } from "@/lib/edge/scen/data";
 import { z } from "zod";
 
 let pass = 0, fail = 0;
@@ -389,6 +395,64 @@ async function main() {
     check("merger filings give each counterparty once, from the first filing", pairs.length === 1 && pairs[0].otherCik === "1136352" && pairs[0].otherName === "Crestwood Equity Partners LP" && pairs[0].first === "2023-08-16" && pairs[0].last === "2023-11-01", pairs);
     check("deal vehicles and descriptions are not companies", isDealVehicle("MLP Acquiror") && isDealVehicle("ENLC Acquiror LLC") && isDealVehicle("a subsidiary of EQT Corporation") && isDealVehicle("Rattler Merger Sub, Inc.") && !isDealVehicle("Crestwood Equity Partners LP") && !isDealVehicle("Acquire Energy Inc"));
     check("one corporate family is not a deal counterparty", sameGroup("Energy Transfer LP", "Energy Transfer Partners") && !sameGroup("Energy Transfer LP", "Enable Midstream Partners") && !sameGroup("Targa Resources Corp", "Atlas Energy"));
+  }
+
+  {
+    console.log("scenarios: statistics");
+    const u = rng(42), n = normals(u);
+    check("the random source repeats with its seed", rng(7)() === rng(7)() && rng(7)() !== rng(8)());
+    const z = Array.from({ length: 20000 }, () => n());
+    check("normal draws have mean 0 and deviation 1", Math.abs(smean(z)) < 0.03 && Math.abs(sstd(z) - 1) < 0.03, [smean(z), sstd(z)]);
+    check("the normal distribution function and its inverse agree", Math.abs(normCdf(1.6449) - 0.95) < 1e-3 && Math.abs(normInv(0.975) - 1.96) < 1e-3 && Math.abs(normCdf(normInv(0.3)) - 0.3) < 1e-6);
+    check("quantiles interpolate", quantile([1, 2, 3, 4], 0.5) === 2.5 && quantile([5], 0.9) === 5);
+    const L = cholesky([[1, 0.6], [0.6, 1]]);
+    check("a Cholesky factor rebuilds its matrix", Math.abs(L[1][0] * L[0][0] - 0.6) < 1e-9 && Math.abs(L[1][0] ** 2 + L[1][1] ** 2 - 1) < 1e-6);
+    const X = Array.from({ length: 500 }, () => [n(), n()]), y = X.map(([a, b]) => 0.5 + 2 * a - b + 0.1 * n());
+    const fit = ols(y, X);
+    check("least squares recovers coefficients", Math.abs(fit.beta[0] - 0.5) < 0.03 && Math.abs(fit.beta[1] - 2) < 0.03 && Math.abs(fit.beta[2] + 1) < 0.03 && fit.r2 > 0.99, fit.beta);
+    check("the KS distance is small for the same distribution and large for a shifted one", ks(z.slice(0, 5000), z.slice(5000, 10000)) < 0.04 && ks(z.slice(0, 5000), z.slice(5000, 10000).map((v) => v + 1)) > 0.3);
+    const same = realism(["a"], z.slice(0, 3000).map((v) => [v * 0.01]), z.slice(3000, 6000).map((v) => [v * 0.01]));
+    const off = realism(["a"], z.slice(0, 3000).map((v) => [v * 0.01]), z.slice(3000, 6000).map((v) => [v * 0.03]));
+    check("realism scores a faithful copy high and a wrong one low, with a warning", same.score >= 85 && off.score < same.score - 20 && off.warnings.some((w) => /volatility/.test(w)), [same.score, off.score, off.warnings]);
+
+    console.log("scenarios: models");
+    // A series with volatility clustering: calm and wild spells.
+    const series: number[] = []; let vol = 0.01;
+    for (let t = 0; t < 1500; t++) { vol = Math.sqrt(0.000002 + 0.1 * (series[t - 1] ?? 0) ** 2 + 0.88 * vol * vol); series.push(vol * n()); }
+    const g = fitGarch(series);
+    check("GARCH finds the persistence it was made with", g.alpha + g.beta > 0.85 && g.alpha > 0.03 && g.alpha < 0.25, g);
+    const H = series.map((v, t) => [v, 0.7 * v + 0.005 * Math.sin(t)]);
+    const sim = simulate(garchGen(H).gen, ["A", "B"], [1, 1], 20, 400, 5);
+    check("simulated paths give fans that widen with time and a portfolio", sim.fans.length === 3 && sim.fans[2].p95[sim.fans[2].p95.length - 1] - sim.fans[2].p5[sim.fans[2].p5.length - 1] > sim.fans[2].p95[0] - sim.fans[2].p5[0] && sim.finals[2].probLoss > 0.2 && sim.finals[2].probLoss < 0.8, sim.finals[2]);
+    check("the same seed gives the same scenario", JSON.stringify(simulate(bootstrapGen(H), ["A", "B"], [1, 1], 10, 50, 9).finals) === JSON.stringify(simulate(bootstrapGen(H), ["A", "B"], [1, 1], 10, 50, 9).finals));
+    const calmWild = [...Array.from({ length: 600 }, () => [0.005 * n()]), ...Array.from({ length: 200 }, () => [0.03 * n()]), ...Array.from({ length: 600 }, () => [0.005 * n()])];
+    const R = fitRegimes(calmWild);
+    check("two regimes are told apart, the stressed one far more volatile", Math.sqrt(R.covs[1][0][0]) > 3 * Math.sqrt(R.covs[0][0][0]) && R.share[1] > 0.08 && R.share[1] < 0.25 && R.label[R.last] === "calm", { share: R.share, vol: R.covs.map((c) => Math.sqrt(c[0][0])) });
+    check("volatility clustering survives the bootstrap", autocorr(simulate(bootstrapGen(series.map((v) => [v]), 20), ["A"], [1], 700, 2, 3).sampleDaily.map((r) => Math.abs(r[0])), 1) > 0.05);
+    check("excess kurtosis of fat tails is positive", kurtosis(series) > 0.5);
+
+    console.log("scenarios: drivers");
+    const sh = parseShock("oil -30%, rates +150bp, KMI down 10%, gas up 20%", ["KMI", "ET"]);
+    check("a written shock is read into factor and company moves", sh.shock.factors.oil === -0.3 && sh.shock.factors.rates === 1.5 && sh.shock.factors.gas === 0.2 && sh.shock.tickers.KMI === -0.1 && sh.leftover === "", sh);
+    check("words it cannot read are left for the model", parseShock("a supplier outage cuts revenue", ["ET"]).leftover === "a supplier outage cuts revenue");
+    check("shocks read back in words", describeShock(sh.shock) === "WTI crude -30%, Henry Hub gas +20%, 10-year Treasury yield +150bp, KMI -10%", describeShock(sh.shock));
+
+    console.log("scenarios: tables and sources");
+    const tbl = parseCsv('name,sector,assets,revenue\n"Acme, Inc.",Midstream,"1,200",300\nBeta,Upstream,800,\nGamma,Midstream,1000,260\nDelta,Upstream,900,180\nEpsilon,Midstream,1100,280\nZeta,Upstream,700,150\n');
+    check("a CSV is read with quoted commas, thousands separators and blanks", tbl.columns.map((c) => c.type).join() === "text,cat,num,num" && tbl.rows[0][0] === "Acme, Inc." && tbl.rows[0][2] === 1200 && tbl.rows[1][3] === null && tbl.rows.length === 6, tbl);
+    const gf = fillGaps(tbl);
+    check("a missing number is estimated from similar rows, with a range", gf.filled.length === 1 && gf.filled[0].row === 1 && (gf.filled[0].value as number) > 140 && (gf.filled[0].value as number) < 280 && gf.filled[0].low !== null, gf.filled);
+    const rr = rng(3), nn = normals(rr);
+    const big: TableIn = { columns: [{ name: "id", type: "text" }, { name: "sector", type: "cat" }, { name: "x", type: "num" }, { name: "y", type: "num" }], rows: Array.from({ length: 300 }, (_, i) => { const x = nn(); const sector = x > 0 ? "A" : "B"; return [`row-${i}`, sector, x, 2 * x + 0.3 * nn()]; }) };
+    check("identifying columns are found", identifiers(big).has(0) && !identifiers(big).has(1));
+    const cop = copulaSynth(big, 600, 4);
+    const cx = cop.rows.map((r) => r[2] as number), cy = cop.rows.map((r) => r[3] as number);
+    check("the copula keeps each column's spread and their correlation, and never copies identifiers", Math.abs(sstd(cx) - sstd(big.rows.map((r) => r[2] as number))) < 0.15 && correlation(cx.map((v, i) => [v, cy[i]]))[0][1] > 0.85 && cop.rows.every((r) => String(r[0]).startsWith("Synthetic")) && tableRealism(big, cop).score >= 70, { corr: correlation(cx.map((v, i) => [v, cy[i]]))[0][1], realism: tableRealism(big, cop).score });
+    check("categories follow the numbers they went with", cop.rows.filter((r) => (r[2] as number) > 1).every((r) => r[1] === "A"));
+    const fr = frenchColumns(" This file...\n\n,Mkt-RF,SMB,HML,RF\n20080915,  -4.84,  0.20, -0.44,  0.01\n20080916,   1.61, -0.30,  0.10,  0.01\n\n Copyright", ["Mkt-RF", "RF"]);
+    check("Kenneth French's daily file is read by date", fr.get("2008-09-15")?.[0] === -4.84 && fr.get("2008-09-16")?.[1] === 0.01 && fr.size === 2);
+    const eia = eiaDaily("<tr> <td class='B6'>&nbsp;&nbsp;2008 Sep-15 to Sep-19</td> <td class='B3'>95.71</td> <td class='B3'>91.15</td> <td class='B3'></td> <td class='B3'>97.16</td> <td class='B3'>104.55</td> </tr>");
+    check("EIA's weekly rows give dated daily prices, skipping holidays", eia.get("2008-09-15") === 95.71 && eia.get("2008-09-16") === 91.15 && !eia.has("2008-09-17") && eia.get("2008-09-19") === 104.55);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
