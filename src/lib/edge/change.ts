@@ -23,6 +23,8 @@ import { PNG } from "pngjs";
 export const CHANGE_VERSION = "v2";
 export const CHANGE_METHOD = "pixel-change v2 (brightness normalized on unchanged pixels, scene-classification mask without cloud, shadow or vegetation, compact blobs, pale new ground, no plant-green darkening, 10 m)";
 
+export type Blob = { kind: 1 | 2; x: number; y: number; bbox: [number, number, number, number]; pixels: number; solidity: number };
+
 export type ChangeResult = {
   width: number; height: number;
   /** Share of pixels usable in both images (clear in both scenes). */
@@ -37,6 +39,8 @@ export type ChangeResult = {
   noise: number;
   /** True when too much of the area differs to call anything a local change. */
   sceneWide: boolean;
+  /** The kept changes, biggest first: kind (1 brighter, 2 darker), centroid and box in pixels, size. */
+  blobs: Blob[];
   /** 0 unchanged or unusable, 1 cleared (brighter), 2 darkened. */
   mask: Uint8Array;
 };
@@ -139,6 +143,7 @@ export function changeBetween(before: Uint8Array | Buffer, after: Uint8Array | B
   // Keep compact blobs: construction is compact, creek beds, playas and scrub are not.
   const mask = new Uint8Array(n), seen = new Uint8Array(n);
   let cleared = 0, darkened = 0, solidSum = 0, largest = 0;
+  const blobs: Blob[] = [];
   for (let start = 0; start < n; start++) {
     if (!kept[start] || seen[start]) continue;
     const k = kept[start], stack = [start], blob: number[] = [];
@@ -157,6 +162,9 @@ export function changeBetween(before: Uint8Array | Buffer, after: Uint8Array | B
     if (k === 1 && palenessOf(after, blob) < MIN_PALENESS) continue;
     if (k === 2 && plantGreen(after, blob)) continue;
     for (const p of blob) mask[p] = k;
+    let sx = 0, sy = 0;
+    for (const p of blob) { const x = p % width; sx += x; sy += (p - x) / width; }
+    blobs.push({ kind: k as 1 | 2, x: Math.round(sx / blob.length), y: Math.round(sy / blob.length), bbox: [minX, minY, maxX, maxY], pixels: blob.length, solidity: Math.round(solidity * 100) / 100 });
     solidSum += solidity * blob.length;
     largest = Math.max(largest, blob.length);
     if (k === 1) cleared += blob.length; else darkened += blob.length;
@@ -164,9 +172,10 @@ export function changeBetween(before: Uint8Array | Buffer, after: Uint8Array | B
   const pxHa = (areaKm2 * 100) / n;
   const frac = (c: number) => (usable ? c / usable : 0);
   const sceneWide = frac(cleared + darkened) > 0.125;
-  if (sceneWide) { mask.fill(0); cleared = 0; darkened = 0; largest = 0; }
+  if (sceneWide) { mask.fill(0); cleared = 0; darkened = 0; largest = 0; blobs.length = 0; }
+  blobs.sort((a, b) => b.pixels - a.pixels);
   return {
-    width, height, validFraction: usable / n, mask, sceneWide,
+    width, height, validFraction: usable / n, mask, sceneWide, blobs,
     largest: { pixels: largest, hectares: largest * pxHa },
     shape: cleared + darkened ? solidSum / (cleared + darkened) : 0,
     noise: frac(restless),

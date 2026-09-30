@@ -14,6 +14,8 @@ import { aiBlocked } from "@/lib/ai/limits";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { logError } from "@/lib/errors";
 import { CHANGE_METHOD, CHANGE_VERSION, changeBetween, changeConfidence, classesFrom, decodePng, overlayPng, seasonGap } from "./change";
+import { sendJob } from "./infra/jobs";
+import { mlReady } from "./infra/ml";
 import { record, type Provenance } from "./provenance";
 import { EIA_PLANTS, type Bbox } from "./sources/eia";
 import { boxAround, classes, clearestNear, crop, cropUrl, SENTINEL } from "./sources/sentinel";
@@ -91,6 +93,7 @@ export async function checkSite(site: Site, opts: { describe?: boolean } = {}): 
     before: { url: cropUrl(before, box, 512), date: before.date, scene: before.id }, after: { url: cropUrl(after, box, 512), date: after.date, scene: after.id },
     overlay: `data:image/png;base64,${overlayPng(r).toString("base64")}`,
     stats: { clearedHa: round(r.cleared.hectares), darkenedHa: round(r.darkened.hectares), clearPct: Math.round(r.validFraction * 100) },
+    size: SIZE, blobs: r.blobs.slice(0, 8),
   };
   const [row] = await requireDb().insert(schema.edgeDetections).values({
     key, kind: "ground_change", module: "earth", title: title.slice(0, 200), summary: summary.slice(0, 1200), why, confidence, magnitude: hectares,
@@ -104,6 +107,8 @@ export async function checkSite(site: Site, opts: { describe?: boolean } = {}): 
     ...(words ? [{ sourceName: "Vision model description", sourceUrl: "", license: "YouBank (generated)", method: "image description of the two crops", modelVersion: words.model, retrievedAt: retrieved }] : []),
   ];
   await record(`detection:${row.id}`, sources);
+  // The foundation-model check runs in the background (it waits on the ML service).
+  if (mlReady()) await sendJob("edge/detection.created", { id: row.id }, { id: `edge-refine-${row.id}` }).catch(() => undefined);
   return row.id;
 }
 

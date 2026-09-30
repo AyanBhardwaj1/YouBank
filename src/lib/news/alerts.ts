@@ -60,7 +60,7 @@ export async function newsUsers(): Promise<string[]> {
   return rows.map((r) => r.userId);
 }
 
-async function deliverAlert(ctx: ReaderContext, n: { key: string; title: string; body: string; url: string; urgent: boolean; reasons: string[] }, origin: string): Promise<Record<string, string>> {
+export async function deliverAlert(ctx: ReaderContext, n: { key: string; title: string; body: string; url: string; urgent: boolean; reasons: string[] }, origin: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   const quiet = inQuietHours(new Date(), ctx.prefs) && !n.urgent;
   const ch = ctx.prefs.alerts.channels;
