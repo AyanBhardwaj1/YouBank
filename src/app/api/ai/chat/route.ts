@@ -1,5 +1,6 @@
 import { runChat, type ChatMessage } from "@/lib/ai/agent";
 import { modelAllowed } from "@/lib/ai/config";
+import { isAdmin } from "@/lib/auth/admin";
 import { fitMessages, MAX_MESSAGE_CHARS } from "@/lib/ai/limits";
 import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     async start(controller) {
       const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
       // Closing the chat stops the run between turns.
-      await runAsUser(user.id, () => runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS, feature: "terminal-ai", parallelTools: true, signal: req.signal }));
+      await runAsUser(user.id, () => runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS, feature: "terminal-ai", parallelTools: true, signal: req.signal }), { admin: isAdmin(user) });
       controller.close();
     },
   });

@@ -2,7 +2,7 @@
  * Limits on model spend, checked before every model call:
  * - AI_DISABLED=1 turns every model call off (the app keeps working without AI);
  * - AI_GLOBAL_DAILY_USD ($200 by default) caps everyone's spend per UTC day, background work included;
- * - AI_USER_DAILY_USD ($5 by default) caps each person's;
+ * - AI_USER_DAILY_USD ($5 by default) caps each person's, except administrators (ADMIN_EMAILS);
  * - a person runs at most two long AI runs (chat, tools, the Studio agent) at once, so parallel runs
  *   cannot all start under the cap.
  * Spend is read from the usage ledger and cached briefly per instance; calls the ledger has not caught
@@ -11,6 +11,7 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { lease, type Release } from "@/lib/locks";
+import { aiAdmin } from "./context";
 
 export class AiLimitError extends Error {
   /** Read by `guarded()` so these surface as 429 rather than 500. */
@@ -70,9 +71,10 @@ export function noteAiSpend(userId: string | null, cost: number) {
  */
 export async function aiBlocked(userId: string | null, pendingUsd = 0): Promise<string | null> {
   if (aiDisabled()) return PAUSED;
+  const personal = userId && !aiAdmin() ? userId : null;
   const [all, mine] = await Promise.all([
     spentToday(null).catch(() => 0),
-    userId ? spentToday(userId).catch(() => 0) : Promise.resolve(null),
+    personal ? spentToday(personal).catch(() => 0) : Promise.resolve(null),
   ]);
   return blockedAt({ disabled: false, everyone: all, mine, pending: pendingUsd, globalCap: globalDailyUsd(), userCap: userDailyUsd() });
 }

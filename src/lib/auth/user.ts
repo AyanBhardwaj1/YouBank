@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "./server";
 import { runAsUser } from "@/lib/ai/usage";
+import { isAdmin } from "./admin";
 
 export type CurrentUser = { id: string; email: string; name: string };
 
@@ -55,7 +56,7 @@ export function unauthorized() {
  * use 403 this way), which keeps this module free of an import cycle with the team layer.
  */
 export function guarded(fn: (user: CurrentUser) => Promise<Response>): Promise<Response> {
-  return requireUser().then((u) => runAsUser(u.id, () => fn(u))).catch((e) => {
+  return requireUser().then((u) => runAsUser(u.id, () => fn(u), { admin: isAdmin(u) })).catch((e) => {
     if (e instanceof Unauthorized) return unauthorized();
     const status = typeof (e as { status?: unknown })?.status === "number" ? (e as { status: number }).status : 500;
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status });

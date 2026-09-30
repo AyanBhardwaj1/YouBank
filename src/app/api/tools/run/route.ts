@@ -1,4 +1,5 @@
 import { runChat } from "@/lib/ai/agent";
+import { isAdmin } from "@/lib/auth/admin";
 import { modelAllowed } from "@/lib/ai/config";
 import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
         json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
         tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS, signal: req.signal,
         emit: (e) => { if (e.type === "done") { provider = e.provider; model = e.model; } if (e.type !== "text") emit(e); else emit({ type: "progress", chars: e.text.length }); },
-      }));
+      }), { admin: isAdmin(user) });
       const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
       let output: WorkflowOutput | null = null;
       let error = "";

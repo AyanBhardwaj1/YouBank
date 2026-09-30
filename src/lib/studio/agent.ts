@@ -8,6 +8,7 @@ import { runChat, type ChatMessage } from "@/lib/ai/agent";
 import { def, type ToolDef } from "@/lib/ai/tools";
 import { loadUserContext } from "@/lib/ai/persona";
 import { runAsUser } from "@/lib/ai/usage";
+import { isAdmin } from "@/lib/auth/admin";
 import type { CurrentUser } from "@/lib/auth/user";
 import { getCompanyData } from "@/lib/company";
 import { derive } from "@/lib/metrics";
@@ -649,7 +650,7 @@ export type RunInput = {
 };
 
 export async function runStudioAgent(o: RunInput): Promise<void> {
-  return runAsUser(o.user.id, () => runStudio(o));
+  return runAsUser(o.user.id, () => runStudio(o), { admin: isAdmin(o.user) });
 }
 
 async function runStudio(o: RunInput): Promise<void> {
