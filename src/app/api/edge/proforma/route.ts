@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
+import { ensureMaps } from "@/lib/edge/assets";
 import { rateLimit } from "@/lib/locks";
 import { memo } from "@/lib/memo";
 import { partyFor, proforma } from "@/lib/edge/proforma";
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
     if (parties.length < 2 || parties.some((p) => !p)) return NextResponse.json({ error: "Pick two to four companies by ticker or name." }, { status: 400 });
     await rateLimit(`edge-proforma:${user.id}`, 60, 3_600_000, "Many what-ifs this hour. Try again in a few minutes.");
     const key = `edge:proforma:${q.get("place") ?? "permian"}:${parties.map((p) => p!.label).join("|")}`;
+    await ensureMaps();
     const result = await memo(key, 10 * 60_000, () => proforma(parties.map((p) => p!), place));
     return NextResponse.json(result, { headers: { "cache-control": "private, max-age=300" } });
   });

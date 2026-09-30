@@ -11,19 +11,18 @@ import { logError } from "@/lib/errors";
 import { workspaceFor, type Profile } from "@/lib/roles";
 import { myTeamIds } from "@/lib/teams/db";
 import { WATCH_LIMIT } from "./access";
-import { syncRegion } from "./assets";
+import { COVERED, ensureMaps } from "./assets";
 import { MAPPED_COMPANIES } from "./companies";
 import { checkTarget } from "./detect";
 import { PLACES, type Bbox } from "./sources/eia";
+
+export { COVERED };
 
 export type WatchKind = "company" | "place";
 export type Watch = { id: number; kind: WatchKind; label: string; target: EdgeWatchTarget; mine: boolean; teamId: number | null; createdAt: string; lastCheckedAt: string | null };
 
 /** Profiles (joined as schema.profiles) that have the Edge beta on. */
 export const BETA_ON = sql`${schema.profiles.extra}->'edge'->>'beta' = 'true'`;
-
-/** The regions Edge has asset maps for so far; a company watch looks at its assets inside these. */
-export const COVERED: { key: string; name: string; bbox: Bbox }[] = [{ key: "permian", ...PLACES.permian }];
 
 const toWatch = (r: typeof schema.edgeWatches.$inferSelect, userId: string): Watch => ({
   id: r.id, kind: r.kind as WatchKind, label: r.label, target: r.target, mine: r.userId === userId, teamId: r.teamId,
@@ -111,7 +110,7 @@ export function targetOf(w: Pick<Watch, "kind" | "target">): { ticker?: string; 
 /** Make sure the maps are loaded, then look at a watch's sites now; records when it was checked. */
 export async function checkWatch(w: Pick<Watch, "id" | "kind" | "target">, deadline: number, maxSites = 3): Promise<number[]> {
   try {
-    for (const region of COVERED) await syncRegion(region.bbox);
+    await ensureMaps();
     const { found } = await checkTarget(targetOf(w), deadline, maxSites);
     await requireDb().update(schema.edgeWatches).set({ lastCheckedAt: new Date() }).where(eq(schema.edgeWatches.id, w.id));
     return found;
@@ -128,7 +127,7 @@ export async function checkWatch(w: Pick<Watch, "id" | "kind" | "target">, deadl
  */
 export async function checkDue(deadline: number, maxSites = 3): Promise<{ targets: number; checked: number; found: number[] }> {
   const db = requireDb();
-  for (const region of COVERED) await syncRegion(region.bbox);
+  await ensureMaps();
   const rows = await db.select({ id: schema.edgeWatches.id, kind: schema.edgeWatches.kind, target: schema.edgeWatches.target, last: schema.edgeWatches.lastCheckedAt })
     .from(schema.edgeWatches).innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId))
     .where(and(BETA_ON, or(isNull(schema.edgeWatches.lastCheckedAt), sql`${schema.edgeWatches.lastCheckedAt} < now() - interval '20 hours'`)))

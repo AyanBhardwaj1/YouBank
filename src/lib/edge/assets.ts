@@ -7,9 +7,10 @@
 import { sql } from "drizzle-orm";
 import { requireDb } from "@/db";
 import { cacheGet, cacheSet } from "@/lib/cache";
+import { memo } from "@/lib/memo";
 import { parentOf } from "./companies";
 import { CENSUS_COUNTIES, counties } from "./sources/census";
-import { EIA_PIPELINES, EIA_PLANTS, gasPipelines, processingPlants, type AssetInput, type Bbox, type Geometry, type SourceInfo } from "./sources/eia";
+import { EIA_PIPELINES, EIA_PLANTS, gasPipelines, PLACES, processingPlants, type AssetInput, type Bbox, type Geometry, type SourceInfo } from "./sources/eia";
 
 export const ASSET_SOURCES: Record<string, SourceInfo> = { [EIA_PIPELINES.key]: EIA_PIPELINES, [EIA_PLANTS.key]: EIA_PLANTS, [CENSUS_COUNTIES.key]: CENSUS_COUNTIES };
 
@@ -44,6 +45,18 @@ export async function syncRegion(bbox: Bbox, force = false): Promise<number> {
   await cacheSet(regionKey(bbox), String(Date.now()), WEEK);
   return pipes.length + plants.length + areas.length;
 }
+
+/** The regions Edge has asset maps for so far; a company watch looks at its assets inside these. */
+export const COVERED: { key: string; name: string; bbox: Bbox }[] = [{ key: "permian", ...PLACES.permian }];
+
+/**
+ * Make sure the covered regions' maps are loaded (the first request on a fresh database loads them,
+ * a few seconds; afterwards it is one cache read). Callers on one instance share a single load.
+ */
+export const ensureMaps = () => memo("edge:ensure-maps", 60_000, async () => {
+  for (const region of COVERED) await syncRegion(region.bbox);
+  return true;
+});
 
 /** Public assets in a box (and the person's own), optionally for some companies or kinds only. Counties only when asked for. */
 export async function assetsIn(bbox: Bbox, opts: { tickers?: string[]; names?: string[]; kinds?: string[]; userId?: string | null; limit?: number; simplify?: number } = {}): Promise<AssetFeature[]> {
