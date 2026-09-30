@@ -54,6 +54,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenResponse
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body),
+    signal: AbortSignal.timeout(15_000),
   });
   const json = (await res.json().catch(() => null)) as (TokenResponse & { error?: string; error_description?: string }) | null;
   if (!res.ok || !json?.access_token) {
@@ -71,7 +72,7 @@ export function refreshAccessToken(cfg: GoogleConfig, refreshToken: string) {
 }
 
 async function call<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
+  const res = await fetch(`${API}${path}`, { signal: AbortSignal.timeout(30_000), ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     const err = new Error(`Gmail API ${res.status}: ${detail.slice(0, 300)}`) as Error & { status?: number };

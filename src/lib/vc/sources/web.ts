@@ -23,7 +23,7 @@ export async function discoverStartups(query: string, program = ""): Promise<New
   const prompt = `Find startups: ${query}${program ? ` (program: ${program})` : ""}. Include website, one-line description, country, city, founded year, funding stage, known investors, founders, and the URL you got it from.`;
   let parsed: z.infer<typeof Found>;
   if (cfg.provider === "openai") {
-    const client = new OpenAI({ apiKey: cfg.apiKey });
+    const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 150_000, maxRetries: 1 });
     const model = process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.4-mini";
     const res = await client.responses.create({
       model, tools: [{ type: "web_search" }], instructions, input: prompt,
@@ -36,7 +36,7 @@ export async function discoverStartups(query: string, program = ""): Promise<New
     // Anthropic path: research, then ask for JSON in a second pass without tools.
     const r = await webResearch(prompt);
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new Anthropic({ apiKey: cfg.apiKey });
+    const client = new Anthropic({ apiKey: cfg.apiKey, timeout: 120_000, maxRetries: 1 });
     const res = await client.messages.create({ model: cfg.model, max_tokens: 6000, messages: [{ role: "user", content: `Extract the startups from these notes as JSON.\n\n${r.text}\n\nSources: ${r.citations.map((c) => c.url).join(", ")}` }], output_config: { format: { type: "json_schema", schema: z.toJSONSchema(Found) as Record<string, unknown> } } });
     const mu = res.usage;
     recordUsage({ feature: "vc-discover", provider: "anthropic", model: cfg.model, usage: { input: (mu.input_tokens ?? 0) + (mu.cache_read_input_tokens ?? 0) + (mu.cache_creation_input_tokens ?? 0), cached: mu.cache_read_input_tokens ?? 0, cacheWrite: mu.cache_creation_input_tokens ?? 0, output: mu.output_tokens ?? 0, reasoning: 0 } });

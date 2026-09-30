@@ -19,7 +19,7 @@ export async function blsSeries(): Promise<Record<string, BlsObs[]>> {
   return cacheJson<Record<string, BlsObs[]>>("bls:core", 12 * 3_600_000, async () => {
     const end = new Date().getUTCFullYear();
     const res = await fetch("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
-      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({ seriesid: Object.keys(BLS_SERIES), startyear: String(end - 9), endyear: String(end) }),
     });
     const json = (await res.json()) as { status: string; Results?: { series: { seriesID: string; data: { year: string; period: string; value: string }[] }[] } };

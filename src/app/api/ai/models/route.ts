@@ -14,7 +14,7 @@ export async function GET() {
     let openaiIds: string[] | null = null;
     if (providers.includes("openai")) {
       openaiIds = await cacheJson("openai:models", 3_600_000, async () => {
-        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 10_000, maxRetries: 0 });
         const ids: string[] = [];
         for await (const m of client.models.list()) ids.push(m.id);
         return ids;

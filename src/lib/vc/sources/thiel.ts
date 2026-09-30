@@ -3,7 +3,7 @@ import { slugify } from "../directory";
 
 /** Notable Thiel Fellows from Wikipedia's article (a seed; web discovery extends it). */
 export async function fetchThiel(): Promise<NewStartup[]> {
-  const res = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=Thiel_Fellowship&prop=wikitext&format=json", { headers: { "User-Agent": "YouBank directory (contact: see site)" }, cache: "no-store" });
+  const res = await fetch("https://en.wikipedia.org/w/api.php?action=parse&page=Thiel_Fellowship&prop=wikitext&format=json", { headers: { "User-Agent": "YouBank directory (contact: see site)" }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`Wikipedia ${res.status}`);
   const w = ((await res.json()) as { parse: { wikitext: { "*": string } } }).parse.wikitext["*"];
   const out: NewStartup[] = [];

@@ -14,7 +14,7 @@ export type Obs = { date: string; value: number };
 
 export async function fredSeries(id: string, start?: string): Promise<Obs[]> {
   const rows = await cacheJson<Obs[]>(`fred:${id}`, 12 * 3_600_000, async () => {
-    const res = await fetch(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" } });
+    const res = await fetch(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" }, signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`FRED ${res.status} for ${id}`);
     const text = await res.text();
     return text.split("\n").slice(1).map((l) => l.split(",")).filter((p) => p.length >= 2 && p[1] !== "." && p[1] !== "").map((p) => ({ date: p[0], value: Number(p[1]) })).filter((o) => Number.isFinite(o.value));

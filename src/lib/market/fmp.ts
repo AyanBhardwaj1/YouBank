@@ -25,7 +25,7 @@ async function get<T>(path: string, params: Record<string, string | number | und
   const cacheKey = `fmp:${path}?${qs}`;
   return cacheJson<T>(cacheKey, ttlMs, async () => {
     if (await cacheGet(FMP_LIMIT_KEY)) throw new MarketDataError(LIMIT_MESSAGE);
-    const res = await fetch(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store" });
+    const res = await fetch(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     const text = await res.text();
     if (/Limit Reach/i.test(text)) { await cacheSet(FMP_LIMIT_KEY, "1", 30 * MIN); throw new MarketDataError(LIMIT_MESSAGE); }
     if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw new MarketDataError(`Market data unavailable for ${path}`);

@@ -97,7 +97,9 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   try {
     text = cfg.provider === "openai" ? await runOpenAI(run) : await runAnthropic(run);
   } catch (e) {
-    opts.emit({ type: "error", message: describeError(e) });
+    // A person who closed the run gets no error for it.
+    if (opts.signal?.aborted) opts.emit({ type: "status", text: "stopped" });
+    else opts.emit({ type: "error", message: describeError(e) });
   } finally {
     await release();
   }
@@ -152,7 +154,8 @@ async function runCalls<T extends { name: string; input: unknown }>(calls: T[], 
 
 async function runOpenAI(a: LoopArgs): Promise<string> {
   const { cfg, system, history, toolDefs, ctx, emit, json, maxTurns, deadline, signal } = a;
-  const client = new OpenAI({ apiKey: cfg.apiKey });
+  // Two minutes a turn, one retry: the SDK's default (ten minutes, two retries) outlives every route.
+  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 120_000, maxRetries: 1 });
   // With native web search available, the web_research function tool is redundant on OpenAI.
   const fnDefs = NATIVE_WEB_SEARCH ? toolDefs.filter((t) => t.name !== "web_research") : toolDefs;
   const tools: OpenAI.Responses.Tool[] = [
@@ -182,7 +185,7 @@ async function runOpenAI(a: LoopArgs): Promise<string> {
     };
     let stream: AsyncIterable<OpenAI.Responses.ResponseStreamEvent>;
     try {
-      stream = await client.responses.create(params);
+      stream = await client.responses.create(params, { signal });
     } catch (e) {
       // Some models reject reasoning summaries; retry once without.
       if (useSummary && e instanceof OpenAI.APIError && /summary/i.test(e.message)) { useSummary = false; turn--; continue; }
@@ -250,7 +253,7 @@ function claudeThinking(model: string, effort: Effort): { thinking?: Anthropic.T
 
 async function runAnthropic(a: LoopArgs): Promise<string> {
   const { cfg, system, history, toolDefs, emit, json, maxTurns, deadline, signal } = a;
-  const client = new Anthropic({ apiKey: cfg.apiKey });
+  const client = new Anthropic({ apiKey: cfg.apiKey, timeout: 120_000, maxRetries: 1 });
   const tools: Anthropic.Tool[] = toolDefs.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters as Anthropic.Tool.InputSchema, eager_input_streaming: true }));
   const messages: Anthropic.MessageParam[] = history.map((m) => ({ role: m.role, content: m.content }));
   const think = claudeThinking(cfg.model, cfg.effort);
@@ -278,7 +281,7 @@ async function runAnthropic(a: LoopArgs): Promise<string> {
       messages,
       ...(think.thinking ? { thinking: think.thinking } : {}),
       ...(think.output_config ? { output_config: think.output_config } : {}),
-    });
+    }, { signal });
     let text = "";
     stream.on("text", (delta) => { text += delta; emit({ type: "text", text: delta }); });
     stream.on("thinking", (delta) => emit({ type: "thinking", text: delta }));
@@ -309,6 +312,9 @@ async function runAnthropic(a: LoopArgs): Promise<string> {
 
 /* ---------------- Structured one-shot calls (no tools) ---------------- */
 
+/** Long enough for a data room's tables, short of the five-minute route limit (the SDK default is ten minutes). */
+const STRUCTURED_TIMEOUT_MS = 240_000;
+
 /** A file sent with a structured call: a PDF, or a PNG, JPEG, WebP or GIF image. `data` is base64. */
 export type Attachment = { name: string; mime: string; data: string };
 
@@ -319,7 +325,7 @@ export async function structured<T>(schema: z.ZodType<T>, name: string, system: 
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const files = opts?.files ?? [];
   if (cfg.provider === "openai") {
-    const client = new OpenAI({ apiKey: cfg.apiKey, ...(opts?.timeoutMs ? { timeout: opts.timeoutMs, maxRetries: 1 } : {}) });
+    const client = new OpenAI({ apiKey: cfg.apiKey, timeout: opts?.timeoutMs ?? STRUCTURED_TIMEOUT_MS, maxRetries: 1 });
     const input: string | OpenAI.Responses.ResponseInput = files.length
       ? [{
           role: "user",
@@ -340,7 +346,7 @@ export async function structured<T>(schema: z.ZodType<T>, name: string, system: 
     recordUsage({ feature: name, provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u?.output_tokens ?? 0, reasoning: u?.output_tokens_details?.reasoning_tokens ?? 0 } });
     return { data: schema.parse(JSON.parse(res.output_text)), provider: cfg.provider, model: cfg.model };
   }
-  const client = new Anthropic({ apiKey: cfg.apiKey, ...(opts?.timeoutMs ? { timeout: opts.timeoutMs, maxRetries: 1 } : {}) });
+  const client = new Anthropic({ apiKey: cfg.apiKey, timeout: opts?.timeoutMs ?? STRUCTURED_TIMEOUT_MS, maxRetries: 1 });
   const content: Anthropic.ContentBlockParam[] = [
     ...files.map((f): Anthropic.ContentBlockParam => (f.mime === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: f.data }, title: f.name }

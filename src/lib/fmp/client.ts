@@ -15,7 +15,7 @@ export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetche
   const rows = await cacheJson<FmpProfile[] | null>(`fmp:profile:${symbol}`, 15 * 60_000, async () => {
     // The plan's daily limit (see FMP_LIMIT_KEY in market/fmp): skip the request while it is in force.
     if (await cacheGet("fmp:daily-limit")) return null;
-    const res = await fetch(`${BASE}/profile?symbol=${encodeURIComponent(symbol)}&apikey=${key}`, { cache: "no-store" });
+    const res = await fetch(`${BASE}/profile?symbol=${encodeURIComponent(symbol)}&apikey=${key}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!res.ok) return null;
     const data = (await res.json().catch(() => null)) as unknown;
     if (data && typeof data === "object" && /Limit Reach/i.test(String((data as { "Error Message"?: string })["Error Message"] ?? ""))) { await cacheSet("fmp:daily-limit", "1", 30 * 60_000); return null; }

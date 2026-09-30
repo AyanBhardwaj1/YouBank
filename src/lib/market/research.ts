@@ -199,7 +199,7 @@ async function ask(model: string, subject: string, fields: Field[], ctx: Context
   const cfg = resolveAi(null, { model });
   if (cfg.provider !== "openai") throw new Error("AI research needs an OpenAI key");
   await guardAi(aiUser());
-  const client = new OpenAI({ apiKey: cfg.apiKey });
+  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 90_000, maxRetries: 1 });
   const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const res = await client.responses.create({
     model, reasoning: { effort: "low" }, tools: [{ type: "web_search" }], include: ["web_search_call.action.sources"],

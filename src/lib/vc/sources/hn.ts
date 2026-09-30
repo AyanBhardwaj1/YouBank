@@ -13,7 +13,7 @@ export async function fetchShowHn(days: number, minPoints = 3): Promise<NewStart
     const start = Math.max(end - 7 * 86400, now - days * 86400);
     for (let page = 0; page < 5; page++) {
       const p = new URLSearchParams({ tags: "show_hn", numericFilters: `created_at_i>${start},created_at_i<=${end},points>${minPoints - 1}`, hitsPerPage: "1000", page: String(page) });
-      const res = await fetch(`https://hn.algolia.com/api/v1/search_by_date?${p}`, { cache: "no-store" });
+      const res = await fetch(`https://hn.algolia.com/api/v1/search_by_date?${p}`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
       if (!res.ok) throw new Error(`HN Algolia ${res.status}`);
       const j = (await res.json()) as { hits: Hit[]; nbPages: number };
       for (const h of j.hits) {

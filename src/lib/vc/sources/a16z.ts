@@ -4,7 +4,7 @@ type A16zCompany = { id: string; title: string; web?: string; logo?: string; yea
 
 /** The a16z portfolio page assigns its whole dataset to a JavaScript global; parse it from the HTML. */
 export async function fetchA16z(): Promise<NewStartup[]> {
-  const res = await fetch("https://a16z.com/portfolio/", { headers: { "User-Agent": "Mozilla/5.0 (YouBank directory)" }, cache: "no-store" });
+  const res = await fetch("https://a16z.com/portfolio/", { headers: { "User-Agent": "Mozilla/5.0 (YouBank directory)" }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`a16z ${res.status}`);
   const html = await res.text();
   const m = /window\.a16z_portfolio_companies\s*=\s*(\[[\s\S]*?\]);\s*(?:\n|window|<\/script>)/.exec(html);

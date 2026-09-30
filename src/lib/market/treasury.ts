@@ -9,7 +9,7 @@ export const TENORS: [string, number][] = [["1 Mo", 1 / 12], ["2 Mo", 2 / 12], [
 
 async function year(y: number): Promise<CurveRow[]> {
   const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${y}&page&_format=csv`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Treasury ${res.status}`);
   const [head, ...lines] = (await res.text()).trim().split("\n");
   const cols = head.split(",").map((c) => c.replace(/"/g, "").trim());

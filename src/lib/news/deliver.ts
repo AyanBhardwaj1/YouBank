@@ -90,7 +90,7 @@ export async function pushToUser(userId: string, payload: { title: string; body:
   let sent = 0;
   for (const s of subs) {
     try {
-      await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload), { TTL: payload.urgent ? 3600 : 6 * 3600, urgency: payload.urgent ? "high" : "normal" });
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload), { TTL: payload.urgent ? 3600 : 6 * 3600, urgency: payload.urgent ? "high" : "normal", timeout: 10_000 });
       sent++;
       await db.update(schema.newsPushSubs).set({ lastOkAt: new Date() }).where(eq(schema.newsPushSubs.id, s.id));
     } catch (e) {
