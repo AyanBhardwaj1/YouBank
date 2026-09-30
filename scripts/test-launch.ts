@@ -9,6 +9,7 @@ import { follow, followedCount, pollDelay, touch } from "@/lib/realtime/feed";
 import { memo } from "@/lib/memo";
 import { describeFailure, looksInternal, OUR_SIDE, publicMessage, TOO_SLOW } from "@/lib/errors";
 import { pool, poolSize } from "@/lib/pool";
+import { checkEnv } from "@/lib/env";
 import { pollBackoff } from "@/components/news/client";
 
 let pass = 0, fail = 0;
@@ -144,6 +145,14 @@ async function main() {
   const cut = await pool([1, 2, 3, 4, 5, 6], 2, async (n) => { await nap(25); return n; }, Date.now() + 40);
   check("no new work starts after the deadline", cut.length > 0 && cut.length < 6, cut);
   check("pool sizes from the environment are bounded", poolSize("50", 6) === 20 && poolSize("abc", 6) === 6 && poolSize("0", 6) === 6 && poolSize("3", 6) === 3);
+
+  console.log("environment check");
+  const good = { DATABASE_URL: "postgres://x", NEON_AUTH_BASE_URL: "https://auth", NEON_AUTH_COOKIE_SECRET: "x".repeat(32), CRON_SECRET: "c", AUTOPILOT_SECRET: "a", EDGAR_USER_AGENT: "YouBank ops@example.com", EMAIL_TOKEN_SECRET: "e".repeat(16), OPENAI_API_KEY: "k" };
+  const ok = checkEnv(good, true);
+  check("a complete production environment passes", ok.missing.length === 0 && ok.invalid.length === 0, ok);
+  const bad = checkEnv({ ...good, NEON_AUTH_COOKIE_SECRET: "short", CRON_SECRET: "", OPENAI_API_KEY: "", CHAT_BUDGET_MS: "fast", YOUBANK_DEV_USER: "me" }, true);
+  check("missing and malformed values are named", bad.missing.includes("CRON_SECRET") && bad.missing.some((m) => m.includes("OPENAI_API_KEY")) && bad.invalid.some((i) => i.startsWith("NEON_AUTH_COOKIE_SECRET")) && bad.invalid.some((i) => i.startsWith("CHAT_BUDGET_MS")) && bad.invalid.some((i) => i.startsWith("YOUBANK_DEV_USER")), bad);
+  check("production-only values are not required in development", checkEnv({ ...good, CRON_SECRET: "" }, false).missing.length === 0);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
