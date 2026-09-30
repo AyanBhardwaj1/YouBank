@@ -81,13 +81,16 @@ const listeners = new Set<() => void>();
 let version = 0;
 const notify = () => { version++; for (const l of listeners) l(); };
 
+/** The sparks route takes 24 symbols a request, so a page with more asks in batches. */
 function request(symbols: string[]) {
-  const missing = [...new Set(symbols)].filter((s) => !sparks.has(s) && !inflight.has(s)).slice(0, 24);
-  if (!missing.length) return;
-  for (const s of missing) inflight.add(s);
-  void api<Record<string, Spark>>(`/api/news/sparks?symbols=${missing.join(",")}`).then((r) => {
-    for (const s of missing) sparks.set(s, r[s]?.closes?.length ? r[s] : null);
-  }).catch(() => { for (const s of missing) sparks.set(s, null); }).finally(() => { for (const s of missing) inflight.delete(s); notify(); });
+  const missing = [...new Set(symbols)].filter((s) => !sparks.has(s) && !inflight.has(s));
+  for (let i = 0; i < missing.length; i += 24) {
+    const batch = missing.slice(i, i + 24);
+    for (const s of batch) inflight.add(s);
+    void api<Record<string, Spark>>(`/api/news/sparks?symbols=${batch.join(",")}`).then((r) => {
+      for (const s of batch) sparks.set(s, r[s]?.closes?.length ? r[s] : null);
+    }).catch(() => { for (const s of batch) sparks.set(s, null); }).finally(() => { for (const s of batch) inflight.delete(s); notify(); });
+  }
 }
 
 /** Thirty-day closes for the symbols on screen, fetched in one batch and shared across cards. */
