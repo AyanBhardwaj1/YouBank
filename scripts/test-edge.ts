@@ -12,6 +12,14 @@ import { matches, noveltyOf, score, sizeOf } from "@/lib/edge/feed";
 import { describeProforma, proformaWeight } from "@/lib/edge/dealwatch";
 import { trailCsv } from "@/lib/edge/provenance";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
+import { hasCycle, layout, makeNode, suggestions, TEMPLATES, validate, waves, wire, type Graph } from "@/lib/edge/canvas/catalog";
+import { assemble, cleanConfig } from "@/lib/edge/canvas/build";
+import { crossed, evidenceOf, kindOfValue, metricOf, rowsOf, toCsv, type Findings, type Table } from "@/lib/edge/canvas/values";
+import { memoMarkdown } from "@/lib/edge/canvas/executors/outputs";
+import { allowance, resetsOn } from "@/lib/edge/infra/usage";
+import { partsForRange, PART_BYTES, signingTime } from "@/lib/edge/infra/r2";
+import { statusUrl } from "@/lib/edge/infra/ml";
+import { judge } from "@/lib/edge/refine";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -153,6 +161,55 @@ async function main() {
   console.log("beta gate");
   check("Edge is not in the nav until turned on", !featuresFor("banker").some((f) => f.id === "edge") && featuresFor("banker", { edge: true }).some((f) => f.id === "edge"));
   check("a pinned Edge tab drops out when the beta is off", !normalizeNavPrefs({ pinned: ["home", "edge"] }, "banker").pinned.includes("edge") && normalizeNavPrefs({ pinned: ["home", "edge"] }, "banker", { edge: true }).pinned.includes("edge"));
+
+  console.log("canvas");
+  const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "out.signal", "out.export"]);
+  const hero = TEMPLATES.find((t) => t.id === "asset-watch")!.build({ tickers: ["ET", "TRGP"] });
+  check("the hero template is valid with Earth and outputs available", validate(hero, all).filter((i) => i.level === "error").length === 0, validate(hero, all));
+  check("a block without its module is reported", validate(TEMPLATES.find((t) => t.id === "buyer-finder")!.build({ tickers: ["ET"] }), all).some((i) => /not available/.test(i.message)));
+  const g: Graph = { nodes: [makeNode("source.companies", { tickers: ["ET"] }, "a"), makeNode("out.memo", {}, "m")], edges: [] };
+  check("an unwired required input is an error", validate(g, all).some((i) => i.nodeId === "m" && /Connect/.test(i.message)));
+  const bad: Graph = { nodes: [makeNode("source.companies", {}, "a"), makeNode("earth.proforma", {}, "p"), makeNode("out.export", {}, "x")], edges: [wire("a", "companies", "x", "in")] };
+  check("a wire into an input that cannot use its kind is an error", validate(bad, all).some((i) => i.nodeId === "x" && /cannot use/.test(i.message)));
+  const loop: Graph = { nodes: [makeNode("out.memo", {}, "m1"), makeNode("out.memo", {}, "m2")], edges: [wire("m1", "memo", "m2", "in"), wire("m2", "memo", "m1", "in")] };
+  check("a loop is found", hasCycle(loop) && validate(loop, new Set(["out.memo"])).some((i) => /loop/.test(i.message)));
+  const w = waves(hero);
+  check("waves run sources first and the memo last", w[0].includes("companies") && w[w.length - 1].includes("memo") && w.flat().length === hero.nodes.length, w);
+  const tip = suggestions({ nodes: [makeNode("source.companies", {}, "a")], edges: [] }, all);
+  check("an unused output suggests blocks that accept it", tip[0]?.types.includes("earth.watch") && tip[0]?.types.includes("earth.proforma"), tip);
+  const laid = layout(hero);
+  check("layout puts later waves further right", laid.nodes.find((n) => n.id === "memo")!.position.x > laid.nodes.find((n) => n.id === "companies")!.position.x);
+  const built = assemble({ title: "t", explanation: "", nodes: [{ key: "c", type: "source.companies", config: { tickers: "et, kmi", junk: 1 } }, { key: "e", type: "earth.watch", config: { sites: 99 } }, { key: "z", type: "made.up" }], wires: [{ from: "c", fromPort: "companies", to: "e", toPort: "in" }, { from: "e", fromPort: "findings", to: "c", toPort: "nothing" }] }, all);
+  check("the builder keeps known blocks and fitting wires, drops the rest", built.graph.nodes.length === 2 && built.graph.edges.length === 1 && built.dropped.length === 2, built);
+  check("the builder cleans settings", JSON.stringify(cleanConfig("source.companies", { tickers: "et, kmi", junk: 1 })) === JSON.stringify({ tickers: ["ET", "KMI"] }) && cleanConfig("earth.watch", { sites: 99 }).sites === 8);
+  const md = memoMarkdown({ title: "t", paragraphs: [{ text: "Capacity rose [1, 2].", cites: [2, 1, 9] }, { text: "A view.", cites: [] }], caveats: ["Old data."] }, 2, true);
+  check("memo citations are checked and inline ones removed", md.startsWith("Capacity rose. [1][2]") && md.includes("A view. *(analysis)*") && md.includes("synthetic"), md);
+  const findings: Findings = { items: [{ id: 1, title: "New pad", kind: "ground_change", confidence: 0.8, tickers: ["ET"], site: "Orla", observedAt: "2026-09-11T00:00:00Z", hectares: 2, summary: "s", sources: [] }] };
+  check("values know their kind", kindOfValue(findings) === "findings" && kindOfValue({ columns: [], rows: [] }) === "table" && kindOfValue({ metric: "x", value: 1, triggered: false, detail: "" }) === "signal");
+  check("findings become evidence, rows and a metric", evidenceOf("findings", findings).length === 1 && rowsOf("findings", findings)!.rows.length === 1 && metricOf("findings", findings)!.value === 1);
+  const synth: Table = { columns: [{ name: "a", type: "num" }], rows: [[1], [2]], synthetic: { recipe: "ctgan", seed: 7 } };
+  check("a synthetic export says so on its first line", toCsv(synth).startsWith("# SYNTHETIC DATA: ctgan, seed 7\na\n1\n2"));
+  check("signals cross lines", crossed("above", 5, 3, null) && !crossed("below", 5, 3, null) && crossed("changes", 2, 0, 1) && !crossed("changes", 2, 0, null) && !crossed("changes", 2, 0, 2));
+
+  console.log("free tiers and storage");
+  const lim = { modalUsd: 25, inngestExecutions: 45000, r2Bytes: 9e9, r2ClassA: 900000, r2ClassB: 9000000, docsDbBytes: 1.8e8 };
+  const when = new Date("2026-10-15T12:00:00Z");
+  check("under the ceilings everything runs", allowance("modal", { usd: 3 }, lim, when).ok && allowance("inngest", { executions: 10 }, lim, when).ok && allowance("r2", { bytes: 1e6 }, lim, when).ok);
+  check("at a ceiling the service pauses until next month", !allowance("modal", { usd: 25 }, lim, when).ok && /resumes 2026-11-01/.test(allowance("inngest", { executions: 45000 }, lim, when).reason ?? ""));
+  check("storage stops when full or out of operations", !allowance("r2", { bytes: 9e9 }, lim, when).ok && !allowance("r2", { class_b: 9e6 }, lim, when).ok);
+  check("months reset at the turn of the year", resetsOn(new Date("2026-12-20T00:00:00Z")) === "2027-01-01");
+  check("signed links stay the same within the hour", signingTime(Date.parse("2026-10-01T10:05:00Z"), 3600) === signingTime(Date.parse("2026-10-01T10:59:59Z"), 3600) && signingTime(Date.parse("2026-10-01T10:05:00Z"), 3600) === "20261001T100000Z");
+  const r = partsForRange(PART_BYTES * 2 + 10, PART_BYTES - 5, PART_BYTES + 4);
+  check("a byte range across two parts reads the end of one and the start of the next", r.length === 2 && r[0].n === 0 && r[0].from === PART_BYTES - 5 && r[1].n === 1 && r[1].to === 4, r);
+  check("a range past the end is clipped", partsForRange(100, 50, 1000).length === 1 && partsForRange(100, 50, 1000)[0].to === 99);
+  check("the ML status address follows Modal's naming", statusUrl("https://ws--youbank-edge-ml-api.modal.run") === "https://ws--youbank-edge-ml-status.modal.run" && statusUrl("https://x-api.modal.run", "https://explicit") === "https://explicit");
+
+  console.log("foundation-model check");
+  const yes = judge({ prithvi: { model: "P", blobs: [{ z: 3 }] }, sam: { model: "S", blobs: [{ iou: 0.1, areaPx: 400, polygon: [[1, 2]] }] } }, [{ pixels: 100 }], 0.5);
+  check("agreement confirms and raises confidence", yes.refinement.verdict === "confirmed" && yes.confidence > 0.5 && yes.refinement.models.join() === "P,S", yes);
+  const no = judge({ prithvi: { blobs: [{ z: -0.5 }] }, sam: { blobs: [{ iou: 0.95 }] } }, [{ pixels: 100 }], 0.5);
+  check("disagreement doubts and lowers confidence", no.refinement.verdict === "doubtful" && no.confidence < 0.5, no);
+  check("missing model answers leave confidence alone", judge({}, [{ pixels: 10 }], 0.4).confidence === 0.4);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
