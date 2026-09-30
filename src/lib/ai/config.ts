@@ -5,6 +5,15 @@ export type { Provider, Effort };
 export type AiConfig = { provider: Provider; model: string; apiKey: string; effort: Effort; researchModel: string };
 export type AiOverride = { model?: string; effort?: Effort };
 
+/**
+ * Models people may pick, from AI_ALLOWED_MODELS (comma-separated ids); unset allows the whole
+ * catalogue. The environment's own defaults and background routing are not limited by it.
+ */
+export function modelAllowed(model: string): boolean {
+  const list = (process.env.AI_ALLOWED_MODELS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return list.length === 0 || list.includes(model);
+}
+
 const keyFor = (p: Provider) => (p === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim() || "";
 const providerOf = (model: string): Provider => modelById(model)?.provider ?? (model.startsWith("claude") ? "anthropic" : "openai");
 
@@ -23,7 +32,7 @@ export function resolveAi(prefs?: AiPrefs | null, override?: AiOverride): AiConf
   if (aiDisabled()) return { provider: "none", reason: PAUSED };
   const envPref = (process.env.AI_PROVIDER ?? "openai").toLowerCase() === "anthropic" ? "anthropic" : "openai";
   const envModel = { openai: process.env.OPENAI_MODEL?.trim(), anthropic: process.env.ANTHROPIC_MODEL?.trim() };
-  const candidates = [override?.model, prefs?.model, prefs?.provider ? envModel[prefs.provider] : undefined, envModel[envPref], envPref === "openai" ? DEFAULT_OPENAI_MODEL : DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL]
+  const candidates = [override?.model, prefs?.model && modelAllowed(prefs.model) ? prefs.model : undefined, prefs?.provider ? envModel[prefs.provider] : undefined, envModel[envPref], envPref === "openai" ? DEFAULT_OPENAI_MODEL : DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL]
     .filter((m): m is string => !!m);
   for (const model of candidates) {
     const provider = providerOf(model);

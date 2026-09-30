@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { cacheJson } from "@/lib/cache";
-import { availableProviders } from "@/lib/ai/config";
+import { availableProviders, modelAllowed } from "@/lib/ai/config";
 import { EFFORTS, MODELS } from "@/lib/ai/models";
 import { guarded } from "@/lib/auth/user";
 
@@ -22,7 +22,7 @@ export async function GET() {
     }
     const models = MODELS.map((m) => ({
       ...m,
-      available: m.provider === "openai" ? (providers.includes("openai") && (openaiIds ? openaiIds.includes(m.id) : true)) : providers.includes("anthropic"),
+      available: modelAllowed(m.id) && (m.provider === "openai" ? (providers.includes("openai") && (openaiIds ? openaiIds.includes(m.id) : true)) : providers.includes("anthropic")),
     }));
     return NextResponse.json({ providers, models, efforts: EFFORTS });
   });

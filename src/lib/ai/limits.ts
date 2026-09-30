@@ -91,6 +91,30 @@ export async function guardAi(userId: string | null, pendingUsd = 0): Promise<vo
   if (why) throw new AiLimitError(why);
 }
 
+/** Chat input sizes: enough for a pasted filing excerpt, not a megabyte on every turn. */
+export const MAX_MESSAGE_CHARS = 20_000;
+export const MAX_HISTORY_CHARS = 100_000;
+
+/**
+ * A conversation cut to size: each earlier message capped, then the oldest dropped until the whole fits,
+ * starting on a person's message (Claude requires it). The newest message is kept whole; callers
+ * reject it first when it is itself too long.
+ */
+export function fitMessages<M extends { role: "user" | "assistant"; content: string }>(messages: M[], perMessage = MAX_MESSAGE_CHARS, total = MAX_HISTORY_CHARS): M[] {
+  if (!messages.length) return messages;
+  const last = messages[messages.length - 1];
+  const out: M[] = [last];
+  let size = last.content.length;
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i].content.length > perMessage ? { ...messages[i], content: `${messages[i].content.slice(0, perMessage)}\n[…cut for length]` } : messages[i];
+    if (size + m.content.length > total) break;
+    size += m.content.length;
+    out.unshift(m);
+  }
+  while (out.length > 1 && out[0].role !== "user") out.shift();
+  return out;
+}
+
 /** Longer than any route's 300 s limit, so a run whose function died frees its slot. */
 const RUN_LEASE_MS = 330_000;
 export const RUN_SLOTS = 2;

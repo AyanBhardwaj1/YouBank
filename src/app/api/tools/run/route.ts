@@ -1,4 +1,5 @@
 import { runChat } from "@/lib/ai/agent";
+import { modelAllowed } from "@/lib/ai/config";
 import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
 import { runAsUser } from "@/lib/ai/usage";
@@ -15,7 +16,7 @@ export const maxDuration = 300;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const MAX_CSV = 300_000;
 /** Stop calling tools this long before the host kills the function, so a slow run still returns cited output. */
-const BUDGET_MS = Number(process.env.WORKFLOW_BUDGET_MS ?? 235_000);
+const BUDGET_MS = Number(process.env.WORKFLOW_BUDGET_MS) || 235_000;
 
 /** Coerce and validate inputs against the tool's fields. Returns an error message or the cleaned inputs. */
 function cleanInputs(fields: { key: string; type: string; required?: boolean; label: string; default?: unknown }[], raw: Record<string, unknown>): { ok: true; inputs: Inputs } | { ok: false; error: string } {
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   if (!cleaned.ok) return Response.json({ error: cleaned.error }, { status: 400 });
   const { persona, prefs } = await loadUserContext(user.id);
   const override = {
-    model: body?.model && MODELS.some((m) => m.id === body.model) ? body.model : undefined,
+    model: body?.model && MODELS.some((m) => m.id === body.model) && modelAllowed(body.model) ? body.model : undefined,
     effort: body?.effort && EFFORTS.has(body.effort) ? (body.effort as Effort) : tool.effort,
   };
   const today = new Date().toISOString().slice(0, 10);
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
         context: { ticker: String(cleaned.inputs.ticker ?? ""), panels: [], subject: tool.title, persona },
         system: workflowSystemPrompt(), volatile: workflowContext(tool, persona, today), feature: `tool:${tool.id}`, parallelTools: true,
         json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
-        tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS,
+        tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS, signal: req.signal,
         emit: (e) => { if (e.type === "done") { provider = e.provider; model = e.model; } if (e.type !== "text") emit(e); else emit({ type: "progress", chars: e.text.length }); },
       }));
       const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
