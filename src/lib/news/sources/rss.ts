@@ -56,7 +56,9 @@ export function parseFeed(xml: string): Entry[] {
 }
 
 export async function fetchRss(feed: Feed, state: { etag?: string; lastModified?: string }, now = new Date()): Promise<FetchResult> {
-  const headers: Record<string, string> = { "User-Agent": NEWS_UA, Accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5" };
+  // SEC asks every automated client for a contact address, its own feeds included.
+  const ua = /(^|\.)sec\.gov$/i.test(new URL(feed.url).hostname) ? (process.env.EDGAR_USER_AGENT ?? NEWS_UA) : NEWS_UA;
+  const headers: Record<string, string> = { "User-Agent": ua, Accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5" };
   if (state.etag) headers["If-None-Match"] = state.etag;
   if (state.lastModified) headers["If-Modified-Since"] = state.lastModified;
   let res: Response;
