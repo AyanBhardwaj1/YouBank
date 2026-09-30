@@ -16,9 +16,9 @@ const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
 };
 
-export function AppShell({ email, initialNav, children }: { email: string; initialNav: NavPrefs; children: React.ReactNode }) {
+export function AppShell({ email, edge = false, initialNav, children }: { email: string; edge?: boolean; initialNav: NavPrefs; children: React.ReactNode }) {
   const { profile } = useWorkspace();
-  const features = useMemo(() => featuresFor(profile.role), [profile.role]);
+  const features = useMemo(() => featuresFor(profile.role, { edge }), [profile.role, edge]);
   const [prefs, setPrefs] = useState(initialNav);
   const [open, setOpenState] = useState(initialNav.dock);
   const [customizing, setCustomizing] = useState(false);

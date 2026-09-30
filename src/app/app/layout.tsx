@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth/user";
 import { WorkspaceProvider } from "@/components/workspace/WorkspaceProvider";
 import { AppShell } from "@/components/workspace/AppShell";
 import { normalizeNavPrefs } from "@/lib/nav";
+import { edgePrefs } from "@/lib/edge/access";
 import { ThemeSync } from "@/components/theme/ThemeSync";
 import type { Profile, RoleId } from "@/lib/roles";
 
@@ -19,10 +20,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const profile: Profile = { role: p.role as RoleId, specialty: p.specialty, seniority: p.seniority, firmType: p.firmType, firmName: p.firmName, firmTicker: p.firmTicker, sectors: p.sectors, goals: p.goals, name: user.name };
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const savedTheme = typeof extra.theme === "string" ? extra.theme : null;
+  const edge = edgePrefs(extra, profile.role).beta;
   return (
     <WorkspaceProvider profile={profile}>
       <ThemeSync theme={savedTheme} />
-      <AppShell email={user.email} initialNav={normalizeNavPrefs(extra.nav, profile.role)}>{children}</AppShell>
+      {/* Keyed on the beta switch so turning Edge on or off rebuilds the bars with it. */}
+      <AppShell key={edge ? "edge" : "base"} email={user.email} edge={edge} initialNav={normalizeNavPrefs(extra.nav, profile.role, { edge })}>{children}</AppShell>
     </WorkspaceProvider>
   );
 }

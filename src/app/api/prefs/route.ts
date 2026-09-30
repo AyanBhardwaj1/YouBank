@@ -5,6 +5,7 @@ import { guarded } from "@/lib/auth/user";
 import { isThemeId } from "@/lib/themes";
 import { MODELS, normalizePrefs } from "@/lib/ai/models";
 import { normalizeNavPrefs } from "@/lib/nav";
+import { edgePrefs } from "@/lib/edge/access";
 import type { RoleId } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,10 @@ export async function POST(req: Request) {
       if (ai.model && !MODELS.some((m) => m.id === ai.model)) return NextResponse.json({ error: `Unknown model ${ai.model}` }, { status: 400 });
       extra.ai = { ...((extra.ai as object) ?? {}), ...ai };
     }
-    if (body.nav !== undefined) extra.nav = normalizeNavPrefs(body.nav, (row?.role ?? "banker") as RoleId);
+    if (body.nav !== undefined) {
+      const role = (row?.role ?? "banker") as RoleId;
+      extra.nav = normalizeNavPrefs(body.nav, role, { edge: edgePrefs(extra, role).beta });
+    }
     if (!row) {
       // Preferences before onboarding completes: create a stub profile row.
       await db.insert(schema.profiles).values({ userId: user.id, email: user.email, name: user.name, role: "banker", extra }).onConflictDoUpdate({ target: schema.profiles.userId, set: { extra } });

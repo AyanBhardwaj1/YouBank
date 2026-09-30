@@ -5,7 +5,7 @@
  * you opened it (so they can animate in), batched sparklines for the data art, relative times, and the
  * motion level (the person's setting, overridden by the system's reduce-motion).
  */
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useReducedMotion } from "motion/react";
 import type { FeedView } from "@/lib/news/views";
 
@@ -52,7 +52,8 @@ export function useApi<T>(url: string | null, pollMs = 0) {
     document.addEventListener("visibilitychange", onVisibility);
     return () => { live = false; if (timer) clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [url, pollMs, nonce]);
-  return { data: state.data, error: state.error, loading: state.url !== url, reload: () => setNonce((n) => n + 1) };
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
+  return { data: state.data, error: state.error, loading: state.url !== url, reload };
 }
 
 /** The ranked feed, polled every minute. `fresh` holds stories that arrived after the first load. */

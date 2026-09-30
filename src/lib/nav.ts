@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "vc" | "crm" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crm" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -13,7 +13,8 @@ export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "vc" | "
  */
 export type NavLink = { label: string; href: string; hint?: string; event?: { path: string; value: string } };
 
-export type NavFeature = { id: NavId; href: string; label: string; icon: string; blurb: string; roles?: RoleId[]; links?: NavLink[] };
+/** `beta` features show only to people who turned them on (see NavOpts). */
+export type NavFeature = { id: NavId; href: string; label: string; icon: string; blurb: string; roles?: RoleId[]; beta?: boolean; links?: NavLink[] };
 
 const fn = (code: string, label: string): NavLink => ({ label, hint: code, href: `/app/terminal?fn=${code}`, event: { path: "/app/terminal", value: code } });
 const tab = (path: string, param: string, value: string, label: string, isDefault = false): NavLink =>
@@ -31,6 +32,10 @@ export const FEATURES: NavFeature[] = [
   },
   { id: "tools", href: "/app/tools", label: "Tools", icon: "Wand2", blurb: "Calculators and AI workflows" },
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },
+  {
+    id: "edge", href: "/app/edge", label: "Edge", icon: "Radar", blurb: "Alternative data: what satellites, networks and documents show", beta: true,
+    links: [tab("/app/edge", "view", "feed", "Feed", true), tab("/app/edge", "view", "map", "Map"), tab("/app/edge", "view", "whatif", "Deal what-if")],
+  },
   {
     id: "vc", href: "/app/vc", label: "Private markets", icon: "Rocket", blurb: "Startups and private raises", roles: ["vc", "pe"],
     links: [tab("/app/vc", "tab", "directory", "Startup directory", true), tab("/app/vc", "tab", "formd", "Private raises")],
@@ -50,12 +55,15 @@ export const FEATURES: NavFeature[] = [
     id: "settings", href: "/app/settings", label: "Settings", icon: "Settings", blurb: "Style, AI model, alerts and data",
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
-      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"),
+      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
     ],
   },
 ];
 
-export const featuresFor = (role: RoleId) => FEATURES.filter((f) => !f.roles || f.roles.includes(role));
+/** Which beta features this person turned on. */
+export type NavOpts = { edge?: boolean };
+
+export const featuresFor = (role: RoleId, opts: NavOpts = {}) => FEATURES.filter((f) => (!f.roles || f.roles.includes(role)) && (!f.beta || (f.id === "edge" && opts.edge === true)));
 
 export type NavLabels = "full" | "icons";
 export type NavPrefs = {
@@ -72,11 +80,11 @@ export function defaultPinned(role: RoleId): NavId[] {
 
 export const defaultNavPrefs = (role: RoleId): NavPrefs => ({ pinned: defaultPinned(role), labels: "full", dock: false });
 
-/** Stored preferences, cleaned: unknown or role-gated features drop out; malformed values fall back. */
-export function normalizeNavPrefs(raw: unknown, role: RoleId): NavPrefs {
+/** Stored preferences, cleaned: unknown, role-gated or switched-off beta features drop out; malformed values fall back. */
+export function normalizeNavPrefs(raw: unknown, role: RoleId, opts: NavOpts = {}): NavPrefs {
   const d = defaultNavPrefs(role);
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const valid = new Set<string>(featuresFor(role).map((f) => f.id));
+  const valid = new Set<string>(featuresFor(role, opts).map((f) => f.id));
   const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned;
   return { pinned, labels: r.labels === "icons" ? "icons" : "full", dock: r.dock === true };
 }

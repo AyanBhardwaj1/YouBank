@@ -12,6 +12,7 @@ import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
+import { BetaToggle } from "@/components/edge/BetaToggle";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -19,10 +20,11 @@ const TABS = [
   { id: "news", label: "News and alerts", icon: "Newspaper" },
   { id: "desk", label: "My desk", icon: "Layout" },
   { id: "data", label: "Data and privacy", icon: "Database" },
+  { id: "labs", label: "Labs", icon: "FlaskConical" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
+export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [routing, setRouting] = useState(prefs.routing !== false);
@@ -100,6 +102,23 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
             <div className="flex gap-2">
               <Link href="/app/profile" className="ctl bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg">Retake the survey</Link>
               <Link href="/app/library" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg">See saved work</Link>
+            </div>
+          </section>
+        )}
+
+        {tab === "labs" && (
+          <section className="mt-5 rise space-y-4">
+            <div>
+              <h2 className="text-[14px] font-semibold">Labs</h2>
+              <p className="mt-1 max-w-[70ch] text-[12px] text-muted">Features in beta. They are free while in beta and may change as we learn from how they are used.</p>
+            </div>
+            <div className="panel flex flex-wrap items-start justify-between gap-4 p-4">
+              <div className="min-w-0 max-w-[62ch]">
+                <div className="flex items-center gap-2 text-[13.5px] font-semibold">Edge <span className="rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-accent">Beta</span>{edgeOn && <span className="text-[11px] font-normal text-pos">On</span>}</div>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, and a feed of what changed, each finding with its sources and an audit trail. Documents, networks and scenarios arrive next. Up to five watches each; its AI use counts toward your daily AI limit.</p>
+                {edgeOn && <Link href="/app/edge" className="mt-2 inline-block text-[12px] text-accent hover:underline">Open Edge</Link>}
+              </div>
+              <BetaToggle on={edgeOn} />
             </div>
           </section>
         )}
