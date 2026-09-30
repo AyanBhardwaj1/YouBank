@@ -239,10 +239,10 @@ polished.
 | Milestone | Scope | Status |
 |---|---|---|
 | 1 | Edge tab and beta switch, watches, the feed, Earth · GeoAI on the Permian (EIA maps, Sentinel-2 before and after, the deal pro-forma map) | Built (2026-09-30) |
-| 2 | Canvas and run engine | Next |
-| 3 | Documents · RAG | |
-| 4 | Networks · GNN | |
-| 5 | Scenarios · Synthetic data | |
+| 2 | Canvas and run engine; platform services (R2 files, Inngest jobs, the Modal ML service, free-tier meters) | Built (2026-09-30) |
+| 3 | Documents · RAG | Built (2026-09-30) |
+| 4 | Networks · GNN | Built (2026-09-30) |
+| 5 | Scenarios · Synthetic data | Next |
 | 6 | Integrations (Terminal, Newsroom, Studio, CRM), story mode, monitors and alerts, onboarding canvas | |
 
 ### What milestone 1 does
@@ -282,6 +282,59 @@ polished.
 - **Daily pass.** `/api/cron/edge` at 07:30 UTC. It refreshes the maps weekly, checks each distinct
   watched target of beta users not checked in 20 hours, then scans the last three weeks of deals.
 
+### What milestone 3 does (Documents · RAG)
+
+- **Sources.** SEC filings (10-K, 10-Q, 8-K with Exhibit 99 press releases, proxies, S-4s; read once
+  and shared), uploads (PDF with OCR for scans, Word, Excel, PowerPoint, email as .eml/.msg, text,
+  CSV, HTML, images), recordings (uploads or a direct audio link; YouTube forbids downloads), the
+  person's workspace (CRM mail and notes, Studio models and decks, tool runs, saved stories), the
+  Newsroom archive and the live web. Files arrive in 4 MB parts (`src/lib/edge/docs/uploads.ts`);
+  the ML service parses and transcribes them; passages are embedded (512 dimensions) and indexed for
+  both vector and keyword search (`store.ts`).
+- **Answers** (`answer.ts`). Sub-queries, hybrid search fused by reciprocal rank, a reranker, then an
+  answer written only from numbered passages. Every quote is checked against its passage in any
+  script (`text.ts`: only articles, hyphenated line breaks and marked omissions may differ). Strict
+  drops what fails and says "not found"; balanced marks inference as analysis. Contradictions are
+  flagged; quotes in other languages get a translation. Progress streams to the page.
+- **Screens** (`src/components/edge/docs/`). Ask with scope and strictness; the evidence board
+  (claims wired to passages, contradictions in red); the source viewer (a PDF page drawn with pdf.js
+  and the quote highlighted, a recording playing from the quoted second with speaker hedging and
+  tone, or the passage in context); the library with the 500 MB and 300 file quota meter and team
+  sharing; the change radar (a company's latest 10-K or 10-Q against the previous one, section by
+  section, with word-level edits; or any two documents or calls compared by meaning, edits and tone);
+  and the topic map (UMAP on the ML service, principal components here as the fallback).
+- **Feed.** When a watched company files a 10-K or 10-Q, a card lists what its risk factors added,
+  dropped and reworded (`filingwatch.ts`, from the daily cron).
+
+### What milestone 4 does (Networks · GNN)
+
+- **The graph** (`src/lib/edge/graph/`), built from EDGAR for the listed energy universe (about 210
+  companies by industry code) plus every watched company, refreshed weekly and on demand:
+  - Form 4: directors, officers and 10% owners, with their trades;
+  - Schedule 13D/13G (old text and new XML): 5% holders and exits, and stakes the company holds;
+  - Exhibit 21: subsidiaries, matched to listed companies, so joint ventures show as shared ones;
+  - the 10-K: named customers and suppliers with their share of revenue (read by a small model,
+    kept only when quoted);
+  - deals: merger filings found with EDGAR full-text search (a small model reads one to say who is
+    buying whom, quoting it), 8-K Item 2.01 completions, and the Newsroom's deal tracker with its
+    advisers. Affiliate roll-ups and internal reorganizations are kept as links but not as deals;
+  - 8-K items (auditor changes, restatements, delisting notices, impairments, departures);
+  - size from XBRL and headquarters located with the Census geocoder.
+- **The deal model.** A relational GraphSAGE model on the ML service, trained on rolling time
+  snapshots and backtested on the most recent deals against a features-only baseline; retrained on
+  Sundays and when a new deal is announced. Its scorecard reads "the actual buyer was among its top 5
+  likely buyers for n of the last m deals".
+- **Findings** (`findings.ts`). Likely buyers and targets, each explained by up to three paths
+  through the graph (never through index funds that hold everyone) and by what the two share on the
+  ground (processing plants within 25 km on Earth's maps); exposure to a shock, through customers,
+  suppliers, joint ventures and controlling stakes; red flags (restatements, auditor changes, insider
+  exits and selling clusters, circular ownership, a director on both sides of a business
+  relationship); warm introductions from the person's CRM contacts (and their teammates', when they
+  opt in); the ownership tree.
+- **Screens** (`src/components/edge/net/`). A force network on a canvas, the map-anchored view and
+  the ownership tree, beside tabs for each finding, with every step linked to its filing. Feed
+  cards post new red flags of watched companies and changes in their likely buyers.
+
 ### How the detector was checked
 
 Eight sites were read by eye against the overlay, then 13 findings across ET, EPD, OKE and TRGP. At
@@ -318,7 +371,11 @@ synthetic scenes.
   - A county is a rough antitrust market. Cards say so.
 - **Only the Permian is mapped so far.** Other basins need their asset maps loaded (the same EIA
   layers cover the U.S.).
-- **Detection is pixel-based.** The Prithvi or Segment Anything models on Modal replace or confirm
-  it once the Modal keys are in. The pixel method stays as the free fallback.
+- **Detection is pixel-based, confirmed by foundation models.** Each new change is sent to Prithvi and
+  Segment Anything on the ML service, which raise or lower its confidence. The pixel method stays as
+  the free fallback.
+- **Graph coverage is energy first.** The deal model trains on the energy universe; companies from
+  other industries are mapped when watched or asked about, and their predictions improve as the
+  universe grows. Private companies appear only through filings that name them.
 - **MPC is sometimes slow.** One pass saw a request take over a minute. Every check has a deadline,
   and a site that times out is simply checked on the next pass.

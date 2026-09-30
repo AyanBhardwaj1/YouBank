@@ -64,7 +64,8 @@ export function diffSections(prior: string, current: string): { rows: ChangeRow[
   return { rows, counts: { added: rows.filter((r) => r.status === "added").length, removed: rows.filter((r) => r.status === "removed").length, changed: rows.filter((r) => r.status === "changed").length, unchanged } };
 }
 
-async function filingTextCached(accession: string, url: string): Promise<string> {
+/** A filing's text, kept in R2 after the first read (shared with Documents and the graph). */
+export async function filingTextCached(accession: string, url: string): Promise<string> {
   const key = `docs/sec/${accession}.txt`;
   if (r2Ready()) { const hit = await getObject(key).catch(() => null); if (hit) return hit.text(); }
   const res = await edgarFetch(url);

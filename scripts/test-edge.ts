@@ -32,6 +32,11 @@ import { mimeOf } from "@/lib/edge/docs/uploads";
 import { bySpeaker, toneOf, toneShift, turnAt, type Turn } from "@/lib/edge/docs/tone";
 import { filingMagnitude, filingTitle } from "@/lib/edge/docs/filingwatch";
 import { fitToSchema } from "@/lib/ai/fit";
+import { exhibit21Href, holdingPercent, isDealVehicle, normName, parseExhibit21, parseForm4, parseHeader, personName, relationParagraphs, titleCase } from "@/lib/edge/graph/parse";
+import { eventFlags, exposure as exposureRank, insiderFlags, interlocks, ownershipCycles, reasonPaths } from "@/lib/edge/graph/algo";
+import { companyFeatures, scorecardText, splitDateFor } from "@/lib/edge/graph/train";
+import { pairsFromHits, sameGroup } from "@/lib/edge/graph/deals";
+import { linkSentence } from "@/lib/edge/graph/findings";
 import { z } from "zod";
 
 let pass = 0, fail = 0;
@@ -325,6 +330,65 @@ async function main() {
   check("a filing's size grows with its edits and caps at one", filingMagnitude({ added: 2, removed: 1, changed: 2, unchanged: 40 }) === 0.2 && filingMagnitude({ added: 30, removed: 0, changed: 0, unchanged: 0 }) === 1);
   check("the card title counts the edits", filingTitle("Energy Transfer", "10-K", { added: 3, removed: 1, changed: 0, unchanged: 9 }) === "Energy Transfer's new 10-K: 3 risk factors added, 1 dropped" && filingTitle("X", "10-Q", { added: 1, removed: 0, changed: 2, unchanged: 0 }) === "X's new 10-Q: 1 risk factor added, 2 reworded");
   check("a filing change is fresher news than a deal and less than a satellite change", noveltyOf("filing_change", 0) < noveltyOf("ground_change", 0) && noveltyOf("filing_change", 0) > noveltyOf("deal_proforma", 0));
+  }
+
+  {
+    console.log("networks: reading filings");
+    check("names compare without suffixes and punctuation", normName("Kinder Morgan, Inc.") === "kinder morgan" && normName("Energy Transfer LP") === "energy transfer" && normName("AT&T Inc.") === "at and t" && normName("Sunoco L.P.") === "sunoco");
+    check("upper-case names read naturally", titleCase("ENERGY TRANSFER LP") === "Energy Transfer LP" && titleCase("MCREYNOLDS") === "McReynolds");
+    check("Form 4 names turn around", personName("WARREN KELCY L") === "Kelcy L. Warren" && personName("DAVIS WATERS S IV") === "Waters S. Davis IV" && personName("SMITH JOHN JR") === "John Smith Jr.", [personName("WARREN KELCY L"), personName("DAVIS WATERS S IV"), personName("SMITH JOHN JR")]);
+    const f4 = parseForm4(`<ownershipDocument><issuer><issuerCik>0001276187</issuerCik><issuerName>Energy Transfer LP</issuerName><issuerTradingSymbol>ET</issuerTradingSymbol></issuer><reportingOwner><reportingOwnerId><rptOwnerCik>0001276191</rptOwnerCik><rptOwnerName>WARREN KELCY L</rptOwnerName></reportingOwnerId><reportingOwnerRelationship><isDirector>true</isDirector><isOfficer>1</isOfficer><officerTitle>Chairman</officerTitle><isTenPercentOwner>false</isTenPercentOwner></reportingOwnerRelationship></reportingOwner><nonDerivativeTable><nonDerivativeTransaction><transactionDate><value>2026-08-18</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>100,000</value></transactionShares><transactionPricePerShare><value>18.5</value></transactionPricePerShare><transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode></transactionAmounts><postTransactionAmounts><sharesOwnedFollowingTransaction><value>2500000</value></sharesOwnedFollowingTransaction></postTransactionAmounts></nonDerivativeTransaction></nonDerivativeTable></ownershipDocument>`);
+    check("an insider filing gives the person, their roles and the trade", !!f4 && f4.issuerCik === "1276187" && f4.ticker === "ET" && f4.owners[0].cik === "1276191" && f4.owners[0].director && f4.owners[0].officer && f4.owners[0].title === "Chairman" && f4.txns[0].code === "P" && f4.txns[0].shares === 100000 && f4.txns[0].acquired && f4.txns[0].owned === 2500000, f4);
+    const head = parseHeader("<SEC-HEADER>\n<TYPE>SC 13G/A\n<FILING-DATE>20240209\n<GROUP-MEMBERS>BLACKSTONE INC.\n<SUBJECT-COMPANY>\n<COMPANY-DATA>\n<CONFORMED-NAME>Energy Transfer LP\n<CIK>0001276187\n<ASSIGNED-SIC>4922\n</COMPANY-DATA>\n<BUSINESS-ADDRESS>\n<STATE>TX\n</BUSINESS-ADDRESS>\n</SUBJECT-COMPANY>\n<FILED-BY>\n<COMPANY-DATA>\n<CONFORMED-NAME>Blackstone Holdings I/II GP L.L.C.\n<CIK>0001464695\n</COMPANY-DATA>\n</FILED-BY>");
+    check("a filing header gives the subject, the filer and the date", head.type === "SC 13G/A" && head.filed === "2024-02-09" && head.subject?.cik === "1276187" && head.subject?.sic === "4922" && head.subject?.state === "TX" && head.filers[0].cik === "1464695" && head.members[0] === "BLACKSTONE INC.", head);
+    check("the new 13G XML gives the stake", holdingPercent("<classPercent>7.2</classPercent>").percent === 7.2 && !holdingPercent("<classPercent>7.2</classPercent>").exited);
+    const old = holdingPercent("<p>11. Percent of Class Represented by Amount in Row (9): 4.7%</p>");
+    check("old 13G text gives the stake, and under 5% is an exit", old.percent === 4.7 && old.exited, old);
+    check("a filing saying 5% or less is an exit", holdingPercent("<classPercent>0</classPercent><classOwnership5PercentOrLess>Y</classOwnership5PercentOrLess>").exited);
+    check("Exhibit 21 is found in the filing index", exhibit21Href(`<table><tr><td scope="row">1</td><td>10-K</td><td><a href="/Archives/edgar/data/1/0001/et-20251231.htm">et</a></td><td>10-K</td><td>1</td></tr><tr><td>2</td><td>SUBSIDIARIES</td><td><a href="/Archives/edgar/data/1/0001/ex211.htm">ex</a></td><td>EX-21.1</td><td>9</td></tr></table>`) === "/Archives/edgar/data/1/0001/ex211.htm");
+    const subs = parseExhibit21("<table><tr><td>Entity Name</td><td>State or Other Jurisdiction</td></tr><tr><td>Bayou Bridge Pipeline, LLC</td><td>Delaware</td></tr><tr><td>Arguelles Pipeline, S. De R.L. De C.V.</td><td>Mexico</td></tr><tr><td>Bayou Bridge Pipeline LLC</td><td>Delaware</td></tr></table>");
+    check("subsidiaries come with jurisdictions, headers and duplicates dropped", subs.length === 2 && subs[0].name === "Bayou Bridge Pipeline, LLC" && subs[0].jurisdiction === "Delaware" && subs[1].jurisdiction === "Mexico", subs);
+    const lines = parseExhibit21("<p>Subsidiaries of the Registrant</p><p>Acme Midstream LLC (Texas)</p><br>Beta Pipeline Co., Delaware<br>");
+    check("a list without a table still yields names", lines.some((x) => x.name === "Acme Midstream LLC" && x.jurisdiction === "Texas") && lines.some((x) => /Beta Pipeline/.test(x.name)), lines);
+    const rel = relationParagraphs("Our business is gathering and processing natural gas in the Permian Basin for many producers across several counties.\n\nFor the year ended December 31, 2025, Puget Sound Energy, Inc. accounted for 31% of our consolidated revenues, and no other customer represented 10% or more.");
+    check("the paragraph naming a major customer is picked", rel.length === 1 && /Puget Sound/.test(rel[0]), rel);
+
+    console.log("networks: findings");
+    // 1 and 2 are companies; 10 a director on both boards; 20 an index fund holding everyone.
+    const links = [{ id: 1, s: 10, d: 1, kind: "director", w: 1 }, { id: 2, s: 10, d: 2, kind: "director", w: 1 }, ...Array.from({ length: 200 }, (_, i) => ({ id: 100 + i, s: 20, d: 1000 + i, kind: "holder", w: 0.05 })), { id: 3, s: 20, d: 1, kind: "holder", w: 0.07 }, { id: 4, s: 20, d: 2, kind: "holder", w: 0.07 }];
+    const paths = reasonPaths(links, 1, 2, { maxHops: 3, k: 3 });
+    check("a shared director explains a pair; an index fund holding everyone does not", paths.length === 1 && paths[0].nodes.join() === "1,10,2" && paths[0].links.join() === "1,2", paths);
+    check("ownership that loops is found once", ownershipCycles([{ s: 1, d: 2 }, { s: 2, d: 3 }, { s: 3, d: 1 }, { s: 3, d: 4 }]).length === 1 && ownershipCycles([{ s: 1, d: 2 }, { s: 2, d: 3 }]).length === 0);
+    const ex = exposureRank([{ s: 1, d: 2, w: 0.31 }, { s: 1, d: 3, w: 0.02 }, { s: 3, d: 4, w: 1 }], 1);
+    check("a big customer is more exposed than a small one", (ex.get(2) ?? 0) > (ex.get(3) ?? 0) && (ex.get(4) ?? 0) > 0 && !ex.has(1), [...ex.entries()]);
+    const sale = (date: string, shares: number, owned: number) => ({ date, code: "S", shares, price: 20, acquired: false, owned, derivative: false });
+    const flags = insiderFlags([
+      { name: "A", title: "CEO", txns: [sale("2026-09-01", 300_000, 100_000)] },
+      { name: "B", title: "CFO", txns: [sale("2026-09-05", 1000, 50_000)] },
+      { name: "C", title: "Director", txns: [sale("2026-09-10", 1000, 50_000), { ...sale("2026-09-10", 500, 0), code: "F" }] },
+    ], "2026-09-30");
+    check("an insider selling most of their stake is flagged", flags.some((f) => f.kind === "insider_exit" && f.title.startsWith("A sold 75%")), flags);
+    check("three insiders selling within a month is flagged", flags.some((f) => f.kind === "insider_cluster" && f.people?.length === 3));
+    check("tax withholding and small sales alone raise nothing", insiderFlags([{ name: "D", title: "", txns: [{ ...sale("2026-09-10", 500, 10_000), code: "F" }, sale("2026-09-11", 100, 10_000)] }], "2026-09-30").length === 0);
+    const ev = eventFlags([{ date: "2026-05-01", items: ["4.02"], url: "u1" }, { date: "2026-01-01", items: ["5.02"], url: "u2" }, { date: "2026-03-01", items: ["5.02"], url: "u3" }, { date: "2026-06-01", items: ["5.02", "9.01"], url: "u4" }, { date: "2019-01-01", items: ["4.01"], url: "old" }], "2026-09-30");
+    check("a restatement warning is a high flag; three departures in a year are turnover; old items are ignored", ev.some((f) => f.kind === "restatement" && f.severity === "high") && ev.some((f) => f.kind === "leadership_turnover") && !ev.some((f) => f.kind === "auditor_change"), ev.map((f) => f.kind));
+    check("interlocks are directors on two or more boards", interlocks([{ person: 10, name: "X", company: 1 }, { person: 10, name: "X", company: 2 }, { person: 11, name: "Y", company: 1 }]).length === 1);
+    check("links read as sentences", linkSentence("holder", "Energy Transfer LP", "Sunoco LP", { percent: 33.7 }) === "Energy Transfer LP owns 33.7% of Sunoco LP" && linkSentence("supplies", "Williams", "Puget Sound Energy", { share: 31 }) === "Puget Sound Energy is a customer of Williams (31% of revenue)" && linkSentence("acquired", "ONEOK", "EnLink", { asOf: "2024-12-09" }) === "ONEOK acquired EnLink (2024)");
+
+    console.log("networks: the deal model");
+    const feat = companyFeatures({ sic: "4922", state: "TX", assets: 1e11, revenue: 8e10, ticker: "ET" }, { subsidiaries: 392, directors: 9, holders: 3, deals: 4 });
+    const feat2 = companyFeatures({}, { subsidiaries: 0, directors: 0, holders: 0, deals: 0 });
+    check("every company has the same features, industry and state one-hot", feat.length === feat2.length && feat.length === 33 && feat[5 + 6] === 1 && feat[5 + 13 + 0] === 1 && feat2.every((x) => x === 0), feat);
+    const dates = Array.from({ length: 50 }, (_, i) => `20${String(10 + Math.floor(i / 4)).padStart(2, "0")}-0${1 + (i % 4)}-15`);
+    check("the backtest holds out the last twenty deals when there are forty or more", splitDateFor(dates) === [...dates].sort()[30] && splitDateFor(dates.slice(0, 10)) === [...dates.slice(0, 10)].sort()[8]);
+    check("the scorecard says how often the real buyer was in the top five", scorecardText({ gnn: { hits5: 0.55, hits10: 0.7, mrr: 0.3, n: 40, asTarget: { hits5: 0.55, n: 20 } }, baseline: { hits5: 0.2, hits10: 0.3, mrr: 0.1, n: 40, asTarget: { hits5: 0.2, n: 20 } } }, "acquirers") === "In a backtest on the 20 most recent deals, the actual buyer was among its top 5 likely buyers for 11 of 20 (a simple baseline: 4 of 20)." && scorecardText(null, "targets") === "Not backtested yet.");
+    const pairs = pairsFromHits("1276187", [
+      { _id: "0001276187-23-000068:et425.htm", _source: { display_names: ["Crestwood Equity Partners LP  (CIK 0001136352)", "Energy Transfer LP  (ET, ET-PI)  (CIK 0001276187)"], ciks: ["0001136352", "0001276187"], form: "425", file_date: "2023-08-16" } },
+      { _id: "0001276187-23-000090:et425b.htm", _source: { display_names: ["Crestwood Equity Partners LP  (CIK 0001136352)", "Energy Transfer LP  (ET, ET-PI)  (CIK 0001276187)"], ciks: ["0001136352", "0001276187"], form: "425", file_date: "2023-11-01" } },
+    ]);
+    check("merger filings give each counterparty once, from the first filing", pairs.length === 1 && pairs[0].otherCik === "1136352" && pairs[0].otherName === "Crestwood Equity Partners LP" && pairs[0].first === "2023-08-16" && pairs[0].last === "2023-11-01", pairs);
+    check("deal vehicles and descriptions are not companies", isDealVehicle("MLP Acquiror") && isDealVehicle("ENLC Acquiror LLC") && isDealVehicle("a subsidiary of EQT Corporation") && isDealVehicle("Rattler Merger Sub, Inc.") && !isDealVehicle("Crestwood Equity Partners LP") && !isDealVehicle("Acquire Energy Inc"));
+    check("one corporate family is not a deal counterparty", sameGroup("Energy Transfer LP", "Energy Transfer Partners") && !sameGroup("Energy Transfer LP", "Enable Midstream Partners") && !sameGroup("Targa Resources Corp", "Atlas Energy"));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

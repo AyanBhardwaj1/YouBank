@@ -13,7 +13,7 @@ export const MONITOR_LIMIT = 3;
 
 /** How the feed weighs its four signals, each 0 to 1. */
 export type Blend = { relevance: number; size: number; novelty: number; confidence: number };
-export type EdgePrefs = { beta: boolean; since: string | null; blend: Blend; seeded: boolean };
+export type EdgePrefs = { beta: boolean; since: string | null; blend: Blend; seeded: boolean; poolContacts: boolean };
 
 /** Each role's starting balance: markets people want what is not in the news yet; bankers want their names. */
 const ROLE_BLEND: Partial<Record<RoleId, Blend>> = {
@@ -35,6 +35,7 @@ export function edgePrefs(extra: unknown, role: RoleId): EdgePrefs {
     beta: e.beta === true,
     since: typeof e.since === "string" ? e.since : null,
     seeded: e.seeded === true,
+    poolContacts: e.poolContacts === true,
     blend: { relevance: unit(b.relevance, d.relevance), size: unit(b.size, d.size), novelty: unit(b.novelty, d.novelty), confidence: unit(b.confidence, d.confidence) },
   };
 }
@@ -66,6 +67,7 @@ export async function saveEdge(userId: string, patch: Partial<Omit<EdgePrefs, "b
   const next: Record<string, unknown> = { ...cur };
   if (patch.beta !== undefined) { next.beta = patch.beta; if (patch.beta && !cur.since) next.since = new Date().toISOString(); }
   if (patch.seeded !== undefined) next.seeded = patch.seeded;
+  if (patch.poolContacts !== undefined) next.poolContacts = patch.poolContacts;
   if (patch.blend) {
     const b = patch.blend, cur = p.prefs.blend;
     next.blend = { relevance: unit(b.relevance, cur.relevance), size: unit(b.size, cur.size), novelty: unit(b.novelty, cur.novelty), confidence: unit(b.confidence, cur.confidence) };

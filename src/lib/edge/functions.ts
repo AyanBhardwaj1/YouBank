@@ -1,10 +1,15 @@
 /**
  * Edge's background functions on Inngest (served at /api/inngest): canvas runs, the hourly monitor
- * tick, and the foundation-model check of every new ground change. Each step counts toward the free
- * tier's executions (see infra/jobs).
+ * tick, the foundation-model check of every new ground change, reading uploaded documents, and the
+ * relationship graph (the weekly refresh, on-demand builds, and training the deal model). Each step
+ * counts toward the free tier's executions (see infra/jobs).
  */
 import { executeRun } from "./canvas/engine";
-import { inngest, metered, type Steps } from "./infra/jobs";
+import { newsroomDeals } from "./graph/deals";
+import { ingestSlice, predictionCards } from "./graph/jobs";
+import { finishTraining, startTraining } from "./graph/train";
+import { graphUniverse } from "./graph/universe";
+import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
 import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
 import { flushUsage } from "./infra/usage";
 import { tickMonitors } from "./monitors";
@@ -68,4 +73,53 @@ export const docIngest = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest];
+/** Ingest companies a slice at a time (each slice fits one function call), until done or stuck. */
+async function ingestLoop(s: Steps, ciks: string[], maxSlices: number) {
+  let left = ciks, done = 0, cards = 0;
+  for (let i = 0; left.length && i < maxSlices; i++) {
+    const r = await s.run(`ingest-${i}`, async () => { const x = await ingestSlice(left, Date.now() + 230_000); await flushUsage(); return x; });
+    left = r.left; done += r.done; cards += r.cards;
+    if (!r.done) break;
+  }
+  return { done, left: left.length, cards };
+}
+
+/** Sundays (or on request): re-read what is new for every company in the universe, fold in the Newsroom's deals, then retrain. */
+export const graphRefresh = inngest.createFunction(
+  { id: "edge-graph-refresh", triggers: [{ cron: "0 4 * * 0" }, { event: "edge/graph.refresh" }], concurrency: 1, retries: 1 },
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    const ciks = await s.run("universe", async () => (await graphUniverse()).map((m) => m.cik));
+    const res = await ingestLoop(s, ciks, 150);
+    await s.run("newsroom-deals", () => newsroomDeals());
+    await s.run("train", () => sendJob("edge/graph.train", { reason: "weekly" }, { id: `edge-graph-train-${new Date().toISOString().slice(0, 10)}` }));
+    return res;
+  },
+);
+
+/** A company someone asked about (or newly watches): build its corner of the graph now. */
+export const graphIngest = inngest.createFunction(
+  { id: "edge-graph-ingest", triggers: { event: "edge/graph.ingest" }, concurrency: 2, retries: 1 },
+  async ({ event, step }) => ingestLoop(metered(asSteps(step)), ((event.data as { ciks?: string[] }).ciks ?? []).map(String).slice(0, 60), 30),
+);
+
+/** Train the deal model on the ML service and store its scorecard and predictions. */
+export const graphTrain = inngest.createFunction(
+  { id: "edge-graph-train", triggers: { event: "edge/graph.train" }, concurrency: 1, retries: 0 },
+  async ({ event, step }) => {
+    const s = metered(asSteps(step));
+    const started = await s.run("start", () => startTraining(String((event.data as { reason?: string }).reason ?? "")));
+    if ("skipped" in started) return started;
+    const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: "45m", if: doneFor(started.callId) });
+    return s.run("finish", async () => {
+      const done = (ev?.data as MlDone | undefined) ?? null;
+      noteMlCost(done?.costUsd);
+      const r = await finishTraining(started.modelId, done);
+      const cards = r.ok ? await predictionCards() : [];
+      await flushUsage();
+      return { ...r, cards: cards.length };
+    });
+  },
+);
+
+export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain];

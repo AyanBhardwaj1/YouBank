@@ -16,14 +16,15 @@ import { CanvasHome } from "./canvas/CanvasHome";
 import { DocumentsView, type DocsOpen } from "./docs/DocumentsView";
 import { FeedView } from "./FeedView";
 import { MapView } from "./MapView";
+import { NetworksView } from "./net/NetworksView";
 import { MODULES, useEdgeState, useNow, type EdgeCard, type FilingVisual, type ProformaVisual } from "./client";
 import { WatchPanel } from "./WatchPanel";
 import { WhatIf } from "./WhatIf";
 
-export type EdgeView = "feed" | "canvases" | "documents" | "map" | "whatif";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
+export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "map" | "whatif";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
 
-export function EdgeWorkspace({ initialView = "feed", initialDocs = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null }) {
+export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null }) {
   const now = useNow();
   const [view, setView] = useState<EdgeView>(initialView);
   useSubNav("/app/edge", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as EdgeView); });
@@ -31,6 +32,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null }: { in
   const [focus, setFocus] = useState<{ card: EdgeCard; key: number } | null>(null);
   const [deal, setDeal] = useState<{ parties: string[]; place?: string; key: number } | null>(null);
   const [docs, setDocs] = useState<DocsOpen | null>(initialDocs);
+  const [net, setNet] = useState<{ ticker: string | null; key: number }>({ ticker: initialCompany, key: 0 });
 
   const showOnMap = (card: EdgeCard) => { setFocus({ card, key: Date.now() }); setView("map"); };
   const openDeal = (card: EdgeCard) => {
@@ -38,6 +40,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null }: { in
     setDeal({ parties: v.parties.map((p) => p.tickers[0] ?? p.label), place: v.place, key: Date.now() });
     setView("whatif");
   };
+  const openNetworks = (ticker: string) => { setNet({ ticker, key: Date.now() }); setView("networks"); };
   const openRadar = (card: EdgeCard) => {
     const v = card.visual as FilingVisual;
     setDocs({ tab: "radar", radar: { ticker: v.ticker, form: v.form, section: v.section }, key: Date.now() });
@@ -85,9 +88,10 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null }: { in
         ) : (
           <div className={`mt-4 grid gap-4 ${view === "feed" ? "xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}>
             <main className="min-w-0">
-              {view === "feed" && <FeedView state={state} now={now} onMap={showOnMap} onOpenDeal={openDeal} onOpenRadar={openRadar} onBlend={edge.reload} />}
+              {view === "feed" && <FeedView state={state} now={now} onMap={showOnMap} onOpenDeal={openDeal} onOpenRadar={openRadar} onOpenNetworks={openNetworks} onBlend={edge.reload} />}
               {view === "canvases" && <CanvasHome />}
               {view === "documents" && <DocumentsView key={docs?.key ?? 0} tickers={watchedTickers} open={docs} />}
+              {view === "networks" && <NetworksView key={net.key} tickers={watchedTickers} initial={net.ticker} />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} now={now} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
             </main>

@@ -6,12 +6,12 @@
  * sure Edge is and why, and where every part came from, with the audit trail one click away.
  */
 import { motion, useReducedMotion } from "motion/react";
-import { ArrowRight, ArrowUpRight, ChevronDown, Download, Map as MapIcon, MapPin, Radar, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, Download, ExternalLink, Map as MapIcon, MapPin, Network, Radar, Sparkles, Users } from "lucide-react";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Compare } from "./Compare";
 import { wordDiff } from "@/lib/edge/docs/text";
-import { ago, confidenceLabel, fmtNum, type EdgeCard, type FilingVisual, type GroundVisual, type ProformaVisual } from "./client";
+import { ago, confidenceLabel, fmtNum, type EdgeCard, type FilingVisual, type FlagVisual, type GroundVisual, type PredictionVisual, type ProformaVisual } from "./client";
 
 export function Confidence({ value }: { value: number }) {
   const { label, tone } = confidenceLabel(value);
@@ -226,9 +226,60 @@ export function FilingCard({ card, index, now, onOpen }: { card: EdgeCard; index
   );
 }
 
-export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void }) {
+export function FlagCard({ card, index, now, onOpen }: { card: EdgeCard; index: number; now: number; onOpen?: (ticker: string) => void }) {
+  const v = card.visual as FlagVisual;
+  return (
+    <Shell card={card} index={index} kicker={`Networks · red flag · ${v.company.ticker}`} icon="Network">
+      <div className="flex flex-1 flex-col gap-2 px-3.5 pb-3 pt-2">
+        <div className={`flex items-start gap-2 rounded-lg border p-2.5 ${v.flag.severity === "high" ? "border-neg/50 bg-neg/5" : "border-line bg-elevated/40"}`}>
+          <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${v.flag.severity === "high" ? "text-neg" : "text-muted"}`} />
+          <div className="min-w-0"><h3 className="text-[14.5px] font-semibold leading-snug tracking-tight">{card.title}</h3><p className="mt-1 text-[12px] leading-relaxed text-muted">{v.flag.detail}</p></div>
+        </div>
+        {v.flag.urls?.length ? <div className="flex flex-wrap gap-2">{v.flag.urls.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-accent hover:underline">Filing {i + 1}<ExternalLink className="h-3 w-3" /></a>)}</div> : null}
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>{now ? ago(v.flag.date, now) : v.flag.date} · SEC EDGAR</span>
+          {onOpen && <button type="button" onClick={() => onOpen(v.company.ticker)} className="inline-flex items-center gap-1 text-accent hover:underline"><Network className="h-3 w-3" /> The network</button>}
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+export function PredictionCard({ card, index, onOpen }: { card: EdgeCard; index: number; onOpen?: (ticker: string) => void }) {
+  const v = card.visual as PredictionVisual;
+  const max = Math.max(1e-6, ...v.items.map((i) => i.score));
+  return (
+    <Shell card={card} index={index} kicker={`Networks · likely ${v.direction === "acquirers" ? "buyers" : "targets"} · ${v.subject.ticker}`} icon="Network">
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <ol className="space-y-1 rounded-lg border border-line bg-elevated/40 p-2.5">
+          {v.items.slice(0, 5).map((it) => (
+            <li key={it.id} className="grid grid-cols-[18px_minmax(0,1fr)_64px] items-center gap-2 text-[12px]">
+              <span className="num text-[10.5px] text-muted">{it.rank}</span>
+              <span className="truncate">{it.name}{it.ticker ? <span className="num ml-1 text-muted">{it.ticker}</span> : null}{it.fresh && <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 text-[9.5px] font-semibold uppercase text-accent">new</span>}</span>
+              <span className="h-1.5 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-accent" style={{ width: `${(it.score / max) * 100}%` }} /></span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-[11.5px] leading-relaxed text-muted">{v.scorecard}</p>
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Deal model {v.version} · a ranking, not a forecast</span>
+          {onOpen && <button type="button" onClick={() => onOpen(v.subject.ticker)} className="inline-flex items-center gap-1 text-accent hover:underline"><Network className="h-3 w-3" /> Why, with paths</button>}
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void; onOpenNetworks?: (ticker: string) => void }) {
   if (props.card.kind === "deal_proforma") return <ProformaCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenDeal} />;
   if (props.card.kind === "ground_change") return <GroundCard card={props.card} index={props.index} now={props.now} onMap={props.onMap} />;
   if (props.card.kind === "filing_change") return <FilingCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenRadar} />;
+  if (props.card.kind === "graph_flag") return <FlagCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenNetworks} />;
+  if (props.card.kind === "graph_prediction") return <PredictionCard card={props.card} index={props.index} onOpen={props.onOpenNetworks} />;
   return null;
 }
