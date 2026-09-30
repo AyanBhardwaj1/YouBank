@@ -7,6 +7,7 @@
  */
 import OpenAI from "openai";
 import { resolveAi } from "@/lib/ai/config";
+import { aiBlocked } from "@/lib/ai/limits";
 import { recordUsage } from "@/lib/ai/usage";
 import { allow, noteSpend } from "../budget";
 import type { Desk, Tier } from "../desks";
@@ -47,7 +48,7 @@ export function acceptStory(s: Story, retrieved: Set<string>, now: Date): { ok: 
 }
 
 export async function researchDesk(desk: Desk, now = new Date()): Promise<RawItem[]> {
-  if (!(await allow("research"))) return [];
+  if (!(await allow("research")) || (await aiBlocked(null))) return [];
   const model = MODEL();
   const cfg = resolveAi(null, { model });
   if (cfg.provider !== "openai") return [];

@@ -1,8 +1,12 @@
 /**
  * List prices in USD per million tokens (standard tier, checked 27 September 2026), for the cost
  * ledger. Cached input is what a prompt-cache hit costs; cache writes are what a new cache entry
- * costs. Unknown models are logged with tokens and no cost.
+ * costs. Catalogue models without a list price here are costed by their cost band at a deliberately
+ * high estimate, so the spend limits still count them; other unknown models are logged with tokens
+ * and no cost.
  */
+import { modelById } from "./models";
+
 export type Price = { input: number; cached: number; cacheWrite: number; output: number };
 
 const P = (input: number, cached: number, cacheWrite: number, output: number): Price => ({ input, cached, cacheWrite, output });
@@ -21,6 +25,20 @@ export const PRICES: Record<string, Price> = {
   "claude-haiku-4-5-20251001": P(1, 0.1, 1.25, 5),
 };
 
+/** Stand-ins for catalogue models with no list price above, by the picker's cost band (1 cheap to 5 priciest). High on purpose. */
+const BAND_ESTIMATE: Record<1 | 2 | 3 | 4 | 5, Price> = {
+  1: P(1, 0.1, 1.25, 5),
+  2: P(2.5, 0.25, 3.125, 10),
+  3: P(2.5, 0.25, 3.125, 15),
+  4: P(5, 0.5, 6.25, 30),
+  5: P(30, 3, 37.5, 180),
+};
+
+export function priceOf(model: string): Price | undefined {
+  const band = modelById(model)?.cost;
+  return PRICES[model] ?? (band ? BAND_ESTIMATE[band] : undefined);
+}
+
 export type Usage = { input: number; cached: number; cacheWrite: number; output: number; reasoning: number };
 export const emptyUsage = (): Usage => ({ input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0 });
 export const addUsage = (a: Usage, b: Usage): Usage => ({ input: a.input + b.input, cached: a.cached + b.cached, cacheWrite: a.cacheWrite + b.cacheWrite, output: a.output + b.output, reasoning: a.reasoning + b.reasoning });
@@ -30,7 +48,7 @@ export const addUsage = (a: Usage, b: Usage): Usage => ({ input: a.input + b.inp
  * convention); reasoning tokens are already inside `output` on both vendors.
  */
 export function costOf(model: string, u: Usage): number | null {
-  const p = PRICES[model];
+  const p = priceOf(model);
   if (!p) return null;
   const fresh = Math.max(0, u.input - u.cached - u.cacheWrite);
   return (fresh * p.input + u.cached * p.cached + u.cacheWrite * p.cacheWrite + u.output * p.output) / 1e6;

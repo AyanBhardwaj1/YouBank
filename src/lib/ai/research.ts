@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { aiConfig } from "./config";
+import { guardAi } from "./limits";
+import { aiUser, recordUsage } from "./usage";
+
+/** What the providers charge per web search, on top of tokens. */
+export const WEB_SEARCH_FEE_USD = 0.01;
 
 export type ResearchResult = { text: string; citations: { url: string; title: string }[] };
 
@@ -8,10 +13,14 @@ export type ResearchResult = { text: string; citations: { url: string; title: st
 export async function webResearch(query: string): Promise<ResearchResult> {
   const cfg = aiConfig();
   if (cfg.provider === "none") throw new Error(cfg.reason);
+  await guardAi(aiUser());
   const instructions = "Research the query using web search. Reply with a compact factual summary (under 250 words) and include the URLs you relied on.";
   if (cfg.provider === "openai") {
     const client = new OpenAI({ apiKey: cfg.apiKey });
     const res = await client.responses.create({ model: cfg.researchModel, tools: [{ type: "web_search" }], instructions, input: query });
+    const u = res.usage;
+    const searches = res.output.filter((i) => i.type === "web_search_call").length;
+    recordUsage({ feature: "web-research", provider: "openai", model: cfg.researchModel, usage: { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u?.output_tokens ?? 0, reasoning: u?.output_tokens_details?.reasoning_tokens ?? 0 }, extraCostUsd: searches * WEB_SEARCH_FEE_USD });
     const citations: { url: string; title: string }[] = [];
     let text = "";
     for (const item of res.output) {
@@ -30,6 +39,8 @@ export async function webResearch(query: string): Promise<ResearchResult> {
     tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
     messages: [{ role: "user", content: query }],
   });
+  const mu = res.usage;
+  recordUsage({ feature: "web-research", provider: "anthropic", model: cfg.model, usage: { input: (mu.input_tokens ?? 0) + (mu.cache_read_input_tokens ?? 0) + (mu.cache_creation_input_tokens ?? 0), cached: mu.cache_read_input_tokens ?? 0, cacheWrite: mu.cache_creation_input_tokens ?? 0, output: mu.output_tokens ?? 0, reasoning: 0 }, extraCostUsd: (mu.server_tool_use?.web_search_requests ?? 0) * WEB_SEARCH_FEE_USD });
   const citations: { url: string; title: string }[] = [];
   let text = "";
   for (const b of res.content) {

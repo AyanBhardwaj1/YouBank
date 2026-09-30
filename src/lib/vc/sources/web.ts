@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 import { z } from "zod";
 import { aiConfig } from "@/lib/ai/config";
-import { webResearch } from "@/lib/ai/research";
+import { guardAi } from "@/lib/ai/limits";
+import { WEB_SEARCH_FEE_USD, webResearch } from "@/lib/ai/research";
+import { aiUser, recordUsage } from "@/lib/ai/usage";
 import type { NewStartup } from "../directory";
 import { slugify } from "../directory";
 
@@ -16,15 +18,19 @@ const Found = z.object({
 export async function discoverStartups(query: string, program = ""): Promise<NewStartup[]> {
   const cfg = aiConfig();
   if (cfg.provider === "none") throw new Error(cfg.reason);
+  await guardAi(aiUser());
   const instructions = `You research startups. Use web search. Return 10-25 distinct real companies matching the request with accurate fields; leave fields empty when unknown. Never invent companies.`;
   const prompt = `Find startups: ${query}${program ? ` (program: ${program})` : ""}. Include website, one-line description, country, city, founded year, funding stage, known investors, founders, and the URL you got it from.`;
   let parsed: z.infer<typeof Found>;
   if (cfg.provider === "openai") {
     const client = new OpenAI({ apiKey: cfg.apiKey });
+    const model = process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.4-mini";
     const res = await client.responses.create({
-      model: process.env.OPENAI_RESEARCH_MODEL?.trim() || "gpt-5.4-mini", tools: [{ type: "web_search" }], instructions, input: prompt,
+      model, tools: [{ type: "web_search" }], instructions, input: prompt,
       text: { format: { type: "json_schema", name: "found_startups", schema: z.toJSONSchema(Found) as Record<string, unknown> } },
     });
+    const u = res.usage;
+    recordUsage({ feature: "vc-discover", provider: "openai", model, usage: { input: u?.input_tokens ?? 0, cached: u?.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u?.output_tokens ?? 0, reasoning: u?.output_tokens_details?.reasoning_tokens ?? 0 }, extraCostUsd: res.output.filter((i) => i.type === "web_search_call").length * WEB_SEARCH_FEE_USD });
     parsed = Found.parse(JSON.parse(res.output_text));
   } else {
     // Anthropic path: research, then ask for JSON in a second pass without tools.
@@ -32,6 +38,8 @@ export async function discoverStartups(query: string, program = ""): Promise<New
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
     const client = new Anthropic({ apiKey: cfg.apiKey });
     const res = await client.messages.create({ model: cfg.model, max_tokens: 6000, messages: [{ role: "user", content: `Extract the startups from these notes as JSON.\n\n${r.text}\n\nSources: ${r.citations.map((c) => c.url).join(", ")}` }], output_config: { format: { type: "json_schema", schema: z.toJSONSchema(Found) as Record<string, unknown> } } });
+    const mu = res.usage;
+    recordUsage({ feature: "vc-discover", provider: "anthropic", model: cfg.model, usage: { input: (mu.input_tokens ?? 0) + (mu.cache_read_input_tokens ?? 0) + (mu.cache_creation_input_tokens ?? 0), cached: mu.cache_read_input_tokens ?? 0, cacheWrite: mu.cache_creation_input_tokens ?? 0, output: mu.output_tokens ?? 0, reasoning: 0 } });
     parsed = Found.parse(JSON.parse(res.content.filter((b): b is import("@anthropic-ai/sdk").default.TextBlock => b.type === "text").map((b) => b.text).join("")));
   }
   return parsed.startups.filter((s) => s.name.trim()).map((s) => {

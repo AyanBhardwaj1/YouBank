@@ -22,6 +22,9 @@ pnpm exec tsx scripts/test-inference.ts > /tmp/youbank-test-inference.log 2>&1 &
 step "newsroom"
 pnpm exec tsx scripts/test-news.ts > /tmp/youbank-test-news.log 2>&1 && tail -1 /tmp/youbank-test-news.log || { cat /tmp/youbank-test-news.log; fail=1; }
 
+step "launch limits"
+pnpm exec tsx scripts/test-launch.ts > /tmp/youbank-test-launch.log 2>&1 && tail -1 /tmp/youbank-test-launch.log || { cat /tmp/youbank-test-launch.log; fail=1; }
+
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1
 

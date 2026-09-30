@@ -14,7 +14,8 @@ import OpenAI from "openai";
 import { z } from "zod";
 import { cacheJson } from "@/lib/cache";
 import { resolveAi } from "@/lib/ai/config";
-import { recordUsage } from "@/lib/ai/usage";
+import { guardAi } from "@/lib/ai/limits";
+import { aiUser, recordUsage } from "@/lib/ai/usage";
 import { backupEnabled } from "./nasdaq";
 
 const RESEARCH_MODEL = () => process.env.MARKET_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
@@ -197,6 +198,7 @@ export function crossCheck(facts: Partial<Record<Field, Fact>>, ctx: Context): {
 async function ask(model: string, subject: string, fields: Field[], ctx: Context): Promise<{ facts: Partial<Record<Field, Fact>>; rejected: { field: string; reason: string }[]; searches: number }> {
   const cfg = resolveAi(null, { model });
   if (cfg.provider !== "openai") throw new Error("AI research needs an OpenAI key");
+  await guardAi(aiUser());
   const client = new OpenAI({ apiKey: cfg.apiKey });
   const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const res = await client.responses.create({

@@ -9,9 +9,10 @@ import { ALL_TOOLS, runTool, type Source, type ToolCtx, type ToolDef } from "./t
 /** Research tools plus the terminal's models (risk, credit, quality, forecasts, cost of capital, macro, screener). */
 const CHAT_TOOLS = [...ALL_TOOLS, ...INFERENCE_TOOLS];
 import { contextBlock, systemPrompt, type PromptContext } from "./prompts";
-import { addUsage, emptyUsage, type Usage } from "./pricing";
+import { aiBlocked, guardAi, takeRunSlot } from "./limits";
+import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";
 import { routeFor, type AiTask } from "./route";
-import { recordUsage } from "./usage";
+import { aiUser, recordUsage } from "./usage";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AgentEvent =
@@ -78,17 +79,26 @@ function makeCtx(): { ctx: ToolCtx; sources: Source[] } {
 export async function runChat(opts: RunOptions): Promise<{ text: string; sources: Source[] }> {
   const cfg = resolveAi(opts.prefs, opts.override);
   if (cfg.provider === "none") { opts.emit({ type: "error", message: cfg.reason }); return { text: "", sources: [] }; }
+  const userId = aiUser();
+  const blocked = await aiBlocked(userId);
+  if (blocked) { opts.emit({ type: "error", message: blocked }); return { text: "", sources: [] }; }
+  const release = await takeRunSlot(userId);
+  if (typeof release === "string") { opts.emit({ type: "error", message: release }); return { text: "", sources: [] }; }
   const system = opts.system ?? systemPrompt();
   const volatile = opts.volatile ?? (opts.system ? undefined : contextBlock(opts.context));
   const { ctx, sources } = makeCtx();
   const tools = [...(opts.tools ? CHAT_TOOLS.filter((t) => opts.tools!.includes(t.name)) : opts.extraTools ? [] : CHAT_TOOLS), ...(opts.extraTools ?? [])];
   let text = "";
   const usage = { total: emptyUsage() };
-  const run: LoopArgs = { cfg, system, volatile, history: opts.messages, toolDefs: tools, ctx, emit: opts.emit, json: opts.json, maxTurns: opts.maxTurns ?? 10, deadline: opts.deadline, signal: opts.signal, parallel: !!opts.parallelTools, usage };
+  // The run's cost is recorded once at the end, so between turns the limits count it as pending.
+  const budget = () => aiBlocked(userId, costOf(cfg.model, usage.total) ?? 0);
+  const run: LoopArgs = { cfg, system, volatile, history: opts.messages, toolDefs: tools, ctx, emit: opts.emit, json: opts.json, maxTurns: opts.maxTurns ?? 10, deadline: opts.deadline, signal: opts.signal, parallel: !!opts.parallelTools, usage, budget };
   try {
     text = cfg.provider === "openai" ? await runOpenAI(run) : await runAnthropic(run);
   } catch (e) {
     opts.emit({ type: "error", message: describeError(e) });
+  } finally {
+    await release();
   }
   recordUsage({ feature: opts.feature ?? "chat", provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: usage.total });
   opts.emit({ type: "sources", sources });
@@ -113,7 +123,16 @@ const NATIVE_WEB_SEARCH = true;
 type LoopArgs = {
   cfg: AiConfig; system: string; volatile?: string; history: ChatMessage[]; toolDefs: ToolDef[]; ctx: ToolCtx; emit: (e: AgentEvent) => void;
   json: JsonFormat | undefined; maxTurns: number; deadline?: number; signal?: AbortSignal; parallel: boolean; usage: { total: Usage };
+  /** Why the run must stop before its next turn (a spend limit), or null. */
+  budget?: () => Promise<string | null>;
 };
+
+/** Checked before every turn after the first: a run that crosses a spend limit ends with what it has. */
+async function overBudget(a: LoopArgs, turn: number): Promise<boolean> {
+  const why = turn > 0 && a.budget ? await a.budget() : null;
+  if (why) a.emit({ type: "error", message: why });
+  return !!why;
+}
 
 /** Run a turn's tool calls, concurrently when the tools are read-only, emitting start and end events. */
 async function runCalls<T extends { name: string; input: unknown }>(calls: T[], a: Pick<LoopArgs, "ctx" | "toolDefs" | "emit" | "parallel">): Promise<{ output: string; isError: boolean }[]> {
@@ -147,6 +166,7 @@ async function runOpenAI(a: LoopArgs): Promise<string> {
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) { emit({ type: "status", text: "stopped" }); return finalText; }
+    if (await overBudget(a, turn)) return finalText;
     const overdue = deadline !== undefined && Date.now() > deadline;
     if (overdue) {
       emit({ type: "status", text: "time budget reached, writing the answer from what was gathered" });
@@ -237,6 +257,7 @@ async function runAnthropic(a: LoopArgs): Promise<string> {
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) { emit({ type: "status", text: "stopped" }); return finalText; }
+    if (await overBudget(a, turn)) return finalText;
     const overdue = deadline !== undefined && Date.now() > deadline;
     if (overdue) {
       emit({ type: "status", text: "time budget reached, writing the answer from what was gathered" });
@@ -292,6 +313,7 @@ export type Attachment = { name: string; mime: string; data: string };
 export async function structured<T>(schema: z.ZodType<T>, name: string, system: string, prompt: string, opts?: { prefs?: AiPrefs | null; override?: AiOverride; files?: Attachment[]; maxTokens?: number; task?: AiTask; /** Give up after this long (background jobs); the SDK default is ten minutes. */ timeoutMs?: number }): Promise<{ data: T; provider: string; model: string }> {
   const cfg = resolveAi(opts?.prefs, routeFor(opts?.task, opts?.prefs, opts?.override));
   if (cfg.provider === "none") throw new Error(cfg.reason);
+  await guardAi(aiUser());
   const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
   const files = opts?.files ?? [];
   if (cfg.provider === "openai") {

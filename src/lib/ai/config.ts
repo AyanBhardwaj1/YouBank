@@ -1,3 +1,4 @@
+import { aiDisabled, PAUSED } from "./limits";
 import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_EFFORT, DEFAULT_OPENAI_MODEL, modelById, type AiPrefs, type Effort, type Provider } from "./models";
 
 export type { Provider, Effort };
@@ -15,9 +16,11 @@ function envEffort(): Effort | undefined {
 /**
  * Resolve which provider/model/effort to use: request override > account preference > environment > catalogue default.
  * A model whose provider has no API key falls back to the other provider's default, so a missing Anthropic key
- * never breaks a user who picked a Claude model.
+ * never breaks a user who picked a Claude model. With AI_DISABLED set there is no provider, which every
+ * AI feature already handles as "AI is not set up".
  */
 export function resolveAi(prefs?: AiPrefs | null, override?: AiOverride): AiConfig | { provider: "none"; reason: string } {
+  if (aiDisabled()) return { provider: "none", reason: PAUSED };
   const envPref = (process.env.AI_PROVIDER ?? "openai").toLowerCase() === "anthropic" ? "anthropic" : "openai";
   const envModel = { openai: process.env.OPENAI_MODEL?.trim(), anthropic: process.env.ANTHROPIC_MODEL?.trim() };
   const candidates = [override?.model, prefs?.model, prefs?.provider ? envModel[prefs.provider] : undefined, envModel[envPref], envPref === "openai" ? DEFAULT_OPENAI_MODEL : DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL, DEFAULT_ANTHROPIC_MODEL]

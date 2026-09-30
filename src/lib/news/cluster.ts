@@ -7,6 +7,7 @@
  */
 import OpenAI from "openai";
 import { resolveAi } from "@/lib/ai/config";
+import { aiBlocked } from "@/lib/ai/limits";
 import { recordUsage } from "@/lib/ai/usage";
 import { noteSpend } from "./budget";
 import { jaccard, tokens } from "./normalize";
@@ -19,7 +20,7 @@ const EMBED_USD_PER_TOKEN = 0.02 / 1e6;
 export async function embed(texts: string[]): Promise<Float32Array[] | null> {
   if (!texts.length) return [];
   const cfg = resolveAi(null, { model: "gpt-5.6-luna" });
-  if (cfg.provider !== "openai") return null;
+  if (cfg.provider !== "openai" || (await aiBlocked(null))) return null;
   const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 60_000, maxRetries: 1 });
   const out: Float32Array[] = [];
   let tokensUsed = 0;
