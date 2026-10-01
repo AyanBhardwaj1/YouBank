@@ -17,6 +17,7 @@ import { passagesFromPages } from "../docs/chunk";
 import { indexPassages, upsertDoc } from "../docs/store";
 import { putObject, r2Ready } from "../infra/r2";
 import { energyUniverse } from "../graph/universe";
+import { small } from "../models";
 import { factorHistory } from "./data";
 import { normals, rng } from "./stats";
 import { copulaSynth, type TableIn } from "./tables";
@@ -66,7 +67,7 @@ export async function practiceKit(userId: string, spec: PracticeSpec): Promise<P
   const sectorWord = spec.sector === "mixed" ? "energy" : spec.sector;
   // 1. Fictional profiles, checked against every listed company.
   const r = await structured(Profiles, "edge-scen-practice", `You invent fictional ${sectorWord} companies for practice data. Every name and ticker must be made up; never use or echo a real company's name.`,
-    `Invent ${count + 3} distinct ${sectorWord} companies (U.S.).`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 1800, timeoutMs: 60_000 });
+    `Invent ${count + 3} distinct ${sectorWord} companies (U.S.).`, { override: small(), maxTokens: 1800, timeoutMs: 60_000 });
   const map = await tickerMap();
   const companies: PracticeCompany[] = [];
   for (const c of r.data.companies) {
@@ -122,7 +123,7 @@ export async function practiceKit(userId: string, spec: PracticeSpec): Promise<P
       try {
         const last = fin.filter((x) => x[1] === c.ticker).slice(-1)[0];
         const d = await structured(Docs, "edge-scen-practice-docs", "You write practice documents for a fictional company. Everything is invented: people, numbers and events. Use the figures given.",
-          `${c.name} (${c.ticker}), ${c.hq}: ${c.description} Segments: ${c.segments.join(", ")}. Last year: revenue $${last[3]}M, operating income $${last[4]}M, net income $${last[5]}M.`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 1200, timeoutMs: 60_000 });
+          `${c.name} (${c.ticker}), ${c.hq}: ${c.description} Segments: ${c.segments.join(", ")}. Last year: revenue $${last[3]}M, operating income $${last[4]}M, net income $${last[5]}M.`, { override: small(), maxTokens: 1200, timeoutMs: 60_000 });
         for (const [kind, text] of [["overview", d.data.overview], ["earnings call", d.data.call]] as const) {
           const title = `[Fictional] ${c.name}: ${kind}`;
           const doc = await upsertDoc({ ownerId: userId, source: "upload", externalId: `practice:${spec.seed}:${c.ticker}:${kind}`, title, mime: "text/plain", meta: { practice: true, fictional: true, ticker: c.ticker } });

@@ -262,23 +262,25 @@ export function sampleGrid(g: { bbox: Bbox; width: number; height: number; z: Fl
 /* ---------------- Reading elevation ---------------- */
 
 /** Run `fn` over items, at most `n` at a time, keeping their order. */
-async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+export async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]); } }));
   return out;
 }
 
-type StacItem = { id: string; bbox: number[]; properties: Record<string, unknown> };
+export type StacItem = { id: string; bbox: number[]; properties: Record<string, unknown> };
 
-async function stacItems(collection: string, bbox: Bbox, limit: number): Promise<StacItem[]> {
+export async function stacItems(collection: string, bbox: Bbox, limit: number): Promise<StacItem[]> {
   const res = await fetch(STAC, { method: "POST", headers: { ...UA, "content-type": "application/json" }, body: JSON.stringify({ collections: [collection], bbox, limit }), cache: "no-store", signal: AbortSignal.timeout(20_000) });
   if (!res.ok) throw new Error(`Planetary Computer search answered ${res.status}`);
   return ((await res.json()) as { features?: StacItem[] }).features ?? [];
 }
 
-async function readWindow(collection: string, item: string, bbox: Bbox, w: number, h: number, resampling: string): Promise<{ z: Float32Array; valid: Uint8Array }> {
-  const url = `${DATA}/item/bbox/${bbox.map((v) => v.toFixed(6)).join(",")}/${w}x${h}.npy?collection=${collection}&item=${encodeURIComponent(item)}&assets=data&resampling=${resampling}`;
+/** One item's values over a box as a w by h grid, with its validity mask (an expression reads band maths instead of a plain asset). */
+export async function readWindow(collection: string, item: string, bbox: Bbox, w: number, h: number, resampling: string, opts: { assets?: string; expression?: string } = {}): Promise<{ z: Float32Array; valid: Uint8Array }> {
+  const what = opts.expression ? `assets=${opts.assets ?? "image"}&expression=${encodeURIComponent(opts.expression)}&asset_as_band=false` : `assets=${opts.assets ?? "data"}`;
+  const url = `${DATA}/item/bbox/${bbox.map((v) => v.toFixed(6)).join(",")}/${w}x${h}.npy?collection=${collection}&item=${encodeURIComponent(item)}&${what}&resampling=${resampling}`;
   const res = await fetch(url, { headers: UA, cache: "no-store", signal: AbortSignal.timeout(45_000) });
   if (!res.ok) throw new Error(`Planetary Computer elevation answered ${res.status}`);
   const { shape, data } = parseNpy(new Uint8Array(await res.arrayBuffer()));

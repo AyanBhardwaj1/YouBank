@@ -62,7 +62,7 @@ export function StoryView({ story, owner, teams }: { story: StoryData; owner: bo
         </header>
         <ol className="mt-10 space-y-16">
           {story.sections.map((s, i) => (
-            <motion.li key={i} initial={reduce ? false : { opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }} className="break-inside-avoid">
+            <motion.li key={i} initial={reduce || i === 0 ? false : { opacity: 0, y: 28 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-80px" }} transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1] }} className="break-inside-avoid print:!transform-none print:!opacity-100">
               <div className="num text-[11px] text-muted">{String(i + 1).padStart(2, "0")}</div>
               <h2 className="mt-1 text-[22px] font-semibold tracking-tight">{s.title}</h2>
               <div className="mt-4">{s.kind === "graph" ? <GraphSection g={s.value as GraphValue} /> : <ValueView value={s.value} />}</div>

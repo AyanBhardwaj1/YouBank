@@ -10,6 +10,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
+import { small } from "./models";
 import { aiBlocked } from "@/lib/ai/limits";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { logError } from "@/lib/errors";
@@ -53,7 +54,7 @@ async function describe(site: Site, before: Buffer, after: Buffer, dates: [strin
     const r = await structured(Described, "edge-describe-change",
       "You read satellite imagery for an investment analyst. Two true-colour Sentinel-2 crops (10 m pixels, about 2.5 km across) of the same place a year apart: the first is older. Say only what you can see changed; never guess at causes you cannot see, and never invent names.",
       `Site: ${site.name} (${site.company || "unknown operator"}), a ${site.kind.replace("_", " ")}. Older image ${dates[0]}, newer ${dates[1]}.`,
-      { files: [{ name: "before.png", mime: "image/png", data: before.toString("base64") }, { name: "after.png", mime: "image/png", data: after.toString("base64") }], override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 600, timeoutMs: 60_000 });
+      { files: [{ name: "before.png", mime: "image/png", data: before.toString("base64") }, { name: "after.png", mime: "image/png", data: after.toString("base64") }], override: small(), maxTokens: 600, timeoutMs: 60_000 });
     return { ...r.data, model: r.model };
   } catch (e) {
     logError(e, { where: "edge-describe" });

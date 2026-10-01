@@ -13,6 +13,9 @@ import { errorText, type TopicMap, type ViewTarget } from "./client";
 
 const PALETTE = ["#5B8DEF", "#E0795A", "#4FB286", "#C77DDB", "#E3B341", "#46B3C9", "#E06C9F", "#8C9EFF", "#A3B86C", "#D98E4A"];
 const W = 1000, H = 620, PAD = 36;
+const colorOf = (cluster: number) => PALETTE[Math.abs(cluster) % PALETTE.length];
+/** The passage a mouse event landed on: its index in the plot, from the dot's data-i. */
+const dotAt = (e: { target: EventTarget }) => { const i = (e.target as Element).getAttribute?.("data-i"); return i === null || i === undefined ? null : Number(i); };
 
 type Corpus = "uploads" | "workspace" | "company" | "all";
 type Result = TopicMap & { docs: number };
@@ -24,10 +27,10 @@ export function TopicMapView({ onCite, onAskTopic }: { onCite: (t: ViewTarget) =
   const [map, setMap] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
-  const [tip, setTip] = useState<{ x: number; y: number; id: number } | null>(null);
+  const [tip, setTip] = useState<number | null>(null);
 
   const run = async () => {
-    setBusy(true); setError(null); setFocus(null);
+    setBusy(true); setError(null); setFocus(null); setTip(null);
     const body = corpus === "uploads" ? { sources: ["upload", "audio"] } : corpus === "workspace" ? { sources: ["workspace"] } : corpus === "company" ? { tickers: [ticker.trim().toUpperCase()], sources: ["sec"] } : {};
     try { setMap(await post<Result>("/api/edge/topics", body)); } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
   };
@@ -43,11 +46,18 @@ export function TopicMapView({ onCite, onAskTopic }: { onCite: (t: ViewTarget) =
       const mine = pts.filter((p) => p.cluster === c.id);
       return { ...c, x: mine.reduce((s, p) => s + p.px, 0) / (mine.length || 1), y: mine.reduce((s, p) => s + p.py, 0) / (mine.length || 1) };
     });
-    return { pts, centers, byId: new Map(pts.map((p) => [p.id, p])) };
+    return { pts, centers };
   }, [map]);
 
-  const colorOf = (cluster: number) => PALETTE[Math.abs(cluster) % PALETTE.length];
-  const tipPoint = tip && plot ? plot.byId.get(tip.id) : null;
+  // Up to 1,500 dots, drawn again only when the map or the chosen cluster changes: hovering one draws a
+  // single dot over them and the tooltip, and React skips the group. The dots share its two handlers.
+  const dots = useMemo(() => plot && (
+    <g className="cursor-pointer" onMouseOver={(e) => { const i = dotAt(e); if (i !== null) setTip(i); }} onClick={(e) => { const i = dotAt(e); if (i !== null && plot.pts[i]) onCite({ chunkId: plot.pts[i].id }); }}>
+      {plot.pts.map((p, i) => <circle key={p.id} data-i={i} cx={p.px} cy={p.py} r={3.4} fill={colorOf(p.cluster)} opacity={focus === null || focus === p.cluster ? 0.8 : 0.12} />)}
+    </g>
+  ), [plot, focus, onCite]);
+
+  const tipPoint = tip !== null && plot ? plot.pts[tip] ?? null : null;
   const focused = focus !== null && map ? map.clusters.find((c) => c.id === focus) : null;
 
   return (
@@ -67,17 +77,15 @@ export function TopicMapView({ onCite, onAskTopic }: { onCite: (t: ViewTarget) =
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
           <div className="panel relative overflow-hidden p-1">
             <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label="Topic map of the passages" onMouseLeave={() => setTip(null)}>
-              {plot.pts.map((p) => (
-                <circle key={p.id} cx={p.px} cy={p.py} r={tip?.id === p.id ? 6 : 3.4} fill={colorOf(p.cluster)} opacity={focus === null || focus === p.cluster ? 0.8 : 0.12}
-                  className="cursor-pointer" onMouseEnter={() => setTip({ x: p.px, y: p.py, id: p.id })} onClick={() => onCite({ chunkId: p.id })} />
-              ))}
+              {dots}
+              {tipPoint && <circle cx={tipPoint.px} cy={tipPoint.py} r={6} fill={colorOf(tipPoint.cluster)} opacity={focus === null || focus === tipPoint.cluster ? 0.8 : 0.12} className="pointer-events-none" />}
               {plot.centers.map((c) => (
                 <text key={c.id} x={c.x} y={c.y} textAnchor="middle" className="cursor-pointer select-none" onClick={() => setFocus((f) => (f === c.id ? null : c.id))}
                   style={{ font: "600 15px var(--font-sans, system-ui)", fill: "var(--fg)", stroke: "var(--panel)", strokeWidth: 5, paintOrder: "stroke", opacity: focus === null || focus === c.id ? 1 : 0.3 }}>{c.label}</text>
               ))}
             </svg>
-            {tipPoint && tip && (
-              <div className="pointer-events-none absolute z-10 max-w-[300px] rounded-md border border-line bg-panel px-2.5 py-2 text-[11.5px] shadow-lg" style={{ left: `${Math.min(70, (tip.x / W) * 100)}%`, top: `${Math.min(75, (tip.y / H) * 100)}%`, transform: "translate(8px, 8px)" }}>
+            {tipPoint && (
+              <div className="pointer-events-none absolute z-10 max-w-[300px] rounded-md border border-line bg-panel px-2.5 py-2 text-[11.5px] shadow-lg" style={{ left: `${Math.min(70, (tipPoint.px / W) * 100)}%`, top: `${Math.min(75, (tipPoint.py / H) * 100)}%`, transform: "translate(8px, 8px)" }}>
                 <div className="truncate font-semibold">{tipPoint.title}</div>
                 <div className="mt-0.5 line-clamp-4 text-muted">{tipPoint.text}</div>
               </div>

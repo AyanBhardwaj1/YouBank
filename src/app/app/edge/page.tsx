@@ -4,6 +4,9 @@ import { edgeProfile } from "@/lib/edge/access";
 import { EdgeIntro } from "@/components/edge/BetaToggle";
 import { EdgeWorkspace, type EdgeView } from "@/components/edge/EdgeWorkspace";
 import { whatIfFrom } from "@/lib/edge/links";
+import { edgeFeed } from "@/lib/edge/feed";
+import { edgeState } from "@/lib/edge/state";
+import type { EdgeState, FeedData } from "@/components/edge/client";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
@@ -29,5 +32,11 @@ export default async function EdgePage({ searchParams }: { searchParams: Promise
   const docs = answer || radar ? { tab: radar ? ("radar" as const) : ("ask" as const), answer, radar, key: 1 } : null;
   const company = /^[A-Za-z][A-Za-z0-9.\-]{0,9}$/.test(one(q.company)) ? one(q.company).toUpperCase() : null;
   const deal = whatIfFrom(one(q.parties), one(q.place));
-  return <EdgeWorkspace initialView={docs ? "documents" : company ? "networks" : deal ? "whatif" : VIEWS.has(view as EdgeView) ? (view as EdgeView) : "feed"} initialDocs={docs} initialCompany={company} initialDeal={deal} />;
+  const initialView = docs ? "documents" : company ? "networks" : deal ? "whatif" : VIEWS.has(view as EdgeView) ? (view as EdgeView) : "feed";
+  // The person's Edge (and, opening on the feed, its first page) go out with the page, shaped exactly as
+  // the API sends them (dates as strings), so the first paint needs no further request.
+  const plain = <T,>(v: T) => JSON.parse(JSON.stringify(v)) as T;
+  const state = await edgeState(user.id, p.prefs.beta, p.prefs.since, p.prefs.blend).then((s) => plain(s) as EdgeState).catch(() => undefined);
+  const feed = state && initialView === "feed" ? await edgeFeed(user.id, state.watches, p.prefs.blend, { scope: "all", limit: 20 }).then((f) => plain({ ...f, generatedAt: new Date().toISOString() }) as FeedData).catch(() => undefined) : undefined;
+  return <EdgeWorkspace initialView={initialView} initialDocs={docs} initialCompany={company} initialDeal={deal} initialState={state} initialFeed={feed} seededAt={new Date().toISOString()} />;
 }

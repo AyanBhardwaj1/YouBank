@@ -10,7 +10,7 @@ import { logError } from "@/lib/errors";
 import { mlReady, mlStart, type MlDone } from "../infra/ml";
 import { getJson, putJson, r2Ready, readParts, getBytes } from "../infra/r2";
 import { tickerReturns } from "./data";
-import { shockFromText } from "./drivers";
+import { parseShock, shockFromText, viewsFromText } from "./drivers";
 import { runMarket, type MarketResult, type MarketSpec } from "./market";
 import { getScenario, updateScenario } from "./store";
 import type { Cell, Col, TableIn } from "./tables";
@@ -58,10 +58,22 @@ export async function tableFromFile(userId: string, fileId: number): Promise<Tab
   return { ...parseCsv(new TextDecoder().decode(bytes)), title: f.name };
 }
 
-/** A market spec's shock from its words, when a person wrote one. */
+/**
+ * A market spec's shock from its words, when a person wrote one. Numbers the rules read ("oil -30%, rates
+ * +150bp") are a shock as written; a sentence they cannot read ("a 2008-style credit crunch") becomes a
+ * narrative with views for the views chain, falling back to the plain translation when the model gives none.
+ */
 export async function withShock(spec: MarketSpec & { shockText?: string }): Promise<MarketSpec> {
-  if ((spec.driver === "shock" || spec.driver === "event" || spec.driver === "tail") && !spec.shock && spec.shockText) return { ...spec, shock: await shockFromText(spec.shockText, spec.tickers.map((t) => t.toUpperCase())) };
-  return spec;
+  if (!(spec.driver === "shock" || spec.driver === "event" || spec.driver === "tail") || spec.shock || !spec.shockText) return spec;
+  const tickers = spec.tickers.map((t) => t.toUpperCase());
+  if (spec.driver === "shock") {
+    const { shock, leftover } = parseShock(spec.shockText, tickers);
+    if (leftover.replace(/[^a-z]/gi, "").length >= 4) {
+      const narrative = await viewsFromText(spec.shockText, tickers, shock).catch((e) => { logError(e, { where: "edge-scen-views" }); return null; });
+      if (narrative) return { ...spec, shock, narrative };
+    }
+  }
+  return { ...spec, shock: await shockFromText(spec.shockText, tickers) };
 }
 
 /** Refine a saved market scenario: ten thousand statistical paths now, or start the diffusion model and return its call. */

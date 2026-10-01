@@ -5,6 +5,7 @@
  */
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { cacheJson } from "@/lib/cache";
 import { tickerMap } from "@/lib/edgar/tickers";
 import { normName } from "./parse";
 
@@ -104,10 +105,26 @@ export async function setNodeAttrs(id: number, attrs: Record<string, unknown>) {
   await requireDb().execute(sql`update edge_nodes set attrs = attrs || ${JSON.stringify(attrs)}::jsonb, updated_at = now() where id = ${id}`);
 }
 
-/** How big the graph is (for the status line and the storage meter). */
-export async function graphSize(): Promise<{ nodes: number; links: number; companies: number }> {
+/** How big the graph is (for the status line and the storage meter); counted at most every five minutes, since every Networks visit asks. */
+export const graphSize = () => cacheJson("edge:graph:size", 300_000, async () => {
   const [r] = (await requireDb().execute(sql`select (select count(*) from edge_nodes)::int as nodes, (select count(*) from edge_links)::int as links, (select count(*) from edge_nodes where kind = 'company')::int as companies`)).rows as { nodes: number; links: number; companies: number }[];
   return r;
+});
+
+/**
+ * The whole graph's version, for cache keys: its newest link's id (one step down the primary key), so a
+ * link added anywhere changes it. A company's own rebuild shows in its row's updated_at, which every
+ * ingest of it touches, even one that finds no new link.
+ */
+export async function graphVersion(): Promise<string> {
+  const [r] = (await requireDb().execute(sql`select coalesce(max(id), 0)::text as v from edge_links`)).rows as { v: string }[];
+  return r?.v ?? "0";
+}
+
+/** A company's people (its directors and officers), by node id. */
+export async function peopleOf(id: number): Promise<number[]> {
+  const rows = await requireDb().selectDistinct({ src: schema.edgeLinks.src }).from(schema.edgeLinks).where(and(eq(schema.edgeLinks.dst, id), inArray(schema.edgeLinks.kind, ["director", "officer"])));
+  return rows.map((r) => r.src);
 }
 
 let listed: Promise<Map<string, { ticker: string; name: string }>> | null = null;

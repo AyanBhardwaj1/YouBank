@@ -8,7 +8,7 @@
  */
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ExternalLink, FileText, Languages, Mic, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useApi } from "@/components/news/client";
 import { clockOf, locateQuote } from "@/lib/edge/docs/text";
 import { SOURCE_LABEL, type PassageView, type ViewTarget } from "./client";
@@ -110,22 +110,48 @@ function Passages({ v, quote }: { v: PassageView; quote?: string }) {
   );
 }
 
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, audio[controls], video[controls], [tabindex]:not([tabindex="-1"])';
+
+/**
+ * A modal panel: focus moves into it on open and back to whatever opened it on close, Tab and Shift+Tab
+ * stay inside it, and Escape (or the backdrop) closes it.
+ */
 export function CitationViewer({ target, onClose }: { target: ViewTarget | null; onClose: () => void }) {
   const reduce = useReducedMotion();
+  const panel = useRef<HTMLElement>(null);
+  const titleId = useId();
+  const open = !!target;
   useEffect(() => {
-    if (!target) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panel.current?.focus({ preventScroll: true });
+    return () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); };
+  }, [open]);
+  // Escape normally arrives through the panel (below); this catches it if focus ever ends up elsewhere.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !e.defaultPrevented) onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [target, onClose]);
+  }, [open, onClose]);
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>) => {
+    // preventDefault keeps the app shell's own Escape (closing the navigation) from firing too.
+    if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+    if (e.key !== "Tab" || !panel.current) return;
+    const f = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+    const at = document.activeElement;
+    if (!f.length) e.preventDefault();
+    else if (e.shiftKey && (at === f[0] || at === panel.current)) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && at === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  };
   return (
     <AnimatePresence>
       {target && (
         <>
           <motion.div key="backdrop" className="fixed inset-0 z-40 bg-black/30 lg:bg-black/10" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-          <motion.aside key="panel" role="dialog" aria-label="Source" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col border-l border-line bg-panel shadow-2xl"
+          <motion.aside ref={panel} key="panel" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown} className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col border-l border-line bg-panel shadow-2xl outline-none"
             initial={reduce ? { opacity: 0 } : { x: 40, opacity: 0 }} animate={reduce ? { opacity: 1 } : { x: 0, opacity: 1 }} exit={reduce ? { opacity: 0 } : { x: 40, opacity: 0 }} transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}>
-            <Body key={target.chunkId} target={target} onClose={onClose} />
+            <Body key={target.chunkId} target={target} onClose={onClose} titleId={titleId} />
           </motion.aside>
         </>
       )}
@@ -133,8 +159,8 @@ export function CitationViewer({ target, onClose }: { target: ViewTarget | null;
   );
 }
 
-function Body({ target, onClose }: { target: ViewTarget; onClose: () => void }) {
-  const { data: v, error } = useApi<PassageView>(`/api/edge/passage?chunk=${target.chunkId}`);
+function Body({ target, onClose, titleId }: { target: ViewTarget; onClose: () => void; titleId: string }) {
+  const { data: v, error, reload } = useApi<PassageView>(`/api/edge/passage?chunk=${target.chunkId}`);
   const quote = target.quote ?? target.cite?.quote;
   const pdf = !!v?.raw && v.doc.mime === "application/pdf" && v.passage.page > 0;
   const media = !!v && /^(audio|video)\//.test(v.doc.mime);
@@ -144,10 +170,11 @@ function Body({ target, onClose }: { target: ViewTarget; onClose: () => void }) 
       <header className="flex items-start gap-2 border-b border-line px-4 py-3">
         {media ? <Mic className="mt-0.5 h-4 w-4 shrink-0 text-accent" /> : <FileText className="mt-0.5 h-4 w-4 shrink-0 text-accent" />}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold">{v?.doc.title ?? target.cite?.title ?? "Source"}</div>
+          <h2 id={titleId} className="truncate text-[13px] font-semibold">{v?.doc.title ?? target.cite?.title ?? "Source"}</h2>
           {v && (
             <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted">
               <span>{SOURCE_LABEL[v.doc.source] ?? v.doc.source}{v.doc.form ? ` · ${v.doc.form}` : ""}{v.doc.ticker ? ` · ${v.doc.ticker}` : ""}</span>
+              {v.doc.transcription && <span>{v.doc.transcription}</span>}
               {v.passage.section && <span>· {v.passage.section}</span>}
               {v.passage.page > 0 && <span className="num">· page {v.passage.page}{v.doc.pages ? ` of ${v.doc.pages}` : ""}</span>}
               {v.passage.tStart !== null && <span className="num">· {clockOf(v.passage.tStart)}{v.doc.durationSec ? ` of ${clockOf(v.doc.durationSec)}` : ""}</span>}
@@ -165,8 +192,8 @@ function Body({ target, onClose }: { target: ViewTarget; onClose: () => void }) 
             {target.cite?.translation && <div className="mt-1.5 flex gap-1.5 border-t border-line pt-1.5 text-[12px] text-muted"><Languages className="mt-0.5 h-3.5 w-3.5 shrink-0" />{target.cite.translation}</div>}
           </blockquote>
         )}
-        {error && <p className="text-[12.5px] text-neg">{error}</p>}
-        {!v && !error && <div className="h-48 animate-pulse rounded-md bg-elevated/50" />}
+        {error && <p className="text-[12.5px] text-neg">{error} <button type="button" onClick={reload} className="text-accent hover:underline">Try again</button></p>}
+        {!v && !error && <div className="h-64 animate-pulse rounded-md bg-elevated/50" />}
         {v && (pdf
           ? <Suspense fallback={<div className="h-64 animate-pulse rounded-md bg-elevated/50" />}><PdfPage url={v.raw!} page={v.passage.page} quote={quote} /></Suspense>
           : media ? <Recording v={v} quote={quote} /> : <Passages v={v} quote={quote} />)}

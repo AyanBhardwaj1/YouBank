@@ -6,6 +6,7 @@
  * with the full what-if a click away. A deal whose sides own nothing mapped offers the what-if alone.
  */
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { ArrowRight, Map as MapIcon } from "lucide-react";
 import { useMemo } from "react";
 import { useApi } from "@/components/news/client";
@@ -41,9 +42,9 @@ export function DealMap({ storyId }: { storyId: number }) {
 
   if (!p || !card?.bbox) {
     return (
-      <a href={link} className="mt-3 inline-flex items-center gap-1.5 text-[12px] text-accent hover:underline">
+      <Link href={link} className="mt-3 inline-flex items-center gap-1.5 text-[12px] text-accent hover:underline">
         <MapIcon className="h-3.5 w-3.5" /> Draw what they would own together in Edge&apos;s what-if <ArrowRight className="h-3 w-3" />
-      </a>
+      </Link>
     );
   }
   const high = p.counties.filter((c) => c.flag === "high").length;
@@ -59,7 +60,7 @@ export function DealMap({ storyId }: { storyId: number }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 p-3 text-[11.5px] text-muted">
         <span><span className="num text-fg">{fmt(p.combined.capacityMMcfd)}</span> MMcfd of processing together ({Math.round(p.combined.capacityShare * 100)}% of the {p.place.name}&apos;s mapped capacity)</span>
         <span><span className="num text-fg">{p.overlap.counties}</span> counties where both operate{high ? <>, <span className="num text-neg">{high}</span> screen high</> : ""}</span>
-        <a href={link} className="ml-auto inline-flex items-center gap-1 font-medium text-accent hover:underline">Open the what-if <ArrowRight className="h-3 w-3" /></a>
+        <Link href={link} className="ml-auto inline-flex items-center gap-1 font-medium text-accent hover:underline">Open the what-if <ArrowRight className="h-3 w-3" /></Link>
       </div>
       <p className="border-t border-line px-3 py-1.5 text-[10px] text-faint">Edge, from EIA&apos;s pipeline and processing-plant maps; county concentration screened as in the 2023 Merger Guidelines. A county is a rough market, so treat flags as where to look.</p>
     </div>

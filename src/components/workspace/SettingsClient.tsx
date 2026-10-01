@@ -13,6 +13,7 @@ import { Icon } from "@/components/ui/Icon";
 import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
+import { EdgeUpgrades } from "@/components/edge/Upgrades";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -115,11 +116,12 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
             <div className="panel flex flex-wrap items-start justify-between gap-4 p-4">
               <div className="min-w-0 max-w-[62ch]">
                 <div className="flex items-center gap-2 text-[13.5px] font-semibold">Edge <span className="rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-accent">Beta</span>{edgeOn && <span className="text-[11px] font-normal text-pos">On</span>}</div>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, and a feed of what changed, each finding with its sources and an audit trail. Documents, networks and scenarios arrive next. Up to five watches each; its AI use counts toward your daily AI limit.</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change and flaring at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, cited answers across filings, calls and data rooms, the relationship graph with likely buyers and targets, and labeled synthetic scenarios, all in one feed of what changed, each finding with its sources and an audit trail. Up to five watches each; its AI use counts toward your daily AI limit.</p>
                 {edgeOn && <Link href="/app/edge" className="mt-2 inline-block text-[12px] text-accent hover:underline">Open Edge</Link>}
               </div>
               <BetaToggle on={edgeOn} />
             </div>
+            {edgeOn && <EdgeUpgrades />}
           </section>
         )}
 

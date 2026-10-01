@@ -2,12 +2,10 @@ import { after, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
-import { edgeProfile, MONITOR_LIMIT, saveEdge, WATCH_LIMIT, type Blend } from "@/lib/edge/access";
-import { companiesIn, ensureMaps } from "@/lib/edge/assets";
-import { PLACES } from "@/lib/edge/sources/eia";
+import { edgeProfile, saveEdge, type Blend } from "@/lib/edge/access";
 import { starterCanvas } from "@/lib/edge/onboard";
-import { checkWatch, COVERED, listWatches, seedWatches } from "@/lib/edge/watches";
-import { memo } from "@/lib/memo";
+import { edgeState } from "@/lib/edge/state";
+import { checkWatch, seedWatches } from "@/lib/edge/watches";
 import type { Profile, RoleId } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +16,7 @@ export async function GET() {
   return guarded(async (user) => {
     const p = await edgeProfile(user.id);
     if (!p) return NextResponse.json({ error: "Finish setting up your profile first." }, { status: 400 });
-    return NextResponse.json(await state(user.id, p.prefs.beta, p.prefs.since, p.prefs.blend));
+    return NextResponse.json(await edgeState(user.id, p.prefs.beta, p.prefs.since, p.prefs.blend));
   });
 }
 
@@ -53,21 +51,6 @@ export async function POST(req: Request) {
       if (!prefs.beta) return NextResponse.json({ error: "Turn on the Edge beta first." }, { status: 403 });
       prefs = await saveEdge(user.id, { blend: body.blend });
     }
-    return NextResponse.json(await state(user.id, prefs.beta, prefs.since, prefs.blend));
+    return NextResponse.json(await edgeState(user.id, prefs.beta, prefs.since, prefs.blend));
   });
-}
-
-async function state(userId: string, beta: boolean, since: string | null, blend: Blend) {
-  // An empty list is not kept (the loader throws), so a fresh database's first load does not stick.
-  const companies = () => memo("edge:companies:permian", 10 * 60_000, async () => {
-    await ensureMaps();
-    const list = await companiesIn(PLACES.permian.bbox);
-    if (!list.length) throw new Error("no mapped companies yet");
-    return list;
-  }).catch(() => []);
-  const [watches, list] = beta ? await Promise.all([listWatches(userId), companies()]) : [[], []];
-  return {
-    beta, since, blend, limits: { watches: WATCH_LIMIT, monitors: MONITOR_LIMIT }, watches, companies: list,
-    places: Object.entries(PLACES).map(([key, v]) => ({ key, name: v.name, bbox: v.bbox })), covered: COVERED,
-  };
 }

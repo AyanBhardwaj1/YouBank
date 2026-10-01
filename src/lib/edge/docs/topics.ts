@@ -13,6 +13,7 @@ import { cacheGet, cacheSet } from "@/lib/cache";
 import { logError } from "@/lib/errors";
 import { mlReady, mlRun } from "../infra/ml";
 import { getJson, putJson, r2Ready } from "../infra/r2";
+import { small } from "../models";
 
 export type TopicMap = { points: { id: number; x: number; y: number; cluster: number; title: string; text: string }[]; clusters: { id: number; label: string; size: number }[]; method: string };
 
@@ -87,7 +88,7 @@ export async function topicMap(docIds: number[]): Promise<TopicMap> {
   let labels = new Map<number, string>(ids.map((i) => [i, `Topic ${i + 1}`]));
   try {
     const sample = ids.map((i) => `Cluster ${i}:\n${rows.filter((_, j) => clusters![j] === i).slice(0, 4).map((r) => `- ${r.text}`).join("\n")}`).join("\n\n");
-    const r = await structured(Names, "edge-topics", "Name each cluster of document passages in 2 to 5 plain words.", sample, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 500, timeoutMs: 30_000 });
+    const r = await structured(Names, "edge-topics", "Name each cluster of document passages in 2 to 5 plain words.", sample, { override: small(), maxTokens: 500, timeoutMs: 30_000 });
     labels = new Map(r.data.clusters.map((c) => [c.id, c.label]));
   } catch (e) { logError(e, { where: "edge-topics-names" }); }
   const map: TopicMap = {

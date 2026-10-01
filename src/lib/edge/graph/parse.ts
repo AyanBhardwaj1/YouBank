@@ -33,6 +33,13 @@ export function personName(raw: string): string {
 }
 
 const tag = (x: string, t: string) => { const m = new RegExp(`<${t}>([\\s\\S]*?)</${t}>`, "i").exec(x); return m ? m[1].trim() : ""; };
+/** Text from XML with its character entities decoded (a Form 4 title reads "EVP &amp; CFO"). Pure. */
+export const xmlText = (s: string) => s.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi, (m, e: string) => {
+  const named: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+  if (named[e.toLowerCase()]) return named[e.toLowerCase()];
+  const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+  return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
+});
 const val = (x: string, t: string) => { const inner = tag(x, t); return /<value>/i.test(inner) ? tag(inner, "value") : inner; };
 const yes = (s: string) => s === "1" || /^true$/i.test(s);
 const num = (s: string) => { const n = Number(s.replace(/[,$\s]/g, "")); return s.trim() === "" || !Number.isFinite(n) ? null : n; };
@@ -47,7 +54,7 @@ export function parseForm4(xml: string): Form4 | null {
   if (!issuer) return null;
   const owners: Form4Owner[] = [...xml.matchAll(/<reportingOwner>([\s\S]*?)<\/reportingOwner>/gi)].map((m) => {
     const id = tag(m[1], "reportingOwnerId"), rel = tag(m[1], "reportingOwnerRelationship");
-    return { cik: tag(id, "rptOwnerCik").replace(/^0+/, ""), name: tag(id, "rptOwnerName"), director: yes(tag(rel, "isDirector")), officer: yes(tag(rel, "isOfficer")), title: tag(rel, "officerTitle"), tenPct: yes(tag(rel, "isTenPercentOwner")) };
+    return { cik: tag(id, "rptOwnerCik").replace(/^0+/, ""), name: tag(id, "rptOwnerName"), director: yes(tag(rel, "isDirector")), officer: yes(tag(rel, "isOfficer")), title: xmlText(tag(rel, "officerTitle")), tenPct: yes(tag(rel, "isTenPercentOwner")) };
   }).filter((o) => o.cik && o.name);
   const txns: Form4Tx[] = [];
   for (const [block, derivative] of [["nonDerivativeTransaction", false], ["derivativeTransaction", true]] as const) {

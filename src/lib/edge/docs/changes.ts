@@ -15,6 +15,7 @@ import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { getObject, putObject, r2Ready } from "../infra/r2";
+import { small } from "../models";
 import { sectionText } from "./chunk";
 import { canRead } from "./store";
 import { quoteFound } from "./text";
@@ -85,7 +86,8 @@ export async function changeRadar(tickerIn: string, form: "10-K" | "10-Q", secti
   const empty: Radar = { ticker, name: t.name, form, section, current: null, prior: null, counts: { added: 0, removed: 0, changed: 0, unchanged: 0 }, rows: [], summary: [] };
   if (filings.length < 2) return { ...empty, summary: [`${t.name} has fewer than two ${form} filings on EDGAR to compare.`] };
   const [cur, prev] = filings;
-  const cacheKey = `edge:radar:v2:${cur.accession}:${prev.accession}:${section}`;
+  // v3 for MD&A: a 10-Q's "Item 2. Management's Discussion" was not read as MD&A before, so its radar came back empty.
+  const cacheKey = `edge:radar:${section === "mdna" ? "v3" : "v2"}:${cur.accession}:${prev.accession}:${section}`;
   const hit = await cacheGet(cacheKey);
   if (hit) return JSON.parse(hit) as Radar;
   const [a, b] = await Promise.all([filingTextCached(cur.accession, cur.url), filingTextCached(prev.accession, prev.url)]);
@@ -97,7 +99,7 @@ export async function changeRadar(tickerIn: string, form: "10-K" | "10-Q", secti
     try {
       const r = await structured(Summary, "edge-radar", "You compare two versions of a company's filing section for an analyst. Say what is new, removed or materially reworded and why it might matter. Quote the filing; never speculate beyond it.",
         notable.map((x, i) => `${i + 1}. ${x.status.toUpperCase()}: ${x.text.slice(0, 600)}${x.before ? `\n   BEFORE: ${x.before.slice(0, 400)}` : ""}`).join("\n\n"),
-        { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 900, timeoutMs: 60_000 });
+        { override: small(), maxTokens: 900, timeoutMs: 60_000 });
       summary = r.data.lines;
     } catch (e) { logError(e, { where: "edge-radar-summary" }); }
   }
@@ -182,7 +184,7 @@ export async function compareDocs(userId: string, aId: number, bId: number): Pro
       const r = await structured(Compared, "edge-compare",
         "You compare two documents for an analyst: an earlier one (A) and a later one (B), such as two quarters' earnings calls or two versions of a data-room file. From the numbered passages (new in B, or found only in A) say what changed that matters: new topics, dropped topics, changed guidance or numbers, shifts in confidence. Every line quotes its passage word for word. Never speculate beyond the passages.",
         `A: ${A.title}\nB: ${B.title}\n${tone?.length ? `Tone shift by speaker (B minus A): ${tone.map((t) => `${t.speaker} hedging ${t.hedging >= 0 ? "+" : ""}${t.hedging}, tone ${t.tone >= 0 ? "+" : ""}${t.tone}`).join("; ")}\n` : ""}\nPassages:\n${numbered.map((x, i) => `[${i + 1}] ${x.side === "b" ? "NEW IN B" : "ONLY IN A"}${x.p.speaker ? ` (${x.p.speaker})` : ""}: ${x.p.text}`).join("\n\n")}`,
-        { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 1200, timeoutMs: 60_000 });
+        { override: small(), maxTokens: 1200, timeoutMs: 60_000 });
       summary = r.data.lines.flatMap((l) => {
         const x = numbered[l.n - 1];
         return x && quoteFound(l.quote, x.p.text) ? [{ text: l.text, quote: l.quote, chunkId: x.p.chunkId, side: x.side }] : [];

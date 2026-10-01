@@ -11,12 +11,13 @@ export const EMBED_MODEL = "text-embedding-3-small";
 export const EMBED_DIMS = 512;
 const USD_PER_TOKEN = 0.02 / 1e6;
 
-export const embeddingsReady = () => resolveAi(null, { model: "gpt-5.6-luna" }).provider === "openai";
+/** The OpenAI key (embeddings are OpenAI's whatever model writes the answers). */
+export const embeddingsReady = () => resolveAi(null, { model: EMBED_MODEL }).provider === "openai";
 
 /** Embeddings for texts (in batches), or a clear error when there is no OpenAI key or the AI limit is reached. */
 export async function embedTexts(texts: string[], feature = "edge-embed"): Promise<number[][]> {
   if (!texts.length) return [];
-  const cfg = resolveAi(null, { model: "gpt-5.6-luna" });
+  const cfg = resolveAi(null, { model: EMBED_MODEL });
   if (cfg.provider !== "openai") throw Object.assign(new Error("Document search needs an OpenAI key for embeddings."), { status: 503 });
   await guardAi(aiUser());
   const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 60_000, maxRetries: 1 });

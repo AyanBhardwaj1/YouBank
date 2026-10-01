@@ -3,15 +3,18 @@
  * state as features), the people, funds, joint ventures and firms that connect them, dated links, and
  * third-party deals; affiliate roll-ups stay in the graph as links but never count as deals, so the
  * scorecard is not flattered by a parent buying in its own MLP. The service trains a relational
- * GraphSAGE model, backtests it on the latest deals against a simple baseline, and returns every
- * company's likely buyers and targets, which are stored with the model's scorecard.
+ * GraphSAGE model, backtests it on the latest deals against a features-only baseline, and returns every
+ * company's likely buyers and targets, which are stored with the model's scorecard. Two more baselines
+ * (backtest.ts) are scored here on the same split, so the scorecard can say whether the model beats them.
  */
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { cacheJson } from "@/lib/cache";
 import { logError } from "@/lib/errors";
 import type { MlDone } from "../infra/ml";
 import { mlReady, mlStart } from "../infra/ml";
 import { getJson, putJson, r2Ready } from "../infra/r2";
+import { baselineBacktest, bootstrapInterval, type DealGraph } from "./backtest";
 import { sameGroup } from "./deals";
 import { isDealVehicle } from "./parse";
 import { ENERGY_SICS } from "./universe";
@@ -21,8 +24,16 @@ const STATES = ["TX", "OK", "CO", "PA", "LA", "NM", "WV", "ND", "WY", "CA"];
 /** Link kinds that are deals, and so never passed to the model as ordinary links. */
 const DEAL = "acquired";
 
-export type Metrics = { hits5: number | null; hits10: number | null; mrr: number | null; n: number; asTarget?: { hits5: number | null; n: number }; asAcquirer?: { hits5: number | null; n: number } };
-export type ModelMetrics = { gnn?: Metrics; baseline?: Metrics; info?: Record<string, unknown>; splitDate?: string; exported?: Record<string, number>; error?: string };
+/** A backtest's record on one side: how often the truth was in the top 5 and top 10, mean reciprocal rank, and how many rankings. */
+export type Summary = { hits5: number | null; hits10?: number | null; mrr?: number | null; n: number };
+/**
+ * Both sides together and each apart, named as the ML service names them for what it scores: asTarget
+ * ranks the targets of a buyer (the likely targets), asAcquirer the buyers of a target (the likely buyers).
+ */
+export type Metrics = Required<Summary> & { asTarget?: Summary; asAcquirer?: Summary };
+/** The baselines scored here on the model's split (backtest.ts), from the graph its training read (its export) or, failing that, today's tables. */
+export type FairBaselines = { adamicAdar: Metrics; acquisitiveness: Metrics; testDeals: number; splitDate: string; computedAt: string; from?: "export" | "tables" };
+export type ModelMetrics = { gnn?: Metrics; baseline?: Metrics; fair?: FairBaselines; info?: Record<string, unknown>; splitDate?: string; exported?: Record<string, number>; error?: string };
 
 /** A company's features for the model: size, industry, home state, how connected it is. Pure. */
 export function companyFeatures(a: { sic?: string; state?: string; assets?: number | null; revenue?: number | null; private?: boolean; ticker?: string }, degree: { subsidiaries: number; directors: number; holders: number; deals: number }): number[] {
@@ -42,15 +53,42 @@ export function splitDateFor(dates: string[]): string {
   return d.length >= 40 ? d[d.length - 20] : d[Math.floor(d.length * 0.8)];
 }
 
-/** "The actual buyer was in its top 5 for 11 of the last 20 deals": a model's record in words. Pure. */
+const list = (xs: string[], and: string) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} ${and} ${xs[xs.length - 1]}`);
+
+/**
+ * A model's record in words, for likely buyers or likely targets: how often the real one was in its top
+ * 10 on the latest deals, with a 90% bootstrap interval, the baselines on the same split, and plainly
+ * whether the model beats each (a lead inside the model's own interval may be chance). Top 5 when a
+ * record has no top-10 figure. Pure.
+ */
 export function scorecardText(m: ModelMetrics | null | undefined, direction: "acquirers" | "targets"): string {
-  const x = direction === "acquirers" ? m?.gnn?.asTarget : m?.gnn?.asAcquirer;
-  const base = direction === "acquirers" ? m?.baseline?.asTarget : m?.baseline?.asAcquirer;
-  if (!x?.n || x.hits5 === null) return "Not backtested yet.";
-  const hits = Math.round(x.hits5 * x.n);
-  const what = direction === "acquirers" ? "the actual buyer was among its top 5 likely buyers" : "the actual target was among its top 5 likely targets";
-  const vs = base?.hits5 !== null && base?.hits5 !== undefined ? ` (a simple baseline: ${Math.round(base.hits5 * base.n)} of ${base.n})` : "";
-  return `In a backtest on the ${x.n} most recent deals, ${what} for ${hits} of ${x.n}${vs}.`;
+  const side = (x: Metrics | undefined) => (direction === "acquirers" ? x?.asAcquirer : x?.asTarget);
+  const model = side(m?.gnn);
+  const top = typeof model?.hits10 === "number" ? 10 : 5;
+  const rate = (x: Summary | undefined) => (x ? (top === 10 ? x.hits10 : x.hits5) ?? null : null);
+  const r = rate(model);
+  if (!model?.n || r === null) return "Not backtested yet.";
+  const who = direction === "acquirers" ? "buyer" : "target";
+  const hits = Math.round(r * model.n);
+  const [lo, hi] = bootstrapInterval(hits, model.n);
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  const out = [`In a backtest on the ${model.n} most recent deals, the actual ${who} was among the model's top ${top} likely ${who}s for ${hits} of ${model.n} (90% bootstrap interval ${pct(lo)} to ${pct(hi)}).`];
+  // [name, short name, record, scored here rather than by the ML service]
+  const named: [string, string, Summary | undefined, boolean][] = [["company features alone", "", side(m?.baseline), false], ["shared connections (Adamic-Adar)", "Adamic-Adar", side(m?.fair?.adamicAdar), true]];
+  // How busy a buyer has been says nothing about which target it picks, so it is a baseline for buyers only.
+  if (direction === "acquirers") named.push(["acquisitiveness (the buyer's deals in the prior 36 months)", "acquisitiveness", side(m?.fair?.acquisitiveness), true]);
+  // Rates are compared as whole hits over rankings: the service rounds them to four places.
+  const bases = named.flatMap(([name, short, x, here]) => { const b = rate(x); if (!x?.n || b === null) return []; const k = Math.round(b * x.n); return [{ name, short, here, b: k / x.n, hits: k, n: x.n }]; });
+  if (!bases.length) return out[0];
+  out.push(`Baselines on the same split: ${bases.map((b) => `${b.name} ${b.hits} of ${b.n}`).join("; ")}.`);
+  const mine = bases.filter((b) => b.here);
+  if (m?.fair?.from === "tables" && mine.length && m.fair.testDeals !== model.n) out.push(`${list(mine.map((b) => b.short), "and")} ${mine.length > 1 ? "were" : "was"} scored on today's graph, which holds ${m.fair.testDeals} deals from that split to the model's ${model.n}.`);
+  const own = hits / model.n;
+  const notBeaten = bases.filter((b) => b.b >= own), chance = bases.filter((b) => b.b < own && b.b >= lo);
+  if (notBeaten.length) out.push(`The model does not beat ${list(notBeaten.map((b) => b.name), "or")}.`);
+  if (chance.length) out.push(`Its lead over ${list(chance.map((b) => b.name), "and")} is inside its interval, so it may be chance.`);
+  if (!notBeaten.length && !chance.length) out.push("It beats every baseline by more than its interval.");
+  return out.join(" ");
 }
 
 type LinkRowLite = { src: number; dst: number; kind: string; as_of: string | null; relation: string | null };
@@ -138,11 +176,36 @@ export async function finishTraining(modelId: number, done: MlDone | null): Prom
     }
   }
   for (let i = 0; i < rows.length; i += 1000) await db.insert(schema.edgePredictions).values(rows.slice(i, i + 1000));
-  await db.update(schema.edgeModels).set({ status: "ready", artifactKey: res.modelKey ?? "", trainedAt: new Date(), metrics: { ...prior, gnn: res.metrics?.gnn, baseline: res.metrics?.baseline, info: res.info } }).where(eq(schema.edgeModels.id, modelId));
+  // The baselines on the same split and graph; the scorecard does without them if this fails.
+  const fair = prior.splitDate ? await fairBaselines(model, prior.splitDate).catch((e) => { logError(e, { where: "edge-graph-baselines" }); return undefined; }) : undefined;
+  await db.update(schema.edgeModels).set({ status: "ready", artifactKey: res.modelKey ?? "", trainedAt: new Date(), metrics: { ...prior, gnn: res.metrics?.gnn, baseline: res.metrics?.baseline, info: res.info, ...(fair ? { fair } : {}) } }).where(eq(schema.edgeModels.id, modelId));
   // Keep this version and the one before (for "what changed"); older predictions go.
   const ready = await db.select({ id: schema.edgeModels.id }).from(schema.edgeModels).where(and(eq(schema.edgeModels.kind, "gnn-deals"), eq(schema.edgeModels.status, "ready"))).orderBy(desc(schema.edgeModels.id)).limit(3);
   if (ready.length === 3) await db.delete(schema.edgePredictions).where(lt(schema.edgePredictions.modelId, ready[1].id)).catch((e) => logError(e, { where: "edge-graph-prune" }));
   return { ok: true, predictions: rows.length };
+}
+
+/**
+ * The baselines (backtest.ts) on a model's split, scored on the very graph its training read (the export
+ * it left in file storage), or where that is gone, on the graph tables as they stand, leaving out deals
+ * dated after the model was trained.
+ */
+export async function fairBaselines(model: { version: string; trainedAt: Date }, splitDate: string): Promise<FairBaselines> {
+  const saved = r2Ready() ? await getJson<DealGraph>(`graph/export-${model.version}.json`).catch(() => null) : null;
+  const b = saved ? baselineBacktest(saved, splitDate) : baselineBacktest((await exportGraph()).graph, splitDate, { until: model.trainedAt.toISOString().slice(0, 10) });
+  return { adamicAdar: b.adamicAdar, acquisitiveness: b.acquisitiveness, testDeals: b.testDeals, splitDate, computedAt: new Date().toISOString(), from: saved ? "export" : "tables" };
+}
+
+/**
+ * A model's metrics with the baselines merged in: stored with the model when its training finished, or,
+ * for a model trained before they were, scored once on its split (fairBaselines) and cached.
+ */
+export async function withBaselines(model: { id: number; version: string; metrics: unknown; trainedAt: Date }): Promise<ModelMetrics> {
+  const m = (model.metrics ?? {}) as ModelMetrics;
+  if (m.fair || !m.splitDate || !m.gnn) return m;
+  const split = m.splitDate;
+  const fair = await cacheJson(`edge:graph:fair:v1:${model.id}`, 30 * 86_400_000, () => fairBaselines(model, split)).catch(() => null);
+  return fair ? { ...m, fair } : m;
 }
 
 /** The latest ready model, and the one before it. */

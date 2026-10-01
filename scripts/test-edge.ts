@@ -22,29 +22,41 @@ import { partsForRange, PART_BYTES, signingTime } from "@/lib/edge/infra/r2";
 import { statusUrl } from "@/lib/edge/infra/ml";
 import { judge } from "@/lib/edge/refine";
 import { clockOf, locateQuote, normText, quoteFound, wordDiff } from "@/lib/edge/docs/text";
-import { quoteFound as answerQuoteFound } from "@/lib/edge/docs/answer";
-import { passagesFromFiling, passagesFromPages, passagesFromTranscript, sectionText, splitText, tableText } from "@/lib/edge/docs/chunk";
-import { fuse } from "@/lib/edge/docs/retrieve";
+import { answerModel, blockLabel, checkFound, quoteFound as answerQuoteFound, rereadBudget } from "@/lib/edge/docs/answer";
+import { chunkParts, cleanRow, docLabel, dropPageNumber, filingHeading, gridRows, rowLines, headingOf, longDate, looksLikeHeading, P_MAX, passageHeader, partsFromText, passagesFromFiling, passagesFromPages, passagesFromParts, passagesFromTranscript, sectionText, splitText, tableParts, tableText, type Part } from "@/lib/edge/docs/chunk";
+import { anyTermsQuery, expand, fuse, joinOverlap, mergeForSelection, parseTerms, quoteChunk, type Hit } from "@/lib/edge/docs/retrieve";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { decodeEntities, partsFromHtml, tableRows } from "@/lib/edge/docs/html";
+import { COHERE_URL, cohereRequest, ML_CHARS, ML_PASSAGES, ML_TIMEOUT_MS, mlInput, orderByScores, parseCohere, parseMl, parseVoyage, rerankProvider, shortModel, VOYAGE_URL, voyageRequest } from "@/lib/edge/premium/rerank";
+import { recallAt, reciprocalRank, squash } from "./eval-docs";
 import { diffSections, paragraphs } from "@/lib/edge/docs/changes";
 import { kmeans, pca2 } from "@/lib/edge/docs/topics";
 import { keepNarrative } from "@/lib/edge/docs/sources";
-import { mimeOf } from "@/lib/edge/docs/uploads";
+import { mimeOf, PARAKEET_CREDIT, transcriptionOf } from "@/lib/edge/docs/uploads";
 import { bySpeaker, toneOf, toneShift, turnAt, type Turn } from "@/lib/edge/docs/tone";
 import { filingMagnitude, filingTitle } from "@/lib/edge/docs/filingwatch";
 import { fitToSchema } from "@/lib/ai/fit";
-import { exhibit21Href, holdingPercent, isDealVehicle, normName, parseExhibit21, parseForm4, parseHeader, personName, relationParagraphs, titleCase } from "@/lib/edge/graph/parse";
-import { eventFlags, exposure as exposureRank, insiderFlags, interlocks, ownershipCycles, reasonPaths } from "@/lib/edge/graph/algo";
+import { exhibit21Href, holdingPercent, isDealVehicle, normName, parseExhibit21, parseForm4, parseHeader, personName, relationParagraphs, titleCase, xmlText } from "@/lib/edge/graph/parse";
+import { eventFlags, exposure as exposureRank, insiderFlags, integratedOwnership, interlocks, loopThrough, ownershipCycles, ownershipRings, reasonPaths, section8Flag, section8Screen, SECTION_8, servedTogether, strongestChain, stronglyConnected } from "@/lib/edge/graph/algo";
 import { companyFeatures, scorecardText, splitDateFor } from "@/lib/edge/graph/train";
 import { pairsFromHits, sameGroup } from "@/lib/edge/graph/deals";
-import { linkSentence } from "@/lib/edge/graph/findings";
-import { autocorr, cholesky, correlation, kurtosis, ks, mean as smean, normCdf, normInv, normals, ols, quantile, realism, rng, std as sstd } from "@/lib/edge/scen/stats";
-import { bootstrapGen, fitGarch, fitRegimes, garchGen, simulate } from "@/lib/edge/scen/models";
-import { describeShock, parseShock } from "@/lib/edge/scen/drivers";
-import { copulaSynth, fillGaps, identifiers, tableRealism, type TableIn } from "@/lib/edge/scen/tables";
+import { linkCounts, linkSentence, officerTitle, ringFlag, sentence, stakeShare } from "@/lib/edge/graph/findings";
+import { adamicAdarFrom, adjacencyByKind, baselineBacktest, bootstrapInterval, midRank, summarize } from "@/lib/edge/graph/backtest";
+import { entityList } from "@/components/edge/net/ForceGraph";
+import { UPGRADES, upgradeOn, upgradesReport } from "@/lib/edge/premium";
+import { poll, pollDelay } from "@/components/edge/docs/client";
+import { applySelect, going, mergeRun, sameData } from "@/lib/edge/canvas/view";
+import type { RunView, StepView } from "@/lib/edge/canvas/engine";
+import { autocorr, chi2Cdf, cholesky, correlation, gammaDraw, ibeta, kendall, kurtosis, ks, lgamma, mean as smean, nearPd, normCdf, normInv, normals, ols, pseudoObs, quantile, realism, rng, solveSpd, std as sstd, tCdf, tInv } from "@/lib/edge/scen/stats";
+import { bootstrapGen, fitGarch, fitGjr, fitRegimes, fitTCopula, garchGen, gjrGen, gjrResiduals, runPaths, samplePaths, simulate, summarise, weightedRisk } from "@/lib/edge/scen/models";
+import { describeShock, describeViews, parseShock } from "@/lib/edge/scen/drivers";
+import { cartSynth, copulaSynth, fillGaps, identifiers, privacyChecks, splitHoldout, tableRealism, type Cell, type TableIn } from "@/lib/edge/scen/tables";
 import { parseCsv } from "@/lib/edge/scen/run";
-import { eiaDaily, frenchColumns } from "@/lib/edge/scen/data";
+import { eiaDaily, frenchColumns, type FactorRow } from "@/lib/edge/scen/data";
+import { copyCheck, facts, stationaryIndex, stylisedRealism } from "@/lib/edge/scen/realism";
+import { anchorViews, cleanView, conditionalFill, covarianceOf, effectiveScenarios, entropyPool, factorScenarios, fromLog, namedEpisode, pathSeed, plausibility, resample, retrieveAnalogs, stressedDays, toLog, viewConstraints, viewPrior } from "@/lib/edge/scen/views";
 import { isBig } from "@/lib/edge/notify";
-import { digestDue, digestEmail } from "@/lib/edge/digest";
+import { digestDue, digestEmail, digestItem } from "@/lib/edge/digest";
 import { parseCommand } from "@/lib/functions";
 import { simRequest, whatIfFrom, whatIfUrl } from "@/lib/edge/links";
 import { pushPatches } from "@/lib/edge/push";
@@ -54,7 +66,21 @@ import { peopleAt, plainRegistrant } from "@/lib/edge/crm";
 import { introBrief } from "@/lib/edge/intros";
 import { cellSize, components, densify, levelling, maskFromOverlay, parseNpy, profileStats, quantileSorted, rankBelow, readSite, sampleGrid, slopeDegrees, type Grid } from "@/lib/edge/terrain";
 import { hexagon, positionWords } from "@/lib/edge/terrain-view";
-import { overlayPng, type ChangeResult } from "@/lib/edge/change";
+import { decodePng, overlayPng, type ChangeResult } from "@/lib/edge/change";
+import { convexHull, findStructures, polygonStats } from "@/lib/edge/site3d";
+import { monthly } from "@/lib/edge/timelapse";
+import { briefCards } from "@/lib/edge/brief";
+import { archiveWindows, byDay, flareConfidence, flareMagnitude, flares, flareStats, hotPixels, isoWeek, repeats, spotsNear, weeksFrom, withWeek } from "@/lib/edge/flares";
+import { parseFirmsCsv } from "@/lib/edge/sources/firms";
+import { summariseReports } from "@/lib/edge/sources/nmocd";
+import { BRIGHT, bearingWords, comparable, counts, levelOf, majority, pickStacks, pixelArea, radarChange, radarConfidence, radarMagnitude, radarOverlayPng, radarWorthy, ringBright, toDb, unreported } from "@/lib/edge/radar";
+import { cornersIn, radarUrl, scenesFrom, type RadarScene } from "@/lib/edge/sources/s1";
+import { boxKm, judged, operatorsOf, paceRatio, permitConfidence, permitJump, permitMagnitude, permitRepeats, statesNear, trackSeen, windowsOf } from "@/lib/edge/permits";
+import { txPermitsFrom } from "@/lib/edge/sources/rrc";
+import { nmPermitsFrom } from "@/lib/edge/sources/nmwells";
+import { planetAuth, planetScenesFrom, planetSearchBody, thumbPath, validScene } from "@/lib/edge/premium/planet";
+import { licensed, methaneConfidence, methaneMagnitude, newestPass, plumesFrom, plumesNear, plumesUrl, totalRate } from "@/lib/edge/premium/carbonmapper";
+import type { EdgeCard as EdgeCardT } from "@/lib/edge/feed";
 import { composeSections, sectionTitle } from "@/lib/edge/story";
 import { starterTemplate } from "@/lib/edge/onboard";
 import { z } from "zod";
@@ -401,7 +427,6 @@ async function main() {
     check("every company has the same features, industry and state one-hot", feat.length === feat2.length && feat.length === 33 && feat[5 + 6] === 1 && feat[5 + 13 + 0] === 1 && feat2.every((x) => x === 0), feat);
     const dates = Array.from({ length: 50 }, (_, i) => `20${String(10 + Math.floor(i / 4)).padStart(2, "0")}-0${1 + (i % 4)}-15`);
     check("the backtest holds out the last twenty deals when there are forty or more", splitDateFor(dates) === [...dates].sort()[30] && splitDateFor(dates.slice(0, 10)) === [...dates.slice(0, 10)].sort()[8]);
-    check("the scorecard says how often the real buyer was in the top five", scorecardText({ gnn: { hits5: 0.55, hits10: 0.7, mrr: 0.3, n: 40, asTarget: { hits5: 0.55, n: 20 } }, baseline: { hits5: 0.2, hits10: 0.3, mrr: 0.1, n: 40, asTarget: { hits5: 0.2, n: 20 } } }, "acquirers") === "In a backtest on the 20 most recent deals, the actual buyer was among its top 5 likely buyers for 11 of 20 (a simple baseline: 4 of 20)." && scorecardText(null, "targets") === "Not backtested yet.");
     const pairs = pairsFromHits("1276187", [
       { _id: "0001276187-23-000068:et425.htm", _source: { display_names: ["Crestwood Equity Partners LP  (CIK 0001136352)", "Energy Transfer LP  (ET, ET-PI)  (CIK 0001276187)"], ciks: ["0001136352", "0001276187"], form: "425", file_date: "2023-08-16" } },
       { _id: "0001276187-23-000090:et425b.htm", _source: { display_names: ["Crestwood Equity Partners LP  (CIK 0001136352)", "Energy Transfer LP  (ET, ET-PI)  (CIK 0001276187)"], ciks: ["0001136352", "0001276187"], form: "425", file_date: "2023-11-01" } },
@@ -467,6 +492,137 @@ async function main() {
     check("Kenneth French's daily file is read by date", fr.get("2008-09-15")?.[0] === -4.84 && fr.get("2008-09-16")?.[1] === 0.01 && fr.size === 2);
     const eia = eiaDaily("<tr> <td class='B6'>&nbsp;&nbsp;2008 Sep-15 to Sep-19</td> <td class='B3'>95.71</td> <td class='B3'>91.15</td> <td class='B3'></td> <td class='B3'>97.16</td> <td class='B3'>104.55</td> </tr>");
     check("EIA's weekly rows give dated daily prices, skipping holidays", eia.get("2008-09-15") === 95.71 && eia.get("2008-09-16") === 91.15 && !eia.has("2008-09-17") && eia.get("2008-09-19") === 104.55);
+  }
+
+  {
+    console.log("scenarios: distributions and ranks");
+    check("log gamma matches known values", Math.abs(lgamma(5) - Math.log(24)) < 1e-12 && Math.abs(lgamma(0.5) - 0.5 * Math.log(Math.PI)) < 1e-12 && Math.abs(lgamma(0.1) - 2.252712651734206) < 1e-10);
+    check("the incomplete beta function matches a known value", Math.abs(ibeta(0.3, 2, 3) - 0.3483) < 1e-4 && ibeta(0, 2, 3) === 0 && ibeta(1, 2, 3) === 1);
+    check("Student's t matches its tables", Math.abs(tCdf(2, 5) - 0.9490302605850709) < 1e-9 && Math.abs(tInv(0.975, 10) - 2.228138851986274) < 1e-8 && Math.abs(tInv(0.025, 3) + 3.182446305284263) < 1e-8 && tInv(0.5, 7) === 0);
+    const trips = [2.5, 4, 8, 30].flatMap((df) => [1e-6, 0.01, 0.3, 0.7, 0.999].map((p) => Math.abs(tCdf(tInv(p, df), df) - p) / p));
+    check("the t quantile inverts the distribution function, deep tails included", Math.max(...trips) < 1e-6, Math.max(...trips));
+    check("chi-squared matches its 95% points", Math.abs(chi2Cdf(3.841458820694124, 1) - 0.95) < 1e-9 && Math.abs(chi2Cdf(11.070497693516351, 5) - 0.95) < 1e-9);
+    const gu = rng(1), gn = normals(gu);
+    const gs = Array.from({ length: 20000 }, () => gammaDraw(gu, gn, 2.5));
+    check("Gamma draws have the right mean and variance", Math.abs(smean(gs) - 2.5) < 0.06 && Math.abs(sstd(gs) ** 2 - 2.5) < 0.15, [smean(gs), sstd(gs) ** 2]);
+    const ka = Array.from({ length: 800 }, () => gn()), kb = ka.map((x) => 0.7 * x + Math.sqrt(0.51) * gn());
+    check("Kendall's tau of a normal pair is 2/π·asin(ρ)", Math.abs(kendall(ka, kb) - (2 / Math.PI) * Math.asin(0.7)) < 0.04, kendall(ka, kb));
+    check("pseudo-observations are ranks over n + 1", pseudoObs([3, 1, 2]).join() === "0.75,0.25,0.5");
+    const pd = nearPd([[1, 0.9, -0.9], [0.9, 1, 0.9], [-0.9, 0.9, 1]]);
+    check("an impossible correlation matrix is shrunk until it has a Cholesky factor", pd.R[0][1] < 0.9 && pd.L.every((row, i) => row[i] > 0));
+    const sx = solveSpd([[4, 1], [1, 3]], [1, 2]);
+    check("a small positive definite system is solved", Math.abs(sx[0] - 1 / 11) < 1e-8 && Math.abs(sx[1] - 7 / 11) < 1e-8, sx);
+
+    console.log("scenarios: GJR-GARCH-t, the t-copula and filtered historical simulation");
+    // A GJR series with Student-t(6) shocks: alpha 0.03, gamma 0.12 (falls raise volatility more), beta 0.88.
+    const t6 = () => (gn() / Math.sqrt((2 * gammaDraw(gu, gn, 3)) / 6)) * Math.sqrt(4 / 6);
+    const gr: number[] = [];
+    let gv = 2e-6 / (1 - 0.03 - 0.06 - 0.88), ge = 0;
+    for (let t = 0; t < 3000; t++) { if (t) gv = 2e-6 + (0.03 + (ge < 0 ? 0.12 : 0)) * ge * ge + 0.88 * gv; ge = Math.sqrt(gv) * t6(); gr.push(ge); }
+    const gj = fitGjr(gr);
+    check("GJR-GARCH-t finds the leverage effect, persistence and fat tails it was made with", gj.gamma > 0.05 && gj.gamma > gj.alpha && Math.abs(gj.persistence - 0.97) < 0.03 && gj.nu > 4 && gj.nu < 12, { a: gj.alpha, g: gj.gamma, p: gj.persistence, nu: gj.nu });
+    check("its standardised residuals have about unit variance", Math.abs(sstd(gjrResiduals(gr, gj)) - 1) < 0.1);
+    const mvt = (nu: number) => Array.from({ length: 1500 }, () => { const z = [gn(), gn(), gn()], w = nu ? Math.sqrt((2 * gammaDraw(gu, gn, nu / 2)) / nu) : 1; return [z[0], 0.6 * z[0] + 0.8 * z[1], 0.6 * z[0] + 0.3 * z[1] + Math.sqrt(0.55) * z[2]].map((v) => v / w); });
+    const c4 = fitTCopula(mvt(4)), cg = fitTCopula(mvt(0));
+    check("the t-copula finds few degrees of freedom when assets crash together, many when they do not", c4.nu <= 6 && cg.nu >= 20 && Math.abs(c4.R[0][1] - 0.6) < 0.07 && c4.loglik > c4.gaussian + 30 && c4.tailDependence > 0.15, { t: c4.nu, g: cg.nu, r: c4.R[0][1], ll: [c4.loglik, c4.gaussian] });
+    const GH = gr.map((v) => [v, 0.8 * v + 0.004 * gn()]);
+    for (const dep of ["t", "fhs"] as const) {
+      const m = gjrGen(GH, dep), P = samplePaths(m.gen, 1500, 4, 3), F = P.map(facts), real = facts(GH);
+      check(`GJR with ${dep === "t" ? "a t-copula" : "historical shocks"} keeps the volatility, the correlation and the leverage effect`, Math.abs(smean(F.map((f) => f.vol)) / real.vol - 1) < 0.3 && smean(F.map((f) => f.corr)) > 0.7 && smean(F.map((f) => f.lev)) < 0, { vol: [smean(F.map((f) => f.vol)), real.vol], corr: smean(F.map((f) => f.corr)), lev: smean(F.map((f) => f.lev)) });
+      check(`the same seed gives the same ${dep} paths`, JSON.stringify(samplePaths(m.gen, 30, 2, 9)) === JSON.stringify(samplePaths(m.gen, 30, 2, 9)));
+    }
+
+    console.log("scenarios: weighted summaries");
+    const wraw = runPaths(bootstrapGen(GH), ["A", "B"], [1, 1], 20, 2000, 4);
+    const eq = summarise(wraw), ew = summarise(wraw, new Float64Array(2000).fill(1 / 2000));
+    check("equal weights give the plain summary", Math.abs(eq.finals[2].p50 - ew.finals[2].p50) < 1e-3 && Math.abs(eq.finals[2].cvar95 - ew.finals[2].cvar95) < 1e-3 && Math.abs(eq.drawdown.p95 - ew.drawdown.p95) < 1e-3, [eq.finals[2], ew.finals[2]]);
+    const one = new Float64Array(2000); one[7] = 1;
+    const fin = wraw.store[wraw.store.length - 1][2][7], so = summarise(wraw, one);
+    check("all the weight on one path makes it the outcome", so.finals[2].p5 === fin && so.finals[2].p95 === fin && so.finals[2].mean === fin);
+    const wr = weightedRisk(Float64Array.from([-0.3, -0.1, 0, 0.1, 0.2]), Float64Array.from([0.05, 0.05, 0.3, 0.3, 0.3]), 0.08);
+    check("weighted value at risk and expected shortfall read the worst share of the probability", Math.abs(wr.var - 0.1) < 1e-12 && Math.abs(wr.es - 0.225) < 1e-12, wr);
+
+    console.log("scenarios: realism v2");
+    const fx = facts(gr.map((v) => [v]));
+    check("the facts of a GJR series: clustering, fat tails that fade with horizon", fx.acf[0] > 0.05 && fx.kurt[0] > fx.kurt[3] && fx.esvar > 1.1, fx);
+    const pair = facts(gr.map((v) => [v, v])), indep = facts(gr.map((v) => [v, gn()]));
+    check("joint crashes: always for a copy, about one in twenty for an independent pair", pair.ltd === 1 && indep.ltd < 0.15, [pair.ltd, indep.ltd]);
+    const si = stationaryIndex(5000, 10, rng(5));
+    let runs = 1;
+    for (let t = 1; t < si.length; t++) if (si[t] !== (si[t - 1] + 1) % 5000) runs++;
+    check("a stationary bootstrap resamples in runs of about the block length", si.length === 5000 && si.every((t) => t >= 0 && t < 5000) && Math.abs(5000 / runs - 10) < 1.5, 5000 / runs);
+    const RH = GH.slice(-750);
+    const copied = copyCheck(RH, samplePaths(bootstrapGen(RH, 10), 750, 4, 6)), fresh = copyCheck(RH, samplePaths(gjrGen(RH, "fhs").gen, 750, 4, 6));
+    check("the copy check catches a bootstrap replaying history and passes a model", copied.share > 0.3 && fresh.share < 0.15 && copied.ratio < fresh.ratio, { copied, fresh });
+    const vbs = stylisedRealism(["A", "B"], RH, samplePaths(bootstrapGen(RH, 10), 750, 6, 7), { seed: 3, resamples: 100 }), vgs = stylisedRealism(["A", "B"], RH, samplePaths(gjrGen(RH, "fhs").gen, 750, 6, 7), { seed: 3, resamples: 100 });
+    check("realism v2: every band holds the real value, and the bootstrap loses on copying", [...vbs.checks, ...vgs.checks].every((c) => c.lo <= c.real + 1e-12 && c.real <= c.hi + 1e-12) && !vbs.checks.find((c) => c.key === "copy")!.pass && vgs.checks.find((c) => c.key === "copy")!.pass && vgs.score > vbs.score, { boot: vbs.score, gjr: vgs.score });
+    check("realism v2 checks every listed fact", ["vol", "corr", "acf", "lev", "tail", "kurt", "ltd", "esvar", "copy"].every((k) => vgs.checks.some((c) => c.key === k)) && vgs.checks.find((c) => c.key === "acf")!.curve!.x.length === 20);
+
+    console.log("scenarios: narrative views and entropy pooling");
+    // Four thousand synthetic factor days with a 2008-like spell (days 2000 to 2119) of falling, volatile markets.
+    const fd: FactorRow[] = [];
+    for (let day = Date.UTC(2005, 0, 3); fd.length < 4000; day += 86_400_000) {
+      const wd = new Date(day).getUTCDay();
+      if (wd === 0 || wd === 6) continue;
+      const crisis = fd.length >= 2000 && fd.length < 2120, s = crisis ? 3 : 1, m = s * 0.01 * gn() + (crisis ? -0.004 : 0.0003);
+      fd.push({ date: new Date(day).toISOString().slice(0, 10), market: m, energy: 0.9 * m + s * 0.008 * gn(), oil: 0.6 * m + s * 0.02 * gn() + (crisis ? -0.004 : 0), gas: s * 0.03 * gn(), rates: (crisis ? -0.01 : 0) + 0.05 * gn() + 0.5 * m });
+    }
+    check("moves convert to the factors' own units and back", Math.abs(fromLog("oil", toLog("oil", -0.3)) + 0.3) < 1e-12 && toLog("rates", 1.5) === 1.5);
+    const cv = cleanView({ factor: "market", median: -0.1, low: -0.05, high: -0.3, probability: 5, horizon: 999, analog: null });
+    check("a view is put in order and in range", cv.low === -0.3 && cv.median === -0.1 && cv.high === -0.05 && cv.probability === 1 && cv.horizon === 252, cv);
+    const sd = stressedDays(fd);
+    check("stressed days are history's most volatile fifth, the crisis among them", Math.abs(sd.filter(Boolean).length / sd.length - 0.2) < 0.02 && sd.slice(2020, 2120).filter(Boolean).length > 90);
+    const scov = covarianceOf(fd, sd), acov = covarianceOf(fd, fd.map(() => true));
+    check("the stressed covariance is the more volatile", scov[0][0] > acov[0][0] && scov[2][2] > acov[2][2]);
+    const mild = [cleanView({ factor: "market", median: -0.05, low: -0.1, high: 0, probability: 0.3, horizon: 60, analog: null })];
+    const wild = [cleanView({ factor: "market", median: -0.9, low: -0.95, high: -0.8, probability: 0.01, horizon: 5, analog: null })];
+    check("plausibility: a small move is ordinary under stress, a 90% fall in a week is not", plausibility(mild, scov).verdict === "plausible" && plausibility(wild, scov).verdict === "extreme" && plausibility(wild, scov).radius > plausibility(mild, scov).radius);
+    const crash = [cleanView({ factor: "market", median: -0.2, low: -0.3, high: -0.1, probability: 0.05, horizon: 60, analog: { name: "the spell", from: fd[2000].date, to: fd[2119].date } })];
+    const fill = conditionalFill(crash, scov, 60);
+    check("factors left out are filled with their conditional means: energy falls with the market", fill.length === 4 && fill.find((f) => f.factor === "energy")!.value < -0.1 && fill.every((f) => f.low <= f.value && f.value <= f.high) && conditionalFill([{ ...crash[0], median: 0 }], scov, 60).every((f) => Math.abs(f.value) < 1e-9), fill);
+    const an = retrieveAnalogs(fd, crash);
+    check("the closest episodes include the crisis spell, one per stretch of history", an.length === 3 && an.some((e) => e.from >= fd[1940].date && e.from <= fd[2100].date) && an.every((e, i) => an.every((o, j) => i === j || Math.abs(fd.findIndex((r) => r.date === e.from) - fd.findIndex((r) => r.date === o.from)) >= 60)), an.map((e) => [e.from, e.severity]));
+    const ne = namedEpisode(fd, crash, crash[0].analog);
+    check("a named episode is read from history at its worst stretch", !!ne && ne.from >= fd[2000].date && ne.moves.market < -0.25 && ne.severity > 1, ne);
+    const anc = anchorViews(crash, ne), kept = anchorViews([{ ...crash[0], median: -0.6, low: -0.7 }], ne);
+    check("severity is anchored halfway to a more severe episode, never softened", anc.changed.join() === "market" && Math.abs(anc.views[0].median - (-0.2 + 0.5 * (ne!.moves.market + 0.2))) < 1e-12 && anc.views[0].low <= ne!.moves.market && kept.changed.length === 0 && kept.views[0].median === -0.6);
+    check("path seeds repeat and differ", pathSeed(7, 3) === pathSeed(7, 3) && pathSeed(7, 3) !== pathSeed(7, 4) && pathSeed(7, 3) !== pathSeed(8, 3));
+    check("systematic resampling draws in proportion", Array.from(resample(Float64Array.from([0.5, 0.25, 0.25]), 4)).join() === "0,0,1,2");
+    const ux = Float64Array.from({ length: 20000 }, () => gn()), up = new Float64Array(20000).fill(1 / 20000);
+    const em = entropyPool(up, [ux], [1]);
+    let emm = 0;
+    for (let i = 0; i < ux.length; i++) emm += em.q[i] * ux[i];
+    check("entropy pooling meets a mean view with the least information (a normal shifts, keeping e^-1/2 of its scenarios)", em.ok && Math.abs(emm - 1) < 1e-6 && Math.abs(effectiveScenarios(em.q) / 20000 - Math.exp(-0.5)) < 0.03, [emm, effectiveScenarios(em.q)]);
+    const eqv = entropyPool(up, [Float64Array.from(ux, (v) => (v <= 0 ? 1 : 0)), Float64Array.from(ux, (v) => (v <= 1 ? 1 : 0))], [0.1, 0.5]);
+    let b0 = 0, b1 = 0;
+    for (let i = 0; i < ux.length; i++) { if (ux[i] <= 0) b0 += eqv.q[i]; if (ux[i] <= 1) b1 += eqv.q[i]; }
+    check("percentile views are met exactly, and an impossible view is refused", eqv.ok && Math.abs(b0 - 0.1) < 1e-6 && Math.abs(b1 - 0.5) < 1e-6 && !entropyPool(up, [ux], [9]).ok);
+    check("effective scenarios: n for equal weights, 1 for one path", Math.abs(effectiveScenarios(new Float64Array(50).fill(0.02)) - 50) < 1e-9 && effectiveScenarios(Float64Array.from([1, 0, 0])) === 1);
+    const pr0 = viewPrior(fd, sd, crash, 60, [10, 10], 0), pr5 = viewPrior(fd, sd, crash, 60, [10, 10], 0.5);
+    const s0 = factorScenarios(pr0, 6000, [60], 11), s5 = factorScenarios(pr5, 6000, [60], 11);
+    const plain = smean(Array.from(s0.moves[0].get(60)!)), w5 = Float64Array.from(s5.logRatio, pr5.weight), w5t = w5.reduce((a, b) => a + b, 0);
+    let lean = 0, weighted = 0;
+    for (let i = 0; i < 6000; i++) { lean += s5.moves[0].get(60)![i] / 6000; weighted += (w5[i] / w5t) * s5.moves[0].get(60)![i]; }
+    check("leaning paths move the views' way, and their likelihood ratios weigh them back to history's odds", lean < plain - 0.03 && Math.abs(weighted - plain) < 0.02, { plain, lean, weighted });
+    check("factor paths repeat with their seed", s5.moves[0].get(60)![123] === factorScenarios(pr5, 200, [60], 11).moves[0].get(60)![123]);
+    const vc = viewConstraints(crash, fill, 60, (f, h) => s5.moves[["market", "energy", "oil", "gas", "rates"].indexOf(f)].get(h)!);
+    const pooled = entropyPool(new Float64Array(6000).fill(1 / 6000), vc.A, vc.b);
+    check("a crisis view is carried by the leaning paths with plenty of scenarios left", vc.A.length === 3 + fill.length && vc.b.slice(0, 3).join() === "0.1,0.5,0.9" && pooled.ok && effectiveScenarios(pooled.q) > 300, effectiveScenarios(pooled.q));
+    check("views read back in words", describeViews(crash) === "U.S. stock market -20% (-30% to -10%) over 60 days" && describeViews([cleanView({ factor: "rates", median: 1.5, low: 1, high: 2, probability: 0.1, horizon: 120, analog: null })]) === "10-year Treasury yield +150bp (+100bp to +200bp) over 120 days");
+
+    console.log("scenarios: sequential trees and privacy");
+    const tu = rng(2), tn = normals(tu);
+    const mixed: TableIn = { columns: [{ name: "id", type: "text" }, { name: "sector", type: "cat" }, { name: "size", type: "num" }, { name: "margin", type: "num" }, { name: "rating", type: "cat" }, { name: "employees", type: "num" }],
+      rows: Array.from({ length: 1500 }, (_, i) => { const sector = ["Midstream", "Upstream", "Refining"][Math.floor(tu() * 3)], size = Math.exp(5 + tn()), margin = (sector === "Midstream" ? 0.3 : sector === "Upstream" ? 0.15 : 0.06) + 0.04 * tn(); return [`co-${i}`, sector, Math.round(size * 10) / 10, margin, tu() < 0.03 ? null : margin > 0.25 ? "A" : margin > 0.12 ? "B" : "C", Math.round(size * 20)]; }) };
+    const { train, holdout } = splitHoldout(mixed, 0.2, 5);
+    check("a holdout split is a fifth, disjoint and repeatable", train.rows.length === 1200 && holdout.rows.length === 300 && new Set([...train.rows, ...holdout.rows].map((r) => r[0])).size === 1500 && splitHoldout(mixed, 0.2, 5).holdout.rows[0][0] === holdout.rows[0][0]);
+    const ct = cartSynth(train, 1000, 5);
+    const bySector = (rows: Cell[][], s: string) => smean(rows.filter((r) => r[1] === s).map((r) => r[3] as number));
+    const rated = ct.rows.filter((r) => r[4] !== null && typeof r[3] === "number"), consistent = rated.filter((r) => ((r[3] as number) > 0.27 ? r[4] === "A" : (r[3] as number) < 0.1 ? r[4] === "C" : true)).length / rated.length;
+    check("sequential trees keep each sector's margins and the rating rules, and replace identifiers", ["Midstream", "Upstream", "Refining"].every((s) => Math.abs(bySector(ct.rows, s) - bySector(train.rows, s)) < 0.02) && consistent > 0.95 && ct.rows.every((r) => String(r[0]).startsWith("Synthetic")) && ct.rows.every((r) => r[5] === null || Number.isInteger(r[5])), consistent);
+    check("the same seed gives the same synthetic table", JSON.stringify(cartSynth(train, 50, 5).rows) === JSON.stringify(cartSynth(train, 50, 5).rows));
+    const pvc = privacyChecks(train, holdout, ct, 5), leak = privacyChecks(train, holdout, { ...train, rows: train.rows.slice(0, 600) }, 5);
+    check("privacy: trees sit as near the holdout as the training rows; a copy of the training rows is caught", pvc.dcrShare > 0.4 && pvc.dcrShare < 0.62 && pvc.mia < 0.6 && pvc.exact.synthetic < 0.01 && pvc.warnings.length === 0 && leak.exact.synthetic === 1 && leak.mia > 0.7 && leak.warnings.length >= 3, { pvc, leak: { dcr: leak.dcrShare, mia: leak.mia, n: leak.warnings.length } });
   }
 
   {
@@ -570,6 +726,549 @@ async function main() {
     const dx = (hx[0][0] + 103.9) * 111_320 * Math.cos((31.8 * Math.PI) / 180), dy = (hx[0][1] - 31.8) * 110_574;
     check("a plant's column is a closed hexagon of the right radius", hx.length === 7 && hx[0] === hx[6] && Math.abs(Math.hypot(dx, dy) - 1000) < 1);
     check("where a site sits is said in words", positionWords(0.1).startsWith("low-lying") && positionWords(0.9).startsWith("on high ground") && positionWords(0.5).startsWith("mid-slope"));
+  }
+
+  {
+    console.log("3D sites, months and the brief");
+    const hull = convexHull([[0, 0], [2, 0], [1, 1], [2, 2], [0, 2], [1, 0.5]]);
+    const ps = polygonStats(hull);
+    check("a hull keeps only the outside corners, with area and perimeter", hull.length === 4 && ps.area === 4 && ps.perimeter === 8);
+    // A 40 x 40 grid at 2 m: a 12 m disc 9 m tall (a tank), a 20 x 6 m block 4 m tall, and a green clump.
+    const W = 40, z = new Float32Array(W * W), valid = new Uint8Array(W * W).fill(1), green = new Float32Array(W * W);
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      if (Math.hypot(x - 10 + 0.5, y - 10 + 0.5) <= 3) z[i] = 9;
+      if (x >= 25 && x < 35 && y >= 25 && y < 28) z[i] = 4;
+      if (Math.hypot(x - 30 + 0.5, y - 8 + 0.5) <= 2.5) { z[i] = 5; green[i] = 0.4; }
+    }
+    const st = findStructures({ z, valid, width: W, height: W }, { x: 2, y: 2 }, { z: green, valid, width: W, height: W });
+    const tank = st.found.find((x) => x.kind === "tank");
+    check("lidar heights give a tank (round, flat, tall enough), a block that is not one, and a tree left out", st.found.length === 2 && !!tank && Math.abs((tank.diameterM ?? 0) - 12) < 3 && tank.heightM === 9 && st.found.some((x) => x.kind === "structure") && st.trees === 1, st);
+    const m = monthly([
+      { id: "a", date: "2026-01-03", cloud: 10, covers: true }, { id: "b", date: "2026-01-20", cloud: 2, covers: true }, { id: "c", date: "2026-01-25", cloud: 0, covers: false },
+      { id: "d", date: "2026-02-11", cloud: 5, covers: true },
+    ]);
+    check("one scene a month: the clearest that covers the whole site", m.map((x) => x.id).join() === "b,d");
+    const now = Date.parse("2026-09-30T00:00:00Z");
+    const mk = (id: number, d: string) => ({ id, observedAt: d, detectedAt: d }) as unknown as EdgeCardT;
+    check("the brief reads only the last fortnight's findings", briefCards([mk(1, "2026-09-25"), mk(2, "2026-09-01"), mk(3, "2026-09-29")], now).map((c) => c.id).join() === "1,3");
+  }
+
+  {
+    console.log("Networks: counts, keyboard list, upgrades");
+    const c = linkCounts([
+      { kind: "director", dir: "in", live: 9, n: 11 }, { kind: "officer", dir: "in", live: 6, n: 6 },
+      { kind: "holder", dir: "in", live: 1, n: 2 }, { kind: "holder", dir: "out", live: 3, n: 3 },
+      { kind: "subsidiary", dir: "out", live: 392, n: 400 }, { kind: "supplies", dir: "out", live: 2, n: 2 }, { kind: "supplies", dir: "in", live: 1, n: 1 },
+      { kind: "acquired", dir: "out", live: 2, n: 3 }, { kind: "acquired", dir: "in", live: 0, n: 1 }, { kind: "bought_assets", dir: "out", live: 1, n: 1 },
+    ]);
+    check("link counts: current links by kind and direction", c.directors === 9 && c.officers === 6 && c.holders === 1 && c.stakes === 3 && c.subsidiaries === 392 && c.customers === 2 && c.suppliers === 1, c);
+    check("link counts: every deal, current or ended, either way round", c.deals === 5, c);
+    check("link counts: kinds it has none of count zero", Object.values(linkCounts([])).every((v) => v === 0), linkCounts([]));
+    check("link counts: neon's numeric strings still add up", linkCounts([{ kind: "acquired", dir: "out", live: "2" as unknown as number, n: "2" as unknown as number }]).deals === 2);
+    const node = (id: number, name: string) => ({ id, kind: "company", name, ticker: "" });
+    const rows = entityList([node(1, "Zeta"), node(2, "Alpha"), node(3, "Focus Co"), node(4, "Beta"), node(5, "Alone")], [{ s: 3, d: 1 }, { s: 3, d: 2 }, { s: 1, d: 4 }, { s: 2, d: 4 }, { s: 1, d: 2 }], 3);
+    check("keyboard list: the company in focus comes first even when others have more links", rows[0].n.id === 3, rows.map((r) => r.n.name));
+    check("keyboard list: then by links touching each, ties by name", rows.map((r) => `${r.n.name}:${r.c}`).join(",") === "Focus Co:2,Alpha:3,Zeta:3,Beta:2,Alone:0", rows.map((r) => `${r.n.name}:${r.c}`));
+    const saved = { v: process.env.VOYAGE_API_KEY, m: process.env.EDGE_ANSWER_MODEL, o: process.env.OPENAI_API_KEY };
+    delete process.env.VOYAGE_API_KEY; delete process.env.EDGE_ANSWER_MODEL; process.env.OPENAI_API_KEY = "x";
+    const offAll = UPGRADES.every((u) => !upgradeOn(u.id) || u.id === "modal-budget" || u.id === "docs-storage");
+    process.env.VOYAGE_API_KEY = "k"; process.env.EDGE_ANSWER_MODEL = "gpt-5.6-sol";
+    const report = upgradesReport();
+    check("upgrades stay off until their key is set, then a built one turns on (a switch with any value too)", offAll && upgradeOn("rerank-voyage") && upgradeOn("answer-model") && !upgradeOn("transcribe-openai") && report.find((r) => r.id === "rerank-voyage")!.needs[0].set && !JSON.stringify(report).includes("\"k\""));
+    for (const [k, v] of [["VOYAGE_API_KEY", saved.v], ["EDGE_ANSWER_MODEL", saved.m], ["OPENAI_API_KEY", saved.o]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+
+  {
+    console.log("Documents: polling");
+    check("poll backoff: 5 s, 10 s, 20 s, 40 s, then a minute", [0, 1, 2, 3, 4, 9].map((f) => pollDelay(5000, f)).join() === "5000,10000,20000,40000,60000,60000");
+    check("a slow interval is never shortened by the cap", pollDelay(120_000, 0) === 120_000 && pollDelay(120_000, 3) === 120_000);
+    const doc = Object.assign(new EventTarget(), { visibilityState: "visible" as string });
+    (globalThis as { document?: unknown }).document = doc;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let n = 0;
+    const stop = poll(async () => ++n, () => true, { ms: 20 });
+    await sleep(5);
+    doc.visibilityState = "hidden"; doc.dispatchEvent(new Event("visibilitychange"));
+    const before = n; await sleep(100);
+    check("no checks while the tab is hidden", n === before, { before, n });
+    doc.visibilityState = "visible"; doc.dispatchEvent(new Event("visibilitychange")); await sleep(2);
+    check("one check as soon as it is shown again", n === before + 1, { before, n });
+    stop();
+    let errs = 0; const at: number[] = []; const t0 = Date.now();
+    const stop2 = poll(async () => { at.push(Date.now() - t0); if (at.length <= 3) throw new Error("down"); return 1; }, () => false, { ms: 20, onError: () => errs++ });
+    await sleep(400); stop2();
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    check("failures back off and are retried rather than ending the polling", at.length === 4 && errs === 3 && gaps[0] >= 18 && gaps[1] >= 38 && gaps[2] >= 78, { at, errs });
+    delete (globalThis as { document?: unknown }).document;
+  }
+
+  {
+    console.log("Canvas page");
+    const step = (nodeId: string, status: string, extra: Partial<StepView> = {}): StepView => ({ nodeId, type: "out.memo", status, step: "", summary: "", error: "", preview: null, output: null, downloads: [], startedAt: null, finishedAt: null, ...extra });
+    const runOf = (status: string, steps: StepView[], id = 7): RunView => ({ id, canvasId: 1, status, trigger: "manual", createdAt: "2026-09-30T00:00:00Z", startedAt: null, finishedAt: null, cost: {}, error: "", graph: { nodes: [], edges: [] }, steps });
+    const fullRun = runOf("running", [step("a", "done", { output: { memo: 1 }, downloads: [{ name: "f.csv", url: "https://x/1" }], preview: { kind: "text", text: "hi" } }), step("b", "running")]);
+    const liteRun = () => runOf("running", [step("a", "done", { preview: { kind: "text", text: "hi" } }), step("b", "running", { step: "draft" })]);
+    const merged = mergeRun(fullRun, liteRun());
+    check("a light run view keeps the outputs and links a full view brought for done blocks", merged.steps[0].output === fullRun.steps[0].output && merged.steps[0].downloads === fullRun.steps[0].downloads);
+    check("an unchanged block keeps its old object; a changed one gets the new view", merged.steps[0] === fullRun.steps[0] && merged.steps[1].step === "draft");
+    check("a poll that changes nothing gives back the same run", mergeRun(merged, liteRun()) === merged);
+    check("another run, or none before, is taken as it comes", mergeRun(fullRun, runOf("running", [], 8)).id === 8 && mergeRun(null, fullRun) === fullRun);
+    const doneRun = runOf("done", [step("a", "done", { output: { memo: 2 } }), step("b", "done", { output: {} })]);
+    const end = mergeRun(merged, doneRun);
+    check("the full view at the end replaces the kept outputs", end.steps[0].output === doneRun.steps[0].output && end.steps[1].output === doneRun.steps[1].output && end.status === "done");
+    check("a run is going while queued or running", going("queued") && going("running") && !going("done") && !going("failed"));
+    const s0: ReadonlySet<string> = new Set(["a"]);
+    check("select changes add and drop picked ids", [...applySelect(s0, [{ id: "a", selected: false }, { id: "b", selected: true }])].join() === "b");
+    check("select changes that change nothing keep the same set", applySelect(s0, [{ id: "a", selected: true }, { id: "c", selected: false }]) === s0);
+    const fn = () => undefined;
+    check("block data equal field by field (lists by their items) count as the same", sameData({ a: 1, issues: ["x"], f: fn }, { a: 1, issues: ["x"], f: fn }));
+    check("block data differ when a field, a list item or a key changes", !sameData({ a: 1, issues: ["x"] }, { a: 1, issues: ["y"] }) && !sameData({ a: 1 }, { a: 2 }) && !sameData({ a: undefined }, { b: 1 }));
+  }
+
+  // Networks: ownership rings of any length (Tarjan), each once.
+  {
+    console.log("Networks: rings, ultimate owners, section 8, fair baselines");
+    check("rings: strongly connected components of two or more, self-loops ignored", JSON.stringify(stronglyConnected([{ s: 1, d: 2 }, { s: 2, d: 3 }, { s: 3, d: 1 }, { s: 3, d: 4 }, { s: 4, d: 5 }, { s: 5, d: 4 }, { s: 6, d: 6 }])) === "[[1,2,3],[4,5]]", stronglyConnected([{ s: 1, d: 2 }, { s: 2, d: 3 }, { s: 3, d: 1 }, { s: 3, d: 4 }, { s: 4, d: 5 }, { s: 5, d: 4 }]));
+    const long = Array.from({ length: 20_000 }, (_, i) => ({ s: i, d: (i + 1) % 20_000 }));
+    check("rings: a loop of 20,000 owners is one ring (no recursion to overflow)", stronglyConnected(long).length === 1 && stronglyConnected(long)[0].length === 20_000);
+    const six = [1, 2, 3, 4, 5, 6].map((n) => ({ s: n, d: (n % 6) + 1, kind: "holder" }));
+    check("rings: a six-step loop the old four-step search missed is found, once", ownershipCycles(six, 4).length === 0 && ownershipRings(six).length === 1 && ownershipRings(six)[0].links.length === 6);
+    const rs = ownershipRings([{ s: 1, d: 2 }, { s: 2, d: 3 }, { s: 3, d: 1 }, { s: 3, d: 9 }, { s: 2, d: 4 }, { s: 4, d: 1 }]);
+    check("rings: one ring per component with only the links inside it", rs.length === 1 && rs[0].members.join() === "1,2,3,4" && rs[0].links.length === 5, rs);
+    const loop = loopThrough([{ s: 1, d: 2 }, { s: 2, d: 3 }, { s: 3, d: 1 }, { s: 2, d: 4 }, { s: 4, d: 1 }], 4);
+    check("rings: the shortest loop through a member, in order from it", loop.map((l) => `${l.s}>${l.d}`).join(" ") === "4>1 1>2 2>4", loop);
+    const ring = { members: [1, 2, 3, 7], names: { 1: "Alpha", 2: "Beta", 3: "Gamma", 7: "Delta" }, links: [
+      { s: 1, d: 2, kind: "holder", percent: 12.345, url: "https://sec.gov/a", asOf: "2025-03-01" }, { s: 2, d: 3, kind: "subsidiary", percent: null, url: "https://sec.gov/b", asOf: "2026-02-01" },
+      { s: 3, d: 1, kind: "holder", percent: null, url: "https://sec.gov/c", asOf: null }, { s: 3, d: 7, kind: "holder", percent: 30, url: "", asOf: null }, { s: 7, d: 3, kind: "holder", percent: 5, url: "", asOf: null },
+    ] };
+    const rf = ringFlag(ring, 1, "2026-09-30");
+    check("rings: the flag walks the loop with each stake, names the other members and keeps the card's shape", rf.kind === "circular_ownership" && rf.severity === "medium" && rf.title === "Ownership loops back on itself in 3 steps"
+      && rf.detail.startsWith("Alpha owns 12.3% of Beta; Beta lists Gamma as a subsidiary; Gamma holds a stake in Alpha.") && rf.detail.includes("4 owners in all, with 5 stakes") && rf.detail.includes("the others are Delta") && rf.date === "2026-02-01" && rf.urls?.length === 3, rf);
+  }
+
+  // Networks: integrated (ultimate) ownership, Vitali, Glattfelder and Battiston (2011).
+  {
+    const io = integratedOwnership([{ s: 10, d: 2, share: 0.1 }, { s: 2, d: 1, share: 0.5 }, { s: 10, d: 1, share: 0.08 }], 1);
+    check("ownership: a fund's direct stake plus what it holds through the parent (8% + 10% x 50%)", Math.abs((io.get(10) ?? 0) - 0.13) < 1e-9 && io.get(2) === 0.5, [...io]);
+    const cyc = integratedOwnership([{ s: 1, d: 2, share: 0.3 }, { s: 2, d: 1, share: 0.2 }, { s: 1, d: 3, share: 0.4 }], 3);
+    check("ownership: loops included, as (I - W)^-1 W gives (A = 0.4 / 0.94)", Math.abs((cyc.get(1) ?? 0) - 0.4 / 0.94) < 1e-6 && Math.abs((cyc.get(2) ?? 0) - 0.08 / 0.94) < 1e-6 && !cyc.has(3), [...cyc]);
+    const over = integratedOwnership([{ s: 1, d: 3, share: 0.7 }, { s: 2, d: 3, share: 0.5 }], 3);
+    check("ownership: stakes filed past 100% of a company are scaled down to it", Math.abs((over.get(1) ?? 0) - 0.7 / 1.2) < 1e-9 && Math.abs((over.get(2) ?? 0) - 0.5 / 1.2) < 1e-9);
+    const viaParent = strongestChain([{ s: 10, d: 2, share: 0.1 }, { s: 2, d: 1, share: 0.5 }, { s: 10, d: 1, share: 0.03 }], 10, 1);
+    const direct = strongestChain([{ s: 10, d: 2, share: 0.1 }, { s: 2, d: 1, share: 0.5 }, { s: 10, d: 1, share: 0.08 }], 10, 1);
+    check("ownership: the chain behind a stake is the one carrying the most", viaParent.map((c) => `${c.s}>${c.d}`).join(" ") === "10>2 2>1" && direct.map((c) => `${c.s}>${c.d}`).join(" ") === "10>1" && strongestChain([{ s: 1, d: 2, share: 0.5 }], 2, 1).length === 0);
+    check("ownership: a filing with no figure counts at its floor (5% for 13D/13G, 10% for a Form 4 ten-percent owner)", stakeShare({ percent: 12.5 }).share === 0.125 && !stakeShare({ percent: 12.5 }).floor && stakeShare({ percent: null, tenPct: true }).share === 0.1 && stakeShare({}).share === 0.05 && stakeShare({}).floor);
+  }
+
+  // Networks: a Clayton Act section 8 screen of shared directors and officers.
+  {
+    const big = (over: object) => ({ name: "A", sic: "4922", industry: "Natural Gas Transmission", equity: 2e9, revenue: 5e9, ...over });
+    const hit = section8Screen(big({}), big({ name: "B", equity: 9e8 }));
+    check("section 8: the same SIC and both above the 2026 threshold by equity screens in", !!hit && hit.industry === "SIC 4922 (Natural Gas Transmission)" && hit.sizes.every((x) => x.measure === "equity") && SECTION_8.capital === 54_402_000 && SECTION_8.competitiveSales === 5_440_200, hit);
+    check("section 8: revenue stands in where there is no equity, and says so", section8Screen(big({ equity: null }), big({ name: "B" }))?.sizes[0].measure === "revenue");
+    check("section 8: a different SIC, a company under the threshold, a bank, or no size does not screen in",
+      section8Screen(big({}), big({ sic: "1311" })) === null && section8Screen(big({}), big({ equity: 54_402_000 })) === null && section8Screen(big({ sic: "6021" }), big({ sic: "6021" })) === null && section8Screen(big({}), big({ equity: null, revenue: null })) === null);
+    check("section 8: without a SIC code the industry label decides", section8Screen(big({ sic: "" }), big({ sic: null, industry: "natural gas transmission" }))?.industry === "the industry Natural Gas Transmission");
+    const f = section8Flag("Jane Roe", { name: "A Corp", role: "a director", url: "https://sec.gov/a", since: "2024-05-01" }, { name: "B Corp", role: "an officer (Chief Financial Officer)", url: "https://sec.gov/b", since: "2025-01-15" }, hit!, "2026-09-30");
+    check("section 8: the flag is a medium screen, not legal advice, citing the FTC's 2026 thresholds", f.kind === "interlocking_directorate" && f.severity === "medium" && f.title === "Possible interlocking directorate"
+      && f.detail.includes("not legal advice") && f.detail.includes("$54,402,000") && f.detail.includes("$5,440,200") && f.detail.includes("stockholders' equity") && f.refs?.[0].url === SECTION_8.source && f.date === "2025-01-15" && f.urls?.length === 2, f);
+    check("section 8: no second full stop after a name that ends in one", section8Flag("J", { name: "A Corp", role: "a director" }, { name: "Targa Resources Corp.", role: "a director" }, hit!, "2026-09-30").detail.includes("of Targa Resources Corp. Both are in"));
+    // The test branch's two pairs: one who moved from one company to the other, and one on both boards at once.
+    check("shared seats: someone who moved between companies does not sit at both", !servedTogether({ first: "2025-02-19", last: "2025-02-19" }, { first: "2026-09-03", last: "2026-09-03" }, "2026-09-30"));
+    check("shared seats: overlapping Form 4s at both, recently, do", servedTogether({ first: "2026-04-16", last: "2026-04-29" }, { first: "2025-05-07", last: "2026-05-06" }, "2026-09-30"));
+    check("shared seats: a director who files yearly at one board and joins another counts at once", servedTogether({ first: "2019-05-01", last: "2026-01-15" }, { first: "2026-03-02", last: "2026-03-02" }, "2026-09-30"));
+    check("shared seats: two seats with no Form 4 in 18 months, or no dates, do not", !servedTogether({ first: "2020-01-01", last: "2025-01-10" }, { first: "2020-02-01", last: "2025-02-01" }, "2026-09-30") && !servedTogether({ first: null, last: null }, { first: "2026-01-01", last: "2026-01-01" }, "2026-09-30"));
+    check("titles: Form 4 entities decoded and \"See Remarks\" dropped", officerTitle("EVP &amp; CHIEF COMMERCIAL OFFICER") === "EVP & CHIEF COMMERCIAL OFFICER" && officerTitle("See Remarks") === "" && officerTitle("see remarks below") === "" && officerTitle(undefined) === "" && xmlText("Caf&#233; &lt;LP&gt; &#x26; Co") === "Café <LP> & Co"
+      && linkSentence("officer", "Jo", "Acme", { title: "SVP &amp; CFO" }) === "Jo is SVP & CFO of Acme" && linkSentence("officer", "Jo", "Acme", { title: "See Remarks" }) === "Jo is an officer of Acme" && sentence("Acme Corp.") === "Acme Corp." && sentence("Acme") === "Acme.");
+  }
+
+  // Networks: fair baselines for the deal model, on its split, and bootstrap intervals.
+  {
+    const s = summarize([1, 3, 7, 12]);
+    check("baselines: hit rates and MRR as the ML service rounds them", s.hits5 === 0.5 && s.hits10 === 0.75 && s.mrr === 0.3899 && s.n === 4 && summarize([]).hits10 === null, s);
+    const scores = new Map([[1, 3], [2, 1], [3, 1], [4, 0]]);
+    check("baselines: ranks count ties at their middle and skip the anchor's other deals", midRank(scores, [1, 2, 3, 4, 5], 2, new Set()) === 2.5 && midRank(scores, [1, 2, 3, 4, 5], 2, new Set([1])) === 1.5);
+    const aa = adamicAdarFrom(adjacencyByKind([{ s: 10, d: 1, kind: "director" }, { s: 10, d: 2, kind: "director" }, { s: 20, d: 1, kind: "holder" }, { s: 20, d: 2, kind: "holder" }, { s: 20, d: 3, kind: "holder" }]), 1);
+    check("baselines: Adamic-Adar per kind of link, summed (1/ln 2 for a shared director, 1/ln 3 for a fund in three)", Math.abs((aa.get(2) ?? 0) - (1 / Math.log(2) + 1 / Math.log(3))) < 1e-12 && Math.abs((aa.get(3) ?? 0) - 1 / Math.log(3)) < 1e-12 && !aa.has(1), [...aa]);
+    const g = {
+      nodes: [1, 2, 3, 4, 5].map((id) => ({ id, kind: "company" })).concat([{ id: 10, kind: "person" }]),
+      edges: [{ s: 10, d: 1, kind: "director", t: "2020-01-01" }, { s: 10, d: 2, kind: "director", t: null }, { s: 10, d: 4, kind: "director", t: "2025-01-01" }],
+      deals: [{ acquirer: 1, target: 5, t: "2021-01-01" }, { acquirer: 1, target: 3, t: "2022-06-01" }, { acquirer: 1, target: 2, t: "2024-03-01" }, { acquirer: 4, target: 3, t: "2026-05-01" }],
+    };
+    const b = baselineBacktest(g, "2024-01-01", { until: "2025-12-31" });
+    check("baselines: on the split, links after it unseen, deals after the model's training left out", b.testDeals === 1 && b.adamicAdar.asTarget?.hits10 === 1 && b.adamicAdar.asAcquirer?.mrr === 1 && b.acquisitiveness.asAcquirer?.mrr === 1 && b.adamicAdar.n === 2 && b.acquisitiveness.asTarget === undefined, b);
+    const late = baselineBacktest(g, "2024-01-01");
+    check("baselines: a buyer with no deals before the split ties with the field", late.testDeals === 2 && late.acquisitiveness.asAcquirer?.n === 2 && late.acquisitiveness.asAcquirer.mrr === 0.75, late.acquisitiveness);
+    const [lo, hi] = bootstrapInterval(20, 50);
+    check("baselines: the bootstrap's 90% interval for 20 of 50 is 28% to 52% (about 12 points each way)", lo === 0.28 && hi === 0.52, [lo, hi]);
+    check("baselines: intervals at the edges and for tiny samples", JSON.stringify(bootstrapInterval(0, 6)) === "[0,0]" && JSON.stringify(bootstrapInterval(6, 6)) === "[1,1]" && JSON.stringify(bootstrapInterval(4, 6)) === JSON.stringify([2 / 6, 1]) && JSON.stringify(bootstrapInterval(0, 0)) === "[0,0]");
+    const side = (hits10: number, n = 6) => ({ hits5: hits10, hits10, mrr: 0.2, n });
+    const m = { gnn: { ...side(0.6667, 12), asTarget: side(0.5), asAcquirer: side(0.6667) }, baseline: { ...side(0.4167, 12), asTarget: side(0.1667), asAcquirer: side(0.5) },
+      fair: { adamicAdar: { ...side(0.25, 12), asTarget: side(0.1667), asAcquirer: side(0.3333) }, acquisitiveness: { ...side(0.8333), asAcquirer: side(0.8333) }, testDeals: 6, splitDate: "2024-08-02", computedAt: "" } };
+    const buyers = scorecardText(m, "acquirers"), targets = scorecardText(m, "targets");
+    check("scorecard: likely buyers read the service's asAcquirer, with a 90% interval, and say plainly when the model loses", buyers.startsWith("In a backtest on the 6 most recent deals, the actual buyer was among the model's top 10 likely buyers for 4 of 6 (90% bootstrap interval 33% to 100%).")
+      && buyers.includes("acquisitiveness (the buyer's deals in the prior 36 months) 5 of 6") && buyers.includes("The model does not beat acquisitiveness") && buyers.includes("Its lead over company features alone and shared connections (Adamic-Adar) is inside its interval"), buyers);
+    check("scorecard: likely targets read asTarget, and acquisitiveness is not a baseline for them", targets.includes("the actual target was among the model's top 10 likely targets for 3 of 6") && !targets.includes("acquisitiveness") && targets.includes("company features alone 1 of 6"), targets);
+    check("scorecard: a clear win, a top-5 record without top-10 figures, and nothing to show",
+      scorecardText({ gnn: { ...side(0.8, 40), asAcquirer: side(0.8, 20) }, baseline: { ...side(0.1, 40), asAcquirer: side(0.1, 20) } }, "acquirers").endsWith("It beats every baseline by more than its interval.")
+      && scorecardText({ gnn: { hits5: 0.55, hits10: 0.7, mrr: 0.3, n: 40, asAcquirer: { hits5: 0.55, n: 20 } } }, "acquirers").includes("top 5 likely buyers for 11 of 20") && scorecardText(null, "targets") === "Not backtested yet.");
+  }
+
+  {
+    console.log("Radar change");
+    // Three passes of a 48 x 48 box: open desert with a deterministic speckle (0.03 to 0.05) and a working plant (a 10 x 10 block at 0.6).
+    const S = 48, N = S * S;
+    const desert = (seed: number) => Float32Array.from({ length: N }, (_, i) => 0.03 + 0.02 * (((i * 7919 + seed * 104729) % 97) / 97));
+    const paint = (a: Float32Array, x0: number, y0: number, w: number, h: number, v: number) => { const b = new Float32Array(a); for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) b[y * S + x] = v; return b; };
+    const all = new Uint8Array(N).fill(1);
+    const stack = (layers: Float32Array[]) => majority(layers, layers.map(() => all), N);
+    const withPlant = (a: Float32Array) => paint(a, 30, 30, 10, 10, 0.6);
+    const before = stack([1, 2, 3].map((k) => withPlant(desert(k))));
+    const m3 = majority([[0.1], [0.5], [0.2]], [[1], [1], [1]], 1), m2 = majority([[0.1], [0.5]], [[1], [1]], 1), m1 = majority([[0.9], [0.5]], [[1], [0]], 1);
+    check("per pixel, three passes agree on the median; with two, a bright one alone never makes the pixel bright (or dark); one pass is not enough", m3.floor[0] === Float32Array.of(0.2)[0] && m3.ceil[0] === m3.floor[0] && m2.floor[0] === Float32Array.of(0.1)[0] && m2.ceil[0] === Float32Array.of(0.5)[0] && !m1.valid[0], { m3, m2 });
+    check("the ground level is the median pixel", Math.abs(levelOf(before.median, before.valid) - 0.04) < 0.006, levelOf(before.median, before.valid));
+    // Now: a new 4 x 4 tank on open ground (hard return 2.0), a speckle seen in one pass only, and a faint 2 x 2 return beside the plant.
+    const nowLayers = [4, 5, 6].map((k) => paint(paint(withPlant(desert(k)), 8, 8, 4, 4, 2.0), 28, 33, 2, 2, 0.5));
+    nowLayers[0] = paint(nowLayers[0], 20, 5, 3, 3, 3.0);
+    const after = stack(nowLayers);
+    const c = radarChange(before, after, S, S);
+    check("a new tank on open ground is one new object of 16 pixels with its hard return", c.added.length === 1 && c.added[0].pixels === 16 && c.added[0].peak === 2 && c.added[0].ring === 0 && c.mask.filter((v) => v === 1).length === 16, c.added);
+    check("a bright speckle in one pass of three is not new", c.mask[5 * S + 20] === 0);
+    check("a small faint return beside a working plant does not count (its metal flickers)", c.mask[33 * S + 28] === 0 && c.removed.length === 0, c.removed);
+    check("the scene is comparable: the same ground level both times, the whole box seen", comparable(c) && Math.abs(c.ground.ratio - 1) < 0.05 && c.validFraction === 1, c.ground);
+    // The plant torn down: a vanished object; a whole box gone damp (ground 1.6 times brighter) keeps only hard returns.
+    const razed = radarChange(before, stack([4, 5, 6].map((k) => desert(k))), S, S);
+    check("a plant torn down is a bright object gone", razed.added.length === 0 && razed.removed.length === 1 && razed.removed[0].pixels === 100, razed.removed.map((o) => o.pixels));
+    const soft = [4, 5, 6].map((k) => paint(desert(k), 8, 8, 3, 3, 0.4));
+    const calm = radarChange(stack([1, 2, 3].map(desert)), stack(soft), S, S);
+    const damp = radarChange(stack([1, 2, 3].map(desert)), stack(soft.map((a) => a.map((v) => (v < 0.1 ? v * 1.6 : v)))), S, S);
+    check("a soft new object of nine pixels counts on dry ground but not when the whole scene is damper", calm.added.length === 1 && damp.added.length === 0 && damp.ground.ratio > 1.25, { calm: calm.added.length, damp: damp.ground });
+    check("what counts: on open ground eight pixels or a hard return of three; on busy ground only fifteen strong pixels; never in clutter",
+      counts({ pixels: 8, peak: 0.4, ring: 0 }, false) && !counts({ pixels: 8, peak: 0.4, ring: 0 }, true) && counts({ pixels: 3, peak: 1.2, ring: 0.1 }, true) && !counts({ pixels: 7, peak: 0.6, ring: 0 }, false)
+      && counts({ pixels: 15, peak: 3, ring: 0.45 }, false) && !counts({ pixels: 14, peak: 9, ring: 0.45 }, false) && !counts({ pixels: 40, peak: 9, ring: 0.6 }, false));
+    const blob = [10 * S + 10, 10 * S + 11];
+    check("the ring around an object measures how built-up its surroundings were", ringBright(blob, before.median, before.valid, S, S, 0.1) === 0 && ringBright([35 * S + 35], before.median, before.valid, S, S, 0.1) > 0.9);
+    check("a card needs 20 pixels between the new objects and one hard return of four or more",
+      radarWorthy([{ pixels: 16, peak: 2 }, { pixels: 6, peak: 0.5 }]) && !radarWorthy([{ pixels: 19, peak: 3 }]) && !radarWorthy([{ pixels: 30, peak: 0.8 }]) && !radarWorthy([{ pixels: 3, peak: 1.5 }, { pixels: 18, peak: 0.6 }]));
+    const conf = (pixels: number, ratio: number) => radarConfidence({ added: [{ kind: 1, x: 0, y: 0, bbox: [0, 0, 0, 0], pixels, peak: 2, ring: 0 }], ground: { before: 0.04, after: 0.04 * ratio, ratio }, strays: 50 }, { before: 3, after: 3 });
+    check("confidence grows with what was found and falls when the ground is damper (not when drier), within 0.2 to 0.95", conf(80, 1) > conf(20, 1) && conf(20, 1.6) < conf(20, 1) && conf(20, 0.7) === conf(20, 1) && conf(500, 1) <= 0.95 && conf(3, 3) >= 0.2, { big: conf(80, 1), small: conf(20, 1), damp: conf(20, 1.6) });
+    check("magnitude is the new ground covered, a hectare counting in full", radarMagnitude(5000) === 0.5 && radarMagnitude(25_000) === 1 && radarMagnitude(0) === 0);
+    check("objects already reported (within 40 m) are not news again", unreported([{ lon: -103.9, lat: 31.8 }, { lon: -103.89, lat: 31.8 }], [{ lon: -103.9002, lat: 31.8001 }]).length === 1);
+    check("a 2.5 km box at 256 pixels is about 95 m² a pixel", Math.abs(pixelArea(boxKm(-103.8965, 31.8107, 1.25), 256) - 95.4) < 1, pixelArea(boxKm(-103.8965, 31.8107, 1.25), 256));
+    check("compass words from the box centre (y grows south)", bearingWords(0, -50) === "north of" && bearingWords(40, 40) === "south-east of" && bearingWords(-30, 0) === "west of" && bearingWords(2, 3) === "at");
+    check("decibels", toDb(BRIGHT) === -6 && toDb(1) === 0 && toDb(10) === 10);
+    const png = decodePng(radarOverlayPng(c));
+    const at = (x: number, y: number) => Array.from(png.data.subarray((y * S + x) * 4, (y * S + x) * 4 + 4));
+    check("the overlay marks the new object amber, rings it, and leaves the rest clear", png.width === S && at(9, 9).join() === "255,176,32,235" && at(5, 5)[3] === 170 && at(0, 47)[3] === 0, { tank: at(9, 9), ring: at(5, 5) });
+    // Scenes: which orbit and passes to compare.
+    const sc = (id: string, date: string, orbit: "ascending" | "descending", relOrbit: number, corners = 15): RadarScene => ({ id, date, at: `${date}T00:51:00Z`, orbit, relOrbit, platform: "sentinel-1c", corners });
+    const recent = [sc("a1", "2026-09-27", "ascending", 78), sc("a2", "2026-09-21", "ascending", 78), sc("a3", "2026-09-15", "ascending", 78), sc("a4", "2026-09-09", "ascending", 78), sc("d1", "2026-09-21", "descending", 85), sc("d2", "2026-09-09", "descending", 85), sc("d3", "2026-08-28", "descending", 85)];
+    const old = [sc("o1", "2025-10-31", "ascending", 78), sc("o2", "2025-10-19", "ascending", 78, 8), sc("o2b", "2025-10-19", "ascending", 78, 3), sc("o3", "2025-10-07", "ascending", 78), sc("o4", "2025-09-25", "ascending", 78), sc("o5", "2025-09-13", "ascending", 78), sc("o6", "2025-09-01", "ascending", 78, 3), sc("e1", "2025-09-19", "descending", 85)];
+    const st = pickStacks(recent, old);
+    check("the orbit with three passes on both sides wins; its newest three now and the three nearest a year before", !!st && st.relOrbit === 78 && st.after.map((p) => p.date).join() === "2026-09-27,2026-09-21,2026-09-15" && st.before.map((p) => p.date).join() === "2025-10-07,2025-09-25,2025-09-13", st);
+    const st2 = pickStacks(recent, old.filter((s) => s.id !== "o3" && s.id !== "o4" && s.id !== "o5"));
+    check("slices of one pass are merged, and a pass whose slices hold only two corners of the box is passed over", !!st2 && st2.before.some((p) => p.date === "2025-10-19" && p.ids.join() === "o2,o2b") && !st2.before.some((p) => p.date === "2025-09-01"), st2?.before);
+    check("an orbit can be skipped (when what it read covered too little), and with no orbit left there is nothing to compare", pickStacks(recent, old, 3, ["ascending:78"]) === null && pickStacks(recent.slice(0, 1), old) === null);
+    const box: [number, number, number, number] = [-104, 31, -103, 32];
+    const poly = (w: number, e: number) => ({ type: "Polygon", coordinates: [[[w, 30], [e, 30], [e, 33], [w, 33], [w, 30]]] });
+    check("a footprint holds all four corners of the box, or only some", cornersIn(poly(-105, -102), box) === 15 && cornersIn(poly(-105, -103.5), box) === 9 && cornersIn(null, box) === 15);
+    const items = [{ id: "S1C_x_rtc", properties: { datetime: "2026-09-27T00:51:25Z", "sat:orbit_state": "ascending", "sat:relative_orbit": 78, platform: "sentinel-1c" }, geometry: poly(-105, -102) }, { id: "bad", properties: { datetime: "2026-09-27T00:51:25Z" } }];
+    const parsed = scenesFrom(items, box);
+    check("STAC items become scenes with their orbit, and items without one are dropped", parsed.length === 1 && parsed[0].relOrbit === 78 && parsed[0].date === "2026-09-27" && parsed[0].corners === 15, parsed);
+    check("a pass renders as VV in decibels", radarUrl("S1C_x_rtc", box).includes("collection=sentinel-1-rtc") && radarUrl("S1C_x_rtc", box).includes(encodeURIComponent("10*log10(vv)")) && radarUrl("S1C_x_rtc", box).includes("rescale=-22,3"));
+    check("a large, confident radar change interrupts watchers; a small one waits for the digest", isBig({ kind: "radar_change", confidence: 0.71, magnitude: 1, visual: {} }) && !isBig({ kind: "radar_change", confidence: 0.65, magnitude: 1, visual: {} }) && !isBig({ kind: "radar_change", confidence: 0.8, magnitude: 0.3, visual: {} }));
+    check("radar ranks with flaring as rarely reported news", noveltyOf("radar_change", 0) === noveltyOf("flaring", 0) && noveltyOf("radar_change", 0) > noveltyOf("permits", 0));
+    const mail = digestItem({ id: 1, kind: "radar_change", title: "Radar shows 5 new structures south-west of Orla Plant", summary: "s", confidence: 0.7, visual: { before: { url: "https://x/b.png", date: "2025-10-07" }, after: { url: "https://x/a.png", date: "2026-09-27" }, stats: { newObjects: 5, newAreaM2: 16_000 } } }, "https://app");
+    check("the digest shows radar before and after with the count", mail.includes("https://x/b.png") && mail.includes("https://x/a.png") && mail.includes("5 new, about 16,000 m²"));
+  }
+
+  {
+    console.log("Drilling permits");
+    check("windows of 30 days ending today, oldest first, a day counted in the window it falls in", JSON.stringify(windowsOf(["2026-09-30", "2026-09-01", "2026-08-31", "2026-06-03", "2026-06-02"], "2026-09-30")) === JSON.stringify({ windows: [1, 0, 1, 2], last30: 2, prior90: 2 }), windowsOf(["2026-09-30", "2026-09-01", "2026-08-31", "2026-06-03", "2026-06-02"], "2026-09-30"));
+    check("a jump is five or more in 30 days and at least twice the pace before", permitJump({ last30: 5, prior90: 6 }) && !permitJump({ last30: 5, prior90: 9 }) && !permitJump({ last30: 4, prior90: 0 }) && permitJump({ last30: 9, prior90: 0 }));
+    check("the pace ratio floors the earlier pace at one a month", paceRatio({ last30: 9, prior90: 0 }) === 9 && Math.abs(paceRatio({ last30: 12, prior90: 89 }) - 0.4) < 0.01);
+    const cd = permitConfidence({ last30: 9, prior90: 0 }, true), cu = permitConfidence({ last30: 9, prior90: 0 }, false);
+    check("state approval dates make a jump surer than dates Edge recorded itself; within 0.3 to 0.92", cd > cu && cd <= 0.92 && cu >= 0.3 && permitConfidence({ last30: 30, prior90: 3 }, true) > permitConfidence({ last30: 6, prior90: 9 }, true), { cd, cu });
+    check("magnitude grows with permits and with the jump, at most 1", permitMagnitude({ last30: 20, prior90: 0 }) === 1 && permitMagnitude({ last30: 6, prior90: 9 }) < permitMagnitude({ last30: 12, prior90: 9 }));
+    check("who holds the permits, most first", JSON.stringify(operatorsOf([{ operator: "EOG" }, { operator: "OXY" }, { operator: "EOG" }, { operator: "" }])) === JSON.stringify([{ name: "EOG", n: 2 }, { name: "OXY", n: 1 }]));
+    const t1 = trackSeen(null, ["a", "b"], "2026-09-30"), t2 = trackSeen(t1, ["a", "b", "c"], "2026-10-04"), t3 = trackSeen(t2, ["a", "b", "c", "d"], "2026-11-30");
+    check("Texas: after a gap of more than a week between reads, what appeared in it is not dated (a gap is not a jump)", t3.seen.d === "" && t3.seen.c === "2026-10-04" && t3.last === "2026-11-30");
+    check("Texas: locations there on the first look are not new; one that appears later is dated the day it appeared", t1.since === "2026-09-30" && t1.seen.a === "" && t2.seen.c === "2026-10-04" && t2.seen.a === "" && t2.since === "2026-09-30");
+    const nowP = Date.parse("2026-09-30T12:00:00Z");
+    check("a jump repeats the last card within 30 days unless half again as many", permitRepeats({ at: "2026-09-10T12:00:00Z", last30: 10 }, 12, nowP) && !permitRepeats({ at: "2026-09-10T12:00:00Z", last30: 10 }, 15, nowP) && !permitRepeats({ at: "2026-08-20T12:00:00Z", last30: 10 }, 12, nowP) && !permitRepeats(null, 12, nowP));
+    const nm = { last30: 9, prior90: 0, windows: [0, 0, 0, 9], permits: [], operators: [] };
+    const tx = (days: number) => ({ permitted: 300, since: "2026-06-01", trackedDays: days, last30: 4, prior90: 3, windows: [1, 1, 1, 4], newest: [] });
+    check("judged on New Mexico's dated permits, and on Texas's only after four months of Edge's own record", JSON.stringify(judged({ nm, tx: tx(30) })) === JSON.stringify({ last30: 9, prior90: 0, windows: [0, 0, 0, 9], dated: true }) && judged({ nm: null, tx: tx(30) }) === null && judged({ nm, tx: tx(121) })!.last30 === 13 && !judged({ nm, tx: tx(121) })!.dated);
+    const bk = boxKm(-103.5223, 32.2131, 10);
+    check("a 10 km box is 20 km across", Math.abs((bk[3] - bk[1]) * 110.574 - 20) < 0.01);
+    check("which states a circle reaches: Red Hills only New Mexico, Orla only Texas, Dollarhide on the line both", JSON.stringify(statesNear(boxKm(-103.5223, 32.2131, 10))) === JSON.stringify({ nm: true, tx: false }) && JSON.stringify(statesNear(boxKm(-103.8965, 31.8107, 10))) === JSON.stringify({ nm: false, tx: true }) && JSON.stringify(statesNear(boxKm(-103.0567, 32.1469, 10))) === JSON.stringify({ nm: true, tx: true }));
+    const tp = txPermitsFrom([{ API: "38980497", GIS_LAT83: 31.827, GIS_LONG83: -103.876 }, { API: "38980497", GIS_LAT83: 31.827, GIS_LONG83: -103.876 }, { API: "", GIS_LAT83: 31.8, GIS_LONG83: -103.8 }, { API: "38941806", GIS_LAT83: null, GIS_LONG83: -103.9 }]);
+    check("Texas rows become one permitted location per API number, written 42-county-number", tp.length === 1 && tp[0].api === "42-389-80497" && tp[0].lon === -103.876, tp);
+    const np = nmPermitsFrom([
+      { id: "30-025-56868", name: "LOOSE STONES 18 FEDERAL COM #102H", ogrid_name: "EOG RESOURCES INC", type: "Oil", latitude: 32.13, longitude: -103.47, effective_date: Date.parse("2026-09-03T06:00:00Z"), spud_date: 253402239600000, details: "https://x" },
+      { id: "30-025-1", name: "SWD 1", type: "Salt Water Disposal", latitude: 32.1, longitude: -103.4, effective_date: Date.parse("2026-09-03T06:00:00Z") },
+      { id: "30-025-2", name: "NO DATE", type: "Gas", latitude: 32.1, longitude: -103.4, effective_date: null },
+    ]);
+    check("New Mexico rows: oil and gas wells with an approval date; a spud date of 9999 means not yet spudded", np.length === 1 && np[0].approved === "2026-09-03" && np[0].spud === null && np[0].operator === "EOG RESOURCES INC", np);
+    check("a permits jump interrupts watchers only when large and sure", isBig({ kind: "permits", confidence: 0.85, magnitude: 0.9, visual: {} }) && !isBig({ kind: "permits", confidence: 0.85, magnitude: 0.73, visual: {} }) && !isBig({ kind: "permits", confidence: 0.6, magnitude: 1, visual: {} }));
+    check("permits rank below satellite findings and above filings", noveltyOf("permits", 0) < noveltyOf("radar_change", 0) && noveltyOf("permits", 0) > noveltyOf("filing_change", 0));
+    const pmail = digestItem({ id: 2, kind: "permits", title: "9 drilling permits", summary: "s", confidence: 0.85, visual: { windows: [0, 0, 0, 9], last30: 9, prior90: 0, radiusKm: 10 } }, "https://app");
+    check("the digest shows the permits by 30 days", pmail.includes("9 permits in the last 30 days · 0.0 a month before") && pmail.includes("Each bar is 30 days"));
+  }
+
+  {
+    console.log("Planet and Carbon Mapper (ready to switch on)");
+    const nowD = new Date("2026-09-30T12:00:00Z");
+    const body = planetSearchBody([-103.91, 31.80, -103.88, 31.82], nowD);
+    const [geo, dates, cloud] = body.filter.config as { type: string; field_name: string; config: { type?: string; coordinates?: number[][][]; gte?: string; lte?: string | number } }[];
+    check("Planet's quick search: both item types, the site's box as a closed polygon, the last 60 days, cloud at most 20%",
+      body.item_types.join() === "PSScene,SkySatCollect" && body.filter.type === "AndFilter" && geo.type === "GeometryFilter" && geo.config.coordinates![0].length === 5 && geo.config.coordinates![0][0].join() === geo.config.coordinates![0][4].join()
+      && dates.config.gte === "2026-08-01T12:00:00.000Z" && dates.config.lte === "2026-09-30T12:00:00.000Z" && cloud.field_name === "cloud_cover" && cloud.config.lte === 0.2, body);
+    const planet = planetScenesFrom({ features: [
+      { id: "20260901_171200_10_2486", properties: { item_type: "PSScene", acquired: "2026-09-01T17:12:00Z", cloud_cover: 0.034, gsd: 3.7 } },
+      { id: "20260920_180000_ssc1_u0001", properties: { item_type: "SkySatCollect", acquired: "2026-09-20T18:00:00Z", cloud_cover: 0 } },
+      { id: "x", properties: { item_type: "PSScene", acquired: "2026-09-10T00:00:00Z" } },
+      { id: "20260915_000000_00_0000", properties: { item_type: "REOrthoTile", acquired: "2026-09-15T00:00:00Z" } },
+    ] });
+    check("Planet's answer: newest first, cloud as a percentage, SkySat at 50 cm when unstated, odd ids and other types dropped, thumbnails through our route",
+      planet.length === 2 && planet[0].type === "SkySatCollect" && planet[0].gsdM === 0.5 && planet[1].cloudPct === 3 && planet[1].gsdM === 3.7 && planet[1].thumb === "/api/edge/planet/thumb?type=PSScene&id=20260901_171200_10_2486", planet);
+    check("only Planet scene types and plain ids are proxied", validScene("PSScene", "20260901_171200_10_2486") && !validScene("REOrthoTile", "20260901_171200_10_2486") && !validScene("PSScene", "../../etc") && thumbPath("SkySatCollect", "a_b") === "/api/edge/planet/thumb?type=SkySatCollect&id=a_b");
+    check("Planet takes the key as the Basic user name with no password", planetAuth("k") === "Basic azo=");
+    const url = plumesUrl([-104.5, 31, -101.5, 32.8], new Date("2025-01-01T00:00:00Z"), new Date("2026-09-30T00:00:00Z"));
+    check("the Carbon Mapper query: the box as four bbox values, a window without milliseconds, methane, newest first", url.includes("bbox=-104.5000&bbox=31.0000&bbox=-101.5000&bbox=32.8000") && url.includes("datetime=2025-01-01T00:00:00Z/2026-09-30T00:00:00Z") && url.includes("plume_gas=CH4") && url.endsWith("sort=desc"), url);
+    const plumes = plumesFrom({ items: [
+      { plume_id: "tan20260827t190313c36s4001-A", scene_id: "s1", gas: "CH4", geometry_json: { type: "Point", coordinates: [-103.0970, 31.2749] }, scene_timestamp: "2026-08-27T19:03:13.360Z", platform: "Tanager", emission_auto: 821.72, emission_uncertainty_auto: 115.5, plume_rgb_png: "https://catalog.carbonmapper.org/a.png" },
+      { plume_id: "tan20260827t190313c36s4001-B", scene_id: "s1", gas: "CH4", geometry_json: { type: "Point", coordinates: [-103.0900, 31.2700] }, scene_timestamp: "2026-08-27T19:03:13.360Z", platform: "Tanager", emission_auto: 610, emission_uncertainty_auto: 88.8 },
+      { plume_id: "emi20260701-A", scene_id: "s0", gas: "CH4", geometry_json: { type: "Point", coordinates: [-103.0950, 31.2760] }, scene_timestamp: "2026-07-01T18:00:00Z", platform: "EMIT", emission_auto: null },
+      { plume_id: "co2", gas: "CO2", geometry_json: { type: "Point", coordinates: [-103.09, 31.27] }, scene_timestamp: "2026-08-27T19:00:00Z" },
+      { plume_id: "nopoint", gas: "CH4", geometry_json: { type: "Polygon", coordinates: [] }, scene_timestamp: "2026-08-27T19:00:00Z" },
+    ] });
+    check("plumes: methane points with their rate and uncertainty in kg/h; other gases and shapes dropped", plumes.length === 3 && plumes[0].rateKgH === 822 && plumes[0].uncertaintyKgH === 116 && plumes[0].image.endsWith("a.png") && plumes[2].rateKgH === null, plumes);
+    const nearP = plumesNear(plumes, -103.0867, 31.2689);
+    const { pass: overpass, earlier } = newestPass(nearP);
+    check("plumes within 2 km of the Waha plant, newest overpass together, the rest as history", nearP.length === 3 && overpass.length === 2 && earlier.length === 1 && overpass.every((p) => p.scene === "s1") && nearP.every((p) => p.m <= 2000), nearP.map((p) => [p.id, p.m]));
+    const tr = totalRate(overpass);
+    check("an overpass's rates add up, uncertainties in quadrature", tr.rate === 1432 && tr.uncertainty === Math.round(Math.hypot(116, 89)) && tr.estimated === 2, tr);
+    check("nearer plumes are surer to be the plant's; a rough rate lowers it", methaneConfidence(300, 800, 100) === 0.85 && methaneConfidence(1500, 800, 600) === 0.48 && methaneMagnitude(1000) === 0.5 && methaneMagnitude(5000) === 1);
+    const savedL = process.env.CARBON_MAPPER_LICENSED;
+    delete process.env.CARBON_MAPPER_LICENSED; const off = licensed();
+    process.env.CARBON_MAPPER_LICENSED = "0"; const zero = licensed();
+    process.env.CARBON_MAPPER_LICENSED = "1"; const on = licensed();
+    if (savedL === undefined) delete process.env.CARBON_MAPPER_LICENSED; else process.env.CARBON_MAPPER_LICENSED = savedL;
+    check("Carbon Mapper is read only when CARBON_MAPPER_LICENSED is exactly 1", !off && !zero && on);
+    check("a tonne an hour at the plant interrupts watchers; a far or small plume waits", isBig({ kind: "methane_plume", confidence: 0.85, magnitude: 0.6, visual: {} }) && !isBig({ kind: "methane_plume", confidence: 0.58, magnitude: 1, visual: {} }) && !isBig({ kind: "methane_plume", confidence: 0.85, magnitude: 0.3, visual: {} }));
+    const mm = digestItem({ id: 3, kind: "methane_plume", title: "Methane", summary: "s", confidence: 0.85, visual: { rateKgH: 1432, uncertaintyKgH: 146, nearestM: 300, platform: "Tanager", date: "2026-08-27", credit: "Data by Carbon Mapper" } }, "https://app");
+    check("the digest shows the rate with its uncertainty and the credit", mm.includes("1,432 ± 146 kg/h") && mm.includes("Data by Carbon Mapper"));
+  }
+
+  {
+    console.log("documents: keyword search");
+    const t = parseTerms('Hugh Brinson pipeline "early volumes" OR commissioning -crypto, $21 and Q2!');
+    check("search text becomes words, quoted phrases and exclusions; OR and AND are dropped", t.words.join() === "Hugh,Brinson,pipeline,commissioning,$21,Q2" && t.phrases.join() === "early volumes" && t.not.join() === "crypto", t);
+    check("each term is kept once, whatever its case", parseTerms("Revenue revenue REVENUE growth").words.join() === "Revenue,growth");
+    check("nothing to search for gives no query", anyTermsQuery(parseTerms("  , -- ")) === null);
+    const q = new PgDialect().sqlToQuery(anyTermsQuery(parseTerms('pipeline "basis differentials" -crypto'))!);
+    check("the keyword query matches any term (each word stemmed alone, the phrase in order) and drops excluded words",
+      q.sql === "((plainto_tsquery('english', $1) || phraseto_tsquery('english', $2)) && !!plainto_tsquery('english', $3))" && q.params.join() === "pipeline,basis differentials,crypto", q);
+
+    console.log("documents: headers");
+    check("dates read the way questions say them", longDate("2026-06-30") === "June 30, 2026" && longDate("2025-12-31") === "December 31, 2025" && longDate("n/a") === "n/a");
+    const tenQ = { title: "Energy Transfer LP 10-Q (2026-08-06)", source: "sec", meta: { ticker: "ET", form: "10-Q", period: "2026-06-30", filed: "2026-08-06" } };
+    check("a filing is named by company, ticker, form and period (the company from the title when not stored)", docLabel(tenQ) === "Energy Transfer LP (ET) · 10-Q · quarter ended June 30, 2026", docLabel(tenQ));
+    check("a 10-K's period is its year; an 8-K is dated by filing", docLabel({ title: "X Corp 10-K (2026-02-19)", source: "sec", meta: { ticker: "X", form: "10-K", period: "2025-12-31", company: "X Corporation" } }) === "X Corporation (X) · 10-K · year ended December 31, 2025"
+      && docLabel({ title: "X Corp 8-K (2026-03-02)", source: "sec", meta: { ticker: "X", form: "8-K", period: "2026-02-27", filed: "2026-03-02" } }) === "X Corp (X) · 8-K · filed March 2, 2026");
+    check("an upload is named by its title and ticker", docLabel({ title: "Cinderlake Midstream: overview", source: "upload", meta: { ticker: "CDLK" } }) === "Cinderlake Midstream: overview (CDLK)");
+    check("a passage header adds the section, heading and speaker once each", passageHeader(tenQ, { section: "MD&A", heading: "Consolidated Results", speaker: "" }) === "Energy Transfer LP (ET) · 10-Q · quarter ended June 30, 2026 · MD&A · Consolidated Results"
+      && passageHeader({ title: "Call", source: "audio" }, { section: "", speaker: "Jane Doe, CFO" }) === "Call · Jane Doe, CFO");
+
+    console.log("documents: passages of about 500 tokens");
+    check("a 10-Q's Item 2 is its MD&A and its Item 3 its market risk", headingOf("Item 2. Management's Discussion and Analysis of Financial Condition") === "MD&A" && headingOf("ITEM 3. QUANTITATIVE AND QUALITATIVE DISCLOSURES ABOUT MARKET RISK") === "Market risk" && headingOf("Item 2. Properties") === "Item 2");
+    check("contents entries are not headings", filingHeading("ITEM 1A. RISK FACTORS 64") === null && filingHeading("Item 7. Management's Discussion 40") === null);
+    const inline = filingHeading("ITEM 10. DIRECTORS, EXECUTIVE OFFICERS AND CORPORATE GOVERNANCE Board of Directors Our general partner manages all of our activities.");
+    check("an item heading run into its first paragraph is split from it", inline?.section === "Other item" && inline.heading === "ITEM 10. DIRECTORS, EXECUTIVE OFFICERS AND CORPORATE GOVERNANCE" && inline.rest.startsWith("Board of Directors"), inline);
+    check("short title-case or capital lines read as headings; sentences and bullets do not", looksLikeHeading("Results of Operations") && looksLikeHeading("Liquidity and Capital Resources") && looksLikeHeading("CONSOLIDATED BALANCE SHEETS") && !looksLikeHeading("Revenue grew.") && !looksLikeHeading("Revenue grew strongly in the quarter") && !looksLikeHeading("• Lower volumes"));
+    check("table cells are tidied: spacing dropped, $ joined to its figure, ) and % to the one before", cleanRow(["Midstream", "", "$", "3,164", "", "( 934", ")", "12", "%"]).join("|") === "Midstream|$3,164|(934)|12%", cleanRow(["Midstream", "", "$", "3,164", "", "( 934", ")", "12", "%"]));
+    const [tbl] = tableParts([["", "Three Months Ended June 30,", ""], ["", "2026", "2025"], ["Revenues", "$", "531", "$", "819"], ["Costs", "400", "500"]]);
+    check("a table's header rows are found (no label beside figures; years are not figures)", tbl?.kind === "table" && tbl.head === 2 && tbl.rows[2].join("|") === "Revenues|$531|$819", tbl);
+    const layout = tableParts([["•", "Increased regulation of hydraulic fracturing could reduce the volumes our customers produce and ship."], ["•", "Cybersecurity breaches could disrupt our operations and harm our reputation with customers and regulators."]]);
+    check("a table used for bullets reads as paragraphs", layout.length === 2 && layout.every((p) => p.kind === "text") && (layout[0] as { text: string }).text.startsWith("• Increased"), layout);
+    const md = partsFromText("# Overview\n\nWe run pipelines.\n\n| Segment | 2026 |\n|---|---|\n| Midstream | 3,164 |\n\nTable of Contents\n\n41");
+    check("Markdown headings and pipe tables become parts; page furniture is dropped", md.map((p) => p.kind).join() === "heading,text,table" && (md[2] as { head: number }).head === 1, md);
+    const prose = Array.from({ length: 40 }, (_, i) => `Sentence ${i} says one more thing about the pipeline business and its volumes.`).join(" ");
+    const pieces = chunkParts([{ kind: "heading", text: "Liquidity" }, { kind: "text", text: prose }, { kind: "heading", text: "Outlook" }, { kind: "text", text: "Volumes should grow." }]);
+    check("passages stay under the cap and start fresh at a heading, which they carry", pieces.length >= 3 && pieces.every((p) => p.text.length <= P_MAX) && pieces[0].text.startsWith("Liquidity\nSentence 0") && pieces[0].heading === "Liquidity" && pieces[pieces.length - 1].text === "Outlook\nVolumes should grow." && pieces[pieces.length - 1].heading === "Outlook", pieces.map((p) => [p.heading, p.text.length]));
+    const carried = pieces[1].text.split("\n")[0];
+    check("a prose passage that runs over starts the next with its last words (about a tenth)", carried.length >= 100 && carried.length <= 200 && pieces[0].text.endsWith(carried) && pieces[1].heading === "Liquidity", [carried.length, pieces[1].text.slice(0, 60)]);
+    const rows = [["Segment", "2026", "2025"], ...Array.from({ length: 120 }, (_, i) => [`Pipeline system number ${i}`, `${1000 + i}`, `${900 + i}`])];
+    const big = chunkParts([{ kind: "text", text: "The following table shows volumes by system:" }, { kind: "table", rows, head: 1, units: "(in thousands of barrels per day)" }]);
+    check("a big table is split between rows, its units and header repeated in every piece", big.length >= 3 && big.every((p) => p.text.includes("(in thousands of barrels per day)\nSegment | 2026 | 2025") && p.text.length <= P_MAX) && big[0].text.startsWith("The following table shows volumes by system:"), big.map((p) => p.text.slice(0, 70)));
+    check("every row lands in exactly one piece", rows.slice(1).every((r) => big.filter((p) => p.text.includes(`${r[0]} | `)).length === 1));
+    const segRows = [["Segment", "2026"], ...Array.from({ length: 60 }, (_, i) => [`Segment number ${i}`, `${3000 + i}`])];
+    const small = chunkParts([{ kind: "text", text: "Volumes rose. ".repeat(90) }, { kind: "text", text: "Segment results were as follows:" }, { kind: "table", rows: segRows, head: 1 }]);
+    check("a table that does not fit starts a fresh passage, with the sentence leading into it", small.length === 2 && small[1].text.startsWith("Segment results were as follows:\nSegment | 2026\nSegment number 0 | 3000") && small[1].text.endsWith("Segment number 59 | 3059") && small[0].text.endsWith("Segment results were as follows:"), small.map((p) => [p.text.length, p.text.slice(0, 40)]));
+    const parts: Part[] = [{ kind: "text", text: "Cover page." }, { kind: "heading", text: "ITEM 1A. RISK FACTORS", section: "Risk factors" }, { kind: "text", text: "Risks abound." }, { kind: "heading", text: "Item 2. Management's Discussion and Analysis", section: "MD&A" }, { kind: "text", text: "Volumes rose." }];
+    const ps = passagesFromParts(parts, 0, 10);
+    check("item headings switch the section; ords continue from where they start", ps.map((p) => `${p.ord}:${p.section}`).join() === "10:,11:Risk factors,12:MD&A" && ps[2].text === "Item 2. Management's Discussion and Analysis\nVolumes rose.", ps);
+    check("pages keep their numbers and their tables", passagesFromPages([{ n: 7, text: "Revenue grew.", tables: [[["Year", "Revenue"], ["2025", "1,200"]]] }])[0]?.text === "Revenue grew.\nYear | Revenue\n2025 | 1,200");
+
+    console.log("documents: filing HTML");
+    const html = `<html><head><title>x</title></head><body><div>ITEM 2. MANAGEMENT&#8217;S DISCUSSION AND ANALYSIS</div><div>Results of Operations</div><p>Volumes rose&nbsp;sharply.</p><div>(Dollars in millions)</div>
+      <table><tr><td></td><td>2026</td><td></td><td>2025</td></tr><tr><td>Midstream</td><td>$</td><td>3,164</td><td>$</td><td>2,910</td></tr><tr><td>Interest</td><td>(</td><td>934</td><td>)</td></tr></table><div>41</div><div>Table of Contents</div>
+      <table><tr><td><table><tr><td>nested</td></tr></table></td></tr></table></body></html>`;
+    const hp = partsFromHtml(html);
+    check("filing HTML keeps its item heading, subheading, paragraphs and tables with their cells", hp.map((p) => p.kind).join() === "heading,heading,text,table,text"
+      && (hp[0] as { section?: string }).section === "MD&A" && (hp[2] as { text: string }).text === "Volumes rose sharply.", hp);
+    const ht = hp[3] as Extract<Part, { kind: "table" }>;
+    check("the units line above a table goes with it, and figure cells are tidied", ht.units === "(Dollars in millions)" && ht.head === 1 && ht.rows[1].join("|") === "Midstream|$3,164|$2,910" && ht.rows[2].join("|") === "Interest|(934)|", ht);
+    check("entities are decoded, and a numeric one out of range becomes a space", decodeEntities("AT&amp;T&#8217;s &#x2014; ok") === "AT&T’s — ok" && decodeEntities("a&#99999999;b") === "a b");
+
+    console.log("documents: reading around the chosen passages");
+    const hit = (docId: number, ord: number, text: string, section = "MD&A", page = 0): Hit => ({ chunkId: docId * 1000 + ord, docId, ord, page, section, speaker: "", tStart: null, tEnd: null, text, title: `Doc ${docId}`, url: "", source: "sec", lang: "en", mime: "", fileId: null, ticker: "ET", score: 0 });
+    check("two passages join without the words the second repeats", joinOverlap("Volumes rose in the quarter on higher demand", "on higher demand. Costs fell.") === "Volumes rose in the quarter on higher demand. Costs fell." && joinOverlap("First part.", "Second part.") === "First part.\nSecond part.");
+    const chosen = [hit(1, 10, "A".repeat(500)), hit(2, 5, "B".repeat(500))];
+    const around = [hit(1, 9, "a".repeat(400)), hit(1, 11, "c".repeat(400)), hit(1, 12, "d".repeat(400), "Risk factors"), hit(2, 4, "b".repeat(400)), hit(2, 6, "e".repeat(400)), hit(2, 8, "f".repeat(400))];
+    const blocks = expand(chosen, around, 100_000);
+    check("chosen passages widen through their section into one block each, best first", blocks.length === 2 && blocks[0].docId === 1 && blocks[0].chunks.map((c) => c.ord).join() === "9,10,11" && blocks[1].chunks.map((c) => c.ord).join() === "4,5,6" && blocks.map((b) => b.n).join() === "1,2", blocks.map((b) => [b.docId, b.chunks.map((c) => c.ord)]));
+    const tight = expand(chosen, around, 1_500);
+    check("widening stops at the budget, nearest neighbours of the best passage first", tight.reduce((s, b) => s + b.chunks.length, 0) === 3 && tight[0].chunks.map((c) => c.ord).join() === "9,10", tight.map((b) => b.chunks.map((c) => c.ord)));
+    const blockChunks = [hit(1, 1, "Revenue rose 12% on higher volumes in the quarter."), hit(1, 2, "Margins narrowed as costs rose faster than prices.")];
+    check("a quote is credited to the passage that holds it, or the first of two it runs across", quoteChunk("costs rose faster than prices", blockChunks) === 1 && quoteChunk("higher volumes in the quarter. Margins narrowed", blockChunks) === 0 && quoteChunk("revenue fell 12%", blockChunks) === -1);
+    check("blocks are labelled with their pages or moment", blockLabel({ title: "Deck", section: "", chunks: [hit(3, 1, "x", "", 4), hit(3, 2, "y", "", 5)] }) === "Deck, pages 4-5" && blockLabel({ title: "Call", section: "", chunks: [{ ...hit(4, 1, "x", ""), tStart: 725, speaker: "Jane Doe, CFO" }] }) === "Call at 12:05, Jane Doe, CFO");
+    const src = [hit(1, 1, "Early volumes from the Hugh Brinson Pipeline added $21 million in the quarter."), hit(1, 2, "Storage margin rose $31 million on price volatility.")];
+    const ok = checkFound([{ claim: 1, n: 1, quote: "Early volumes from the Hugh Brinson Pipeline added $21 million" }, { claim: 2, n: 1, quote: "Storage margin rose $31 million" }, { claim: 2, n: 2, quote: "Storage margin rose $31 million" }, { claim: 3, n: 1, quote: "added $21 million" }, { claim: 1, n: 1, quote: "in the quarter. Storage margin rose" }], src, 2);
+    check("a second reading's quotes are credited to the passage holding them (the next one when the words are there) and count only for claims asked about", ok.map((g) => `${g.claim}:${g.at.ord}`).join() === "1:1,2:2,2:2,1:1", ok.map((g) => [g.claim, g.at.ord, g.quote]));
+
+    console.log("documents: rerankers");
+    const docsIn = [{ id: 11, text: "Midstream volumes rose." }, { id: 12, text: "x".repeat(5000) }];
+    const v = voyageRequest("What drove volumes?", docsIn, "vk", "rerank-3");
+    const vb = JSON.parse(String(v.init.body)) as { query: string; documents: string[]; model: string; top_k: number; truncation: boolean };
+    check("the Voyage request names the model, every passage (cut to about 500 tokens) and the key", v.url === VOYAGE_URL && (v.init.headers as Record<string, string>).authorization === "Bearer vk" && vb.model === "rerank-3" && vb.top_k === 2 && vb.truncation === true && vb.documents[1].length === 2000, vb);
+    const co = cohereRequest("What drove volumes?", docsIn, "ck", "rerank-v4.0-pro");
+    const cb = JSON.parse(String(co.init.body)) as { model: string; top_n: number; max_tokens_per_doc: number; documents: string[] };
+    check("the Cohere request uses its v2 endpoint and fields", co.url === COHERE_URL && cb.model === "rerank-v4.0-pro" && cb.top_n === 2 && cb.max_tokens_per_doc === 512 && cb.documents.length === 2, cb);
+    check("the ML service gets ids with the passages", JSON.stringify(mlInput("q", docsIn.slice(0, 1))) === '{"query":"q","passages":[{"id":11,"text":"Midstream volumes rose."}]}');
+    const pv = parseVoyage({ object: "list", data: [{ relevance_score: 0.2, index: 1 }, { relevance_score: 0.9, index: 0 }, { index: "x" }], model: "rerank-3", usage: { total_tokens: 812 } });
+    check("Voyage's answer is read as scores and tokens", pv.tokens === 812 && pv.scores.length === 2 && pv.scores[1].index === 0 && pv.scores[1].score === 0.9, pv);
+    const pc = parseCohere({ id: "r", results: [{ index: 1, relevance_score: 0.7 }, { index: 0, relevance_score: 0.1 }], meta: { billed_units: { search_units: 1 } } });
+    check("Cohere's answer is read as scores and searches", pc.searches === 1 && pc.scores[0].index === 1 && pc.scores[0].score === 0.7, pc);
+    const pm = parseMl({ scores: [{ id: 12, score: 3.1 }, { id: 11, score: -1 }], model: "ettin-reranker-32m" });
+    check("the ML service's answer is read as scores by id", pm.model === "ettin-reranker-32m" && pm.scores.map((s) => s.id).join() === "12,11", pm);
+    let threw = 0;
+    for (const bad of [null, {}, { data: "x" }]) { try { parseVoyage(bad); } catch { threw++; } try { parseCohere(bad); } catch { threw++; } try { parseMl(bad); } catch { threw++; } }
+    check("malformed answers are refused, so the search order stands", threw === 9, threw);
+    const cand = [1, 2, 3, 4].map((id) => ({ id, text: "" }));
+    check("reranked ids go best first; unscored ones keep their search order after them", orderByScores(cand, [{ id: 3, score: 0.9 }, { id: 1, score: 0.2 }, { id: 3, score: 0.1 }, { id: 99, score: 1 }])?.join() === "3,1,2,4" && orderByScores(cand, []) === null);
+    check("the selection reads the reranker's best and the search's own best", mergeForSelection([9, 8, 7, 6, 5], [1, 9, 2, 3], 5, 2).join() === "9,8,7,1,6" && mergeForSelection([1, 2], [2, 1], 30).join() === "1,2");
+    const env = (vars: Record<string, string | undefined>, fn: () => void) => { const old = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]])); for (const [k, x] of Object.entries(vars)) { if (x === undefined) delete process.env[k]; else process.env[k] = x; } try { fn(); } finally { for (const [k, x] of Object.entries(old)) { if (x === undefined) delete process.env[k]; else process.env[k] = x; } } };
+    env({ VOYAGE_API_KEY: "v", COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("a Voyage key wins, then Cohere, then the free reranker", rerankProvider() === "voyage"));
+    env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("Cohere is used when Voyage is not set", rerankProvider() === "cohere"));
+    env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: undefined, EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("the ML service's reranker is the free default", rerankProvider() === "ml"));
+    env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: undefined, EDGE_ML_URL: undefined, EDGE_ML_SECRET: undefined }, () => check("with nothing set there is no reranker", rerankProvider() === null));
+    env({ OPENAI_API_KEY: "k", EDGE_ANSWER_MODEL: " gpt-5.6-sol " }, () => check("EDGE_ANSWER_MODEL picks the answer model when that upgrade is on", answerModel() === "gpt-5.6-sol"));
+    env({ OPENAI_API_KEY: "k", EDGE_ANSWER_MODEL: undefined }, () => check("without it the default answers", answerModel() === undefined));
+
+    console.log("documents: retrieval eval");
+    check("eval needles compare letters and digits only", squash("4.55 % Senior Notes") === squash("4.55% senior notes") && squash("$ 1.00") === squash("$1.00"));
+    check("recall counts needles found in the first k passages, alternatives counting once", recallAt(["alpha beta", "gamma", "delta"], ["beta", ["zeta", "gamma"], "delta"], 2) === 2 / 3 && recallAt([], [], 5) === 1);
+    check("reciprocal rank is one over the first relevant place", reciprocalRank(["a", "b", "target here"], ["target"]) === 1 / 3 && reciprocalRank(["a"], ["zzz"]) === 0);
+  }
+
+  {
+    console.log("documents: tables keep their columns");
+    const csv = "Metric,2023,2024,2025\nRevenue,,120,140\nCapex,30,,50".split("\n").map((l) => l.split(","));
+    const cp = passagesFromPages([{ n: 1, text: "", tables: [csv] }]);
+    check("a blank cell keeps its place, so later figures stay under their years", cp.length === 1 && cp[0].text === "Metric | 2023 | 2024 | 2025\nRevenue |  | 120 | 140\nCapex | 30 |  | 50", cp.map((p) => p.text));
+    const g = gridRows([["Segment", "", "2026", "", "2025"], ["Midstream", "$", "3,164", "$", "2,910"], ["New segment", "", "", "$", "45"], ["Interest", "(", "934", ")", ""]]);
+    check("symbol columns go, symbols join their figures, and a blank 2026 stays blank", g.map((r) => r.join("|")).join(";") === "Segment|2026|2025;Midstream|$3,164|$2,910;New segment||$45;Interest|(934)|", g);
+    // Workiva: spacing cells close themselves, labels and figures span columns, headers span groups of them.
+    const w = tableRows(`<table><tr><td colspan="3" /><td colspan="9"><span>Three Months Ended<br/>June 30,</span></td></tr><tr><td colspan="3" /><td colspan="3">2026</td><td colspan="3" /><td colspan="3">2025</td></tr>
+      <tr><td colspan="3">Revenues</td><td>$</td><td colspan="2">531</td><td colspan="3" /><td>$</td><td colspan="2">819</td></tr><tr><td colspan="3">New line</td><td /><td colspan="2" /><td colspan="3" /><td>$</td><td colspan="2">45</td></tr></table>`);
+    check("Workiva's self-closing cells and spans are read", w.length === 4 && w[2].length === 6 && (w[0][0] as { span: number }).span === 3 && (w[2][2] as { text: string }).text === "531", w);
+    check("spanning headers sit over the first column of their group", gridRows(w).map((r) => r.join("|")).join(";") === "|Three Months Ended June 30,|;|2026|2025;Revenues|$531|$819;New line||$45", gridRows(w));
+    check("one row on its own is still tidied", cleanRow(["Midstream", "", "$", "3,164", "", "( 934", ")", "12", "%"]).join("|") === "Midstream|$3,164|(934)|12%");
+    const lab = tableParts([["", "2026", "2025"], ["Revenues:", "", ""], ["Midstream", "531", "819"], ["Costs", "400", "500"]]);
+    check("a label row such as 'Revenues:' ends the header, it is not repeated as one", lab[0]?.kind === "table" && lab[0].head === 1, lab);
+
+    console.log("documents: pages of short lines, page numbers, long rows");
+    check("a page number is taken off a page's first or last line only", dropPageNumber("Revenue grew.\n\n41", 41).trim() === "Revenue grew." && dropPageNumber("41\nRevenue grew.").trim() === "Revenue grew." && dropPageNumber("Employees\n\n450\n\nCountries").includes("450"));
+    check("a last line far from the page's own number is a figure, not a page number", dropPageNumber("Countries\n\n12", 3).includes("12") && !dropPageNumber("Countries\n\n12", 12).includes("12"));
+    const slides = passagesFromPages([{ n: 2, text: "2026 Guidance\n\nAdjusted EBITDA $16.1–16.5 Billion\n\nGrowth Capital ~$5.0 Billion" }, { n: 3, text: "Company Snapshot\n\nEmployees\n\n450\n\nCountries\n\n12" }, { n: 4, text: "Project Falcon Management Presentation" }]);
+    check("slides and pages of short lines are indexed, figures and all", slides.length === 3 && slides[0].text === "2026 Guidance\nAdjusted EBITDA $16.1–16.5 Billion\nGrowth Capital ~$5.0 Billion" && slides[1].text.includes("450") && slides[1].text.includes("12") && slides[2].text === "Project Falcon Management Presentation" && slides.map((s) => s.page).join() === "2,3,4", slides.map((s) => [s.page, s.text]));
+    const items = passagesFromParts([{ kind: "heading", text: "PART I" }, { kind: "heading", text: "ITEM 1B. UNRESOLVED STAFF COMMENTS", section: "Unresolved staff comments" }, { kind: "heading", text: "None" }, { kind: "heading", text: "ITEM 1C. CYBERSECURITY", section: "Other item" }, { kind: "text", text: "We assess risks." }]);
+    check("an item that says only 'None' is a passage of its own, and 'PART I' joins the item after it", items.map((p) => `${p.section}=${p.text.replace(/\n/g, "/")}`).join(";") === "Unresolved staff comments=PART I/ITEM 1B. UNRESOLVED STAFF COMMENTS/None;Other item=ITEM 1C. CYBERSECURITY/We assess risks.", items);
+    const wide = ["Footnote", ...Array.from({ length: 60 }, (_, i) => `cell ${i} ${"x".repeat(60)}`)];
+    const lines = rowLines(wide.join(" | "), 1000);
+    check("a row too long for a passage continues on further lines, no cell lost", lines.length >= 4 && lines.every((l) => l.length <= 1000) && wide.every((c) => lines.some((l) => l.includes(c))), lines.map((l) => l.length));
+    const longTable = chunkParts([{ kind: "table", rows: [["Name", "Note"], ["Long", "y".repeat(5000)]], head: 1 }]);
+    check("a cell longer than a passage is split across passages, every character kept", longTable.every((p) => p.text.length <= P_MAX) && longTable.map((p) => p.text).join("").replace(/[^y]/g, "").length === 5000, longTable.map((p) => p.text.length));
+
+    console.log("documents: filing HTML, odd layouts");
+    const smallT = partsFromHtml(`<table><tr><td>Item 1A.</td><td>Risk Factors</td></tr></table><p>We face risks.</p>`);
+    check("an item heading set out as a small table starts its section", smallT[0]?.kind === "heading" && (smallT[0] as { section?: string }).section === "Risk factors" && smallT[1]?.kind === "text", smallT);
+    check("a table that leaves out its end tags is still read", JSON.stringify(partsFromHtml("<table><tr><td>Revenue<td>$100</tr><tr><td>Costs<td>$40</table>")) === JSON.stringify([{ kind: "table", rows: [["Revenue", "$100"], ["Costs", "$40"]], head: 0 }]), partsFromHtml("<table><tr><td>Revenue<td>$100</tr><tr><td>Costs<td>$40</table>"));
+    check("a table with no cells is read as text", JSON.stringify(partsFromHtml("<table>Loose words in a table</table>")) === JSON.stringify([{ kind: "text", text: "Loose words in a table" }]));
+    const lay = partsFromHtml(`<p>(in millions)</p><table><tr><td>•</td><td>${"Long bullet text that runs on and on about the business ".repeat(3)}</td></tr></table>`);
+    check("a units line is put back when the table turns out to be layout", lay[0]?.kind === "text" && (lay[0] as { text: string }).text === "(in millions)" && lay.length === 2, lay);
+    const paged = partsFromHtml(`<p>Revenue rose.</p><p>41</p><hr style="page-break-after:always"/><p><a href="#toc">Table of Contents</a></p><p>Employees</p><p>450</p><p>Countries</p>`);
+    check("a page number at a page break goes; a figure standing alone mid-page stays", paged.map((p) => (p as { text: string }).text).join("|") === "Revenue rose.|Employees|450|Countries", paged);
+
+    console.log("documents: reranking on the ML service, the second reading, transcripts");
+    const many = Array.from({ length: 100 }, (_, i) => ({ id: i, text: "w".repeat(1800) }));
+    const mi = mlInput("What drove volumes?", many);
+    check("the free reranker gets the best 40 candidates, about 1,000 characters each, and 8 seconds", ML_PASSAGES === 40 && ML_CHARS === 1000 && ML_TIMEOUT_MS === 8_000 && mi.passages.length === 40 && mi.passages.every((p) => p.text.length === 1000) && mi.passages[39].id === 39);
+    const live = parseMl({ scores: [{ id: 2195, score: 7.25 }, { id: 2194, score: -3.5 }], model: "cross-encoder/ettin-reranker-32m-v1", maxLength: 256, truncated: 3 });
+    check("the live reranker's answer is read (extra fields ignored) and its model named briefly", live.scores.map((s) => s.id).join() === "2195,2194" && live.model === "cross-encoder/ettin-reranker-32m-v1" && shortModel(live.model) === "ettin-reranker-32m-v1", live);
+    const nowR = 1_000_000;
+    check("the second reading gets half of what is left after 20 seconds, and is skipped under 15", rereadBudget(nowR + 80_000, nowR) === 30_000 && rereadBudget(nowR + 49_000, nowR) === null && rereadBudget(nowR + 50_000, nowR) === 15_000);
+    check("a Parakeet transcript carries NVIDIA's credit", transcriptionOf({ engine: "parakeet", model: "nvidia/parakeet-tdt-0.6b-v2" })?.credit === PARAKEET_CREDIT && PARAKEET_CREDIT === "Speech recognition: NVIDIA Parakeet TDT 0.6B v2 (CC BY 4.0)");
+    check("a Whisper transcript names its model, a fallback is kept, and silence is null", transcriptionOf({ engine: "whisper", model: "small", fallback: "parakeet failed" })?.credit === "Speech recognition: Whisper (small)" && transcriptionOf({ engine: "whisper", model: "small", fallback: "parakeet failed" })?.fallback === "parakeet failed" && transcriptionOf({}) === null && transcriptionOf(null) === null);
+  }
+
+  {
+    console.log("Flaring");
+    const csv = [
+      "latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,confidence,version,bright_ti5,frp,daynight",
+      "31.8100,-103.9020,330.1,0.4,0.4,2026-09-24,0739,N21,nominal,2.0NRT,290.1,2.5,N",
+      "31.8105,-103.9015,331.0,0.4,0.4,2026-09-26,0654,N20,high,2.0NRT,291.0,1.5,N",
+      "31.8098,-103.9030,329.0,0.4,0.4,2026-09-26,0820,N,low,2.0NRT,289.0,0.8,N",
+      "31.8090,-103.9010,329.0,0.4,0.4,2026-09-28,0739,N21,nominal,2.0NRT,289.0,1.2,N",
+      "31.9000,-103.9020,329.0,0.4,0.4,2026-09-28,0739,N21,nominal,2.0NRT,289.0,9.0,N",
+      "40.0000,-90.0000,330.0,0.4,0.4,2026-09-28,0739,N21,nominal,2.0NRT,289.0,3.0,N",
+    ].join("\n");
+    const spots = parseFirmsCsv(csv, [-104.6, 30.4, -100.4, 33.9]);
+    check("a FIRMS file is read with satellites and confidence named, and only the mapped box kept", spots.length === 5 && spots[0].sat === "NOAA-21" && spots[1].conf === "high" && spots[2].sat === "Suomi NPP" && spots[0].night, spots.slice(0, 3));
+    const near = spotsNear(spots, -103.902, 31.81);
+    check("hot spots count when within 1.5 km of the plant, nearest first (one 10 km north is left out)", near.length === 4 && near[0].m <= near[3].m && near.every((x) => x.m < 1500), near.map((x) => x.m));
+    const days = byDay(near, "2026-09-30");
+    const st = flareStats(near, days);
+    check("a week of days, zero-filled, with heat by day", days.length === 7 && days[0].date === "2026-09-24" && days[2].n === 2 && days[2].frp === 2.3 && days[6].n === 0, days);
+    check("the week's numbers: four hot spots on three days from three satellites", st.detections === 4 && st.days === 3 && st.satellites === 3 && st.high === 1 && st.frpTotal === 6 && st.frpMax === 2.5, st);
+    check("three days of flaring make a card; one day does not; two hot days do", flares(st) && !flares({ ...st, days: 1, frpTotal: 50 }) && flares({ ...st, days: 2, frpTotal: 20 }));
+    const c0 = flareConfidence(st, 0), c1 = flareConfidence(st, 6), cFar = flareConfidence({ ...st, nearestM: 1300 }, 0);
+    check("a hot Sentinel-2 image raises confidence and heat only at the edge lowers it, within 0.2 to 0.95", c1 > c0 && cFar < c0 && c1 <= 0.95 && cFar >= 0.2, { c0, c1, cFar });
+    check("magnitude grows with days and heat, capped at 1", flareMagnitude({ ...st, days: 7, frpTotal: 100 }) === 1 && flareMagnitude(st) < flareMagnitude({ ...st, days: 6 }));
+    const nowF = Date.parse("2026-09-30T12:00:00Z");
+    check("a chronic flare within two weeks is not news again unless it gets worse", repeats({ at: "2026-09-23T12:00:00Z", days: 3, frp: 6 }, st, nowF) && !repeats({ at: "2026-09-23T12:00:00Z", days: 1, frp: 2 }, st, nowF) && !repeats({ at: "2026-09-01T12:00:00Z", days: 3, frp: 6 }, st, nowF) && !repeats(null, st, nowF));
+    check("ISO weeks, across a new year", isoWeek("2026-09-30") === "2026-W40" && isoWeek("2027-01-01") === "2026-W53" && isoWeek("2026-01-01") === "2026-W01", [isoWeek("2026-09-30"), isoWeek("2027-01-01"), isoWeek("2026-01-01")]);
+    const h = withWeek(withWeek([{ week: "2026-W38", days: 1, frp: 2 }], { week: "2026-W40", days: 3, frp: 6 }), { week: "2026-W40", days: 4, frp: 7 });
+    check("the weekly record keeps one entry a week, in order", h.length === 2 && h[1].days === 4 && h[0].week === "2026-W38");
+    // Bands as stored (reflectance x 10000 + 1000): a flare pixel, a bright roof (both bands high), and plain ground.
+    check("a hot pixel is band 12 far above band 11; a bright roof or plain ground is not", hotPixels([14000, 9000, 5200], [6000, 8800, 4800]) === 1 && hotPixels([14000], [6000], [0]) === 0);
+    const rows = [
+      { id: "f1", name: "Gathering A", type: "Natural Gas Gathering System - (GGS)", ogrid_name: "Op A", latitude: 32.010, longitude: -103.300, details: "https://x/1", reporting_period: 202608, waste_type: "F", volume: 1000 },
+      { id: "f1", name: "Gathering A", type: "Natural Gas Gathering System - (GGS)", ogrid_name: "Op A", latitude: 32.010, longitude: -103.300, details: "https://x/1", reporting_period: 202608, waste_type: "V", volume: 50 },
+      { id: "f1", name: "Gathering A", type: "Natural Gas Gathering System - (GGS)", ogrid_name: "Op A", latitude: 32.010, longitude: -103.300, details: "https://x/1", reporting_period: 202607, waste_type: "F", volume: 9999 },
+      { id: "f2", name: "Far away", type: "Tank Battery - (TB)", ogrid_name: "Op B", latitude: 32.200, longitude: -103.300, details: "https://x/2", reporting_period: 202608, waste_type: "F", volume: 500 },
+    ];
+    const rep = summariseReports(rows, -103.30, 32.0, 3);
+    check("New Mexico's reports: the newest month only, summed by facility, within the radius", !!rep && rep.period === "2026-08" && rep.flaredMcf === 1000 && rep.ventedMcf === 50 && rep.facilities.length === 1 && rep.facilities[0].type === "Natural Gas Gathering System", rep);
+    check("a week-long confident flare interrupts its watchers; a short one waits for the digest", isBig({ kind: "flaring", confidence: 0.8, magnitude: 0.7, visual: {} }) && !isBig({ kind: "flaring", confidence: 0.8, magnitude: 0.3, visual: {} }));
+    const wins = archiveWindows("2026-09-30");
+    check("the archive is read in ten-day windows over the twelve weeks before the seven-day files", wins.length === 9 && wins[0][0] === "2026-07-02" && wins[8][0] === "2026-09-20" && wins[8][1] === 4 && wins.every(([, d]) => d >= 1 && d <= 10) && wins.reduce((t, [, d]) => t + d, 0) === 84, wins);
+    const wk = weeksFrom(near);
+    check("past detections become weeks with days of heat", wk.length === 2 && wk[0].week === "2026-W39" && wk[0].days === 2 && wk[1].week === "2026-W40" && wk[1].days === 1, wk);
+    check("flaring ranks as rarely reported news", noveltyOf("flaring", 0) > noveltyOf("deal_proforma", 0) && noveltyOf("flaring", 0) < noveltyOf("ground_change", 0));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

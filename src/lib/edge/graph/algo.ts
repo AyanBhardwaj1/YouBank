@@ -1,6 +1,7 @@
 /**
  * Graph algorithms behind the Networks findings, on plain arrays so they can be tested: the reason
- * paths that explain a prediction, ownership cycles, exposure to a shock, and the red flags insider
+ * paths that explain a prediction, ownership rings, integrated (ultimate) ownership, exposure to a
+ * shock, a Clayton Act section 8 screen of shared directors and officers, and the red flags insider
  * trading and 8-K items raise. Pure.
  */
 import type { Form4Tx } from "./parse";
@@ -65,6 +66,212 @@ export function ownershipCycles(edges: { s: number; d: number }[], maxLen = 4): 
 }
 
 /**
+ * Strongly connected components (Tarjan's algorithm, run with an explicit stack so a long chain cannot
+ * overflow the call stack): the sets of nodes that can each reach every other along the links. Only
+ * components of two or more nodes are returned, each sorted, in order of their smallest member. Pure.
+ */
+export function stronglyConnected(edges: { s: number; d: number }[]): number[][] {
+  const next = new Map<number, number[]>();
+  for (const e of edges) {
+    if (e.s === e.d) continue;
+    const x = next.get(e.s);
+    if (x) x.push(e.d); else next.set(e.s, [e.d]);
+    if (!next.has(e.d)) next.set(e.d, []);
+  }
+  const index = new Map<number, number>(), low = new Map<number, number>(), onStack = new Set<number>();
+  const stack: number[] = [], out: number[][] = [];
+  let counter = 0;
+  const visit = (v: number) => { index.set(v, counter); low.set(v, counter); counter++; stack.push(v); onStack.add(v); };
+  for (const root of next.keys()) {
+    if (index.has(root)) continue;
+    visit(root);
+    // Each frame is a node and how many of its links the walk has followed.
+    const frames: [number, number][] = [[root, 0]];
+    while (frames.length) {
+      const frame = frames[frames.length - 1];
+      const v = frame[0], outs = next.get(v)!;
+      if (frame[1] < outs.length) {
+        const w = outs[frame[1]++];
+        if (!index.has(w)) { visit(w); frames.push([w, 0]); } else if (onStack.has(w)) low.set(v, Math.min(low.get(v)!, index.get(w)!));
+        continue;
+      }
+      frames.pop();
+      if (frames.length) { const u = frames[frames.length - 1][0]; low.set(u, Math.min(low.get(u)!, low.get(v)!)); }
+      if (low.get(v) === index.get(v)) {
+        const comp: number[] = [];
+        let w: number;
+        do { w = stack.pop()!; onStack.delete(w); comp.push(w); } while (w !== v);
+        if (comp.length >= 2) out.push(comp.sort((a, b) => a - b));
+      }
+    }
+  }
+  return out.sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * Ownership rings: every set of owners whose stakes and subsidiaries loop back on themselves, however
+ * long the loop, each reported once (a strongly connected component of the ownership links) with the
+ * links that run inside it. Pure.
+ */
+export function ownershipRings<T extends { s: number; d: number }>(links: T[]): { members: number[]; links: T[] }[] {
+  const comps = stronglyConnected(links);
+  const ring = new Map<number, number>();
+  comps.forEach((c, i) => c.forEach((n) => ring.set(n, i)));
+  const inside = comps.map(() => [] as T[]);
+  for (const l of links) { const i = ring.get(l.s); if (l.s !== l.d && i !== undefined && ring.get(l.d) === i) inside[i].push(l); }
+  return comps.map((members, i) => ({ members, links: inside[i] }));
+}
+
+/** The shortest loop through `node` along some links (breadth first), as the links in order from it; empty when there is none. Pure. */
+export function loopThrough<T extends { s: number; d: number }>(links: T[], node: number): T[] {
+  const next = new Map<number, T[]>();
+  for (const l of links) if (l.s !== l.d) { const x = next.get(l.s); if (x) x.push(l); else next.set(l.s, [l]); }
+  const via = new Map<number, T>();
+  const queue = [node];
+  for (let i = 0; i < queue.length; i++) {
+    for (const l of next.get(queue[i]) ?? []) {
+      if (l.d === node) {
+        const path = [l];
+        for (let at = queue[i]; at !== node; at = path[0].s) path.unshift(via.get(at)!);
+        return path;
+      }
+      if (!via.has(l.d)) { via.set(l.d, l); queue.push(l.d); }
+    }
+  }
+  return [];
+}
+
+export type Stake = { s: number; d: number; share: number };
+
+/**
+ * Integrated ownership (Vitali, Glattfelder and Battiston, "The network of global corporate control",
+ * 2011): each holder's share of `target`, held directly and through every chain of stakes, loops
+ * included. It is the target's column of W~ = (I - W)^-1 W, where W[i][j] is the share of j that i holds,
+ * summed as a Neumann series (x = w + Wx) until no share moves by more than `tol`. One stake counts per
+ * holder and company (the larger), and where the stakes filed in one company add up to more than all
+ * of it they are scaled down to 100%. The target's own entry (through a loop) is left out. Pure.
+ */
+export function integratedOwnership(stakes: Stake[], target: number, opts: { tol?: number; maxIter?: number } = {}): Map<number, number> {
+  const tol = opts.tol ?? 1e-6, maxIter = opts.maxIter ?? 1000;
+  // W by column: for each company, who holds it and how much.
+  const into = new Map<number, Map<number, number>>();
+  for (const st of stakes) {
+    if (st.s === st.d || !(st.share > 0)) continue;
+    let col = into.get(st.d);
+    if (!col) into.set(st.d, (col = new Map()));
+    col.set(st.s, Math.max(col.get(st.s) ?? 0, Math.min(1, st.share)));
+  }
+  for (const col of into.values()) {
+    const sum = [...col.values()].reduce((a, b) => a + b, 0);
+    if (sum > 1) for (const [k, v] of col) col.set(k, v / sum);
+  }
+  // The series term by term: the share reaching each holder through chains of n + 1 stakes.
+  const total = new Map<number, number>();
+  let term = new Map(into.get(target) ?? []);
+  for (let it = 0; it < maxIter && term.size; it++) {
+    let moved = 0;
+    for (const [i, v] of term) { total.set(i, (total.get(i) ?? 0) + v); moved = Math.max(moved, v); }
+    if (moved < tol) break;
+    const next = new Map<number, number>();
+    for (const [j, v] of term) for (const [i, w] of into.get(j) ?? []) next.set(i, (next.get(i) ?? 0) + w * v);
+    term = next;
+  }
+  total.delete(target);
+  return total;
+}
+
+/** The chain of stakes that carries the most of `target` to `holder` (the largest product of shares), from the holder down; empty when none does. Pure. */
+export function strongestChain<T extends Stake>(stakes: T[], holder: number, target: number): T[] {
+  const out = new Map<number, T[]>();
+  for (const st of stakes) if (st.s !== st.d && st.share > 0) { const x = out.get(st.s); if (x) x.push(st); else out.set(st.s, [st]); }
+  // Dijkstra on -ln(share): the shortest path is the strongest chain.
+  const dist = new Map<number, number>([[holder, 0]]), via = new Map<number, T>(), done = new Set<number>();
+  for (;;) {
+    let v: number | null = null, best = Infinity;
+    for (const [n, d] of dist) if (!done.has(n) && d < best) { best = d; v = n; }
+    if (v === null || v === target) break;
+    done.add(v);
+    for (const st of out.get(v) ?? []) {
+      const d = best - Math.log(Math.min(1, st.share));
+      if (!done.has(st.d) && d < (dist.get(st.d) ?? Infinity)) { dist.set(st.d, d); via.set(st.d, st); }
+    }
+  }
+  if (!via.has(target) || holder === target) return [];
+  const chain: T[] = [];
+  for (let at = target; at !== holder; at = chain[0].s) chain.unshift(via.get(at)!);
+  return chain;
+}
+
+/**
+ * Section 8 of the Clayton Act, as the FTC revised its thresholds for 2026 (Federal Register, 16 January
+ * 2026): no one may be a director or officer of two competing corporations that each have capital, surplus
+ * and undivided profits above $54,402,000, unless either one's competitive sales are under $5,440,200 (or
+ * under 2% of its sales, or each one's under 4%).
+ */
+export const SECTION_8 = {
+  year: 2026, capital: 54_402_000, competitiveSales: 5_440_200,
+  source: "https://www.federalregister.gov/documents/2026/01/16/2026-00880/revised-jurisdictional-thresholds-for-section-8-of-the-clayton-act",
+};
+
+export type Section8Company = { name: string; sic?: string | null; industry?: string | null; equity?: number | null; revenue?: number | null };
+export type Section8Hit = { industry: string; sizes: { measure: "equity" | "revenue"; value: number }[] };
+
+/**
+ * Whether two companies screen in under section 8: they compete (the same four-digit SIC code, or where
+ * either has none, the same industry label) and both clear the threshold, measured by stockholders' equity
+ * where the graph has it (the closest public figure to capital, surplus and undivided profits) and by
+ * revenue where it does not. Banks are outside section 8. Null when the pair does not screen in. Pure.
+ */
+export function section8Screen(a: Section8Company, b: Section8Company, threshold = SECTION_8.capital): Section8Hit | null {
+  const sic = (c: Section8Company) => (c.sic ?? "").trim();
+  const label = (c: Section8Company) => (c.industry ?? "").trim();
+  let industry: string;
+  if (sic(a) && sic(b)) {
+    if (sic(a) !== sic(b) || sic(a).startsWith("60")) return null;
+    industry = `SIC ${sic(a)}${label(a) ? ` (${label(a)})` : ""}`;
+  } else if (label(a) && label(b) && label(a).toLowerCase() === label(b).toLowerCase()) industry = `the industry ${label(a)}`;
+  else return null;
+  const size = (c: Section8Company) => (typeof c.equity === "number" ? { measure: "equity" as const, value: c.equity } : typeof c.revenue === "number" ? { measure: "revenue" as const, value: c.revenue } : null);
+  const sa = size(a), sb = size(b);
+  if (!sa || !sb || sa.value <= threshold || sb.value <= threshold) return null;
+  return { industry, sizes: [sa, sb] };
+}
+
+const DAY_MS = 86_400_000;
+const shift = (d: string, days: number) => new Date(Date.parse(d) + days * DAY_MS).toISOString().slice(0, 10);
+
+/**
+ * Whether one person's seats at two companies, each known from its first and latest Form 4, show them
+ * serving both at once and still serving: each seat filed within a year before the other began (insiders
+ * file at least yearly, so a seat silent for longer had likely ended), and both have filed in the last 18
+ * months. Seats from Form 4 never end in the graph, so someone who moved from one company to the other
+ * would otherwise look like they sit at both. Pure.
+ */
+export function servedTogether(a: { first: string | null; last: string | null }, b: { first: string | null; last: string | null }, now: string): boolean {
+  const aFirst = a.first ?? a.last, aLast = a.last ?? a.first, bFirst = b.first ?? b.last, bLast = b.last ?? b.first;
+  if (!aFirst || !aLast || !bFirst || !bLast) return false;
+  const recent = shift(now, -548);
+  return aLast >= shift(bFirst, -365) && bLast >= shift(aFirst, -365) && aLast >= recent && bLast >= recent;
+}
+
+const usd = (v: number) => (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : `$${Math.round(v / 1e6).toLocaleString("en-US")}M`);
+
+/** The red flag for a pair that screens in under section 8: labelled a screen, not legal advice, and citing the FTC's 2026 thresholds. Pure. */
+export function section8Flag(person: string, here: { name: string; role: string; url?: string; since?: string | null }, there: { name: string; role: string; url?: string; since?: string | null }, hit: Section8Hit, now: string): Flag {
+  const [h, t] = hit.sizes;
+  const sizes = h.measure === t.measure
+    ? `${h.measure === "equity" ? "stockholders' equity, standing in for capital, surplus and undivided profits" : "revenue, since the graph has no equity figure for them"}: ${here.name} ${usd(h.value)}, ${there.name} ${usd(t.value)}`
+    : `${here.name}'s ${h.measure === "equity" ? "stockholders' equity" : "revenue (no equity figure)"} of ${usd(h.value)} and ${there.name}'s ${t.measure === "equity" ? "stockholders' equity" : "revenue (no equity figure)"} of ${usd(t.value)}`;
+  const since = [here.since, there.since].filter((d): d is string => !!d).sort().pop();
+  return {
+    kind: "interlocking_directorate", severity: "medium", title: "Possible interlocking directorate",
+    detail: `${person} is ${here.role} of ${here.name} and ${there.role} of ${/[.!?]$/.test(there.name) ? there.name : `${there.name}.`} Both are in ${hit.industry}, and both are above the FTC's ${SECTION_8.year} section 8 threshold of $${SECTION_8.capital.toLocaleString("en-US")}, measured by ${sizes}. Section 8 of the Clayton Act bars one person from being a director or officer of two competing corporations of that size. This is a screen of SEC data, not legal advice: there is no segment data, so the exceptions for small competitive sales (under $${SECTION_8.competitiveSales.toLocaleString("en-US")}, or under 2% or 4% of a company's sales) were not checked, and a shared industry code does not prove the two compete.`,
+    date: since ?? now, people: [person], urls: [here.url, there.url].filter((u): u is string => !!u && /^https?:/.test(u)),
+    refs: [{ label: `FTC ${SECTION_8.year} section 8 thresholds`, url: SECTION_8.source }],
+  };
+}
+
+/**
  * Who a shock at `source` reaches: personalized PageRank over weighted links, both directions. Links
  * carry how much one side depends on the other (a customer's share of revenue, a stake's size), so
  * exposure follows real dependence rather than the mere count of links.
@@ -89,7 +296,7 @@ export function exposure(links: { s: number; d: number; w: number }[], source: n
   return rank;
 }
 
-export type Flag = { kind: "insider_exit" | "insider_cluster" | "auditor_change" | "restatement" | "bankruptcy" | "delisting" | "leadership_turnover" | "impairment" | "circular_ownership" | "shared_director" | "related_party"; severity: "high" | "medium"; title: string; detail: string; date: string; people?: string[]; urls?: string[] };
+export type Flag = { kind: "insider_exit" | "insider_cluster" | "auditor_change" | "restatement" | "bankruptcy" | "delisting" | "leadership_turnover" | "impairment" | "circular_ownership" | "shared_director" | "related_party" | "interlocking_directorate"; severity: "high" | "medium"; title: string; detail: string; date: string; people?: string[]; urls?: string[]; /** Sources that are not filings (a regulator's notice), with their names. */ refs?: { label: string; url: string }[]; /** Tells apart flags of one kind on one day (a pair flag: the person and the other company). */ key?: string };
 
 const DAY = 86_400_000;
 const daysBetween = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY;

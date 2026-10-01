@@ -8,7 +8,8 @@
  *   a subsidiary shared by two parents);
  * - named customers and suppliers in the 10-K, read by a small model and kept only when quoted;
  * - deals (merger filings, 8-K Item 2.01);
- * - size (XBRL facts) and headquarters location, for the model's features and the map.
+ * - size (XBRL facts: assets, revenue, and equity for the section 8 screen) and headquarters location, for
+ *   the model's features, the red flags and the map.
  * Filings are fetched without the text cache: only what is parsed is kept.
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -22,6 +23,7 @@ import { tickerByName } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { filingTextCached } from "../docs/changes";
 import { quoteFound } from "../docs/text";
+import { small } from "../models";
 import { completedDeals, mergerDeals } from "./deals";
 import { geocode, type Address } from "./geo";
 import { exhibit21Href, holdingPercent, isDealVehicle, ITEM_MEANING, normName, parseExhibit21, parseForm4, parseHeader, personName, relationParagraphs, titleCase, type Form4Tx } from "./parse";
@@ -201,7 +203,7 @@ export async function ingestCompany(cikIn: string, deadline: number): Promise<In
     if (paras.length) {
       const body = paras.join("\n\n");
       const res = await structured(Relations, "edge-graph-relations", "You read paragraphs from a company's annual report. List every customer or supplier the text names (by company name, not 'one customer'), with its share of revenue or purchases when stated, and the exact words that name it. Leave out unnamed ones, the company's own subsidiaries, and government agencies unless they are named customers.",
-        `Company: ${me.name}\n\n${body}`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 900, timeoutMs: 60_000 });
+        `Company: ${me.name}\n\n${body}`, { override: small(), maxTokens: 900, timeoutMs: 60_000 });
       const good = res.data.parties.filter((p) => p.name.trim().length > 2 && !isDealVehicle(p.name) && quoteFound(p.quote, body) && normName(p.quote).includes(normName(p.name).split(" ")[0] ?? ""));
       const nodes: NodeIn[] = [];
       const resolved = await Promise.all(good.map(async (p) => {
@@ -240,12 +242,16 @@ export async function ingestCompany(cikIn: string, deadline: number): Promise<In
     const cf = await getCompanyFacts(cik.padStart(10, "0"));
     const assetRows = pickConcept(cf, ["Assets"])?.rows ?? [];
     const revRows = pickConcept(cf, ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenuesNetOfInterestExpense"])?.rows ?? [];
-    // Assets are point-in-time rows (no start); revenue is read over the last twelve months.
-    const aEnd = assetRows.filter((x) => !x.start).reduce<string | null>((m, x) => (!m || x.end > m ? x.end : m), null), rEnd = latestEnd(revRows);
+    // Equity (partners' or members' capital for partnerships and LLCs) stands in for section 8's capital test (algo.ts).
+    const eqRows = pickConcept(cf, ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "PartnersCapital", "PartnersCapitalIncludingPortionAttributableToNoncontrollingInterest", "MembersEquity"])?.rows ?? [];
+    // Assets and equity are point-in-time rows (no start); revenue is read over the last twelve months.
+    const lastInstant = (rows: typeof assetRows) => rows.filter((x) => !x.start).reduce<string | null>((m, x) => (!m || x.end > m ? x.end : m), null);
+    const aEnd = lastInstant(assetRows), eEnd = lastInstant(eqRows), rEnd = latestEnd(revRows);
     const assets = aEnd ? instantAt(assetRows, aEnd)?.val ?? null : null;
+    const equity = eEnd ? instantAt(eqRows, eEnd)?.val ?? null : null;
     const revenue = rEnd ? ltmAt(revRows, rEnd)?.value ?? null : null;
     const today = new Date().toISOString().slice(0, 10);
-    await setNodeAttrs(nodeId, { assets, revenue, factsAt: aEnd ?? rEnd ?? "", seen: { ...seen, facts: today } });
+    await setNodeAttrs(nodeId, { assets, equity, revenue, factsAt: aEnd ?? rEnd ?? "", seen: { ...seen, facts: today } });
     seen.facts = today;
   });
   if (time() && (node.attrs as { lon?: number }).lon === undefined) await step("geo", async () => {

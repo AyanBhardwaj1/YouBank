@@ -9,6 +9,7 @@ import { cacheGet, cacheSet } from "@/lib/cache";
 import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
+import { EDGE_SMALL_MODEL } from "../models";
 import { record } from "../provenance";
 import { BETA_ON } from "../watches";
 import { changeRadar, type Radar } from "./changes";
@@ -64,7 +65,7 @@ export async function scanFilings(deadline: number): Promise<number[]> {
       await record(`detection:${row.id}`, [
         { sourceName: `SEC EDGAR: ${r.name} ${form} filed ${r.current.filed}`, sourceUrl: r.current.url, license: "Public filing (SEC EDGAR)", method: "Item 1A paragraphs compared with the previous filing", modelVersion: "", retrievedAt: now },
         { sourceName: `SEC EDGAR: ${r.name} ${form} filed ${r.prior.filed}`, sourceUrl: r.prior.url, license: "Public filing (SEC EDGAR)", method: "the earlier version", modelVersion: "", retrievedAt: now },
-        ...(r.summary.length ? [{ sourceName: "Summary of the changes", sourceUrl: "", license: "YouBank", method: "a small language model, quoting the filing", modelVersion: "gpt-5.6-luna", retrievedAt: now }] : []),
+        ...(r.summary.length ? [{ sourceName: "Summary of the changes", sourceUrl: "", license: "YouBank", method: "a small language model, quoting the filing", modelVersion: EDGE_SMALL_MODEL(), retrievedAt: now }] : []),
       ]);
       found.push(row.id);
     } catch (e) {

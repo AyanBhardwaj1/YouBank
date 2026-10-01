@@ -2,8 +2,8 @@
 
 /**
  * The other scenario tabs: company what-ifs (a company's own history run forward under a shock), tables
- * (a synthetic copy with its realism, or missing cells filled with ranges), practice data (fictional
- * companies), and the saved list.
+ * (a synthetic copy with its realism and privacy, or missing cells filled with ranges), practice data
+ * (fictional companies), and the saved list.
  */
 import { Download, FileSpreadsheet, Loader2, Play, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -14,9 +14,9 @@ import type { CompanyResult } from "@/lib/edge/scen/company";
 import type { MarketResult } from "@/lib/edge/scen/market";
 import type { PracticeKit } from "@/lib/edge/scen/practice";
 import type { Realism } from "@/lib/edge/scen/stats";
-import type { Filled, TableIn } from "@/lib/edge/scen/tables";
+import type { Filled, Privacy, TableIn } from "@/lib/edge/scen/tables";
 import { MarketResultView } from "./MarketTab";
-import { money, pct, RealismPanel, SyntheticTag } from "./parts";
+import { money, pct, PrivacyPanel, RealismPanel, SyntheticTag } from "./parts";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -135,11 +135,11 @@ export function TablesTab({ onSaved }: { onSaved: () => void }) {
   const files = (lib.data?.docs ?? []).filter((d) => d.fileId && /csv|spreadsheet|excel/.test(d.mime));
   const [csv, setCsv] = useState("");
   const [fileId, setFileId] = useState("");
-  const [method, setMethod] = useState("auto");
+  const [method, setMethod] = useState("cart");
   const [rows, setRows] = useState("1000");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [out, setOut] = useState<{ kind: string; table: TableIn; filled?: Filled[]; realism?: Realism; method?: string; seed?: number; title: string } | null>(null);
+  const [out, setOut] = useState<{ kind: string; table: TableIn; filled?: Filled[]; realism?: Realism; privacy?: Privacy | null; method?: string; seed?: number; title: string } | null>(null);
   const go = async (kind: "synthetic" | "gap") => {
     setBusy(kind); setError(null);
     try {
@@ -160,7 +160,7 @@ export function TablesTab({ onSaved }: { onSaved: () => void }) {
         </div>
         {!fileId && <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={5} placeholder={"company,sector,revenue,margin\nAcme,Midstream,1200,0.31\n..."} className="ctl w-full resize-y border border-line bg-bg px-2 py-1.5 font-mono text-[11.5px] outline-none placeholder:text-faint focus:border-accent/60" aria-label="CSV" />}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-muted">Method<Select value={method} onChange={setMethod} aria-label="Method" className="ctl border border-line bg-bg px-2 py-1 text-left text-fg"><option value="auto">Chosen by size</option><option value="statistical">Gaussian copula</option><option value="ctgan">CTGAN (ML service)</option></Select></label>
+          <label className="flex items-center gap-1.5 text-muted">Method<Select value={method} onChange={setMethod} aria-label="Method" className="ctl border border-line bg-bg px-2 py-1 text-left text-fg"><option value="cart">Sequential trees (CART)</option><option value="copula">Gaussian copula (quick preview)</option><option value="ctgan">CTGAN (ML service, for comparison)</option></Select></label>
           <label className="flex items-center gap-1.5 text-muted">Rows<Select value={rows} onChange={setRows} aria-label="Rows" className="ctl border border-line bg-bg px-2 py-1 text-left text-fg"><option value="200">200</option><option value="1000">1,000</option><option value="5000">5,000</option></Select></label>
           <button type="button" disabled={!!busy || (!csv.trim() && !fileId)} onClick={() => void go("synthetic")} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1 font-semibold text-accent-fg disabled:opacity-50">{busy === "synthetic" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Make a synthetic copy</button>
           <button type="button" disabled={!!busy || (!csv.trim() && !fileId)} onClick={() => void go("gap")} className="ctl flex items-center gap-1.5 border border-line px-3 py-1 hover:border-accent/50 disabled:opacity-50">{busy === "gap" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Fill the gaps</button>
@@ -171,7 +171,13 @@ export function TablesTab({ onSaved }: { onSaved: () => void }) {
         <div className="panel rise space-y-3 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-[14px] font-semibold">{out.title}</h3><a href={download} download={`${out.kind === "gap" ? "gaps-filled" : "synthetic"}.csv`} className="ctl flex items-center gap-1 border border-line px-2 py-1 text-[11.5px] hover:border-accent/50"><Download className="h-3.5 w-3.5" />Download CSV</a></div>
           {out.table.synthetic && <SyntheticTag recipe={out.table.synthetic.recipe} seed={out.table.synthetic.seed} />}
-          {out.realism && <RealismPanel r={out.realism} note="The synthetic table against the original: each numeric column's distribution, their correlations, and the categories' shares." />}
+          {out.realism && (
+            <div className={`grid gap-3 ${out.privacy ? "lg:grid-cols-2" : ""}`}>
+              <RealismPanel r={out.realism} note="The synthetic table against the original: each numeric column's distribution, their correlations, and the categories' shares." />
+              {out.privacy && <PrivacyPanel p={out.privacy} />}
+            </div>
+          )}
+          {out.realism && out.privacy === null && <p className="text-[11px] text-muted">Too few rows to hold some out, so privacy was not checked.</p>}
           {out.filled && <p className="text-[11.5px] text-muted">{out.filled.length} cells estimated; they are highlighted with their ranges. Estimates, not data.</p>}
           <TablePreview t={out.table} filled={out.filled} />
         </div>
@@ -221,11 +227,17 @@ export function SavedList({ nonce }: { nonce: number }) {
   const now = useNow();
   const list = useApi<{ scenarios: Saved[] }>(`/api/edge/scenarios?n=${nonce}`);
   const [open, setOpen] = useState<{ id: number; status: string; result: MarketResult | CompanyResult | Record<string, unknown>; kind: string } | null>(null);
-  const show = (id: number) => { void api<{ id: number; status: string; result: MarketResult; kind: string }>(`/api/edge/scenarios/${id}`).then(setOpen); };
-  const remove = async (s: Saved) => { if (await confirmDialog({ title: `Delete “${s.title}”?`, confirmLabel: "Delete", tone: "danger" })) { await api(`/api/edge/scenarios/${s.id}`, { method: "DELETE" }); list.reload(); if (open?.id === s.id) setOpen(null); } };
+  const [error, setError] = useState<string | null>(null);
+  const show = (id: number) => { setError(null); api<{ id: number; status: string; result: MarketResult; kind: string }>(`/api/edge/scenarios/${id}`).then(setOpen).catch((e) => setError(errText(e))); };
+  const remove = async (s: Saved) => {
+    if (!(await confirmDialog({ title: `Delete “${s.title}”?`, confirmLabel: "Delete", tone: "danger" }))) return;
+    setError(null);
+    try { await api(`/api/edge/scenarios/${s.id}`, { method: "DELETE" }); list.reload(); if (open?.id === s.id) setOpen(null); } catch (e) { setError(errText(e)); }
+  };
   return (
     <div className="space-y-3">
-      {!list.data ? <div className="h-24 animate-pulse rounded-lg bg-elevated/40" /> : !list.data.scenarios.length ? <p className="text-[12px] text-muted">Scenarios you run are kept here.</p> : (
+      {error && <p className="text-[12px] text-neg">{error}</p>}
+      {!list.data ? (list.error ? <p className="text-[12px] text-neg">{list.error} <button type="button" onClick={list.reload} className="text-accent hover:underline">Try again</button></p> : <div className="h-24 animate-pulse rounded-lg bg-elevated/40" />) : !list.data.scenarios.length ? <p className="text-[12px] text-muted">Scenarios you run are kept here.</p> : (
         <ul className="divide-y divide-line rounded-lg border border-line">{list.data.scenarios.map((s) => (
           <li key={s.id} className="flex items-center gap-2 px-3 py-2 text-[12px]">
             <button type="button" onClick={() => show(s.id)} className="min-w-0 flex-1 text-left"><div className="truncate font-medium hover:text-accent">{s.title}</div><div className="text-[10.5px] text-muted">{s.kind}{s.driver !== "none" ? ` · ${s.driver}` : ""} · {s.status}{s.realism !== null ? ` · realism ${s.realism}` : ""}{now ? ` · ${ago(s.updatedAt, now)}` : ""}</div></button>

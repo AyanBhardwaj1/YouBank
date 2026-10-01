@@ -107,7 +107,8 @@ body {
 .rise { animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-.fade-in { animation: fade-in 300ms ease-out both; }
+/* Backwards, not both: a fill after the end would keep the element a stacking context, trapping fixed dialogs inside it under the top bar. */
+.fade-in { animation: fade-in 300ms ease-out backwards; }
 
 @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
 .shimmer { background: linear-gradient(90deg, var(--elevated) 25%, var(--raised) 50%, var(--elevated) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
@@ -173,7 +174,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .tape-track, .rise, .fade-in, .shimmer, .pulse-ring, .caret::after, .drift, .drift-slow, .grow-x, .grow-y, .draw, .float-y, .gradient-text, .stagger > * { animation: none !important; }
+  .tape-track, .rise, .fade-in, .shimmer, .animate-pulse, .pulse-ring, .caret::after, .drift, .drift-slow, .grow-x, .grow-y, .draw, .float-y, .gradient-text, .stagger > * { animation: none !important; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .draw { stroke-dashoffset: 0; }
 }

@@ -19,6 +19,11 @@ type Detection = typeof schema.edgeDetections.$inferSelect;
 export function isBig(d: Pick<Detection, "kind" | "confidence" | "magnitude" | "visual">): boolean {
   switch (d.kind) {
     case "ground_change": return d.confidence >= 0.6 && d.magnitude >= 2;
+    case "flaring": return d.confidence >= 0.75 && d.magnitude >= 0.6;
+    // Radar: some 6,000 m² of new structure, seen clearly; permits: well over the usual pace on state records; methane: a tonne an hour at the plant.
+    case "radar_change": return d.confidence >= 0.7 && d.magnitude >= 0.6;
+    case "permits": return d.confidence >= 0.8 && d.magnitude >= 0.85;
+    case "methane_plume": return d.confidence >= 0.8 && d.magnitude >= 0.5;
     case "deal_proforma": return d.magnitude >= 0.6;
     case "filing_change": return d.magnitude >= 0.5;
     case "graph_flag": return (d.visual as { flag?: { severity?: string } }).flag?.severity === "high";

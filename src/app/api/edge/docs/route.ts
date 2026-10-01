@@ -1,29 +1,41 @@
 import { NextResponse } from "next/server";
-import { desc, eq, inArray, or } from "drizzle-orm";
+import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
 import { indexFilings, indexWorkspace } from "@/lib/edge/docs/sources";
 import { uploadUsage } from "@/lib/edge/docs/store";
 import { rateLimit } from "@/lib/locks";
-import { myTeamIds } from "@/lib/teams/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-/** The person's library: their uploads and recordings, workspace items, filings already read for them, and their quota. */
+/**
+ * The person's library: their uploads and recordings, workspace items, filings already read for them, and
+ * their quota. It is checked every few seconds while documents are read, so it reads only the columns the
+ * list shows (meta can hold a call's whole transcript; just its ticker and form come back) and sends its
+ * reads together, with the beta check alongside (nothing is returned unless it passes).
+ */
 export async function GET() {
   return guarded(async (user) => {
-    await requireEdge(user.id);
-    const teams = await myTeamIds(user.id);
     const db = requireDb();
-    const mine = await db.select().from(schema.edgeDocs).where(or(eq(schema.edgeDocs.ownerId, user.id), ...(teams.length ? [inArray(schema.edgeDocs.teamId, teams)] : []))).orderBy(desc(schema.edgeDocs.createdAt)).limit(300);
-    const filings = await db.select().from(schema.edgeDocs).where(eq(schema.edgeDocs.source, "sec")).orderBy(desc(schema.edgeDocs.createdAt)).limit(60);
-    const view = (d: typeof schema.edgeDocs.$inferSelect) => ({
+    const d = schema.edgeDocs;
+    const cols = {
       id: d.id, source: d.source, title: d.title, url: d.url, status: d.status, error: d.error, pages: d.pages, chunks: d.chunks, lang: d.lang, durationSec: d.durationSec, mime: d.mime, fileId: d.fileId,
-      ticker: String((d.meta as { ticker?: string }).ticker ?? ""), form: String((d.meta as { form?: string }).form ?? ""), createdAt: d.createdAt.toISOString(), mine: d.ownerId === user.id, shared: !!d.teamId, teamId: d.teamId,
+      ownerId: d.ownerId, teamId: d.teamId, createdAt: d.createdAt, ticker: sql<string>`coalesce(${d.meta}->>'ticker', '')`, form: sql<string>`coalesce(${d.meta}->>'form', '')`,
+    };
+    const teams = db.select({ id: schema.teamMembers.teamId }).from(schema.teamMembers).where(eq(schema.teamMembers.userId, user.id));
+    const [, mine, filings, usage] = await Promise.all([
+      requireEdge(user.id),
+      db.select(cols).from(d).where(or(eq(d.ownerId, user.id), inArray(d.teamId, teams))).orderBy(desc(d.createdAt)).limit(300),
+      db.select(cols).from(d).where(eq(d.source, "sec")).orderBy(desc(d.createdAt)).limit(60),
+      uploadUsage(user.id),
+    ]);
+    const view = (r: (typeof mine)[number]) => ({
+      id: r.id, source: r.source, title: r.title, url: r.url, status: r.status, error: r.error, pages: r.pages, chunks: r.chunks, lang: r.lang, durationSec: r.durationSec, mime: r.mime, fileId: r.fileId,
+      ticker: r.ticker, form: r.form, createdAt: r.createdAt.toISOString(), mine: r.ownerId === user.id, shared: !!r.teamId, teamId: r.teamId,
     });
-    return NextResponse.json({ docs: mine.map(view), filings: filings.map(view), usage: await uploadUsage(user.id) });
+    return NextResponse.json({ docs: mine.map(view), filings: filings.map(view), usage });
   });
 }
 

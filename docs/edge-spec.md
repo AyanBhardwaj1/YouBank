@@ -186,7 +186,8 @@ polished.
   - imagery: Sentinel-2, Landsat, VIIRS;
   - hazards: NASA FIRMS, NOAA;
   - public asset maps: EIA, HIFLD, OpenStreetMap, global plant and mine databases.
-  - Paid imagery (Planet) and AIS ship data are built, but switched off until there is a budget.
+  - Paid imagery (Planet) is built and switched off until its key is set; AIS ship data is planned
+    (see `docs/edge-roadmap.md`).
 - **Asset locations:**
   - public maps;
   - AI extraction from filings and news, geocoded;
@@ -257,6 +258,7 @@ polished.
 | 4 | Networks · GNN | Built (2026-09-30) |
 | 5 | Scenarios · Synthetic data | Built (2026-09-30) |
 | 6 | Integrations (Terminal, Newsroom, Studio, Office, CRM), story mode, monitors, alerts and the digest, onboarding canvas, audit export | Built (2026-09-30) |
+| Upgrade round | New free data and models in every module, speed and accessibility work, paid upgrades built behind switches (see below and `docs/edge-roadmap.md`) | Built (2026-10-01) |
 
 ### What milestone 1 does
 
@@ -454,6 +456,94 @@ polished.
     arcs on its own canvas, loaded only when 3D is first switched on.
 - **Not done:** true 3D change detection needs paid data (see Known limits). That covers stockpile
   volumes, tank fill from shadows, and the height of new construction.
+
+### What the October upgrade round adds (2026-10-01)
+
+Everything here is free to run. Paid upgrades are built behind switches and stay off; administrators
+see them, live, in Settings → Labs → Edge upgrades (`src/lib/edge/premium.ts`, `docs/edge-roadmap.md`).
+
+- **Feed.**
+  - Ranking reads only the light columns of each finding; full rows (with the images) are read only for
+    the cards on screen. The first page and the person's Edge state arrive with the page itself, so the
+    first paint needs no further request.
+  - Kind chips (Ground, Radar, Flaring, Methane, Permits, Deals, Filings, Red flags, Model picks), a
+    fortnight brief across the watches, skeletons shaped like the cards, Try again on errors, keyboard
+    tab rows, the view kept in the address, a phone layout (module chips, the watch panel folded), and
+    the views other than the feed loaded only when opened. The audit log now exports every finding, not
+    the first 40.
+- **Earth.**
+  - **Flaring** (`flares.ts`): every mapped plant, daily, against NASA FIRMS's last seven days of VIIRS
+    heat detections from three satellites (375 m). A plant that flared on three days or more (or two hot
+    days) becomes a card: the days and radiant heat, a Sentinel-2 shortwave-infrared image where the
+    flare glows (hot pixels counted), its weekly record, and in New Mexico what operators nearby reported
+    flaring and venting to the OCD that month (C-115B). One card per plant a week, refreshed while the
+    week runs; a chronic flare is not news again for two weeks unless it worsens.
+  - **Radar change** (`radar.ts`, `sources/s1.ts`): watched plants in Sentinel-1 radar, which sees
+    through cloud. Three passes now against three a year before on the same orbit, a per-pixel majority
+    to beat speckle, and new persistent bright objects (steel and structures) counted, with damp ground
+    and plant clutter guarded against. Each site is read every six days, a dozen a day.
+  - **Drilling permits** (`permits.ts`): new permits within 10 km of each plant. New Mexico's OCD dates
+    its approvals, so a jump (five or more in 30 days and twice the earlier pace) becomes a card. Texas's
+    public map service has no dates, so Texas shows the count of permitted, undrilled locations on the
+    map, and Edge keeps its own first-seen record; Texas cards start after 120 days of it.
+  - **Sites in 3D**: the newest NAIP aerial photo (0.6 m) draped on the ground, with tanks, towers and
+    other structures raised from USGS lidar heights, tank capacity estimated. **Month by month**: the
+    clearest Sentinel-2 image of each month for two years, played like a film.
+  - The map's asset data is slimmed and cached for the day; markers no longer re-upload the assets; the
+    Terminal's GEO screen lists every kind of Earth finding.
+- **Documents.**
+  - Keyword search matches any term (it required all of them), ranked by how many distinct terms a
+    passage holds; quoted phrases and exclusions work.
+  - New ingests read filings from their HTML: passages of about 500 tokens that start at headings and
+    keep tables whole (header and units repeated when a table must split), with a header line (company,
+    form, period, section) embedded and matched by keyword search.
+  - The answer model reads the chosen passages with their neighbours (about 8,000 tokens, it was about
+    3,000; `EDGE_CONTEXT_CHARS` raises it), and claims whose quotes fail get one second reading by the
+    small model.
+  - A reranker step: Voyage or Cohere when their keys are set, else the ML service's free cross-encoder,
+    warmed when the Ask panel opens. A 30-question eval (`scripts/eval-docs.ts`) measured the search
+    before and after: fused recall@5 0.85 → 0.97 on the three-filing set.
+  - The PDF viewer renders in a worker; the library polls only while visible and backs off on errors;
+    the citation viewer traps focus.
+- **Networks.**
+  - Influence (PageRank) and communities (label propagation over binding links) for the whole graph,
+    with the people who bridge clusters; node size by influence.
+  - Ownership rings of any length (strongly connected components), "Who owns it" by integrated
+    ownership (Vitali, Glattfelder and Battiston 2011), and a Clayton Act section 8 screen of shared
+    directors and officers at competitors above the FTC's 2026 threshold ($54,402,000), labelled a screen,
+    not legal advice. Seats count as shared only when both were held at the same time.
+  - The deal model's scorecard now shows hits@10 with a 90% bootstrap interval and fair baselines on
+    the same split (Adamic-Adar, acquisitiveness), and says plainly when the model does not beat one. A
+    direction swap in the scorecard (buyers read the targets' figure) is fixed.
+  - Public views (company, subgraph, map, tree, owners) are cached for everyone, keyed by the graph's
+    version; the overview reads aggregates instead of up to 8,000 rows; plant pairs are one query.
+- **Scenarios.**
+  - The default generator is GJR-GARCH with Student-t shocks (falls raise volatility more than rises)
+    drawing whole real days of shocks (filtered historical simulation); a t-copula is the alternative.
+    Realism v2 scores each stylised fact against bands from a block bootstrap of the real data, and a
+    copy check catches generators that replay history.
+  - Narratives become views per factor (median, range, probability, horizon, a historical analog),
+    anchored to the analog's severity, checked for plausibility, with unmentioned factors filled by
+    their conditional means, then imposed on the paths by Entropy Pooling; a result is refused when too
+    few effective scenarios remain.
+  - Synthetic tables default to sequential trees (CART) with an 80/20 holdout and privacy checks (DCR
+    share, NNDR, exact copies, a membership-inference test).
+- **Canvas.** Dragging a block no longer rebuilds every block; runs poll a light view and fetch the
+  full run once at the end; selection, Delete and multi-select work; the compare view is a proper
+  dialog; phones get the inspector as a bottom sheet; a loading skeleton.
+- **ML service** (Modal, version 8, smoke-tested on a staging copy first; about $0.30 of credit to build
+  and test).
+  - Satellite checks use Prithvi-EO-2.0-300M-TL and Segment Anything 2.1, with the older pair as the
+    fallback; on Orla the unchanged control area's score fell from 0.14 to 0.07 while the new pond stayed
+    at 0.99.
+  - English audio is transcribed by NVIDIA's Parakeet TDT 0.6B v2 (CC BY 4.0) with word timings, other
+    languages by Whisper: word errors 3.1% against 7.2% on a LibriSpeech sample.
+  - New tasks: `docs.rerank` (a cross-encoder, ettin-reranker-32m) and `geo.embed_change` (year-over-year
+    change in Google DeepMind's AlphaEarth embeddings, which picked out Orla's new ponds and stayed quiet at
+    three unchanged plants). The latter is not wired into the app yet.
+- **Platform.** Edge's small AI steps use gpt-6-luna (half the price of gpt-5.6-luna, checked on the
+  account for text and images; `EDGE_SMALL_MODEL` overrides it). The upgrades registry and its Settings
+  panel. A FIRMS archive backfill of the flaring record once a free MAP_KEY is set.
 
 ### How the detector was checked
 

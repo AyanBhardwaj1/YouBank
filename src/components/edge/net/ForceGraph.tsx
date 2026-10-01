@@ -8,12 +8,24 @@
  * before it is drawn.
  */
 import { useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KIND_LABEL, LINK_COLOR, LINK_LABEL, NODE_COLOR, type GEdge, type GNode } from "./client";
 
 type P = { x: number; y: number; vx: number; vy: number; pinned: boolean };
 const RADIUS: Record<string, number> = { company: 8, person: 4.5, fund: 5.5, subsidiary: 3.5, firm: 5 };
 const LENGTH: Record<string, number> = { director: 55, officer: 55, insider: 55, holder: 85, subsidiary: 45, acquired: 120, bought_assets: 110, supplies: 100, advised: 80 };
+
+/** A node's radius: by kind, larger for the company in focus, and scaled by influence when known. Pure. */
+export function radiusOf(n: Pick<GNode, "kind" | "id" | "rank">, focus: number): number {
+  return (RADIUS[n.kind] ?? 5) * (n.id === focus ? 1.5 : 1) * (n.rank !== undefined ? 0.75 + 0.9 * Math.sqrt(n.rank) : 1);
+}
+
+/** The drawn entities as the keyboard list reads them: the company in focus first, then by how many drawn links touch each, then by name. Pure. */
+export function entityList(nodes: GNode[], links: Pick<GEdge, "s" | "d">[], focus: number): { n: GNode; c: number }[] {
+  const count = new Map<number, number>();
+  for (const l of links) { count.set(l.s, (count.get(l.s) ?? 0) + 1); count.set(l.d, (count.get(l.d) ?? 0) + 1); }
+  return nodes.map((n) => ({ n, c: count.get(n.id) ?? 0 })).sort((a, b) => Number(b.n.id === focus) - Number(a.n.id === focus) || b.c - a.c || a.n.name.localeCompare(b.n.name));
+}
 
 function cssVar(name: string, fallback: string) {
   return typeof window === "undefined" ? fallback : getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -105,6 +117,8 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
       alpha.current = Math.max(0, a * 0.985 - 0.0005);
     };
 
+    // Theme colours, read once here rather than on every frame.
+    const fg = cssVar("--fg", "#e6e8eb"), bg = cssVar("--panel", "#111");
     const draw = () => {
       const ratio = Math.min(2, window.devicePixelRatio || 1);
       if (c.width !== Math.floor(width * ratio)) { c.width = Math.floor(width * ratio); c.height = Math.floor(height * ratio); c.style.width = `${width}px`; c.style.height = `${height}px`; }
@@ -114,7 +128,6 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
       ctx.save();
       ctx.translate(tx, ty); ctx.scale(k, k);
       const lit = hl.current;
-      const fg = cssVar("--fg", "#e6e8eb"), bg = cssVar("--panel", "#111");
       for (const l of links) {
         const p = P.get(l.s), q = P.get(l.d);
         if (!p || !q) continue;
@@ -130,7 +143,7 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
         const p = P.get(n.id);
         if (!p) continue;
         const on = !lit || lit.nodes.has(n.id);
-        const r = (RADIUS[n.kind] ?? 5) * (n.id === focus ? 1.5 : 1);
+        const r = radiusOf(n, focus);
         ctx.globalAlpha = on ? 1 : 0.15;
         ctx.fillStyle = NODE_COLOR[n.kind] ?? "#999";
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
@@ -156,7 +169,7 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
     }
 
     const toWorld = (ev: { clientX: number; clientY: number }) => { const r = c.getBoundingClientRect(); const { k, tx, ty } = view.current; return { x: (ev.clientX - r.left - tx) / k, y: (ev.clientY - r.top - ty) / k, sx: ev.clientX - r.left, sy: ev.clientY - r.top }; };
-    const hit = (x: number, y: number) => { let best: number | null = null, bd = Infinity; for (const n of nodes) { const p = P.get(n.id); if (!p) continue; const d = (p.x - x) ** 2 + (p.y - y) ** 2; const r = (RADIUS[n.kind] ?? 5) + 4 / view.current.k; if (d < r * r && d < bd) { bd = d; best = n.id; } } return best; };
+    const hit = (x: number, y: number) => { let best: number | null = null, bd = Infinity; for (const n of nodes) { const p = P.get(n.id); if (!p) continue; const d = (p.x - x) ** 2 + (p.y - y) ** 2; const r = radiusOf(n, focus) + 4 / view.current.k; if (d < r * r && d < bd) { bd = d; best = n.id; } } return best; };
     const kick = () => { if (reduce) { draw(); return; } alpha.current = Math.max(alpha.current, 0.25); cancelAnimationFrame(raf); const loop = () => { if (alpha.current > 0.002) { tick(); draw(); raf = requestAnimationFrame(loop); } else draw(); }; raf = requestAnimationFrame(loop); };
 
     const down = (ev: PointerEvent) => { const w = toWorld(ev); drag.current = { node: hit(w.x, w.y), x: ev.clientX, y: ev.clientY, moved: false }; c.setPointerCapture(ev.pointerId); };
@@ -190,6 +203,33 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
     return () => { cancelAnimationFrame(raf); c.removeEventListener("pointerdown", down); c.removeEventListener("pointermove", move); c.removeEventListener("pointerup", up); c.removeEventListener("wheel", wheel); };
   }, [nodes, links, focus, width, height, reduce, onSelect]);
 
+  // The way in for the keyboard and screen readers, to whom the canvas is a picture: every drawn entity, most
+  // connected first, with its kind and how many drawn links touch it. Hidden until focus moves into it; a
+  // company with a ticker opens. Built only when the drawing changes, not on every hover.
+  const list = useMemo(() => {
+    const rows = entityList(nodes, links, focus);
+    const opens = (n: GNode) => !!onSelect && n.kind === "company" && !!n.ticker && n.id !== focus;
+    return (
+      <div className="sr-only focus-within:not-sr-only">
+        <div tabIndex={0} role="group" aria-label="Entities in the network" className="absolute right-2 top-2 z-20 max-h-[calc(100%-1rem)] w-[290px] max-w-[calc(100%-1rem)] overflow-y-auto rounded-md border border-line bg-panel p-1.5 text-[11.5px] shadow-lg">
+          <p className="px-1.5 pb-1 text-[10.5px] text-muted">{nodes.length} entities and {links.length} links, most connected first{rows.some((r) => opens(r.n)) ? "; choose a company to open it" : ""}.</p>
+          <ul>
+            {rows.map(({ n, c }) => {
+              const row = (
+                <>
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: NODE_COLOR[n.kind] ?? "#999" }} />
+                  <span className="min-w-0 flex-1 truncate">{n.name}{n.ticker ? ` (${n.ticker})` : ""}</span>
+                  <span className="shrink-0 text-[10.5px] text-muted">{KIND_LABEL[n.kind]?.split(" ")[0] ?? n.kind} · {c} link{c === 1 ? "" : "s"}{n.id === focus ? " · in focus" : highlight?.nodes.has(n.id) ? " · on the highlighted path" : ""}</span>
+                </>
+              );
+              return <li key={n.id}>{opens(n) ? <button type="button" onClick={() => onSelect?.(n)} className="flex w-full items-center gap-1.5 rounded px-1.5 py-0.5 text-left hover:bg-elevated focus:bg-elevated">{row}</button> : <div className="flex items-center gap-1.5 px-1.5 py-0.5">{row}</div>}</li>;
+            })}
+          </ul>
+        </div>
+      </div>
+    );
+  }, [nodes, links, focus, highlight, onSelect]);
+
   const kinds = [...new Set(nodes.map((n) => n.kind))];
   const linkKinds = [...new Set(links.map((l) => l.kind))];
   return (
@@ -204,7 +244,9 @@ export function ForceGraph({ nodes, links, focus, highlight, onSelect, height = 
       <div className="pointer-events-none absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] flex-wrap gap-x-3 gap-y-1 rounded-md bg-panel/85 px-2 py-1 text-[10.5px] text-muted">
         {kinds.map((k) => <span key={k} className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: NODE_COLOR[k] }} />{KIND_LABEL[k]?.split(" ")[0] ?? k}</span>)}
         {linkKinds.map((k) => <span key={`l${k}`} className="flex items-center gap-1"><span className="h-0.5 w-3" style={{ background: LINK_COLOR[k] }} />{LINK_LABEL[k] ?? k}</span>)}
+        {nodes.some((n) => n.rank !== undefined) && <span className="text-faint">Larger dots carry more weight across the whole graph</span>}
       </div>
+      {list}
     </div>
   );
 }

@@ -158,7 +158,7 @@ export const NODES: NodeDef[] = [
     outputs: [{ name: "table", label: "Synthetic table", kind: "table" }],
     steps: [{ id: "learn", label: "Learn the data" }, { id: "generate", label: "Generate" }, { id: "validate", label: "Validate realism" }],
     fields: [
-      { key: "method", label: "Method", type: "select", options: [{ value: "auto", label: "Chosen by data type" }, { value: "statistical", label: "Statistical (Gaussian copula)" }, { value: "ctgan", label: "Deep generative (CTGAN)" }] },
+      { key: "method", label: "Method", type: "select", options: [{ value: "auto", label: "Sequential trees (CART)" }, { value: "statistical", label: "Statistical (Gaussian copula)" }, { value: "ctgan", label: "Deep generative (CTGAN)" }] },
       { key: "rows", label: "Rows", type: "number", min: 50, max: 10000 },
       { key: "seed", label: "Seed", type: "number", min: 1, max: 999999 },
     ],

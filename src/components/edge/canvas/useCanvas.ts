@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Graph } from "@/lib/edge/canvas/catalog";
 import type { RunView } from "@/lib/edge/canvas/engine";
+import { going, mergeRun } from "@/lib/edge/canvas/view";
 import { api, post } from "../client";
 
 export type CanvasData = {
@@ -41,6 +42,7 @@ export function useCanvas(id: number) {
   const past = useRef<Graph[]>([]);
   const future = useRef<Graph[]>([]);
   const stopFollow = useRef<(() => void) | null>(null);
+  const inflight = useRef<Promise<void> | null>(null);
 
   const show = useCallback((g: Graph) => { current.current = g; setGraphState(g); }, []);
 
@@ -58,11 +60,7 @@ export function useCanvas(id: number) {
     return () => { live = false; };
   }, [apply, fail, id]);
 
-  const flush = useCallback(async () => {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
-    const body = pending.current;
-    if (!body) return;
-    pending.current = null;
+  const send = useCallback(async (body: { graph?: Graph; title?: string }) => {
     setSave("saving");
     try {
       const res = await fetch(`/api/edge/canvases/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, version: version.current }) });
@@ -80,6 +78,19 @@ export function useCanvas(id: number) {
       setSave("error"); setNotice(e instanceof Error ? e.message : String(e));
     }
   }, [id, show]);
+
+  const flush = useCallback(async (): Promise<void> => {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    // One save at a time: a change made while a save is on its way goes after it, with the version that save returns
+    // (sent alongside, it would carry the old version and be refused as someone else's change).
+    while (inflight.current) await inflight.current;
+    const body = pending.current;
+    if (!body) return;
+    pending.current = null;
+    const sending = send(body);
+    inflight.current = sending;
+    try { await sending; } finally { if (inflight.current === sending) inflight.current = null; }
+  }, [send]);
 
   const schedule = useCallback(() => {
     setSave("dirty");
@@ -100,6 +111,11 @@ export function useCanvas(id: number) {
     pending.current = { ...(pending.current ?? {}), graph: next };
     schedule();
   }, [schedule, show]);
+
+  /** setGraph from the graph as it is now rather than a render's copy: callbacks stay the same while it changes, and changes in one tick add up. */
+  const editGraph = useCallback((f: (g: Graph) => Graph, opts?: { transient?: boolean }) => {
+    if (current.current) setGraph(f(current.current), opts);
+  }, [setGraph]);
 
   const setTitle = useCallback((t: string) => { setTitleState(t); pending.current = { ...(pending.current ?? {}), title: t }; schedule(); }, [schedule]);
 
@@ -141,23 +157,32 @@ export function useCanvas(id: number) {
     return () => es.close();
   }, [id, show]);
 
-  // Follow a run: fast while it goes, slower when hidden, and reload the canvas's run list at the end.
+  // Follow a run: the full view first, then the light one (no outputs, so no R2 reads or signed links)
+  // while it goes, then the full view once when it ends and the canvas's run list. Nothing is fetched
+  // while the tab is hidden; it picks up straight away on return.
   const followRun = useCallback((runId: number | null) => {
     stopFollow.current?.();
     if (!runId) { setRun(null); return; }
-    let live = true;
-    let delay = 1200;
-    stopFollow.current = () => { live = false; };
-    const tick = async () => {
+    let live = true, lite = false, paused = false, delay = 1200;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tick = async (): Promise<void> => {
       if (!live) return;
+      if (document.visibilityState === "hidden") { paused = true; return; }
+      let wait = 5000; // after an error, try again shortly
       try {
-        const r = await api<RunView>(`/api/edge/runs/${runId}`);
+        const r = await api<RunView>(`/api/edge/runs/${runId}${lite ? "?lite=1" : ""}`);
         if (!live) return;
-        setRun(r);
-        if (r.status === "queued" || r.status === "running") { delay = Math.min(4000, delay + 300); setTimeout(tick, document.visibilityState === "hidden" ? 8000 : delay); }
-        else void load();
-      } catch { if (live) setTimeout(tick, 5000); }
+        if (!going(r.status) && lite) { lite = false; return tick(); } // it ended: fetch the full view once
+        setRun((cur) => mergeRun(cur, r));
+        if (!going(r.status)) { void load(); return; }
+        lite = true;
+        wait = delay = Math.min(4000, delay + 300);
+      } catch { /* the next tick tries again */ }
+      if (live) timer = setTimeout(() => void tick(), wait);
     };
+    const onVisible = () => { if (paused && document.visibilityState === "visible") { paused = false; void tick(); } };
+    document.addEventListener("visibilitychange", onVisible);
+    stopFollow.current = () => { live = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
     void tick();
   }, [load]);
   useEffect(() => () => stopFollow.current?.(), []);
@@ -170,7 +195,7 @@ export function useCanvas(id: number) {
   }, [flush, followRun, id]);
 
   return {
-    data, error, graph, title, save, notice, run, setNotice, setGraph, setTitle, undo, redo, flush, load, startRun, followRun,
+    data, error, graph, title, save, notice, run, setNotice, setGraph, editGraph, setTitle, undo, redo, flush, load, startRun, followRun,
     canUndo: hist.past > 0, canRedo: hist.future > 0, readOnly: data?.role === "viewer",
   };
 }

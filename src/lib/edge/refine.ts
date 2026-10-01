@@ -53,6 +53,16 @@ export function judge(result: Record<string, unknown>, blobs: { pixels: number }
   return { refinement: { models, blobs: verdicts, agreement, verdict, confidenceBefore: confidence }, confidence: Math.round(next * 100) / 100 };
 }
 
+/**
+ * Which model versions produced a result, for provenance: the service's `modelVersion` (e.g.
+ * "Prithvi-EO-2.0-300M-TL + sam2.1_hiera_base_plus", or the older pair when it fell back), else the
+ * models named in the result. Every model the service uses here is Apache-2.0. Pure.
+ */
+export function modelProvenance(result: Record<string, unknown>, models: string[]): { modelVersion: string; license: string } {
+  const modelVersion = typeof result.modelVersion === "string" && result.modelVersion ? result.modelVersion : models.join(" + ");
+  return { modelVersion, license: models.length ? models.map((m) => `${m} (Apache-2.0)`).join(", ") : "Apache-2.0" };
+}
+
 /** Start the check of a finding unless it was checked or is being checked (a lease stops doubles). */
 export async function startRefine(id: number): Promise<{ id: number; callId: string } | null> {
   const [d] = await requireDb().select({ visual: schema.edgeDetections.visual }).from(schema.edgeDetections).where(eq(schema.edgeDetections.id, id));
@@ -82,9 +92,10 @@ export async function applyRefinement(detectionId: number, done: MlDone): Promis
     : "The foundation models are split, so confidence is unchanged.";
   const why = d.why.replace(/ (Two foundation models|The foundation models)[^]*$/, "");
   await db.update(schema.edgeDetections).set({ confidence, visual: { ...visual, refine: { ...refinement, at: new Date().toISOString() } }, why: `${why} ${line}`.slice(0, 2000) }).where(eq(schema.edgeDetections.id, detectionId));
+  const { modelVersion, license } = modelProvenance(done.result, refinement.models);
   await record(`detection:${detectionId}`, [{
-    sourceName: "YouBank ML service on Modal", sourceUrl: "", license: "Prithvi-EO-1.0-100M (Apache-2.0), Segment Anything ViT-B (Apache-2.0)",
-    method: `foundation-model check: Prithvi embedding distance and Segment Anything outlines per changed area (agreement ${refinement.agreement})`, modelVersion: refinement.models.join(" + "), retrievedAt: new Date(),
+    sourceName: "YouBank ML service on Modal", sourceUrl: "", license,
+    method: `foundation-model check: Prithvi embedding distance and Segment Anything outlines per changed area (agreement ${refinement.agreement})`, modelVersion, retrievedAt: new Date(),
   }]);
   return { verdict: refinement.verdict, confidence };
 }

@@ -25,11 +25,15 @@ export const pollBackoff = (pollMs: number, failures: number) => Math.min(pollMs
 /**
  * A fetch that re-runs when `url` changes, keeping the last answer while the next loads. With `pollMs`
  * it refreshes on that interval while the tab is in view: a hidden tab skips its polls and refreshes
- * once when shown again, and failures (an outage, a rate limit) back off instead of hammering.
+ * once when shown again, and failures (an outage, a rate limit) back off instead of hammering. With
+ * `initial` (data the server already sent with the page) and `seededAt` (when the server made it) the first fetch
+ * is skipped while that data is fresh; a page shown again from the browser's history keeps its old payload, so
+ * stale data is shown at once and fetched again.
  */
-export function useApi<T>(url: string | null, pollMs = 0) {
-  const [state, setState] = useState<{ url: string | null; data: T | null; error: string | null }>({ url: null, data: null, error: null });
+export function useApi<T>(url: string | null, pollMs = 0, initial?: T, seededAt?: string | number) {
+  const [state, setState] = useState<{ url: string | null; data: T | null; error: string | null }>(initial !== undefined ? { url, data: initial, error: null } : { url: null, data: null, error: null });
   const [nonce, setNonce] = useState(0);
+  const skipFirst = useRef(initial !== undefined), seed = useRef(seededAt);
   useEffect(() => {
     if (!url) return;
     let live = true;
@@ -48,7 +52,9 @@ export function useApi<T>(url: string | null, pollMs = 0) {
       .catch((e) => { failures++; if (live) setState((s) => ({ url, data: s.data, error: e instanceof Error ? e.message : String(e) })); })
       .finally(schedule);
     const onVisibility = () => { if (document.visibilityState !== "hidden" && due) { due = false; void load(); } };
-    void load();
+    const fresh = skipFirst.current && seed.current !== undefined && Math.abs(Date.now() - new Date(seed.current).getTime()) < 15_000;
+    skipFirst.current = false;
+    if (fresh) schedule(); else void load();
     document.addEventListener("visibilitychange", onVisibility);
     return () => { live = false; if (timer) clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [url, pollMs, nonce]);

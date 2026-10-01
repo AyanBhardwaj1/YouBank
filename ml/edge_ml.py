@@ -4,13 +4,15 @@ YouBank Edge ML service: Modal app ``youbank-edge-ml``.
 One authenticated HTTP entry point (``api``) dispatches to one Modal function per task,
 plus a ``status`` endpoint for async calls. Tasks:
 
-    health, geo.refine, docs.parse, audio.transcribe, graph.train,
-    synth.tabular, synth.series, topics.map
+    health, geo.refine, geo.embed_change, docs.parse, docs.rerank, audio.transcribe,
+    graph.train, synth.tabular, synth.series, topics.map
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
 Large outputs go to Cloudflare R2 under ``ml/``; results carry the R2 key.
 
-Deploy:  ml/.venv/bin/modal deploy ml/edge_ml.py
+Deploy:   cd ml && .venv/bin/modal deploy edge_ml.py
+Staging:  cd ml && EDGE_ML_APP=youbank-edge-ml-staging .venv/bin/modal deploy edge_ml.py
+          (the app name also names the two web endpoints, so a staging copy never touches production's URLs)
 API and task contracts: ml/README.md
 """
 from __future__ import annotations
@@ -36,7 +38,11 @@ try:  # FastAPI exists only in the API image; the string annotations below resol
 except ImportError:  # task images and the machine running `modal deploy`
     Request = JSONResponse = None  # type: ignore[assignment,misc]
 
-APP_NAME = "youbank-edge-ml"
+APP_NAME = os.environ.get("EDGE_ML_APP", "").strip() or "youbank-edge-ml"
+if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", APP_NAME):
+    raise ValueError(f"EDGE_ML_APP must be a short lowercase Modal app name, not {APP_NAME!r}")
+# Containers import this module again; passing the name keeps `health` and the endpoint labels consistent there.
+APP_ENV = {"EDGE_ML_APP": APP_NAME}
 app = modal.App(APP_NAME)
 SECRET = modal.Secret.from_name("youbank-edge")
 SECRET_KEYS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET", "INNGEST_EVENT_KEY", "EDGE_ML_SECRET")
@@ -54,8 +60,10 @@ MEM_USD_PER_GIB_SECOND = 0.00000222
 # task name -> (Modal function name, CPU cores, memory MiB, timeout seconds, max containers)
 TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "health": ("health", 0.25, 512, 60, 1),
-    "geo.refine": ("geo_refine", 2.0, 4096, 600, 2),
+    "geo.refine": ("geo_refine", 2.0, 7168, 600, 2),  # all four models loaded (a fallback in a warm container): 6.4 GB
+    "geo.embed_change": ("geo_embed_change", 1.0, 2048, 300, 2),
     "docs.parse": ("docs_parse", 2.0, 4096, 900, 3),
+    "docs.rerank": ("docs_rerank", 4.0, 2048, 120, 3),
     "audio.transcribe": ("audio_transcribe", 4.0, 8192, 3600, 2),
     "graph.train": ("graph_train", 2.0, 4096, 1800, 1),
     "synth.tabular": ("synth_tabular", 2.0, 4096, 1800, 1),
@@ -100,18 +108,49 @@ PINS = {
     "torch-geometric": "2.8.0.post1",
     "scikit-learn": "1.9.1",
     "umap-learn": "0.5.12",
+    # added with Prithvi-EO-2.0, SAM 2.1, Parakeet and the reranker
+    "setuptools": "84.0.0",
+    "wheel": "0.48.0",
+    "hydra-core": "1.3.7",
+    "iopath": "0.1.10",
+    "onnx-asr": "0.12.0",
+    "onnxruntime": "1.30.0",
+    "tokenizers": "0.23.2",
+    "safetensors": "0.8.0",
+    "pyarrow": "25.0.1",
 }
 MODELS = {
+    # geo.refine: the current pair, then the fallbacks for the pair below
+    "prithvi2": {"repo": "ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL", "revision": "63adbd39c271da4c42f447e69b1a7c91a338cdc9",
+                 "file": "Prithvi_EO_V2_300M_TL.pt", "license": "Apache-2.0",
+                 "sha256": "3629cedfbb350faafcb0dac902ae0d3c927e25ce8d9e0024aa1276ec66956ddb"},
+    "sam2": {"url": "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt",
+             "file": "sam2.1_hiera_base_plus.pt", "config": "configs/sam2.1/sam2.1_hiera_b+.yaml", "license": "Apache-2.0",
+             "sha256": "a2345aede8715ab1d5d31b4a509fb160c5a4af1970f199d9054ccfb746c004c5",
+             # Meta's code at a pinned commit (the PyPI package named `sam2` is not Meta's)
+             "code": "https://github.com/facebookresearch/sam2/archive/2b90b9f5ceec907a1c18123530e92e794ad901a4.tar.gz"},
     "prithvi": {"repo": "ibm-nasa-geospatial/Prithvi-EO-1.0-100M", "revision": "f3a9ea7a1723621b0aeceb4de993093704d712c5",
                 "file": "Prithvi_EO_V1_100M.pt", "license": "Apache-2.0"},
     "sam": {"url": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth", "file": "sam_vit_b_01ec64.pth",
             "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912", "license": "Apache-2.0"},
+    # audio.transcribe: Parakeet for English, Whisper for other languages and as the fallback
+    "parakeet": {"repo": "istupakov/parakeet-tdt-0.6b-v2-onnx", "revision": "0bbb45a3365852604aef28b538a8f066f4ccaa85",
+                 "origin": "nvidia/parakeet-tdt-0.6b-v2", "quantization": "int8", "license": "CC-BY-4.0"},
+    "silero": {"repo": "istupakov/silero-vad-onnx", "revision": "b3e3ee3cce4c11ceb63b1a0b229d916069c1ddf6", "license": "MIT"},
     "whisper": {"repo": "Systran/faster-whisper-small", "revision": "536b0662742c02347bc0e980a01041f333bce120",
                 "compute": "int8", "license": "MIT"},
+    # docs.rerank
+    "reranker": {"repo": "cross-encoder/ettin-reranker-32m-v1", "revision": "b33e5ceb5110773ea9cf5e00c9bedc83a8c2afdd",
+                 "license": "Apache-2.0"},
 }
+PRITHVI2_DIR = "/models/prithvi2"
+SAM2_CKPT = "/models/sam2/sam2.1_hiera_base_plus.pt"
 PRITHVI_DIR = "/models/prithvi"
 SAM_CKPT = "/models/sam/sam_vit_b_01ec64.pth"
+PARAKEET_DIR = "/models/parakeet-tdt-0.6b-v2"
+SILERO_DIR = "/models/silero-vad"
 WHISPER_DIR = "/models/whisper-small"
+RERANK_DIR = "/models/ettin-reranker-32m"
 
 
 def _pin(*names: str) -> list[str]:
@@ -122,6 +161,17 @@ def _threads(n: float) -> dict[str, str]:
     k = str(max(1, int(n)))
     return {"OMP_NUM_THREADS": k, "MKL_NUM_THREADS": k, "OPENBLAS_NUM_THREADS": k,
             "NUMEXPR_NUM_THREADS": k, "NUMBA_NUM_THREADS": k, "TOKENIZERS_PARALLELISM": "false"}
+
+
+def _hw_threads(cores: float) -> int:
+    """Threads for a function reserving `cores`: Modal's cpu=N is N physical cores, 2N hyperthreads, and ONNX Runtime
+    ran clearly faster with one thread per hyperthread (reranker, 100 passages at cpu=4: 6.8 s with 4, 4.4 s with 8)."""
+    n = max(1, int(round(cores * 2)))
+    try:
+        n = min(n, len(os.sched_getaffinity(0)))
+    except Exception:
+        pass
+    return n
 
 
 def _torch_image(*extra: str) -> modal.Image:
@@ -149,6 +199,22 @@ geo_image = (
         f"python -c \"import sys; sys.path.insert(0, '{PRITHVI_DIR}'); "
         "import prithvi_mae, segment_anything, cv2, rasterio, timm, planetary_computer; print('geo image ok')\"",
     )
+    # Prithvi-EO-2.0-300M-TL and SAM 2.1 base+ sit on top, so the layers above (the fallbacks) stay cached.
+    .pip_install(*_pin("setuptools", "wheel", "hydra-core", "iopath"))
+    .run_commands(
+        # no CUDA extension on CPU (it only fills mask holes, which the image predictor does not use by default)
+        f"SAM2_BUILD_CUDA=0 pip install --no-build-isolation --no-deps '{MODELS['sam2']['code']}'",
+        "python -c \"from huggingface_hub import hf_hub_download as d; "
+        f"[d('{MODELS['prithvi2']['repo']}', n, revision='{MODELS['prithvi2']['revision']}', local_dir='{PRITHVI2_DIR}') "
+        f"for n in ('{MODELS['prithvi2']['file']}', 'config.json', 'prithvi_mae.py')]\"",
+        f"mkdir -p /models/sam2 && python -c \"import urllib.request as u; u.urlretrieve('{MODELS['sam2']['url']}', "
+        f"'{SAM2_CKPT}')\"",
+        "python -c \"import hashlib; h = lambda p: hashlib.file_digest(open(p, 'rb'), 'sha256').hexdigest(); "
+        f"assert h('{PRITHVI2_DIR}/{MODELS['prithvi2']['file']}') == '{MODELS['prithvi2']['sha256']}'; "
+        f"assert h('{SAM2_CKPT}') == '{MODELS['sam2']['sha256']}'; print('geo v2 weights ok')\"",
+        f"cd / && python -c \"from sam2.build_sam import build_sam2; build_sam2('{MODELS['sam2']['config']}', "
+        f"'{SAM2_CKPT}', device='cpu'); print('sam2 ok')\"",
+    )
 )
 GDAL_ENV = {
     "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
@@ -159,6 +225,32 @@ GDAL_ENV = {
     "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
     "VSI_CACHE": "TRUE",
 }
+
+# AlphaEarth annual embeddings on source.coop: a compact copy of the dataset's file index (path, year, UTM zone and
+# bounds of every 8192 x 8192 COG) is baked in, so a call only reads the VRTs/COGs it needs.
+AEF_BASE = "https://data.source.coop/tge-labs/aef/v1/annual"
+AEF_INDEX = "/models/aef/index.parquet"
+AEF_COLUMNS = ("path", "year", "utm_zone", "crs", "utm_west", "utm_south", "utm_east", "utm_north",
+               "wgs84_west", "wgs84_south", "wgs84_east", "wgs84_north")
+HTTP_UA = "YouBank-Edge-ML/1.0 (+https://youbank-nu.vercel.app)"  # source.coop's CDN refuses urllib's default agent
+aef_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("rasterio", "pyarrow", "pillow", "boto3"))
+    .run_commands(
+        "mkdir -p /models/aef && python -c \"import shutil, pyarrow.parquet as pq, urllib.request as u; "
+        f"r = u.urlopen(u.Request('{AEF_BASE}/aef_index.parquet', headers={{'User-Agent': '{HTTP_UA}'}}), timeout=300); "
+        "shutil.copyfileobj(r, open('/tmp/aef.parquet', 'wb')); t = pq.read_table('/tmp/aef.parquet'); "
+        f"pq.write_table(t.select([c for c in {AEF_COLUMNS!r} if c in t.column_names]), '{AEF_INDEX}', "
+        "compression='zstd'); print(t.num_rows, t.column_names)\" && rm /tmp/aef.parquet",
+    )
+)
+# Each VRT is a warped VRT over /vsis3/us-west-2.opendata.source.coop/...: a public bucket, read unsigned and
+# path-style (the bucket name has dots). Without these, GDAL hunts for AWS credentials and the open fails or hangs.
+# The COGs are band-interleaved in 1024 px blocks, so a site window is 64 block fetches per year; GDAL_NUM_THREADS
+# lets the warper fetch them in parallel (one year, 254 x 254 px: 10.5 s -> 1.5 s, identical pixels).
+AEF_ENV = {**GDAL_ENV, "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff,.TIF,.vrt", "GDAL_HTTP_USERAGENT": HTTP_UA,
+           "AWS_NO_SIGN_REQUEST": "YES", "AWS_REGION": "us-west-2", "AWS_VIRTUAL_HOSTING": "FALSE",
+           "GDAL_NUM_THREADS": "8"}
 
 docs_image = (
     modal.Image.debian_slim(python_version=PY)
@@ -178,6 +270,31 @@ audio_image = (
         f"s('{_W['repo']}', revision='{_W['revision']}', local_dir='{WHISPER_DIR}')\"",
         f"python -c \"from faster_whisper import WhisperModel; WhisperModel('{WHISPER_DIR}', device='cpu', "
         "compute_type='int8'); print('whisper ok')\"",
+    )
+    # Parakeet TDT 0.6B v2 (int8 ONNX through onnx-asr, no NeMo) and the Silero VAD it segments with, on top.
+    .pip_install(*_pin("onnx-asr", "onnxruntime"))
+    .run_commands(
+        "python -c \"from huggingface_hub import snapshot_download as s; "
+        f"s('{MODELS['parakeet']['repo']}', revision='{MODELS['parakeet']['revision']}', local_dir='{PARAKEET_DIR}', "
+        "allow_patterns=['config.json', 'vocab.txt', 'nemo128.onnx', '*.int8.onnx']); "
+        f"s('{MODELS['silero']['repo']}', revision='{MODELS['silero']['revision']}', local_dir='{SILERO_DIR}', "
+        "allow_patterns=['config.json', 'silero_vad.onnx'])\"",
+        f"python -c \"import onnx_asr; onnx_asr.load_model('nemo-parakeet-tdt-0.6b-v2', '{PARAKEET_DIR}', "
+        f"quantization='int8'); onnx_asr.load_vad('silero', '{SILERO_DIR}'); print('parakeet ok')\"",
+    )
+)
+
+# fp32 ONNX export of the encoder; the CrossEncoder head (2_Dense, 3_LayerNorm, 4_Dense) runs in numpy. The repo's
+# int8 export was left out: its scores drifted (Spearman 0.80 against sentence-transformers) and it was barely faster.
+RERANK_ONNX = "onnx/model.onnx"
+rerank_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("onnxruntime", "tokenizers", "safetensors", "huggingface-hub"))
+    .run_commands(
+        "python -c \"from huggingface_hub import snapshot_download as s; "
+        f"s('{MODELS['reranker']['repo']}', revision='{MODELS['reranker']['revision']}', local_dir='{RERANK_DIR}', "
+        "allow_patterns=['tokenizer.json', 'tokenizer_config.json', 'config.json', 'modules.json', '*_Pooling/*', "
+        f"'*_Dense/*', '*_LayerNorm/*', '{RERANK_ONNX}'])\"",
     )
 )
 
@@ -203,6 +320,10 @@ def _jsonable(o):
     """Plain-JSON copy of o: numpy scalars/arrays to Python, NaN/inf to None, dates to ISO strings."""
     if o is None or isinstance(o, (str, bool)):
         return o
+    if type(o).__module__ == "numpy" and hasattr(o, "tolist"):
+        # numpy.float64 subclasses float, so it would pass the checks below unchanged; unpickling it then needs
+        # numpy (the api/status containers and local callers have none), so convert every numpy value here.
+        return _jsonable(o.tolist())
     if isinstance(o, dict):
         return {str(k): _jsonable(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
@@ -416,7 +537,7 @@ def _task_function(task: str, image: modal.Image, env: dict | None = None):
     return app.function(
         name=name, image=image, cpu=cpu, memory=mem, timeout=timeout, secrets=[SECRET],
         max_containers=max_containers, scaledown_window=SCALEDOWN_SECONDS,
-        env={**_threads(cpu), **(env or {})},
+        env={**_threads(cpu), **APP_ENV, **(env or {})},
     )
 
 
@@ -434,10 +555,15 @@ def _health(inp: dict) -> dict:
         checks["r2"] = False
         checks["r2Error"] = type(e).__name__
     versions = {"python": platform.python_version(), "modal": modal.__version__, **PINS}
+    hf = lambda k: f"{MODELS[k]['repo']}@{MODELS[k]['revision'][:12]}"  # noqa: E731
     models = {
-        "prithvi": f"{MODELS['prithvi']['repo']}@{MODELS['prithvi']['revision'][:12]}",
+        "prithvi2": hf("prithvi2"),
+        "sam2": MODELS["sam2"]["file"],
+        "prithvi": hf("prithvi"),
         "sam": MODELS["sam"]["file"],
-        "whisper": f"{MODELS['whisper']['repo']}@{MODELS['whisper']['revision'][:12]} ({MODELS['whisper']['compute']})",
+        "parakeet": f"{hf('parakeet')} ({MODELS['parakeet']['quantization']})",
+        "whisper": f"{hf('whisper')} ({MODELS['whisper']['compute']})",
+        "reranker": hf("reranker"),
     }
     resources = {t: {"cpu": c, "memoryMiB": m, "timeout": s, "maxContainers": k} for t, (_, c, m, s, k) in TASKS.items()}
     return {"app": APP_NAME, "versions": versions, "tasks": list(TASKS), "models": models,
@@ -445,32 +571,40 @@ def _health(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
-# geo.refine: Prithvi-EO patch-embedding change + Segment Anything masks at each blob
+# geo.refine: Prithvi-EO patch-embedding change + Segment Anything masks at each blob.
+# Primary pair: Prithvi-EO-2.0-300M-TL + SAM 2.1 base+. Fallback pair, loaded only when a primary model fails to
+# load or run (or with input.legacy): Prithvi-EO-1.0-100M + SAM ViT-B, computed exactly as before.
 # ---------------------------------------------------------------------------------------------
 STAC_API = "https://planetarycomputer.microsoft.com/api/stac/v1"
 S2_BANDS = ("B02", "B03", "B04", "B8A", "B11", "B12")  # HLS Blue, Green, Red, Narrow NIR, SWIR1, SWIR2
 PRITHVI_IMG = 224
+GEO_NAMES = {"prithvi2": "Prithvi-EO-2.0-300M-TL", "sam2": "sam2.1_hiera_base_plus",
+             "prithvi": "Prithvi-EO-1.0-100M", "sam": "sam_vit_b_01ec64"}
+# Metadata Prithvi-EO-2.0-TL gets with each date: the box centre (lon, lat). The acquisition date is left out: the
+# checkpoint's learned weight on it is ~1e-6 (location's is 0.058), and on the Orla test scene adding it changed no
+# z-score. The last layer's tokens separated the new pond from the rest of the scene better than layers 12 or 18.
+PRITHVI2_COORDS = ("location",)
 _GEO: dict = {}
+_GEO_ERRORS: dict = {}
 
 
-def _geo_models() -> dict:
-    if _GEO:
-        return _GEO
+def _load_py(name: str, path: str):
+    """Import a model-code file under its own module name (both Prithvi repos ship a `prithvi_mae.py`)."""
+    import importlib.util
     import sys
 
-    import numpy as np
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+    return sys.modules[name]
+
+
+def _encoder_state(path: str) -> dict:
+    """The encoder half of a Prithvi MAE checkpoint, without the fixed sin-cos position tables."""
     import torch
 
-    torch.set_num_threads(2)
-    sys.path.insert(0, PRITHVI_DIR)
-    from prithvi_mae import PrithviViT  # model code shipped in the Hugging Face repo
-
-    with open(f"{PRITHVI_DIR}/config.json") as f:
-        cfg = json.load(f)["pretrained_cfg"]
-    enc = PrithviViT(img_size=cfg["img_size"], patch_size=tuple(cfg["patch_size"]), num_frames=cfg["num_frames"],
-                     in_chans=cfg["in_chans"], embed_dim=cfg["embed_dim"], depth=cfg["depth"],
-                     num_heads=cfg["num_heads"], mlp_ratio=cfg["mlp_ratio"])
-    path = f"{PRITHVI_DIR}/{MODELS['prithvi']['file']}"
     try:
         sd = torch.load(path, map_location="cpu", weights_only=True)
     except Exception:  # pinned revision from a trusted repo
@@ -481,21 +615,107 @@ def _geo_models() -> dict:
         sd = {k[len("encoder."):]: v for k, v in sd.items() if k.startswith("encoder.")}
     else:
         sd = {k: v for k, v in sd.items() if not k.startswith(("decoder", "mask_token"))}
-    sd = {k: v for k, v in sd.items() if "pos_embed" not in k}  # fixed sin-cos buffers are rebuilt by the model
-    missing, unexpected = enc.load_state_dict(sd, strict=False)
+    return {k: v for k, v in sd.items() if "pos_embed" not in k}  # fixed sin-cos buffers are rebuilt by the model
+
+
+def _load_prithvi() -> dict:
+    """Prithvi-EO-1.0-100M (the fallback), as before: 3 frames, encoder only."""
+    import numpy as np
+
+    mod = _load_py("prithvi_mae_v1", f"{PRITHVI_DIR}/prithvi_mae.py")  # model code shipped in the HF repo
+    with open(f"{PRITHVI_DIR}/config.json") as f:
+        cfg = json.load(f)["pretrained_cfg"]
+    enc = mod.PrithviViT(img_size=cfg["img_size"], patch_size=tuple(cfg["patch_size"]), num_frames=cfg["num_frames"],
+                         in_chans=cfg["in_chans"], embed_dim=cfg["embed_dim"], depth=cfg["depth"],
+                         num_heads=cfg["num_heads"], mlp_ratio=cfg["mlp_ratio"])
+    missing, unexpected = enc.load_state_dict(_encoder_state(f"{PRITHVI_DIR}/{MODELS['prithvi']['file']}"), strict=False)
     missing = [m for m in missing if "pos_embed" not in m]
     if missing or unexpected:
         raise RuntimeError(f"Prithvi weights did not match: missing={missing[:5]} unexpected={unexpected[:5]}")
     enc.eval()
+    return {"prithvi": enc, "mean": np.asarray(cfg["mean"], np.float32), "std": np.asarray(cfg["std"], np.float32),
+            "grid": cfg["img_size"] // cfg["patch_size"][-1], "frames": cfg["num_frames"]}
 
+
+def _load_prithvi2() -> dict:
+    """Prithvi-EO-2.0-300M-TL encoder, one date per sample (num_frames=1; its temporal patch size is 1)."""
+    import numpy as np
+    import torch
+
+    mod = _load_py("prithvi_mae_v2", f"{PRITHVI2_DIR}/prithvi_mae.py")
+    with open(f"{PRITHVI2_DIR}/config.json") as f:
+        cfg = json.load(f)["pretrained_cfg"]
+    kwargs = dict(img_size=cfg["img_size"], patch_size=tuple(cfg["patch_size"]), num_frames=1, in_chans=cfg["in_chans"],
+                  embed_dim=cfg["embed_dim"], depth=cfg["depth"], num_heads=cfg["num_heads"], mlp_ratio=cfg["mlp_ratio"],
+                  coords_encoding=list(cfg.get("coords_encoding") or []),
+                  coords_scale_learn=bool(cfg.get("coords_scale_learn")))
+    sd = _encoder_state(f"{PRITHVI2_DIR}/{MODELS['prithvi2']['file']}")
+    grid = (1, cfg["img_size"] // cfg["patch_size"][1], cfg["img_size"] // cfg["patch_size"][2])
+    pos = torch.from_numpy(mod.get_3d_sincos_pos_embed(cfg["embed_dim"], grid, add_cls_token=True)).float().unsqueeze(0)
+    try:  # build on the meta device: skips the random init of 300M weights that the checkpoint replaces anyway
+        with torch.device("meta"):
+            enc = mod.PrithviViT(**kwargs)
+        missing, unexpected = enc.load_state_dict({**sd, "pos_embed": pos}, strict=False, assign=True)
+        for name, buf in list(enc.named_buffers()):
+            if buf.is_meta and name.endswith("scale"):  # fixed (non-learned) coordinate scales are ones
+                enc.get_submodule(name.rsplit(".", 1)[0]).register_buffer("scale", torch.ones(1))
+        if any(t.is_meta for t in [*enc.parameters(), *enc.buffers()]):
+            raise RuntimeError("tensors left on the meta device")
+    except Exception as e:
+        print(f"[geo.refine] meta-device load of Prithvi-EO-2.0 failed ({type(e).__name__}: {e}); plain load")
+        enc = mod.PrithviViT(**kwargs)
+        missing, unexpected = enc.load_state_dict(sd, strict=False)
+    missing = [m for m in missing if "pos_embed" not in m]
+    if missing or unexpected:
+        raise RuntimeError(f"Prithvi-EO-2.0 weights did not match: missing={missing[:5]} unexpected={unexpected[:5]}")
+    enc.eval()
+    return {"prithvi": enc, "mean": np.asarray(cfg["mean"], np.float32), "std": np.asarray(cfg["std"], np.float32),
+            "grid": grid[1], "coords": set(kwargs["coords_encoding"])}
+
+
+def _load_sam() -> dict:
+    """Segment Anything ViT-B (the fallback)."""
+    import torch
     from segment_anything import SamPredictor, sam_model_registry
 
     sam = sam_model_registry["vit_b"]()
     sam.load_state_dict(torch.load(SAM_CKPT, map_location="cpu", weights_only=True))
     sam.eval()
-    _GEO.update(prithvi=enc, mean=np.asarray(cfg["mean"], np.float32), std=np.asarray(cfg["std"], np.float32),
-                grid=cfg["img_size"] // cfg["patch_size"][-1], frames=cfg["num_frames"], sam=SamPredictor(sam))
-    return _GEO
+    return {"sam": SamPredictor(sam)}
+
+
+def _load_sam2() -> dict:
+    """SAM 2.1 Hiera base+ image predictor (Meta's code, CPU, no CUDA extension)."""
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    return {"sam": SAM2ImagePredictor(build_sam2(MODELS["sam2"]["config"], SAM2_CKPT, device="cpu"))}
+
+
+_GEO_LOADERS = {"prithvi2": _load_prithvi2, "sam2": _load_sam2, "prithvi": _load_prithvi, "sam": _load_sam}
+
+
+def _geo_model(kind: str) -> dict:
+    """One geo model, loaded once per container. A failed load is remembered and re-raised, so later calls go
+    straight to the fallback instead of paying for the failure again."""
+    if kind in _GEO:
+        return _GEO[kind]
+    if kind in _GEO_ERRORS:
+        raise RuntimeError(_GEO_ERRORS[kind])
+    import torch
+
+    torch.set_num_threads(_hw_threads(TASKS["geo.refine"][1]))  # 4 threads on 2 cores: SAM 2 15.4 s -> 10.2 s
+    t0 = time.monotonic()
+    try:
+        model = _GEO_LOADERS[kind]()
+    except Exception as e:
+        traceback.print_exc()
+        _GEO_ERRORS[kind] = _redact(f"{GEO_NAMES[kind]} did not load: {type(e).__name__}: {e}")[:500]
+        raise RuntimeError(_GEO_ERRORS[kind]) from None
+    model["loadSeconds"] = round(time.monotonic() - t0, 2)
+    print(f"[geo.refine] loaded {GEO_NAMES[kind]} in {model['loadSeconds']} s")
+    _GEO[kind] = model
+    return model
 
 
 def _s2_stack(item_id: str, bbox: list[float], out: int = PRITHVI_IMG):
@@ -577,21 +797,10 @@ def _blob_rect(b: dict, size: int) -> tuple[float, float, float, float]:
     return max(0.0, x0), max(0.0, y0), min(float(size), x1), min(float(size), y1)
 
 
-def _prithvi_compare(m: dict, rb, vb, ra, va, blobs: list, size: int) -> dict:
-    import numpy as np
-    import torch
-
-    valid = vb & va
-    mean, std = m["mean"][:, None, None], m["std"][:, None, None]
-    xb = np.where(valid[None], (rb - mean) / std, 0.0).astype(np.float32)
-    xa = np.where(valid[None], (ra - mean) / std, 0.0).astype(np.float32)
-    frames, g = m["frames"], m["grid"]
-    # (B, C, T, H, W): each date is one frame repeated over the model's 3 time steps.
-    x = torch.from_numpy(np.stack([xb, xa]))[:, :, None].repeat(1, 1, frames, 1, 1)
-    with torch.inference_mode():
-        tokens = m["prithvi"].forward_features(x)[-1][:, 1:, :]  # drop CLS -> (2, T*g*g, 768)
-    tokens = tokens.reshape(2, frames, g, g, -1).mean(1)  # average over time -> (2, g, g, 768)
-    dist = (1 - torch.nn.functional.cosine_similarity(tokens[0], tokens[1], dim=-1)).numpy().astype(float)
+def _patch_change(dist, valid, blobs: list, size: int) -> dict:
+    """Per-blob change from a g x g map of patch cosine distances: overlap-weighted mean distance over the blob's
+    bbox and its z-score against every valid patch (patches with >= 50 % nodata in either date are left out)."""
+    g = dist.shape[0]
     p = PRITHVI_IMG // g
     patch_valid = valid.reshape(g, p, g, p).mean((1, 3)) >= 0.5
     vals = dist[patch_valid]
@@ -612,8 +821,66 @@ def _prithvi_compare(m: dict, rb, vb, ra, va, blobs: list, size: int) -> dict:
         d = vsum / wsum if wsum > 0 else None
         z = (d - mu) / sd if d is not None and sd and math.isfinite(sd) and sd > 0 else None
         out.append({"distance": round(d, 5) if d is not None else None, "z": round(z, 3) if z is not None else None})
-    return {"model": "Prithvi-EO-1.0-100M", "blobs": out, "grid": g, "mean": round(mu, 5), "std": round(sd, 5),
-            "validPatches": int(patch_valid.sum()), "map": [[round(v, 4) for v in row] for row in dist]}
+    return {"blobs": out, "grid": g, "mean": round(mu, 5), "std": round(sd, 5), "validPatches": int(patch_valid.sum()),
+            "map": [[round(v, 4) for v in row] for row in dist]}
+
+
+def _normalised_pair(m: dict, rb, vb, ra, va):
+    import numpy as np
+
+    valid = vb & va
+    mean, std = m["mean"][:, None, None], m["std"][:, None, None]
+    xb = np.where(valid[None], (rb - mean) / std, 0.0).astype(np.float32)
+    xa = np.where(valid[None], (ra - mean) / std, 0.0).astype(np.float32)
+    return xb, xa, valid
+
+
+def _prithvi_compare(m: dict, rb, vb, ra, va, blobs: list, size: int) -> dict:
+    """Prithvi-EO-1.0 (fallback): each date one frame repeated over the model's 3 time steps; last-layer patch
+    tokens averaged over time."""
+    import numpy as np
+    import torch
+
+    xb, xa, valid = _normalised_pair(m, rb, vb, ra, va)
+    frames, g = m["frames"], m["grid"]
+    # (B, C, T, H, W): each date is one frame repeated over the model's 3 time steps.
+    x = torch.from_numpy(np.stack([xb, xa]))[:, :, None].repeat(1, 1, frames, 1, 1)
+    with torch.inference_mode():
+        tokens = m["prithvi"].forward_features(x)[-1][:, 1:, :]  # drop CLS -> (2, T*g*g, 768)
+    tokens = tokens.reshape(2, frames, g, g, -1).mean(1)  # average over time -> (2, g, g, 768)
+    dist = (1 - torch.nn.functional.cosine_similarity(tokens[0], tokens[1], dim=-1)).numpy().astype(float)
+    return {"model": GEO_NAMES["prithvi"], **_patch_change(dist, valid, blobs, size)}
+
+
+def _prithvi2_compare(m: dict, rb, vb, ra, va, blobs: list, size: int, bbox: list, dates: tuple,
+                      coords: tuple = PRITHVI2_COORDS, layer: int = -1) -> dict:
+    """Prithvi-EO-2.0-TL: both dates encoded independently in one batch (each a single frame), with the
+    coordinate metadata named in `coords`; patch tokens of `layer` compared by cosine distance."""
+    import datetime as dt
+
+    import numpy as np
+    import torch
+
+    xb, xa, valid = _normalised_pair(m, rb, vb, ra, va)
+    x = torch.from_numpy(np.stack([xb, xa]))[:, :, None]  # (B=2 dates, C, T=1, H, W)
+    kw, used = {}, []
+    if "location" in coords and "location" in m["coords"]:
+        lon, lat = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+        kw["location_coords"] = torch.tensor([[lon, lat], [lon, lat]], dtype=torch.float32)  # (lon, lat) per TerraTorch
+        used.append("location")
+    if "time" in coords and "time" in m["coords"]:
+        try:
+            ds = [dt.date.fromisoformat(str(d)[:10]) for d in dates]
+            kw["temporal_coords"] = torch.tensor([[[d.year, d.timetuple().tm_yday]] for d in ds], dtype=torch.float32)
+            used.append("time")
+        except (TypeError, ValueError):
+            pass
+    with torch.inference_mode():
+        tokens = m["prithvi"].forward_features(x, **kw)[layer][:, 1:, :]  # drop CLS -> (2, g*g, 1024)
+    g = m["grid"]
+    tokens = tokens.reshape(2, g, g, -1)
+    dist = (1 - torch.nn.functional.cosine_similarity(tokens[0], tokens[1], dim=-1)).numpy().astype(float)
+    return {"model": GEO_NAMES["prithvi2"], **_patch_change(dist, valid, blobs, size), "coords": used}
 
 
 def _outline(mask, px: float, py: float, sx: float, sy: float, max_points: int = 40) -> list:
@@ -634,11 +901,13 @@ def _outline(mask, px: float, py: float, sx: float, sy: float, max_points: int =
     return [[round(float(q[0][0]) * sx, 2), round(float(q[0][1]) * sy, 2)] for q in poly]
 
 
-def _sam_compare(m: dict, img_b, img_a, blobs: list, size: int) -> dict:
+def _sam_compare(predictor, name: str, img_b, img_a, blobs: list, size: int) -> dict:
+    """A positive point at each blob centroid, the best of the three masks by predicted IoU, on both PNGs. Works with
+    SAM (SamPredictor) and SAM 2 (SAM2ImagePredictor), which share predict()."""
     import numpy as np
     from PIL import Image
 
-    predictor = m["sam"]
+    reset = getattr(predictor, "reset_predictor", None) or predictor.reset_image
 
     def points(img):
         h, w = img.shape[:2]
@@ -651,8 +920,8 @@ def _sam_compare(m: dict, img_b, img_a, blobs: list, size: int) -> dict:
             ms, scores, _ = predictor.predict(point_coords=np.array([[px, py]], dtype=np.float32),
                                               point_labels=np.array([1], dtype=np.int32), multimask_output=True)
             k = int(np.argmax(scores))
-            res.append((ms[k].astype(bool), float(scores[k])))
-        predictor.reset_image()
+            res.append((np.asarray(ms[k]).astype(bool), float(scores[k])))
+        reset()
         return res
 
     pa = points(img_a)
@@ -667,10 +936,11 @@ def _sam_compare(m: dict, img_b, img_a, blobs: list, size: int) -> dict:
         iou = float(np.logical_and(mb, ma).sum()) / union if union else 0.0
         out.append({"areaPx": int(ma.sum()), "iou": round(iou, 4), "polygon": _outline(ma, px, py, size / wa, size / ha),
                     "score": round(sa, 4), "areaBeforePx": int(mb.sum())})
-    return {"model": "sam_vit_b_01ec64", "blobs": out, "imageSize": [wa, ha]}
+    return {"model": name, "blobs": out, "imageSize": [wa, ha]}
 
 
 def _geo_refine(inp: dict) -> dict:
+    import resource
     from concurrent.futures import ThreadPoolExecutor
 
     bbox = [float(v) for v in (inp.get("bbox") or [])]
@@ -685,15 +955,224 @@ def _geo_refine(inp: dict) -> dict:
     for side, v in (("before", before), ("after", after)):
         if not v.get("scene") or not v.get("url"):
             raise ValueError(f"{side} needs scene (Sentinel-2 L2A item id) and url (true-colour PNG)")
-    m = _geo_models()
-    with ThreadPoolExecutor(4) as ex:
+    legacy = bool(inp.get("legacy"))  # force the original pair (Prithvi-EO-1.0-100M + SAM ViT-B)
+    first = ("prithvi", "sam") if legacy else ("prithvi2", "sam2")
+    t0 = time.monotonic()
+
+    def preload(kind: str):
+        try:
+            _geo_model(kind)
+        except Exception:
+            pass  # remembered in _GEO_ERRORS; the comparison below falls back
+
+    with ThreadPoolExecutor(6) as ex:  # model loading (cold start) overlaps the imagery downloads
+        loads = [ex.submit(preload, k) for k in first]
         fb, fa = ex.submit(_s2_stack, before["scene"], bbox), ex.submit(_s2_stack, after["scene"], bbox)
         ib, ia = ex.submit(_fetch_png, before["url"]), ex.submit(_fetch_png, after["url"])
         (rb, vb, info_b), (ra, va, info_a) = fb.result(), fa.result()
         img_b, img_a = ib.result(), ia.result()
-    prithvi = _prithvi_compare(m, rb, vb, ra, va, blobs, size)
-    sam = _sam_compare(m, img_b, img_a, blobs, size)
-    return {"prithvi": prithvi, "sam": sam, "scenes": {"before": info_b, "after": info_a}, "size": size}
+        t_fetch = time.monotonic() - t0
+        for f in loads:
+            f.result()
+    t1 = time.monotonic()
+    fallbacks = {}
+    prithvi = sam = None
+    if not legacy:
+        try:
+            prithvi = _prithvi2_compare(_geo_model("prithvi2"), rb, vb, ra, va, blobs, size, bbox,
+                                        (info_b["date"], info_a["date"]))
+        except Exception as e:
+            traceback.print_exc()
+            fallbacks["prithvi"] = _redact(f"{type(e).__name__}: {e}")[:300]
+    if prithvi is None:
+        prithvi = _prithvi_compare(_geo_model("prithvi"), rb, vb, ra, va, blobs, size)
+    t2 = time.monotonic()
+    if not legacy:
+        try:
+            sam = _sam_compare(_geo_model("sam2")["sam"], GEO_NAMES["sam2"], img_b, img_a, blobs, size)
+        except Exception as e:
+            traceback.print_exc()
+            fallbacks["sam"] = _redact(f"{type(e).__name__}: {e}")[:300]
+    if sam is None:
+        sam = _sam_compare(_geo_model("sam")["sam"], GEO_NAMES["sam"], img_b, img_a, blobs, size)
+    t3 = time.monotonic()
+    out = {"prithvi": prithvi, "sam": sam, "scenes": {"before": info_b, "after": info_a}, "size": size,
+           # which models produced this result, for the finding's provenance
+           "modelVersion": f"{prithvi['model']} + {sam['model']}",
+           "timings": {"fetch": round(t_fetch, 2), "loadWait": round(t1 - t0 - t_fetch, 2), "prithvi": round(t2 - t1, 2),
+                       "sam": round(t3 - t2, 2),
+                       "maxRssMiB": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)}}
+    if fallbacks:
+        out["fallbacks"] = fallbacks
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# geo.embed_change: Google DeepMind's AlphaEarth annual embeddings for a box in two years -> per-pixel cosine change
+# ---------------------------------------------------------------------------------------------
+AEF_ATTRIBUTION = "The AlphaEarth Foundations Satellite Embedding dataset is produced by Google and Google DeepMind."
+AEF_MAX_DEG = 0.06  # longest box side in degrees (about 6 km): 64 int8 bands x 2 years stay a few MB
+AEF_VMAX = 0.5  # change (1 - cosine) drawn at the top of the PNG's colour ramp
+AEF_THRESHOLDS = (0.1, 0.2, 0.3, 0.5)
+AEF_RAMP = ((0.0, (0, 0, 4)), (0.25, (87, 16, 110)), (0.5, (188, 55, 84)), (0.75, (249, 142, 9)), (1.0, (252, 255, 164)))
+_AEF: dict = {}
+
+
+def _aef_index() -> dict:
+    """The baked index as numpy columns (one row per COG and year)."""
+    if not _AEF:
+        import numpy as np
+        import pyarrow.parquet as pq
+
+        t = pq.read_table(AEF_INDEX)
+        _AEF.update({c: (t.column(c).to_numpy() if c.startswith(("utm_w", "utm_s", "utm_e", "utm_n", "wgs84", "year"))
+                         else np.asarray(t.column(c).to_pylist(), dtype=object)) for c in t.column_names})
+        _AEF["years"] = sorted({int(y) for y in _AEF["year"]})
+    return _AEF
+
+
+def _aef_tiles(year: int, bbox: list) -> list:
+    """COGs of `year` that overlap the box, in the UTM zone of the box centre when it has any (one CRS, one grid)."""
+    import numpy as np
+
+    ix = _aef_index()
+    hit = ((ix["year"] == year) & (ix["wgs84_west"] <= bbox[2]) & (ix["wgs84_east"] >= bbox[0])
+           & (ix["wgs84_south"] <= bbox[3]) & (ix["wgs84_north"] >= bbox[1]))
+    rows = list(np.nonzero(hit)[0])
+    if not rows:
+        return []
+    lon, lat = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    zone = f"{int((lon + 180) // 6) + 1}{'N' if lat >= 0 else 'S'}"
+    same = [i for i in rows if str(ix["utm_zone"][i]) == zone]
+    if not same:  # the centre's zone has no file here: use one CRS among those that do
+        same = [i for i in rows if str(ix["crs"][i]) == str(ix["crs"][rows[0]])]
+    out = []
+    for i in same:
+        rel = str(ix["path"][i]).split("/annual/", 1)[-1]  # "<year>/<zone>/<name>.tiff"
+        out.append({"key": rel, "vrt": f"/vsicurl/{AEF_BASE}/{rel.rsplit('.', 1)[0]}.vrt", "crs": str(ix["crs"][i])})
+    return out
+
+
+def _aef_grid(tiles: list, bbox: list) -> tuple:
+    """The output pixel grid: the box in the tiles' UTM CRS, snapped outward to the first tile's 10 m pixels.
+    Returns (transform, height, width, crs)."""
+    import math as m
+
+    import rasterio
+    from rasterio.transform import Affine
+    from rasterio.warp import transform_bounds
+
+    with rasterio.Env(**AEF_ENV), rasterio.open(tiles[0]["vrt"]) as src:
+        t0, crs = src.transform, src.crs
+    ub = transform_bounds("EPSG:4326", crs, *bbox, densify_pts=21)
+    c0, c1 = m.floor((ub[0] - t0.c) / t0.a), m.ceil((ub[2] - t0.c) / t0.a)
+    r0, r1 = m.floor((ub[3] - t0.f) / t0.e), m.ceil((ub[1] - t0.f) / t0.e)
+    return t0 * Affine.translation(c0, r0), r1 - r0, c1 - c0, crs.to_string()
+
+
+def _aef_read(tiles: list, grid: tuple):
+    """The 64-band int8 embedding on `grid` (-128 = no data), read through each COG's VRT (the COGs are stored
+    bottom-up; the VRTs flip them) with windowed reads."""
+    import numpy as np
+    import rasterio
+    from rasterio.windows import Window
+
+    gt, h, w, _ = grid
+    out = None
+    with rasterio.Env(**AEF_ENV):
+        for t in tiles:
+            with rasterio.open(t["vrt"]) as src:
+                if out is None:
+                    out = np.full((src.count, h, w), -128, np.int8)
+                col = round((gt.c - src.transform.c) / src.transform.a)
+                row = round((gt.f - src.transform.f) / src.transform.e)
+                try:
+                    win = Window(col, row, w, h).intersection(Window(0, 0, src.width, src.height))
+                except Exception:  # this file does not overlap the box
+                    continue
+                data = src.read(window=win)
+            dr, dc = int(win.row_off - row), int(win.col_off - col)
+            sub = out[:, dr:dr + data.shape[1], dc:dc + data.shape[2]]
+            ok = data[0] != -128
+            sub[:, ok] = data[:, ok]
+    return out
+
+
+def _aef_png(change, valid, scale: float = AEF_VMAX, max_side: int = 256, levels: int = 64) -> str:
+    """The change map as a small palette PNG (data URL): `levels` steps of an inferno-like ramp from 0 to `scale`,
+    no-data transparent. North up, one pixel per 10 m unless the box is over `max_side` pixels."""
+    import base64
+
+    import numpy as np
+    from PIL import Image
+
+    v = np.clip(np.nan_to_num(change) / scale, 0, 1).astype(np.float32)
+    ok = np.asarray(valid, bool)
+    h, w = v.shape
+    if max(h, w) > max_side:
+        k = max_side / max(h, w)
+        size = (max(1, round(w * k)), max(1, round(h * k)))
+        v = np.asarray(Image.fromarray(v).resize(size, Image.BILINEAR))  # float32 -> mode "F"
+        ok = np.asarray(Image.fromarray(ok.astype(np.uint8) * 255).resize(size, Image.NEAREST)) > 127
+    idx = np.clip(np.rint(v * (levels - 1)), 0, levels - 1).astype(np.uint8)
+    idx[~ok] = levels  # the transparent entry
+    stops = np.array([a for a, _ in AEF_RAMP])
+    cols = np.array([c for _, c in AEF_RAMP], np.float32)
+    t = np.linspace(0, 1, levels)
+    pal = np.stack([np.interp(t, stops, cols[:, ch]) for ch in range(3)], 1).round().astype(np.uint8)
+    img = Image.frombytes("P", (idx.shape[1], idx.shape[0]), np.ascontiguousarray(idx).tobytes())
+    img.putpalette(pal.reshape(-1).tolist() + [0, 0, 0])
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True, transparency=levels)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _geo_embed_change(inp: dict) -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+
+    import numpy as np
+
+    bbox = [float(v) for v in (inp.get("bbox") or [])]
+    if len(bbox) != 4 or not (bbox[0] < bbox[2] and bbox[1] < bbox[3]):
+        raise ValueError("bbox must be [minx, miny, maxx, maxy] in lon/lat")
+    if max(bbox[2] - bbox[0], bbox[3] - bbox[1]) > AEF_MAX_DEG:
+        raise ValueError(f"the box can be at most {AEF_MAX_DEG} degrees on a side")
+    have = _aef_index()["years"]
+    years = [int(y) for y in (inp.get("years") or [have[-2], have[-1]])]
+    if len(years) != 2 or years[0] == years[1] or any(y not in have for y in years):
+        raise ValueError(f"years must be two different years among {have[0]}..{have[-1]}")
+    t0 = time.monotonic()
+    tiles = {y: _aef_tiles(y, bbox) for y in years}
+    for y, ts in tiles.items():
+        if not ts:
+            raise ValueError(f"no AlphaEarth tiles cover this box in {y}")
+    if tiles[years[0]][0]["crs"] != tiles[years[1]][0]["crs"]:
+        raise ValueError("the two years' files are in different UTM zones")
+    grid = _aef_grid(tiles[years[0]], bbox)  # both years on the same pixels
+    with ThreadPoolExecutor(2) as ex:
+        a, b = ex.map(lambda y: _aef_read(tiles[y], grid), years)
+    t_read = time.monotonic() - t0
+    valid = (a[0] != -128) & (b[0] != -128)
+
+    def dequant(x):  # (v / 127.5)^2 * sign(v), as the dataset's README specifies
+        v = x.astype(np.float32) / 127.5
+        return v * np.abs(v)
+
+    va, vb = dequant(a), dequant(b)
+    na, nb = np.sqrt((va * va).sum(0)), np.sqrt((vb * vb).sum(0))
+    cos = (va * vb).sum(0) / np.maximum(na * nb, 1e-9)
+    change = np.where(valid, np.clip(1.0 - cos, 0.0, 2.0), np.nan).astype(np.float32)
+    vals = change[valid]
+    q = (lambda p: round(float(np.percentile(vals, p)), 4)) if vals.size else (lambda p: None)
+    stats = {"mean": round(float(vals.mean()), 4) if vals.size else None, "median": q(50), "p90": q(90), "p95": q(95),
+             "p99": q(99), "max": round(float(vals.max()), 4) if vals.size else None,
+             "above": {str(t): round(float((vals > t).mean()), 4) if vals.size else None for t in AEF_THRESHOLDS}}
+    gt, h, w, crs = grid
+    return {"years": years, "bbox": bbox, "crs": crs, "shape": [h, w], "pixelMeters": round(abs(gt.a), 2),
+            "validFraction": round(float(valid.mean()), 4), "stats": stats,
+            "png": _aef_png(change, valid), "pngScale": {"vmax": AEF_VMAX, "ramp": "inferno", "nodata": "transparent"},
+            "tiles": {str(y): [t["key"] for t in ts] for y, ts in tiles.items()}, "readSeconds": round(t_read, 2),
+            "source": "https://source.coop/tge-labs/aef", "license": "CC-BY-4.0", "attribution": AEF_ATTRIBUTION}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1207,18 +1686,226 @@ def _docs_parse(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
-# audio.transcribe: ffmpeg -> 16 kHz mono -> faster-whisper small (int8, CPU)
+# docs.rerank: cross-encoder relevance of passages to a query (Ettin reranker 32M, ONNX Runtime on CPU)
+# ---------------------------------------------------------------------------------------------
+RERANK_MAX_PASSAGES = 256
+RERANK_BATCH = 16
+_RERANK: dict = {}
+
+
+def _reranker() -> dict:
+    """ONNX session, tokenizer and (when the export stops at the encoder, as this one does) the CrossEncoder head:
+    CLS pooling, Dense 384->384 + GELU, LayerNorm, Dense 384->1, read from the repo's sentence-transformers modules.
+    Scores match sentence-transformers' CrossEncoder to 4 decimals."""
+    if _RERANK:
+        return _RERANK
+    import numpy as np
+    import onnxruntime as ort
+    from safetensors.numpy import load_file
+    from tokenizers import Tokenizer
+
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = _hw_threads(TASKS["docs.rerank"][1])
+    so.inter_op_num_threads = 1
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    sess = ort.InferenceSession(f"{RERANK_DIR}/{RERANK_ONNX}", so, providers=["CPUExecutionProvider"])
+    out = sess.get_outputs()[0]
+    head = None
+    if len(out.shape or []) == 3:  # (batch, tokens, hidden): apply the head ourselves
+
+        def tensors(folder: str) -> dict:
+            d = load_file(f"{RERANK_DIR}/{folder}/model.safetensors")
+            return {k.rsplit(".", 1)[-1]: v.astype(np.float32) for k, v in d.items()}
+
+        head = {"dense": tensors("2_Dense"), "norm": tensors("3_LayerNorm"), "out": tensors("4_Dense")}
+    tok = Tokenizer.from_file(f"{RERANK_DIR}/tokenizer.json")
+    tok.no_padding()
+    _RERANK.update(sess=sess, head=head, tok=tok, output=out.name, inputs=[i.name for i in sess.get_inputs()],
+                   pad=tok.token_to_id("[PAD]") or 0, threads=so.intra_op_num_threads)
+    return _RERANK
+
+
+def _rerank_head(h, head: dict):
+    import numpy as np
+
+    erf = np.vectorize(math.erf, otypes=[np.float32])
+    x = h @ head["dense"]["weight"].T + head["dense"].get("bias", 0.0)
+    x = 0.5 * x * (1.0 + erf(x / math.sqrt(2.0)))  # exact GELU, as torch.nn.GELU
+    mu, var = x.mean(-1, keepdims=True), x.var(-1, keepdims=True)
+    x = (x - mu) / np.sqrt(var + 1e-5) * head["norm"]["weight"] + head["norm"]["bias"]
+    return (x @ head["out"]["weight"].T + head["out"].get("bias", 0.0))[:, 0]
+
+
+def _docs_rerank(inp: dict) -> dict:
+    import numpy as np
+
+    query = str(inp.get("query") or "").strip()
+    if not query:
+        raise ValueError("query must be a non-empty string")
+    raw = inp.get("passages")
+    if not isinstance(raw, list):
+        raise ValueError("passages must be a list of {id, text}")
+    if len(raw) > RERANK_MAX_PASSAGES:
+        raise ValueError(f"at most {RERANK_MAX_PASSAGES} passages per call (got {len(raw)})")
+    ids, texts = [], []
+    for i, p in enumerate(raw):
+        if isinstance(p, str):
+            p = {"id": i, "text": p}
+        if not isinstance(p, dict) or not isinstance(p.get("text"), str):
+            raise ValueError(f"passage {i} needs a text string")
+        ids.append(p.get("id", i))
+        texts.append(p["text"])
+    max_len = max(32, min(int(inp.get("maxLength") or 512), 2048))
+    r = _reranker()
+    if not texts:
+        return {"scores": [], "model": MODELS["reranker"]["repo"], "maxLength": max_len, "truncated": 0}
+    tok = r["tok"]
+    tok.enable_truncation(max_length=max_len, strategy="longest_first")
+    enc = tok.encode_batch([(query, t) for t in texts])
+    truncated = sum(1 for e in enc if e.overflowing)
+    order = sorted(range(len(enc)), key=lambda k: len(enc[k].ids))  # similar lengths together: little padding
+    scores = np.zeros(len(enc), np.float32)
+    for b in range(0, len(order), RERANK_BATCH):
+        idx = order[b:b + RERANK_BATCH]
+        width = max(len(enc[k].ids) for k in idx)
+        ids_arr = np.full((len(idx), width), r["pad"], np.int64)
+        mask = np.zeros((len(idx), width), np.int64)
+        for row, k in enumerate(idx):
+            n = len(enc[k].ids)
+            ids_arr[row, :n] = enc[k].ids
+            mask[row, :n] = 1
+        feeds = {"input_ids": ids_arr, "attention_mask": mask}
+        if "token_type_ids" in r["inputs"]:
+            feeds["token_type_ids"] = np.zeros_like(ids_arr)
+        res = r["sess"].run([r["output"]], {k: v for k, v in feeds.items() if k in r["inputs"]})[0]
+        scores[idx] = _rerank_head(res[:, 0, :], r["head"]) if r["head"] is not None else np.asarray(res).reshape(len(idx))
+    ranked = sorted(zip(ids, scores.tolist()), key=lambda x: -x[1])
+    return {"scores": [{"id": i, "score": round(float(s), 4)} for i, s in ranked], "model": MODELS["reranker"]["repo"],
+            "maxLength": max_len, "truncated": truncated}
+
+
+# ---------------------------------------------------------------------------------------------
+# audio.transcribe: ffmpeg -> 16 kHz mono -> Parakeet TDT 0.6B v2 for English (int8 ONNX, Silero VAD segments,
+# word timestamps); faster-whisper small (int8) for other languages and whenever Parakeet fails.
 # ---------------------------------------------------------------------------------------------
 _WHISPER: dict = {}
+_PARAKEET: dict = {}
 MAX_AUDIO_SECONDS = 2 * 3600  # keeps worst-case transcription inside the 3600 s timeout at a few times real time
+LANG_PROBE_SECONDS = 240  # how much audio language detection looks at (Whisper, speech only, 3 windows)
+PARAKEET_NAME = "parakeet-tdt-0.6b-v2 (onnx int8)"
+WHISPER_NAME = f"faster-whisper-small ({MODELS['whisper']['compute']})"
+# Silero pieces for Parakeet: merge pauses under 1.5 s, cap a piece at 30 s. The model sees each piece whole and ends
+# it with a full stop, so short pieces (0.5 s pauses) chopped sentences and cost accuracy: Earnings-22 WER 21.3 % with
+# 0.5 s against 19.7 % with 1.5 s (Whisper small: 21.3 %); LibriSpeech 3.1 % (Whisper small: 7.2 %).
+PARAKEET_VAD = {"min_silence_duration_ms": 1500, "max_speech_duration_s": 30, "speech_pad_ms": 100, "batch_size": 8}
+_ABBREV = {"mr.", "mrs.", "ms.", "dr.", "st.", "vs.", "etc.", "e.g.", "i.e.", "u.s.", "u.k.", "inc.", "co.", "corp.",
+           "ltd.", "no.", "jr.", "sr.", "approx.", "dept.", "est.", "fig.", "jan.", "feb.", "aug.", "sept.", "oct.",
+           "nov.", "dec."}
+
+
+_AUDIO_LOCKS = {"whisper": threading.Lock(), "parakeet": threading.Lock()}
 
 
 def _whisper():
-    if "model" not in _WHISPER:
-        from faster_whisper import WhisperModel
+    with _AUDIO_LOCKS["whisper"]:
+        if "model" not in _WHISPER:
+            from faster_whisper import WhisperModel
 
-        _WHISPER["model"] = WhisperModel(WHISPER_DIR, device="cpu", compute_type="int8", cpu_threads=4, num_workers=1)
+            _WHISPER["model"] = WhisperModel(WHISPER_DIR, device="cpu", compute_type="int8", cpu_threads=4,
+                                             num_workers=1)
     return _WHISPER["model"]
+
+
+def _parakeet():
+    """Parakeet with Silero VAD segmentation and token timestamps. A failed load is remembered for the container's
+    life, so later calls go straight to Whisper."""
+    with _AUDIO_LOCKS["parakeet"]:
+        if "error" in _PARAKEET:
+            raise RuntimeError(_PARAKEET["error"])
+        if "asr" not in _PARAKEET:
+            try:
+                import onnx_asr
+                import onnxruntime as ort
+
+                so = ort.SessionOptions()  # ONNX Runtime would otherwise size its pool by the host's 18+ CPUs
+                so.intra_op_num_threads = _hw_threads(TASKS["audio.transcribe"][1])  # 8 vs 4 threads: 20 % faster
+                so.inter_op_num_threads = 1
+                asr = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v2", PARAKEET_DIR, quantization="int8",
+                                          sess_options=so)
+                vad = onnx_asr.load_vad("silero", SILERO_DIR, sess_options=so)
+                _PARAKEET["asr"] = asr.with_vad(vad, **PARAKEET_VAD).with_timestamps()
+            except Exception as e:
+                _PARAKEET["error"] = _redact(f"Parakeet did not load: {type(e).__name__}: {e}")[:400]
+                raise
+    return _PARAKEET["asr"]
+
+
+def _preload(*loaders):
+    """Load models in background threads, so a cold start overlaps the download, ffmpeg and the language check;
+    the first real use waits on the model's lock. Errors surface (and are handled) at that first use."""
+    for fn in loaders:
+        threading.Thread(target=lambda f=fn: _quiet(f), daemon=True).start()
+
+
+def _quiet(fn):
+    try:
+        fn()
+    except Exception:
+        pass
+
+
+def _wav_head(path: str, seconds: float):
+    """The first `seconds` of a 16 kHz mono 16-bit WAV as float32 samples."""
+    import wave
+
+    import numpy as np
+
+    with wave.open(path, "rb") as w:
+        frames = w.readframes(int(seconds * w.getframerate()))
+    return np.frombuffer(frames, np.int16).astype(np.float32) / 32768.0
+
+
+def _detect_language(path: str) -> tuple[str, float]:
+    """Whisper's language guess on the speech in the first few minutes."""
+    model = _whisper()
+    audio = _wav_head(path, LANG_PROBE_SECONDS)
+    if hasattr(model, "detect_language"):
+        lang, prob, _ = model.detect_language(audio=audio, vad_filter=True, language_detection_segments=3)
+        return str(lang), float(prob or 0.0)
+    _, info = model.transcribe(audio, language=None, vad_filter=True)  # the lazy segments are never decoded
+    return str(info.language), float(info.language_probability or 0.0)
+
+
+def _word_segments(results) -> list:
+    """Parakeet's VAD pieces (token start times relative to each piece) to sentence-sized segments with word
+    timings: a segment ends at . ? ! (not after a common abbreviation), at a pause of 1.5 s or more, or past 30 s."""
+    words = []
+    for r in results:
+        toks, ts = list(r.tokens or []), list(r.timestamps or [])
+        piece = []
+        for tok, t in zip(toks, ts):
+            at = float(r.start) + float(t)
+            if tok.startswith(" ") or not piece:
+                piece.append([tok.strip(), at, at])
+            else:
+                piece[-1][0] += tok
+            piece[-1][2] = at
+        piece = [w for w in piece if w[0]]
+        for k, w in enumerate(piece):  # a word ends where the next starts (tokens carry start times only)
+            nxt = piece[k + 1][1] if k + 1 < len(piece) else float(r.end)
+            w[2] = round(max(w[2] + 0.08, min(nxt, w[2] + 0.8)), 2)
+            w[1] = round(w[1], 2)
+        words += piece
+    segs, cur = [], []
+    for k, w in enumerate(words):
+        cur.append(w)
+        nxt = words[k + 1] if k + 1 < len(words) else None
+        stop = w[0].rstrip("\"')]}").endswith((".", "?", "!")) and w[0].lower().rstrip("\"')]}") not in _ABBREV
+        if nxt is None or stop or nxt[1] - w[2] >= 1.5 or w[2] - cur[0][1] >= 30:
+            segs.append({"start": cur[0][1], "end": cur[-1][2], "text": " ".join(x[0] for x in cur).strip(),
+                         "words": [{"w": x[0], "s": x[1], "e": x[2]} for x in cur]})
+            cur = []
+    return segs
 
 
 def _audio_transcribe(inp: dict) -> dict:
@@ -1226,6 +1913,11 @@ def _audio_transcribe(inp: dict) -> dict:
     import tempfile
 
     language = str(inp.get("language") or "auto").lower()
+    engine = str(inp.get("engine") or "auto").lower()  # auto | parakeet | whisper
+    if engine not in ("auto", "parakeet", "whisper"):
+        raise ValueError("engine must be auto, parakeet or whisper")
+    english_first = engine == "parakeet" or (engine == "auto" and language in ("en", "auto"))
+    _preload(*((_parakeet,) if english_first else ()), *((_whisper,) if engine != "parakeet" else ()))
     with tempfile.TemporaryDirectory() as tmp:
         src, wav = os.path.join(tmp, "input.bin"), os.path.join(tmp, "audio16k.wav")
         sha, nbytes = _fetch_to_file(inp, src)
@@ -1239,16 +1931,45 @@ def _audio_transcribe(inp: dict) -> dict:
         seconds_audio = (os.path.getsize(wav) - 44) / (16000 * 2)
         if seconds_audio > MAX_AUDIO_SECONDS:
             raise ValueError(f"audio is {seconds_audio / 3600:.1f} h long; the limit is {MAX_AUDIO_SECONDS // 3600} h")
-        segments, info = _whisper().transcribe(wav, language=None if language == "auto" else language,
-                                               beam_size=5, vad_filter=True)
-        segs = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segments]
-    tid = f"{sha[:40]}{'' if language == 'auto' else '-' + language}"
+        detected, lang_prob, fallback = None, None, None
+        use_parakeet = english_first
+        if use_parakeet and language == "auto" and engine == "auto":
+            try:
+                detected, lang_prob = _detect_language(wav)
+            except Exception as e:  # cannot tell: let Whisper decide the language as before
+                traceback.print_exc()
+                fallback = _redact(f"language detection failed: {type(e).__name__}: {e}")[:300]
+            use_parakeet = detected == "en" and (lang_prob or 0.0) >= 0.5
+        segs, doc = None, None
+        if use_parakeet:
+            try:
+                segs = _word_segments(_parakeet().recognize(wav))
+                doc = {"language": "en", "languageProbability": round(lang_prob if lang_prob is not None else 1.0, 4),
+                       "duration": round(seconds_audio, 2), "model": PARAKEET_NAME, "engine": "parakeet"}
+            except Exception as e:
+                traceback.print_exc()
+                fallback = _redact(f"parakeet failed: {type(e).__name__}: {e}")[:300]
+                segs = None
+        if segs is None:
+            segments, info = _whisper().transcribe(wav, language=None if language == "auto" else language,
+                                                   beam_size=5, vad_filter=True)
+            segs = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segments]
+            doc = {"language": info.language, "languageProbability": round(float(info.language_probability or 0), 4),
+                   "duration": round(float(info.duration), 2), "model": WHISPER_NAME, "engine": "whisper"}
+    # a forced engine gets its own key, so it never overwrites the default transcript of the same audio
+    tid = f"{sha[:40]}{'' if language == 'auto' else '-' + language}{'' if engine == 'auto' else '-' + engine}"
     key = f"ml/transcripts/{tid}.json"
-    doc = {"language": info.language, "languageProbability": round(float(info.language_probability or 0), 4),
-           "duration": round(float(info.duration), 2), "segments": segs,
-           "model": f"faster-whisper-small ({MODELS['whisper']['compute']})", "sha256": sha}
+    doc = {**doc, "segments": segs, "sha256": sha}
+    if detected is not None:
+        doc["detected"] = {"language": detected, "probability": round(lang_prob or 0.0, 4)}
+    if fallback:
+        doc["fallback"] = fallback
     _put_json(key, doc)
-    return {"key": key, "language": info.language, "duration": round(float(info.duration), 2), "segments": len(segs)}
+    out = {"key": key, "language": doc["language"], "duration": doc["duration"], "segments": len(segs),
+           "model": doc["model"], "engine": doc["engine"]}
+    if fallback:
+        out["fallback"] = fallback
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2180,14 +2901,24 @@ def health(req: dict) -> dict:
     return _execute("health", req, _health)
 
 
-@_task_function("geo.refine", geo_image, env=GDAL_ENV)
+@_task_function("geo.refine", geo_image, env={**GDAL_ENV, **_threads(_hw_threads(TASKS["geo.refine"][1]))})
 def geo_refine(req: dict) -> dict:
     return _execute("geo.refine", req, _geo_refine)
+
+
+@_task_function("geo.embed_change", aef_image, env=AEF_ENV)
+def geo_embed_change(req: dict) -> dict:
+    return _execute("geo.embed_change", req, _geo_embed_change)
 
 
 @_task_function("docs.parse", docs_image, env={"OMP_THREAD_LIMIT": "1"})
 def docs_parse(req: dict) -> dict:
     return _execute("docs.parse", req, _docs_parse)
+
+
+@_task_function("docs.rerank", rerank_image, env=_threads(_hw_threads(TASKS["docs.rerank"][1])))
+def docs_rerank(req: dict) -> dict:
+    return _execute("docs.rerank", req, _docs_rerank)
 
 
 @_task_function("audio.transcribe", audio_image)
@@ -2218,7 +2949,9 @@ def topics_map(req: dict) -> dict:
 TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
+    "geo.embed_change": geo_embed_change,
     "docs.parse": docs_parse,
+    "docs.rerank": docs_rerank,
     "audio.transcribe": audio_transcribe,
     "graph.train": graph_train,
     "synth.tabular": synth_tabular,
@@ -2243,9 +2976,9 @@ def _error(status: int, message: str, **extra):
 
 
 @app.function(image=api_image, cpu=0.25, memory=512, timeout=TASKS["audio.transcribe"][3] + 300, secrets=[SECRET],
-              max_containers=2, scaledown_window=SCALEDOWN_SECONDS)
+              max_containers=2, scaledown_window=SCALEDOWN_SECONDS, env=APP_ENV)
 @modal.concurrent(max_inputs=32)
-@modal.fastapi_endpoint(method="POST", label="youbank-edge-ml")
+@modal.fastapi_endpoint(method="POST", label=APP_NAME)
 async def api(request: Request):
     """POST {"task", "input", "async", "correlation"} with Authorization: Bearer <EDGE_ML_SECRET>."""
     if not _authorized(request.headers.get("authorization")):
@@ -2280,9 +3013,9 @@ async def api(request: Request):
 
 
 @app.function(image=api_image, cpu=0.25, memory=512, timeout=60, secrets=[SECRET], max_containers=1,
-              scaledown_window=SCALEDOWN_SECONDS)
+              scaledown_window=SCALEDOWN_SECONDS, env=APP_ENV)
 @modal.concurrent(max_inputs=32)
-@modal.fastapi_endpoint(method="POST", label="youbank-edge-ml-status")
+@modal.fastapi_endpoint(method="POST", label=f"{APP_NAME}-status")
 async def status(request: Request):
     """POST {"callId"} -> {"done": false} or {"done": true, "ok", "result", "error", ...}."""
     if not _authorized(request.headers.get("authorization")):

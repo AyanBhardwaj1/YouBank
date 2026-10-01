@@ -7,7 +7,7 @@
 import { Download, ExternalLink } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import { kindOfValue, type Answer, type Companies, type Findings, type Memo, type Places, type ProformaValue, type Ranking, type Scenario, type Signal, type Table } from "@/lib/edge/canvas/values";
-import { MiniPreview } from "./ModuleNode";
+import { MiniPreview } from "./MiniPreview";
 
 const fmt = (v: number | null | undefined, dp = 0) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: dp }));
 

@@ -15,6 +15,7 @@ import { logError } from "@/lib/errors";
 import { getBytes, getJson, listKeys, partKey, PART_BYTES, putObject, r2Ready, readParts } from "../infra/r2";
 import { withinFreeTier } from "../infra/usage";
 import { MlUnavailable, mlReady, mlStart, type MlDone } from "../infra/ml";
+import { small } from "../models";
 import { passagesFromPages, passagesFromTranscript, splitText, type ParsedPage, type Segment } from "./chunk";
 import { indexPassages, setDoc, upsertDoc, uploadUsage, type DocRow } from "./store";
 
@@ -139,8 +140,8 @@ export async function readSimple(mime: string, name: string, bytes: Uint8Array):
     return [{ n: 1, text: "", tables: [rows] }];
   }
   if (mime === "text/html") {
-    const { htmlToText } = await import("@/lib/edgar/filingText");
-    return [{ n: 1, text: htmlToText(text) }];
+    const { partsFromHtml } = await import("./html");
+    return [{ n: 1, text: "", parts: partsFromHtml(text) }];
   }
   if (TEXT.test(mime)) return [{ n: 1, text }];
   return null;
@@ -163,7 +164,7 @@ export async function attributeSpeakers(segments: Segment[]): Promise<{ segments
   try {
     const r = await structured(Speakers, "edge-speakers",
       "You read transcripts of earnings calls, conferences and meetings. Split the numbered segments into speaker turns. Use names and roles only when the transcript states them (an operator introduces speakers; people introduce themselves); otherwise use Speaker 1, Speaker 2. Never guess identities.",
-      lines, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 6000, timeoutMs: 120_000 });
+      lines, { override: small(), maxTokens: 6000, timeoutMs: 120_000 });
     const turns = r.data.turns.filter((t) => t.from >= 0 && t.from < segments.length).sort((a, b) => a.from - b.from);
     const out = segments.map((s, i) => { const t = [...turns].reverse().find((x) => x.from <= i); return { ...s, speaker: t?.speaker ?? "" }; });
     return { segments: out, turns };
@@ -194,7 +195,23 @@ export async function startIngest(docId: number): Promise<IngestStart> {
 }
 
 type Parsed = { pages: { n: number; text: string; tables?: string[][][] }[]; meta?: { pages?: number; lang?: string; ocrPages?: number; title?: string } };
-type Transcript = { language?: string; duration?: number; segments: Segment[] };
+type Transcript = { language?: string; duration?: number; segments: Segment[]; engine?: string; model?: string; fallback?: unknown };
+
+/** The credit NVIDIA's licence (CC BY 4.0) asks for wherever a Parakeet transcript is used. */
+export const PARAKEET_CREDIT = "Speech recognition: NVIDIA Parakeet TDT 0.6B v2 (CC BY 4.0)";
+
+/**
+ * Who transcribed a recording, as the ML service reports it (Parakeet for English, Whisper otherwise, and
+ * any fallback), with the line to show for it; null when it did not say. Pure.
+ */
+export function transcriptionOf(r: { engine?: unknown; model?: unknown; fallback?: unknown } | null | undefined): { engine: string; model: string; fallback?: string; credit: string } | null {
+  const engine = typeof r?.engine === "string" ? r.engine.trim().toLowerCase() : "";
+  const model = typeof r?.model === "string" ? r.model.trim() : "";
+  if (!engine && !model) return null;
+  const fallback = r?.fallback ? (typeof r.fallback === "string" ? r.fallback : JSON.stringify(r.fallback)).slice(0, 200) : "";
+  const credit = engine === "parakeet" ? PARAKEET_CREDIT : `Speech recognition: ${engine === "whisper" ? "Whisper" : engine || "speech model"}${model ? ` (${model})` : ""}`;
+  return { engine, model, ...(fallback ? { fallback } : {}), credit };
+}
 
 /** Finish reading from the ML task's answer: passages, embeddings, and what the document is. */
 export async function finishIngest(docId: number, done: MlDone | null): Promise<void> {
@@ -208,7 +225,8 @@ export async function finishIngest(docId: number, done: MlDone | null): Promise<
     if (!t?.segments?.length) { await setDoc(docId, { status: "failed", error: "No speech found in the recording." }); return; }
     await setDoc(docId, { status: "indexing", lang: t.language ?? "", durationSec: t.duration ?? 0 });
     const { segments, turns } = await attributeSpeakers(t.segments);
-    await setDoc(docId, { meta: { ...doc.meta, transcriptKey: key, turns: turns.slice(0, 400).map((x) => ({ ...x, t: segments[x.from]?.start ?? 0 })) } });
+    const transcription = transcriptionOf(done.result) ?? transcriptionOf(t);
+    await setDoc(docId, { meta: { ...doc.meta, transcriptKey: key, ...(transcription ? { transcription } : {}), turns: turns.slice(0, 400).map((x) => ({ ...x, t: segments[x.from]?.start ?? 0 })) } });
     await indexPassages(docId, passagesFromTranscript(segments));
     return;
   }

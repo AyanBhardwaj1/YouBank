@@ -16,6 +16,7 @@ export const PRICES: Record<string, Price> = {
   "gpt-5.6-sol": P(4, 0.4, 5, 20),
   "gpt-5.6-terra": P(2, 0.2, 2.5, 12),
   "gpt-5.6-luna": P(0.2, 0.02, 0.25, 1.2),
+  "gpt-6-luna": P(0.1, 0.01, 0.125, 0.5),
   "gpt-5.4-mini": P(0.75, 0.075, 0.75, 4.5),
   "gpt-5.4-nano": P(0.2, 0.02, 0.2, 1.25),
   "claude-fable-5-1": P(10, 0.25, 12.5, 50),

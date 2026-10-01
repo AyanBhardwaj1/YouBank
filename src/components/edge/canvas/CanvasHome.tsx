@@ -7,12 +7,12 @@
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, GitBranch, Loader2, Plus, Sparkles, Users } from "lucide-react";
-import { useState } from "react";
+import { Bell, GitBranch, Loader2, Plus, Sparkles, Users, Workflow } from "lucide-react";
+import { useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { MODULE_LABEL, NODE, type Module } from "@/lib/edge/canvas/catalog";
 import { ago, post, useApi, useNow } from "../client";
-import { MODULE_COLOR } from "./ModuleNode";
+import { MODULE_COLOR } from "./colors";
 
 type Summary = { id: number; title: string; description: string; template: string; teamId: number | null; parentId: number | null; branch: string; mine: boolean; updatedAt: string; nodeTypes: string[]; lastRun: { id: number; status: string; at: string } | null; monitor: { schedule: string; active: boolean } | null };
 type Home = { canvases: Summary[]; templates: { id: string; title: string; blurb: string; modules: Module[]; ready: boolean }[]; available: string[] };
@@ -30,6 +30,9 @@ export function CanvasHome() {
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const goalRef = useRef<HTMLTextAreaElement>(null);
+  // The empty state offers the first starter that can run now.
+  const starter = home.data?.templates.find((t) => t.ready);
 
   const create = async (body: Record<string, unknown>, key: string) => {
     setBusy(key); setError(null);
@@ -48,7 +51,7 @@ export function CanvasHome() {
         <label className="flex items-center gap-1.5 text-[12.5px] font-semibold"><Sparkles className="h-4 w-4 text-accent" />Describe what you want to find out</label>
         <p className="mt-0.5 text-[11.5px] text-muted">Edge lays out the blocks and wires; you can change anything before running it.</p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder={IDEAS[0]} className="ctl min-h-[44px] flex-1 resize-y border border-line bg-bg px-2.5 py-2 text-[12.5px] outline-none placeholder:text-faint focus:border-accent/60" />
+          <textarea ref={goalRef} value={goal} onChange={(e) => setGoal(e.target.value)} rows={2} placeholder={IDEAS[0]} className="ctl min-h-[44px] flex-1 resize-y border border-line bg-bg px-2.5 py-2 text-[12.5px] outline-none placeholder:text-faint focus:border-accent/60" />
           <button type="submit" disabled={!goal.trim() || !!busy} className="ctl flex items-center justify-center gap-1.5 bg-accent px-3 py-2 text-[12.5px] font-semibold text-accent-fg disabled:opacity-50 sm:self-start">
             {busy === "build" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Build the canvas
           </button>
@@ -81,7 +84,24 @@ export function CanvasHome() {
 
       <section>
         <h2 className="mb-2 text-[12.5px] font-semibold">Your canvases</h2>
-        {!home.data ? <div className="h-24 animate-pulse rounded-lg bg-elevated/40" /> : !home.data.canvases.length ? <p className="text-[12px] text-muted">None yet. Describe a goal or start from a template above.</p> : (
+        {!home.data ? <div className="h-24 animate-pulse rounded-lg bg-elevated/40" /> : !home.data.canvases.length ? (
+          <div className="panel flex flex-col items-center gap-2 px-4 py-8 text-center">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent"><Workflow className="h-5 w-5" /></span>
+            <h3 className="text-[13.5px] font-semibold">No canvases yet</h3>
+            <p className="max-w-[440px] text-[12px] text-muted">A canvas chains Edge&apos;s modules into one run: pick the companies, watch their sites from space, read their filings and write it up, as blocks you can change and run again.</p>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+              {starter && (
+                <button type="button" disabled={!!busy} onClick={() => void create({ template: starter.id }, starter.id)} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">
+                  {busy === starter.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}Start with “{starter.title}”
+                </button>
+              )}
+              <button type="button" disabled={!!busy} onClick={() => void create({}, "blank")} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-fg hover:border-accent/50 disabled:opacity-50">
+                {busy === "blank" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}Blank canvas
+              </button>
+              <button type="button" onClick={() => goalRef.current?.focus()} className="px-1 text-[12px] text-accent hover:underline">or describe a goal</button>
+            </div>
+          </div>
+        ) : (
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {home.data.canvases.map((cv) => (
               <Link key={cv.id} href={`/app/edge/canvas/${cv.id}`} className="panel flex flex-col gap-1.5 p-3 transition hover:border-accent/50">

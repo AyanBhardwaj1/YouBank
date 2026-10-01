@@ -3,7 +3,7 @@ import { and, eq, isNull, or } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
-import { edgeFeed } from "@/lib/edge/feed";
+import { feedIndex } from "@/lib/edge/feed";
 import { trailCsv, trailFor } from "@/lib/edge/provenance";
 import { listWatches } from "@/lib/edge/watches";
 
@@ -17,11 +17,10 @@ const csvResponse = (csv: string, name: string) => new Response(csv, { headers: 
  */
 export async function GET(req: Request) {
   return guarded(async (user) => {
-    const p = await requireEdge(user.id);
+    const [p, watches] = await Promise.all([requireEdge(user.id), listWatches(user.id)]);
     const q = new URL(req.url).searchParams;
     if (q.get("all")) {
-      const feed = await edgeFeed(user.id, await listWatches(user.id), p.prefs.blend, { scope: "all", limit: 500 });
-      const titles = new Map(feed.cards.map((c) => [`detection:${c.id}`, c.title]));
+      const titles = new Map((await feedIndex(user.id, watches, p.prefs.blend)).map((c) => [`detection:${c.id}`, c.title]));
       return csvResponse(trailCsv(await trailFor([...titles.keys()]), titles), `edge-audit-log-${new Date().toISOString().slice(0, 10)}.csv`);
     }
     const id = Number(q.get("detection"));

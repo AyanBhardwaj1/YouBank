@@ -13,16 +13,23 @@ import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { putObject, r2Ready } from "../infra/r2";
-import { passagesFromFiling, passagesFromPages } from "./chunk";
+import { passagesFromPages, passagesFromParts, type Part } from "./chunk";
+import { partsFromHtml } from "./html";
 import { indexPassages, setDoc, upsertDoc } from "./store";
 
 const DAY = 86_400_000;
 const PER_FORM: Record<string, number> = { "10-K": 2, "10-Q": 3, "8-K": 4, "DEF 14A": 1, "S-4": 1 };
 
-async function filingText(url: string, index: string, form: string): Promise<string> {
+/**
+ * A filing's text (kept in R2 for the change radar and the graph) and its parts, read from the HTML so
+ * tables keep their rows and columns, for cutting into passages.
+ */
+async function filingContent(url: string, index: string, form: string): Promise<{ text: string; parts: Part[] }> {
   const res = await edgarFetch(url);
   if (!res.ok) throw new Error(`SEC answered ${res.status} for ${url}`);
-  let text = htmlToText(await res.text());
+  const html = await res.text();
+  let text = htmlToText(html);
+  const parts = partsFromHtml(html);
   if (form.startsWith("8-K")) {
     // The substance of an 8-K is usually in its exhibits (the press release is EX-99.1).
     try {
@@ -30,11 +37,14 @@ async function filingText(url: string, index: string, form: string): Promise<str
       const files = ((await idx.json()) as { directory?: { item?: { name: string }[] } }).directory?.item ?? [];
       for (const f of files.filter((x) => /ex-?99/i.test(x.name) && /\.(htm|html|txt)$/i.test(x.name)).slice(0, 2)) {
         const r = await edgarFetch(`${index}${f.name}`);
-        if (r.ok) text += `\n\nExhibit 99\n\n${htmlToText(await r.text())}`;
+        if (!r.ok) continue;
+        const ex = await r.text();
+        text += `\n\nExhibit 99\n\n${htmlToText(ex)}`;
+        parts.push({ kind: "heading", text: "Exhibit 99", section: "Exhibit 99" }, ...partsFromHtml(ex));
       }
     } catch { /* the form itself is still indexed */ }
   }
-  return text;
+  return { text, parts };
 }
 
 const NARRATIVE = ["Risk factors", "MD&A", "Business", "Market risk", "8-K item", "Exhibit 99", "Controls"];
@@ -59,14 +69,14 @@ export async function indexFilings(ticker: string, forms: string[], months: numb
   const docIds: number[] = [];
   let indexed = 0;
   for (const f of picked) {
-    const doc = await upsertDoc({ ownerId: "", source: "sec", externalId: f.accession, title: `${t.name} ${f.form} (${f.filed})`, url: f.url, mime: "text/html", meta: { ticker: ticker.toUpperCase(), cik, form: f.form, filed: f.filed, period: f.period, items: f.items } });
+    const doc = await upsertDoc({ ownerId: "", source: "sec", externalId: f.accession, title: `${t.name} ${f.form} (${f.filed})`, url: f.url, mime: "text/html", meta: { ticker: ticker.toUpperCase(), cik, company: t.name, form: f.form, filed: f.filed, period: f.period, items: f.items } });
     if (doc.status === "ready") { docIds.push(doc.id); continue; }
     if (Date.now() > deadline) continue;
     try {
       await setDoc(doc.id, { status: "indexing" });
-      const text = await filingText(f.url, f.index, f.form);
+      const { text, parts } = await filingContent(f.url, f.index, f.form);
       if (r2Ready()) await putObject(`docs/sec/${f.accession}.txt`, text, "text/plain; charset=utf-8").catch(() => undefined);
-      await indexPassages(doc.id, keepNarrative(passagesFromFiling(text), 1500));
+      await indexPassages(doc.id, keepNarrative(passagesFromParts(parts), 1500));
       await setDoc(doc.id, { lang: "en", meta: { ...doc.meta, textKey: r2Ready() ? `docs/sec/${f.accession}.txt` : "" } });
       docIds.push(doc.id); indexed++;
     } catch (e) {

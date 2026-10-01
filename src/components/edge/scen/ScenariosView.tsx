@@ -6,6 +6,7 @@
  * with its recipe and seed, and every scenario is checked against real data for realism.
  */
 import { useCallback, useState } from "react";
+import { onTabKeys, tabProps } from "../tabs";
 import { MarketTab } from "./MarketTab";
 import { CompanyTab, PracticeTab, SavedList, TablesTab } from "./OtherTabs";
 
@@ -19,8 +20,8 @@ export function ScenariosView({ tickers }: { tickers: string[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line p-0.5" role="tablist" aria-label="Scenarios">
-          {TABS.map((t) => <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`rounded-md px-3 py-1 text-[12.5px] ${tab === t.id ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{t.label}</button>)}
+        <div className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line p-0.5" role="tablist" aria-label="Scenarios" onKeyDown={onTabKeys}>
+          {TABS.map((t) => <button key={t.id} type="button" {...tabProps(tab === t.id)} onClick={() => setTab(t.id)} className={`rounded-md px-3 py-1 text-[12.5px] ${tab === t.id ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{t.label}</button>)}
         </div>
         <p className="text-[11.5px] text-muted">Synthetic data is labeled everywhere, with its recipe and seed.</p>
       </div>

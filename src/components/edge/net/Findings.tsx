@@ -3,16 +3,17 @@
 /**
  * What Networks finds for the company in view, one tab at a time: its likely buyers and targets (the
  * deal model's picks, each with the paths that connect the two, drawn on the graph when chosen), warm
- * introductions, who a shock would reach, red flags, and its deal history. Every step links to its
- * filing.
+ * introductions, who a shock would reach, who ultimately owns it, red flags, and its deal history. Every
+ * step links to its filing.
  */
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Mail, Users } from "lucide-react";
 import { useState } from "react";
 import { post, useApi } from "@/components/news/client";
-import { type CompanyView, type Exposure, type Intros, type Picks, type Prediction, type Step } from "./client";
+import { onTabKeys, tabProps } from "../tabs";
+import { type CompanyView, type Exposure, type Intros, type Owners, type Picks, type Prediction, type Step } from "./client";
 
-type Tab = "buyers" | "targets" | "intros" | "exposure" | "flags" | "deals";
-const TABS: { id: Tab; label: string }[] = [{ id: "buyers", label: "Likely buyers" }, { id: "targets", label: "Likely targets" }, { id: "intros", label: "Warm intros" }, { id: "exposure", label: "Exposure" }, { id: "flags", label: "Red flags" }, { id: "deals", label: "Deals" }];
+type Tab = "buyers" | "targets" | "intros" | "exposure" | "owners" | "flags" | "deals";
+const TABS: { id: Tab; label: string }[] = [{ id: "buyers", label: "Likely buyers" }, { id: "targets", label: "Likely targets" }, { id: "intros", label: "Warm intros" }, { id: "exposure", label: "Exposure" }, { id: "owners", label: "Who owns it" }, { id: "flags", label: "Red flags" }, { id: "deals", label: "Deals" }];
 
 function Steps({ steps }: { steps: Step[] }) {
   return (
@@ -109,25 +110,69 @@ function IntroList({ ticker, name }: { ticker: string; name: string }) {
   );
 }
 
+const share = (p: number) => (p > 0 && p < 0.01 ? "<0.01%" : `${p}%`);
+
+/**
+ * Who ultimately owns the company: integrated ownership, each holder's direct stake plus what it holds
+ * through other holders, the largest five with the chain behind the first.
+ */
+function OwnerList({ data, name, onOpen }: { data: Owners | null; name: string; onOpen: (ticker: string) => void }) {
+  if (!data) return <div className="h-32 animate-pulse rounded-md bg-elevated/40" />;
+  const first = data.owners[0];
+  const max = Math.max(1e-6, ...data.owners.map((o) => o.percent));
+  return (
+    <div className="space-y-2">
+      <h3 className="text-[12.5px] font-semibold">Who ultimately owns it</h3>
+      {!data.owners.length ? <p className="text-[12px] text-muted">No 5% holder or insider stake in {name} is on file in the graph.</p> : (
+        <ol className="space-y-1.5">
+          {data.owners.map((o, i) => (
+            <li key={o.node.id} className="rounded-md border border-line px-2.5 py-2">
+              <div className="flex items-center gap-2 text-[12.5px]">
+                <span className="num w-4 shrink-0 text-[11px] text-muted">{i + 1}</span>
+                {o.node.kind === "company" && o.node.ticker
+                  ? <button type="button" onClick={() => onOpen(o.node.ticker)} className="min-w-0 flex-1 truncate text-left font-medium hover:text-accent hover:underline">{o.node.name} <span className="num text-muted">{o.node.ticker}</span></button>
+                  : <span className="min-w-0 flex-1 truncate font-medium">{o.node.name}</span>}
+                <span aria-hidden className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-line"><span className="block h-full rounded-full bg-accent" style={{ width: `${(o.percent / max) * 100}%` }} /></span>
+                <span className="num w-[58px] shrink-0 text-right font-medium">{o.atLeast ? <><span aria-hidden>≥ </span><span className="sr-only">at least </span></> : null}{share(o.percent)}</span>
+              </div>
+              <p className="mt-0.5 pl-6 text-[11px] text-muted">{o.direct === null ? "All of it through other holders" : o.direct >= o.percent - 0.05 ? "Held directly" : `${share(o.direct)} directly, the rest through other holders`}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+      {first && data.chain.length > 0 && (
+        <div>
+          <div className="mb-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">The chain behind {first.node.name}&apos;s stake</div>
+          <Steps steps={data.chain} />
+          {data.chainPercent !== null && data.chainPercent < first.percent - 0.05 && <p className="mt-0.5 text-[11px] text-muted">That chain carries {share(data.chainPercent)}; its other chains carry the rest.</p>}
+        </div>
+      )}
+      {data.parents.length > 0 && <p className="text-[11.5px] text-muted">Also listed as a subsidiary by {data.parents.map((p) => p.name).join(", ")}, in Exhibit 21, which gives no share.</p>}
+      <p className="text-[10.5px] text-faint">Integrated ownership (Vitali, Glattfelder and Battiston, 2011): each holder&apos;s direct stake plus what it holds through other holders, loops included. Schedule 13D/13G and Form 4 cover only holders of 5% or more and insiders, so smaller and undisclosed stakes are missing. &ldquo;≥&rdquo; marks a filing that gives no figure, counted at its 5% or 10% floor.</p>
+    </div>
+  );
+}
+
 export function Findings({ ticker, company, onPick, picked, onOpen }: { ticker: string; company: CompanyView; onPick: (p: Prediction | null, graph: Picks["graph"]) => void; picked: number | null; onOpen: (ticker: string) => void }) {
   const [tab, setTab] = useState<Tab>("buyers");
   const q = `ticker=${encodeURIComponent(ticker)}`;
   const buyers = useApi<Picks>(tab === "buyers" ? `/api/edge/graph/acquirers?${q}` : null);
   const targets = useApi<Picks>(tab === "targets" ? `/api/edge/graph/targets?${q}` : null);
   const exposure = useApi<Exposure>(tab === "exposure" ? `/api/edge/graph/exposure?${q}` : null);
+  const owners = useApi<Owners>(tab === "owners" ? `/api/edge/graph/owners?${q}` : null);
   const flags = company.flags;
   return (
     <div className="panel p-3">
-      <div className="-mx-1 flex flex-wrap gap-1 pb-2" role="tablist" aria-label="Findings">
+      <div className="-mx-1 flex flex-wrap gap-1 pb-2" role="tablist" aria-label="Findings" onKeyDown={onTabKeys}>
         {TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => { setTab(t.id); onPick(null, { nodes: [], links: [] }); }} className={`rounded-full border px-2 py-0.5 text-[11.5px] ${tab === t.id ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>
+          <button key={t.id} type="button" {...tabProps(tab === t.id)} onClick={() => { setTab(t.id); onPick(null, { nodes: [], links: [] }); }} className={`rounded-full border px-2 py-0.5 text-[11.5px] ${tab === t.id ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>
             {t.label}{t.id === "flags" && flags.length ? <span className={`ml-1 num ${flags.some((f) => f.severity === "high") ? "text-neg" : ""}`}>{flags.length}</span> : null}
           </button>
         ))}
       </div>
       {tab === "buyers" && <PickList data={buyers.data} onPick={onPick} picked={picked} onOpen={onOpen} />}
       {tab === "targets" && <PickList data={targets.data} onPick={onPick} picked={picked} onOpen={onOpen} />}
-      {(buyers.error || targets.error || exposure.error) && <p className="text-[12px] text-neg">{buyers.error ?? targets.error ?? exposure.error}</p>}
+      {(buyers.error || targets.error || exposure.error || owners.error) && <p className="text-[12px] text-neg">{buyers.error ?? targets.error ?? exposure.error ?? owners.error}</p>}
       {tab === "intros" && <IntroList ticker={ticker} name={company.node.name} />}
       {tab === "exposure" && (!exposure.data ? <div className="h-32 animate-pulse rounded-md bg-elevated/40" /> : !exposure.data.items.length ? <p className="text-[12px] text-muted">No customers, suppliers, joint ventures or controlling stakes connect {company.node.name} to other companies in the graph yet.</p> : (
         <div className="space-y-1.5">
@@ -140,12 +185,18 @@ export function Findings({ ticker, company, onPick, picked, onOpen }: { ticker: 
           ))}</ol>
         </div>
       ))}
-      {tab === "flags" && (!flags.length ? <p className="text-[12px] text-muted">No red flags in the filings Edge has read: no restatement or auditor change, no cluster of insider selling, no ownership loop, no director on both sides of a business relationship.</p> : (
+      {tab === "owners" && <OwnerList data={owners.data} name={company.node.name} onOpen={onOpen} />}
+      {tab === "flags" && (!flags.length ? <p className="text-[12px] text-muted">No red flags in the filings Edge has read: no restatement or auditor change, no cluster of insider selling, no ownership loop, no director on both sides of a business relationship, and no shared director or officer with a large competitor.</p> : (
         <ol className="space-y-1.5">{flags.map((f, i) => (
           <li key={i} className={`rounded-md border px-2.5 py-2 ${f.severity === "high" ? "border-neg/50 bg-neg/5" : "border-line"}`}>
             <div className="flex items-start gap-1.5 text-[12.5px] font-medium"><AlertTriangle className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${f.severity === "high" ? "text-neg" : "text-muted"}`} /><span className="flex-1">{f.title}</span><span className="num shrink-0 text-[10.5px] text-muted">{f.date}</span></div>
             <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{f.detail}</p>
-            {f.urls?.length ? <div className="mt-1 flex flex-wrap gap-2">{f.urls.map((u, j) => <a key={j} href={u} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-accent hover:underline">Filing {j + 1}<ExternalLink className="h-3 w-3" /></a>)}</div> : null}
+            {f.urls?.length || f.refs?.length ? (
+              <div className="mt-1 flex flex-wrap gap-2">
+                {f.urls?.map((u, j) => <a key={j} href={u} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-accent hover:underline">Filing {j + 1}<ExternalLink className="h-3 w-3" /></a>)}
+                {f.refs?.map((r) => <a key={r.url} href={r.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-0.5 text-[11px] text-accent hover:underline">{r.label}<ExternalLink className="h-3 w-3" /></a>)}
+              </div>
+            ) : null}
           </li>
         ))}</ol>
       ))}

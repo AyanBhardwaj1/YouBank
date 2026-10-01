@@ -12,7 +12,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
 import { ago, api, post, useApi, useNow } from "@/components/news/client";
 import { clockOf } from "@/lib/edge/docs/text";
-import { errorText, fmtBytes, FORM_OPTIONS, READING, SOURCE_LABEL, uploadFile, type Library as LibraryData, type LibDoc } from "./client";
+import { errorText, fmtBytes, FORM_OPTIONS, poll, READING, SOURCE_LABEL, uploadFile, type Library as LibraryData, type LibDoc } from "./client";
 
 /** What the reader handles. Word, Excel and PowerPoint in their current formats (not the pre-2007 .doc, .xls and .ppt). */
 const ACCEPT = ".pdf,.docx,.xlsx,.xlsm,.pptx,.csv,.txt,.md,.html,.htm,.json,.eml,.msg,.png,.jpg,.jpeg,.tif,.tiff,.mp3,.m4a,.wav,.aac,.ogg,.flac,.mp4,.mov,.webm";
@@ -58,16 +58,12 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
   const input = useRef<HTMLInputElement>(null);
   const reload = () => setNonce((n) => n + 1);
 
-  // The library, refreshed every few seconds while anything is still being read.
-  useEffect(() => {
-    let live = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const load = () => api<LibraryData>("/api/edge/docs")
-      .then((d) => { if (!live) return; setLib(d); setLoadError(null); if (d.docs.some((x) => READING.has(x.status))) timer = setTimeout(load, 5000); })
-      .catch((e) => { if (live) setLoadError(errorText(e)); });
-    void load();
-    return () => { live = false; if (timer) clearTimeout(timer); };
-  }, [nonce]);
+  // The library, checked again every few seconds while anything is still being read: paused while the
+  // tab is hidden, and a failed check is retried later rather than ending the refreshes.
+  useEffect(() => poll((signal) => api<LibraryData>("/api/edge/docs", { signal }), (d) => {
+    setLib(d); setLoadError(null);
+    return d.docs.some((x) => READING.has(x.status));
+  }, { onError: (e) => setLoadError(errorText(e)) }), [nonce]);
 
   const send = async (files: File[]) => {
     const teamId = shareWith ? Number(shareWith) : null;
@@ -179,8 +175,8 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
           <h2 className="text-[12.5px] font-semibold">Your documents</h2>
           {mine.filter((d) => d.status === "ready").length > 1 && <button type="button" onClick={() => { const ready = mine.filter((d) => d.status === "ready"); onAsk(ready.map((d) => d.id), `${ready.length} documents`); }} className="flex items-center gap-1 text-[11.5px] text-accent hover:underline"><Search className="h-3 w-3" />Ask across all of them</button>}
         </div>
-        {loadError && <p className="text-[12px] text-neg">{loadError}</p>}
-        {!lib ? <div className="h-32 animate-pulse rounded-lg bg-elevated/40" /> : !mine.length ? <p className="text-[12px] text-muted">Nothing yet. Upload a data room, import a call, or read your workspace above.</p> : (
+        {loadError && <p className="mb-2 text-[12px] text-neg">{lib ? "Could not refresh the library: " : ""}{loadError} <button type="button" onClick={reload} className="text-accent hover:underline">Try again</button></p>}
+        {!lib ? (loadError ? null : <div className="h-32 animate-pulse rounded-lg bg-elevated/40" />) : !mine.length ? <p className="text-[12px] text-muted">Nothing yet. Upload a data room, import a call, or read your workspace above.</p> : (
           <ul className="divide-y divide-line rounded-lg border border-line">
             {mine.map((d) => (
               <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">

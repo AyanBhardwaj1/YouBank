@@ -8,10 +8,11 @@
  * and a sky, and plants stand as columns by capacity until you zoom in close. Loaded only when a map
  * is on screen (MapLibre is large).
  */
-import maplibregl, { type GeoJSONSource, type Map as MLMap } from "maplibre-gl";
+import maplibregl, { type ExpressionSpecification, type GeoJSONSource, type Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Box } from "lucide-react";
 import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import type { SiteModel } from "@/lib/edge/site3d";
 import { hexagon } from "@/lib/edge/terrain-view";
 import { tilt as tween } from "./tilt";
 import { partyOf, type AssetCollection, type AssetFeature, type Bbox, type Imagery } from "./client";
@@ -37,12 +38,18 @@ export type EarthMapProps = {
   onAsset?: (asset: MapAsset) => void;
   /** Open tilted over the terrain. */
   initial3D?: boolean;
+  /** Changing this number turns 3D on (for a parent that wants to show something in 3D). */
+  want3D?: number;
+  /** A site modelled in 3D: its aerial photograph draped on the ground and its structures standing on it. */
+  site?: SiteModel | null;
+  /** A ground change's outline (the detection's overlay image over its box), draped on the ground. */
+  overlay?: { url: string; bbox: Bbox } | null;
   /** Told the zoom level as it changes (the satellite layer shows from zoom 8). */
   onZoom?: (zoom: number) => void;
   className?: string;
 };
 
-export type MapAsset = { id: number; kind: string; name: string; operator: string; company: string; ticker: string; cap: number };
+export type MapAsset = { id: number; kind: string; name: string; operator: string; company: string; ticker: string; cap: number; lon: number; lat: number };
 
 /** GeoJSON as the map takes it (the GeoJSON types come with MapLibre). */
 type GeoData = Parameters<GeoJSONSource["setData"]>[0];
@@ -198,7 +205,15 @@ function MapCanvas(props: EarthMapProps) {
       m.addLayer({ id: "markers", type: "circle", source: "markers", paint: { "circle-color": "#ffffff", "circle-radius": 4.5, "circle-stroke-color": accent, "circle-stroke-width": 3.5 } });
       ready.current = true;
       syncSatellite(m, p.satellite);
+      syncOverlay(m, p.overlay);
+      syncSite(m, p.site);
       sync3D(m, view3D.current.on, view3D.current.relief, false);
+      m.on("click", "site-structures", (e) => {
+        const q = e.features?.[0]?.properties as { kind: string; h: number; d: number; v: number } | undefined;
+        if (!q) return;
+        const what = q.kind === "tank" ? `Storage tank, ${q.d} m across and ${q.h} m tall: about ${Math.round(q.v).toLocaleString("en-US")} m³ (${Math.round(q.v * 6.2898).toLocaleString("en-US")} barrels) of shell` : q.kind === "tower" ? `Tower or stack, ${q.h} m tall` : `Structure, ${q.h} m tall`;
+        popup.setLngLat(e.lngLat).setHTML(`<div style="font:12px/1.4 var(--font-sans)">${esc(what)}<br><span style="opacity:.7">From USGS 3DEP lidar</span></div>`).addTo(m);
+      });
 
       const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: true, maxWidth: "260px", className: "edge-popup" });
       for (const layer of ["pipes", "plants", "plant-columns", "markers"]) {
@@ -215,7 +230,8 @@ function MapCanvas(props: EarthMapProps) {
         const f = m.queryRenderedFeatures(e.point, { layers: ["plants", "plant-columns", "pipes"] })[0];
         if (!f) return;
         const q = f.properties as { id: number; kind: string; name: string; operator: string; company: string; ticker: string; cap: number };
-        onAsset.current?.({ id: Number(q.id), kind: q.kind, name: q.name, operator: q.operator, company: q.company, ticker: q.ticker, cap: Number(q.cap) || 0 });
+        const point = f.geometry.type === "Point" ? (f.geometry.coordinates as [number, number]) : [e.lngLat.lng, e.lngLat.lat];
+        onAsset.current?.({ id: Number(q.id), kind: q.kind, name: q.name, operator: q.operator, company: q.company, ticker: q.ticker, cap: Number(q.cap) || 0, lon: point[0], lat: point[1] });
         const owner = q.company && q.company !== q.operator ? `${esc(q.company)}${q.ticker ? ` (${esc(q.ticker)})` : ""}, operated by ${esc(q.operator)}` : `${esc(q.operator || q.company)}${q.ticker ? ` (${esc(q.ticker)})` : ""}`;
         popup.setLngLat(e.lngLat).setHTML(`<div style="font:12px/1.4 var(--font-sans)"><b>${esc(q.name || q.operator)}</b><br>${q.kind === "processing_plant" ? `Processing plant${q.cap ? `, ${Math.round(q.cap)} MMcfd` : ""}` : "Gas pipeline"}<br><span style="opacity:.75">${owner}</span></div>`).addTo(m);
       });
@@ -225,21 +241,26 @@ function MapCanvas(props: EarthMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Data changes.
+  // Data changes, one source at a time: new markers (every feed poll) do not re-upload thousands of assets.
   useEffect(() => {
     const m = map.current;
     if (!m || !ready.current) return;
-    const muted = cssVar("--faint", "#4d5866");
-    const coloured = colourAssets(props.assets, props.parties, props.highlight, muted);
+    const coloured = colourAssets(props.assets, props.parties, props.highlight, cssVar("--faint", "#4d5866"));
     (m.getSource("assets") as GeoJSONSource | undefined)?.setData(coloured);
     (m.getSource("columns") as GeoJSONSource | undefined)?.setData(plantColumns(coloured));
-    (m.getSource("counties") as GeoJSONSource | undefined)?.setData(shadeCounties(props.counties, props.shade));
-    (m.getSource("markers") as GeoJSONSource | undefined)?.setData(markerData(props.markers));
-  }, [props.assets, props.parties, props.highlight, props.counties, props.shade, props.markers]);
+  }, [props.assets, props.parties, props.highlight]);
+  useEffect(() => { const m = map.current; if (m && ready.current) (m.getSource("counties") as GeoJSONSource | undefined)?.setData(shadeCounties(props.counties, props.shade)); }, [props.counties, props.shade]);
+  useEffect(() => { const m = map.current; if (m && ready.current) (m.getSource("markers") as GeoJSONSource | undefined)?.setData(markerData(props.markers)); }, [props.markers]);
 
   useEffect(() => { const m = map.current; if (m && ready.current) syncSatellite(m, props.satellite); }, [props.satellite]);
 
   useEffect(() => { const m = map.current; if (m && ready.current) sync3D(m, threeD, relief, true); }, [threeD, relief]);
+
+  // Keyed on the image and box, not the object: each feed poll brings a new object for the same overlay, which would redraw it.
+  const overlayUrl = props.overlay?.url ?? null, overlayBox = props.overlay?.bbox.join(",") ?? null;
+  useEffect(() => { const m = map.current; if (m && ready.current) syncOverlay(m, latest.current.overlay); }, [overlayUrl, overlayBox]);
+  useEffect(() => { const m = map.current; if (m && ready.current) syncSite(m, props.site); }, [props.site]);
+  useEffect(() => { if (props.want3D) queueMicrotask(() => setThreeD(true)); }, [props.want3D]);
 
   useEffect(() => { map.current?.fitBounds(props.bbox, { padding: 24, duration: 600 }); }, [props.bbox]);
 
@@ -271,6 +292,33 @@ function MapCanvas(props: EarthMapProps) {
 /** Tilt and turn the camera (see ./tilt), at once when not animating. */
 function tilt(m: MLMap, pitch: number, bearing: number, animate: boolean) {
   tween(m, pitch, bearing, animate ? 900 : 0);
+}
+
+const SITE_COLORS: ExpressionSpecification = ["match", ["get", "kind"], "tank", "#F2A93B", "tower", "#E5534B", "#D7DEE6"];
+
+const corners = (b: Bbox): [[number, number], [number, number], [number, number], [number, number]] => [[b[0], b[3]], [b[2], b[3]], [b[2], b[1]], [b[0], b[1]]];
+
+/** A ground change's outline, draped on the ground (crisp 10 m pixels). */
+function syncOverlay(m: MLMap, o: EarthMapProps["overlay"]) {
+  if (m.getLayer("change-overlay")) m.removeLayer("change-overlay");
+  if (m.getSource("change-overlay")) m.removeSource("change-overlay");
+  if (!o) return;
+  m.addSource("change-overlay", { type: "image", url: o.url, coordinates: corners(o.bbox) });
+  m.addLayer({ id: "change-overlay", type: "raster", source: "change-overlay", paint: { "raster-opacity": 0.85, "raster-fade-duration": 0, "raster-resampling": "nearest" } }, below(m, OUR_LAYERS));
+}
+
+/** A modelled site: the aerial photograph under everything of ours, the structures as 3D shapes. */
+function syncSite(m: MLMap, site: SiteModel | null | undefined) {
+  for (const id of ["site-structures", "site-photo"]) { if (m.getLayer(id)) m.removeLayer(id); if (m.getSource(id)) m.removeSource(id); }
+  if (!site) return;
+  if (site.photo) {
+    m.addSource("site-photo", { type: "image", url: site.photo.url, coordinates: corners(site.bbox) });
+    m.addLayer({ id: "site-photo", type: "raster", source: "site-photo", paint: { "raster-opacity": 1, "raster-fade-duration": 0 } }, below(m, ["change-overlay", ...OUR_LAYERS]));
+  }
+  m.addSource("site-structures", { type: "geojson", data: { type: "FeatureCollection", features: site.structures.map((x, i) => ({ type: "Feature", id: i, geometry: { type: "Polygon", coordinates: [x.ring] }, properties: { kind: x.kind, h: x.heightM, d: x.diameterM ?? 0, v: x.volumeM3 ?? 0 } })) } as GeoData });
+  m.addLayer({ id: "site-structures", type: "fill-extrusion", source: "site-structures", minzoom: 11, paint: {
+    "fill-extrusion-color": SITE_COLORS, "fill-extrusion-height": ["get", "h"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.95, "fill-extrusion-vertical-gradient": true,
+  } }, below(m, ["markers-halo", "markers"]));
 }
 
 /** Insert below the first of these layers that exists (so new layers sit under our own). */

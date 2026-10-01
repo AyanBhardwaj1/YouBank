@@ -9,7 +9,7 @@ import { runMarket, type Driver, type Method } from "@/lib/edge/scen/market";
 import { practiceKit, type Sector } from "@/lib/edge/scen/practice";
 import { parseCsv, tableFromFile, withShock } from "@/lib/edge/scen/run";
 import { listScenarios, saveScenario } from "@/lib/edge/scen/store";
-import { copulaSynth, ctganSynth, fillGaps, tableRealism } from "@/lib/edge/scen/tables";
+import { cartSynth, copulaSynth, ctganSynth, fillGaps, privacyChecks, splitHoldout, tableRealism, tableTooWide } from "@/lib/edge/scen/tables";
 import type { Shock } from "@/lib/edge/scen/drivers";
 import { rateLimit } from "@/lib/locks";
 
@@ -32,8 +32,9 @@ export async function GET() {
 /**
  * Run a scenario and save it: { kind: "market", tickers, weights?, driver, replay?, shockText?, shock?,
  * horizon, method, seed? } | { kind: "company", ticker, years, volume, price, cost, persistence,
- * uncertainty } | { kind: "synthetic", csv | fileId, method, rows, seed? } | { kind: "gap", csv | fileId }
- * | { kind: "practice", count, sector, docs }. Every result is synthetic and says so.
+ * uncertainty } | { kind: "synthetic", csv | fileId, method (cart, copula or ctgan), rows, seed? } |
+ * { kind: "gap", csv | fileId } | { kind: "practice", count, sector, docs }. Every result is synthetic and
+ * says so. A written narrative whose views no simulated paths can carry is refused (422) with the reason.
  */
 export async function POST(req: Request) {
   return guarded(async (user) => {
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
       const tickers = (Array.isArray(b.tickers) ? b.tickers : []).map((t) => String(t).toUpperCase()).filter((t) => TICKER.test(t)).slice(0, 12);
       if (!tickers.length) return NextResponse.json({ error: "Add at least one ticker." }, { status: 400 });
       const driver = (["none", "replay", "shock", "event", "tail"] as const).find((d) => d === b.driver) ?? "none";
-      const method = (["auto", "bootstrap", "garch", "regimes", "diffusion"] as const).find((m) => m === b.method) ?? "auto";
+      const method = (["auto", "bootstrap", "garch", "gjr-fhs", "gjr-t", "regimes", "diffusion"] as const).find((m) => m === b.method) ?? "auto";
       const spec = await withShock({ tickers, weights: Array.isArray(b.weights) ? b.weights.map(Number) : undefined, driver: driver as Driver, replay: typeof b.replay === "string" ? b.replay : undefined, shock: (b.shock as Shock | undefined) ?? undefined, shockText: typeof b.shockText === "string" ? b.shockText.slice(0, 400) : undefined, horizon: num(b.horizon, 60, 5, 252), method: method as Method, paths: 1000, seed: seedOf(b.seed), title: typeof b.title === "string" ? b.title.slice(0, 160) : undefined });
       const result = await runMarket(spec);
       const row = await saveScenario(user.id, { kind: "market", title: result.title, driver, spec: spec as unknown as Record<string, unknown>, result: result as unknown as Record<string, unknown> });
@@ -62,6 +63,8 @@ export async function POST(req: Request) {
     if (kind === "synthetic" || kind === "gap") {
       const table = typeof b.fileId === "number" ? await tableFromFile(user.id, b.fileId) : parseCsv(String(b.csv ?? "").slice(0, 3_000_000));
       if (!table.columns.length || table.rows.length < 5) return NextResponse.json({ error: "The table needs a header row and at least five rows." }, { status: 400 });
+      const wide = tableTooWide(table);
+      if (wide) return NextResponse.json({ error: wide }, { status: 400 });
       if (kind === "gap") {
         const { table: out, filled } = fillGaps(table);
         const result = { kind: "gap", synthetic: true, title: `${table.title ?? "Table"}: ${filled.length} gaps filled`, original: { columns: table.columns, rows: table.rows.length }, table: out, filled };
@@ -69,10 +72,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ id: row.id, status: row.status, result });
       }
       const rows = num(b.rows, Math.min(1000, table.rows.length * 2), 50, 10_000), seed = seedOf(b.seed);
-      const method = b.method === "ctgan" || (b.method === "auto" && table.rows.length >= 2000) ? "ctgan" : "copula";
-      const synth = method === "ctgan" ? await ctganSynth(table, rows, seed) : copulaSynth(table, rows, seed);
-      const realism = tableRealism(table, synth);
-      const result = { kind: "synthetic", synthetic: true, title: `${table.title ?? "Table"}: a synthetic copy`, method, seed, realism, original: { columns: table.columns, sample: table.rows.slice(0, 50), rows: table.rows.length }, table: { ...synth, synthetic: { ...synth.synthetic!, realism: realism.score } } };
+      // Sequential trees by default; the copula is the quick preview; CTGAN (the ML service) stays for comparison.
+      const method = b.method === "ctgan" ? "ctgan" : b.method === "copula" || b.method === "statistical" ? "copula" : "cart";
+      // A fifth of the rows is held out from the generator to check privacy (tables of fifty rows or more).
+      const split = table.rows.length >= 50 ? splitHoldout(table, 0.2, seed) : null, train = split?.train ?? table;
+      const synth = method === "ctgan" ? await ctganSynth(train, rows, seed) : method === "copula" ? copulaSynth(train, rows, seed) : cartSynth(train, rows, seed);
+      const realism = tableRealism(table, synth), privacy = split ? privacyChecks(split.train, split.holdout, synth, seed) : null;
+      const recipe = `${synth.synthetic!.recipe}${split ? ` Learned from ${split.train.rows.length.toLocaleString("en-US")} of the ${table.rows.length.toLocaleString("en-US")} rows; the other ${split.holdout.rows.length.toLocaleString("en-US")} were held out to check privacy.` : ""}`;
+      const result = { kind: "synthetic", synthetic: true, title: `${table.title ?? "Table"}: a synthetic copy`, method, seed, realism, privacy, original: { columns: table.columns, sample: table.rows.slice(0, 50), rows: table.rows.length }, table: { ...synth, synthetic: { ...synth.synthetic!, recipe, realism: realism.score } } };
       const row = await saveScenario(user.id, { kind: "synthetic", title: result.title, driver: "none", spec: { rows, method, seed }, result, status: "ready" });
       return NextResponse.json({ id: row.id, status: row.status, result });
     }

@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { ago, api, useApi, useNow } from "@/components/news/client";
 import { AnswerView } from "./AnswerView";
-import { askStream, errorText, FORM_OPTIONS, SOURCE_OPTIONS, type DocAnswer, type ViewTarget } from "./client";
+import { askStream, errorText, FORM_OPTIONS, SOURCE_OPTIONS, warmReranker, type DocAnswer, type ViewTarget } from "./client";
 
 type Recent = { answers: { id: number; question: string; mode: string; createdAt: string; notFound: boolean }[] };
 export type AskScope = { docIds: number[]; label: string } | null;
@@ -44,6 +44,9 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
   const abort = useRef<AbortController | null>(null);
   const recent = useApi<Recent>("/api/edge/answers");
   const reloadRecent = recent.reload;
+
+  // The free reranker sleeps when idle; waking it now means the first question usually finds it ready.
+  useEffect(() => { warmReranker(); }, []);
 
   // An answer asked for by link (?answer=ID), e.g. from a canvas's answer block.
   useEffect(() => {
@@ -165,7 +168,7 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
 
       <aside className="space-y-2">
         <div className="flex items-center gap-1.5 text-[12px] font-semibold"><History className="h-3.5 w-3.5 text-muted" />Earlier questions</div>
-        {!recent.data ? <div className="h-24 animate-pulse rounded-md bg-elevated/40" /> : !recent.data.answers.length ? <p className="text-[11.5px] text-muted">Your questions and their cited answers are kept here.</p> : (
+        {!recent.data ? (recent.error ? <p className="text-[11.5px] text-neg">{recent.error} <button type="button" onClick={reloadRecent} className="text-accent hover:underline">Try again</button></p> : <div className="h-24 animate-pulse rounded-md bg-elevated/40" />) : !recent.data.answers.length ? <p className="text-[11.5px] text-muted">Your questions and their cited answers are kept here.</p> : (
           <ul className="space-y-1">
             {recent.data.answers.map((r) => (
               <li key={r.id}>

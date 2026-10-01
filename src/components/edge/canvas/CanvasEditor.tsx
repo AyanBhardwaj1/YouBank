@@ -5,48 +5,73 @@
  * that accepts its kind, and the inspector sets each block and shows what it produced. Running animates
  * the wires as data flows and fills each block's mini preview as it finishes. The side panel holds what
  * is wrong or could come next, the run history, checkpoints, branches (compared side by side), deploying
- * as a monitor, and sharing with a team. Viewers see everything but change nothing.
+ * as a monitor, and sharing with a team. Viewers see everything but change nothing. Below the lg
+ * breakpoint the side panel opens as a sheet from the bottom (tapping a block opens it). On the canvas,
+ * Tab and Enter pick a block, the arrow keys move it and Delete removes what is picked.
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  addEdge, applyEdgeChanges, applyNodeChanges, Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
-  type Connection, type Edge, type EdgeChange, type Node, type NodeChange,
+  Background, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
+  type Connection, type Dimensions, type Edge, type EdgeChange, type EdgeSelectionChange, type Node, type NodeChange, type NodeSelectionChange, type XYPosition,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, ArrowLeft, Bell, BookmarkPlus, GitBranch, History, Lightbulb, Loader2, Play, Plus, Redo2, Search, Share2, Trash2, Undo2, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
+import { AlertTriangle, ArrowLeft, Bell, BookmarkPlus, GitBranch, History, Lightbulb, Loader2, PanelBottomOpen, Play, Plus, Redo2, Search, Share2, Trash2, Undo2, X } from "lucide-react";
+import { memo, useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { accepts, makeNode, MODULE_LABEL, newId, NODE, NODES, suggestions, validate, wire, type CanvasNode, type Field, type Graph, type Kind, type Module } from "@/lib/edge/canvas/catalog";
 import type { RunView } from "@/lib/edge/canvas/engine";
+import { applySelect } from "@/lib/edge/canvas/view";
 import { api, ago, post, useNow } from "../client";
-import { KIND_COLOR, MiniPreview, MODULE_COLOR, ModuleNode, type ModuleData } from "./ModuleNode";
+import { KIND_COLOR, MODULE_COLOR } from "./colors";
+import { MiniPreview } from "./MiniPreview";
+import { ModuleNode, type ModuleData } from "./ModuleNode";
+import { Modal, Sheet } from "./Overlays";
 import { Outputs } from "./Results";
+import { CanvasSkeleton } from "./Skeleton";
 import { useCanvas } from "./useCanvas";
 
 const nodeTypes = { module: ModuleNode };
 const MODULES: Module[] = ["source", "earth", "documents", "networks", "scenarios", "output"];
+const NO_CONFIG: Record<string, unknown> = {};
+const NONE: ReadonlySet<string> = new Set();
+// Props xyflow compares by identity, made once rather than on every frame of a drag.
+const FIT_VIEW = { padding: 0.25 };
+const PRO_OPTIONS = { hideAttribution: true };
+const MINIMAP_STYLE = { background: "var(--panel)" };
+const minimapColor = (n: Node) => MODULE_COLOR[NODE[(n.data as ModuleData).nodeType]?.module ?? "source"];
 
-function toFlow(graph: Graph, run: RunView | null, issues: Map<string, string[]>, onToggle: (id: string) => void): { nodes: Node[]; edges: Edge[] } {
+// Tailwind's lg: from here up the inspector sits beside the canvas; below it, it opens as a sheet.
+const WIDE = "(min-width: 64rem)";
+const onWideChange = (cb: () => void) => { const m = window.matchMedia(WIDE); m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); };
+const isWide = () => window.matchMedia(WIDE).matches;
+
+/** The blocks for xyflow. A block's data holds only what it shows, so moving the block leaves it as it was. */
+function flowNodes(graph: Graph, run: RunView | null, issues: Map<string, string[]>, picked: ReadonlySet<string>, onToggle: (id: string) => void): Node[] {
   const steps = new Map(run?.steps.map((s) => [s.nodeId, s]) ?? []);
-  const nodes: Node[] = graph.nodes.map((n) => {
+  return graph.nodes.map((n) => {
     const s = steps.get(n.id);
     const data: ModuleData = {
-      nodeType: n.type, config: n.data.config ?? {}, title: n.data.title, expanded: n.data.expanded,
+      nodeType: n.type, config: n.data.config ?? NO_CONFIG, title: n.data.title, expanded: n.data.expanded,
       status: s?.status, step: s?.step, summary: s?.summary, error: s?.error, preview: s?.preview ?? null, issues: issues.get(n.id), onToggle,
     };
-    return { id: n.id, type: "module", position: n.position, data };
+    return { id: n.id, type: "module", position: n.position, data, selected: picked.has(n.id) };
   });
-  const edges: Edge[] = graph.edges.map((e) => {
-    const src = graph.nodes.find((n) => n.id === e.source);
+}
+
+/** The wires for xyflow, in the colour of the kind they carry and animated while data flows along them. */
+function flowEdges(graph: Graph, run: RunView | null, picked: ReadonlySet<string>): Edge[] {
+  const steps = new Map(run?.steps.map((s) => [s.nodeId, s]) ?? []);
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  return graph.edges.map((e) => {
+    const src = byId.get(e.source);
     const kind = src ? NODE[src.type]?.outputs.find((o) => o.name === e.sourceHandle)?.kind : undefined;
     const from = steps.get(e.source)?.status, to = steps.get(e.target)?.status;
     const flowing = from === "running" || from === "waiting" || (from === "done" && (to === "running" || to === "waiting" || to === "queued"));
-    return { id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, animated: flowing, style: { stroke: kind ? KIND_COLOR[kind] : "var(--line-strong)", strokeWidth: flowing ? 2.6 : 1.8, opacity: from === "skipped" || from === "failed" ? 0.35 : 1 } };
+    return { id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle, targetHandle: e.targetHandle, animated: flowing, selected: picked.has(e.id), style: { stroke: kind ? KIND_COLOR[kind] : "var(--line-strong)", strokeWidth: flowing ? 2.6 : 1.8, opacity: from === "skipped" || from === "failed" ? 0.35 : 1 } };
   });
-  return { nodes, edges };
 }
 
 function FieldInput({ f, value, onChange, disabled }: { f: Field; value: unknown; onChange: (v: unknown) => void; disabled: boolean }) {
@@ -65,16 +90,64 @@ function FieldInput({ f, value, onChange, disabled }: { f: Field; value: unknown
   }
 }
 
+type FlowProps = {
+  nodes: Node[]; edges: Edge[]; readOnly: boolean;
+  onNodesChange: (changes: NodeChange[]) => void; onEdgesChange: (changes: EdgeChange[]) => void;
+  onConnect: (conn: Connection) => void; isValidConnection: (conn: Connection | Edge) => boolean;
+  onPaneClick: () => void; onNodeClick: () => void;
+};
+
+/**
+ * The canvas itself. A dragged block's position stays here until the drop, when the graph takes it, so
+ * a drag frame re-renders this pane and moves one node: the editor, the inspector and every other block
+ * keep their objects. The sizes xyflow measured stay on the nodes, so a rebuilt node is not measured again.
+ */
+const Flow = memo(function Flow({ nodes, edges, readOnly, onNodesChange, onEdgesChange, onConnect, isValidConnection, onPaneClick, onNodeClick }: FlowProps) {
+  const [drag, setDrag] = useState<Record<string, XYPosition> | null>(null);
+  const [sizes, setSizes] = useState<Record<string, Dimensions>>({});
+  const sized = useMemo(() => nodes.map((n) => (sizes[n.id] ? { ...n, measured: sizes[n.id] } : n)), [nodes, sizes]);
+  const shown = useMemo(() => (drag ? sized.map((n) => (drag[n.id] ? { ...n, position: drag[n.id] } : n)) : sized), [sized, drag]);
+  const onChange = useCallback((changes: NodeChange[]) => {
+    const moving = changes.flatMap((ch) => (ch.type === "position" && ch.dragging && ch.position ? [[ch.id, ch.position] as const] : []));
+    const measured = changes.flatMap((ch) => (ch.type === "dimensions" && ch.dimensions ? [[ch.id, ch.dimensions] as const] : []));
+    const rest = changes.filter((ch) => ch.type !== "dimensions" && !(ch.type === "position" && ch.dragging));
+    if (moving.length) setDrag((cur) => ({ ...cur, ...Object.fromEntries(moving) }));
+    if (measured.length) setSizes((cur) => ({ ...cur, ...Object.fromEntries(measured) }));
+    if (rest.length) onNodesChange(rest);
+    if (rest.some((ch) => ch.type === "position")) setDrag(null); // dropped: the graph has the position now
+  }, [onNodesChange]);
+  return (
+    <ReactFlow nodes={shown} edges={edges} nodeTypes={nodeTypes} onNodesChange={onChange} onEdgesChange={onEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection}
+      onPaneClick={onPaneClick} onNodeClick={onNodeClick} nodesDraggable={!readOnly} nodesConnectable={!readOnly} deleteKeyCode={null} fitView fitViewOptions={FIT_VIEW} minZoom={0.2} maxZoom={1.6} proOptions={PRO_OPTIONS}>
+      <Background gap={22} size={1} color="var(--line)" />
+      <Controls showInteractive={false} position="bottom-left" />
+      <MiniMap pannable zoomable position="bottom-right" nodeColor={minimapColor} maskColor="rgba(0,0,0,0.35)" style={MINIMAP_STYLE} />
+    </ReactFlow>
+  );
+});
+
+/** Where the inspector goes: beside the canvas from lg up (as it always was), below that in a sheet from the bottom while it is open. */
+function Dock({ wide, open, id, onClose, children }: { wide: boolean; open: boolean; id: string; onClose: () => void; children: ReactNode }) {
+  if (wide) return <aside className="hidden w-[340px] shrink-0 flex-col border-l border-line lg:flex">{children}</aside>;
+  return open ? <Sheet id={id} label="Details" onClose={onClose}>{children}</Sheet> : null;
+}
+
 function Editor({ id }: { id: number }) {
   const router = useRouter();
   const now = useNow();
   const c = useCanvas(id);
   const flow = useReactFlow();
+  const wide = useSyncExternalStore(onWideChange, isWide, () => true);
   const [selected, setSelected] = useState<string | null>(null);
+  // The inspector shows one block; the canvas can pick several (Shift-drag, Cmd-click) to move or delete together.
+  const [picked, setPicked] = useState<ReadonlySet<string>>(NONE);
+  const [pickedEdges, setPickedEdges] = useState<ReadonlySet<string>>(NONE);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [panel, setPanel] = useState<"canvas" | "history">("canvas");
   const [compare, setCompare] = useState<{ a: RunView; b: RunView } | null>(null);
+  const [sheet, setSheet] = useState(false);
+  const sheetId = useId();
   const graph = c.graph;
   const available = useMemo(() => new Set(c.data?.available ?? []), [c.data?.available]);
   const issues = useMemo(() => (graph ? validate(graph, available) : []), [graph, available]);
@@ -85,13 +158,15 @@ function Editor({ id }: { id: number }) {
   }, [issues]);
   const tips = useMemo(() => (graph ? suggestions(graph, available) : []), [graph, available]);
   const readOnly = c.readOnly;
-  const { setGraph } = c;
+  const { setGraph, editGraph } = c;
+  const select = useCallback((nodeId: string | null) => { setSelected(nodeId); setPicked(nodeId ? new Set([nodeId]) : NONE); setPickedEdges(NONE); }, []);
 
+  // Blocks call back through the canvas's current graph, so the callback, and with it each block's data, stays the same object.
   const onToggle = useCallback((nodeId: string) => {
-    if (!graph) return;
-    setGraph({ ...graph, nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n)) }, { transient: true });
-  }, [setGraph, graph]);
-  const { nodes, edges } = useMemo(() => (graph ? toFlow(graph, c.run, issuesByNode, onToggle) : { nodes: [], edges: [] }), [graph, c.run, issuesByNode, onToggle]);
+    editGraph((g) => ({ ...g, nodes: g.nodes.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, expanded: !n.data.expanded } } : n)) }), { transient: true });
+  }, [editGraph]);
+  const nodes = useMemo(() => (graph ? flowNodes(graph, c.run, issuesByNode, picked, onToggle) : []), [graph, c.run, issuesByNode, picked, onToggle]);
+  const edges = useMemo(() => (graph ? flowEdges(graph, c.run, pickedEdges) : []), [graph, c.run, pickedEdges]);
 
   // Follow the latest run when the canvas opens (or the one named in the address).
   const latestRun = c.data?.runs[0]?.id ?? null;
@@ -101,29 +176,33 @@ function Editor({ id }: { id: number }) {
     followRun(Number.isInteger(asked) && asked > 0 ? asked : latestRun);
   }, [latestRun, followRun]);
 
+  // The picked blocks and wires follow xyflow's selection, so its flags never drift from ours. A drop or an
+  // arrow key moves blocks (no undo step, as moving never had one); a removal is one undo step.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    if (!graph || readOnly) { const sel = changes.find((ch) => ch.type === "select" && ch.selected); if (sel && sel.type === "select") setSelected(sel.id); return; }
-    const next = applyNodeChanges(changes, nodes);
-    const removed = changes.filter((ch) => ch.type === "remove").map((ch) => (ch as { id: string }).id);
-    const moved = changes.some((ch) => ch.type === "position");
-    for (const ch of changes) if (ch.type === "select") setSelected((cur) => (ch.selected ? ch.id : cur === ch.id ? null : cur));
-    if (!removed.length && !moved) return;
-    const pos = new Map(next.map((n) => [n.id, n.position]));
-    const g: Graph = {
-      ...graph,
-      nodes: graph.nodes.filter((n) => !removed.includes(n.id)).map((n) => ({ ...n, position: pos.get(n.id) ?? n.position })),
-      edges: graph.edges.filter((e) => !removed.includes(e.source) && !removed.includes(e.target)),
-    };
-    setGraph(g, { transient: !removed.length });
-  }, [setGraph, graph, nodes, readOnly]);
+    const sel = changes.filter((ch): ch is NodeSelectionChange => ch.type === "select");
+    if (sel.length) {
+      setPicked((cur) => applySelect(cur, sel));
+      if (readOnly) { const on = sel.find((ch) => ch.selected); if (on) setSelected(on.id); }
+      else for (const ch of sel) setSelected((cur) => (ch.selected ? ch.id : cur === ch.id ? null : cur));
+    }
+    if (readOnly) return;
+    const removed = new Set(changes.flatMap((ch) => (ch.type === "remove" ? [ch.id] : [])));
+    const moved = new Map(changes.flatMap((ch) => (ch.type === "position" && ch.position ? [[ch.id, ch.position] as const] : [])));
+    if (!removed.size && !moved.size) return;
+    editGraph((g) => ({
+      ...g,
+      nodes: g.nodes.filter((n) => !removed.has(n.id)).map((n) => { const p = moved.get(n.id); return p ? { ...n, position: p } : n; }),
+      edges: removed.size ? g.edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)) : g.edges,
+    }), { transient: !removed.size });
+  }, [editGraph, readOnly]);
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
-    if (!graph || readOnly) return;
-    const removed = changes.filter((ch) => ch.type === "remove").map((ch) => (ch as { id: string }).id);
-    if (!removed.length) return;
-    applyEdgeChanges(changes, edges);
-    setGraph({ ...graph, edges: graph.edges.filter((e) => !removed.includes(e.id)) });
-  }, [setGraph, edges, graph, readOnly]);
+    const sel = changes.filter((ch): ch is EdgeSelectionChange => ch.type === "select");
+    if (sel.length) setPickedEdges((cur) => applySelect(cur, sel));
+    if (readOnly) return;
+    const removed = new Set(changes.flatMap((ch) => (ch.type === "remove" ? [ch.id] : [])));
+    if (removed.size) editGraph((g) => ({ ...g, edges: g.edges.filter((e) => !removed.has(e.id)) }));
+  }, [editGraph, readOnly]);
 
   const kindOf = useCallback((nodeId: string, handle: string | null): Kind | undefined => {
     const n = graph?.nodes.find((x) => x.id === nodeId);
@@ -141,9 +220,8 @@ function Editor({ id }: { id: number }) {
 
   const onConnect = useCallback((conn: Connection) => {
     if (!graph || readOnly || !isValidConnection(conn)) return;
-    addEdge(conn, edges);
     setGraph({ ...graph, edges: [...graph.edges, wire(conn.source, conn.sourceHandle ?? "", conn.target, conn.targetHandle ?? "")] });
-  }, [setGraph, edges, graph, isValidConnection, readOnly]);
+  }, [setGraph, graph, isValidConnection, readOnly]);
 
   const addBlock = useCallback((type: string, at?: { x: number; y: number }, after?: { nodeId: string; kind: Kind }) => {
     if (!graph || readOnly) return;
@@ -162,8 +240,8 @@ function Editor({ id }: { id: number }) {
       if (src && out && port) edgesNext.push(wire(src.id, out.name, node.id, port.name));
     }
     setGraph({ ...graph, nodes: [...graph.nodes, node], edges: edgesNext });
-    setSelected(node.id);
-  }, [setGraph, flow, graph, readOnly]);
+    select(node.id);
+  }, [setGraph, flow, graph, readOnly, select]);
 
   const onDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -182,8 +260,13 @@ function Editor({ id }: { id: number }) {
   const removeBlock = useCallback((nodeId: string) => {
     if (!graph) return;
     setGraph({ ...graph, nodes: graph.nodes.filter((n) => n.id !== nodeId), edges: graph.edges.filter((e) => e.source !== nodeId && e.target !== nodeId) });
-    setSelected(null);
-  }, [setGraph, graph]);
+    select(null);
+  }, [setGraph, graph, select]);
+  const onPaneClick = useCallback(() => select(null), [select]);
+  // On a phone or tablet, tapping a block opens the sheet with its settings and results.
+  const onNodeClick = useCallback(() => { if (!wide) setSheet(true); }, [wide]);
+  const closeSheet = useCallback(() => setSheet(false), []);
+  const closeCompare = useCallback(() => setCompare(null), []);
 
   // Keyboard: undo, redo, run.
   const { undo, redo, startRun, setNotice } = c;
@@ -208,7 +291,7 @@ function Editor({ id }: { id: number }) {
   };
 
   if (c.error) return <div className="p-6 text-[13px] text-neg">{c.error} <Link href="/app/edge?view=canvases" className="ml-2 text-accent hover:underline">Back to canvases</Link></div>;
-  if (!c.data || !graph) return <div className="flex h-full items-center justify-center text-[12px] text-muted"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading the canvas</div>;
+  if (!c.data || !graph) return <CanvasSkeleton />;
 
   const data = c.data;
   const sel = graph.nodes.find((n) => n.id === selected) ?? null;
@@ -227,6 +310,16 @@ function Editor({ id }: { id: number }) {
     setCompare({ a, b });
   });
 
+  // Delete or Backspace on the canvas (not in the panels) removes the picked blocks with their wires, and
+  // picked wires, as one step Cmd+Z brings back.
+  const onCanvasKey = (e: ReactKeyboardEvent) => {
+    if (readOnly || (e.key !== "Delete" && e.key !== "Backspace") || (!picked.size && !pickedEdges.size)) return;
+    if ((e.target as HTMLElement).closest("input, textarea, [contenteditable]")) return;
+    e.preventDefault();
+    editGraph((g) => ({ ...g, nodes: g.nodes.filter((n) => !picked.has(n.id)), edges: g.edges.filter((x) => !pickedEdges.has(x.id) && !picked.has(x.source) && !picked.has(x.target)) }));
+    select(null);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
@@ -241,6 +334,8 @@ function Editor({ id }: { id: number }) {
             <button type="button" onClick={() => void act("checkpoint", async () => { const label = await promptDialog({ title: "Name this checkpoint", label: "Name", defaultValue: `Checkpoint ${data.checkpoints.length + 1}`, confirmLabel: "Save checkpoint" }); if (label) { await post(`/api/edge/canvases/${id}/checkpoints`, { label }); await c.load(); } })} title="Save a named checkpoint" className="rounded p-1.5 text-muted hover:text-fg"><BookmarkPlus className="h-4 w-4" /></button>
             <button type="button" onClick={() => void act("branch", async () => { const label = await promptDialog({ title: "Branch this canvas", body: "A copy you can change and compare side by side, such as a bull and a bear case.", label: "Branch name", defaultValue: "bear case", confirmLabel: "Branch" }); if (label) { const r = await post<{ canvas: { id: number } }>(`/api/edge/canvases/${id}/branch`, { label }); router.push(`/app/edge/canvas/${r.canvas.id}`); } })} title="Branch into a variant" className="rounded p-1.5 text-muted hover:text-fg"><GitBranch className="h-4 w-4" /></button>
           </>}
+          <button type="button" onClick={() => setSheet((o) => !o)} aria-expanded={sheet} aria-controls={sheet ? sheetId : undefined} title="Settings, results, runs and versions"
+            className="flex items-center gap-1 rounded px-1.5 py-1 text-[12px] text-muted hover:text-fg lg:hidden"><PanelBottomOpen className="h-4 w-4" />Details</button>
           <button type="button" onClick={() => void run()} disabled={readOnly || !!running || busy === "run" || errors.length > 0} title={errors.length ? errors[0].message : "Run (Cmd+Enter)"} className="ctl ml-1 flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg disabled:opacity-50">
             {running || busy === "run" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running" : "Run"}
           </button>
@@ -274,23 +369,18 @@ function Editor({ id }: { id: number }) {
           </aside>
         )}
 
-        <div className="edge-flow relative min-w-0 flex-1" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={onDrop}>
-          <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection}
-            onPaneClick={() => setSelected(null)} nodesDraggable={!readOnly} nodesConnectable={!readOnly} deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]} fitView fitViewOptions={{ padding: 0.25 }} minZoom={0.2} maxZoom={1.6} proOptions={{ hideAttribution: true }}>
-            <Background gap={22} size={1} color="var(--line)" />
-            <Controls showInteractive={false} position="bottom-left" />
-            <MiniMap pannable zoomable position="bottom-right" nodeColor={(n) => MODULE_COLOR[NODE[(n.data as ModuleData).nodeType]?.module ?? "source"]} maskColor="rgba(0,0,0,0.35)" style={{ background: "var(--panel)" }} />
-          </ReactFlow>
+        <div className="edge-flow relative min-w-0 flex-1" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }} onDrop={onDrop} onKeyDown={onCanvasKey}>
+          <Flow nodes={nodes} edges={edges} readOnly={readOnly} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onPaneClick={onPaneClick} onNodeClick={onNodeClick} />
           {!graph.nodes.length && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-[13px] text-muted">Drag blocks in from the left, or click one to add it.</div>}
         </div>
 
-        <aside className="hidden w-[340px] shrink-0 flex-col border-l border-line lg:flex">
+        <Dock wide={wide} open={sheet} id={sheetId} onClose={closeSheet}>
           {sel && selDef ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <div className="flex items-center gap-2">
                 <span className="flex h-6 w-6 items-center justify-center rounded-md" style={{ background: `${MODULE_COLOR[selDef.module]}33`, color: MODULE_COLOR[selDef.module] }}><Icon name={selDef.icon} className="h-3.5 w-3.5" /></span>
                 <input key={sel.id} defaultValue={sel.data.title ?? ""} placeholder={selDef.label} disabled={readOnly} onBlur={(e) => setNodeTitle(sel.id, e.target.value)} className="flex-1 bg-transparent text-[13.5px] font-semibold outline-none" />
-                <button type="button" onClick={() => setSelected(null)} aria-label="Close" className="text-muted hover:text-fg"><X className="h-4 w-4" /></button>
+                <button type="button" onClick={() => select(null)} aria-label="Close" className="text-muted hover:text-fg"><X className="h-4 w-4" /></button>
               </div>
               <p className="mt-1 text-[11.5px] text-muted">{selDef.blurb}{selDef.tech ? ` (${selDef.tech})` : ""}</p>
               {(issuesByNode.get(sel.id) ?? []).map((m) => <p key={m} className="mt-1.5 flex items-start gap-1 text-[11.5px] text-neg"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{m}</p>)}
@@ -307,7 +397,7 @@ function Editor({ id }: { id: number }) {
               <div className="mt-4 border-t border-line pt-3">
                 <div className="mb-1.5 flex items-center justify-between text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted"><span>Last run</span>{selStep?.finishedAt && now ? <span className="font-normal normal-case tracking-normal">{ago(selStep.finishedAt, now)}</span> : null}</div>
                 {!selStep ? <p className="text-[12px] text-muted">Not run yet.</p> : selStep.status === "done" ? (
-                  <><p className="mb-2 text-[12px]">{selStep.summary}</p>{selStep.preview && <div className="mb-3"><MiniPreview preview={selStep.preview} large /></div>}<Outputs outputs={selStep.output ?? {}} downloads={selStep.downloads} /></>
+                  <><p className="mb-2 text-[12px]">{selStep.summary}</p>{selStep.preview && <div className="mb-3"><MiniPreview preview={selStep.preview} large /></div>}{selStep.output ? <Outputs outputs={selStep.output} downloads={selStep.downloads} /> : <p className="text-[11.5px] text-faint">Its full output loads when the run finishes.</p>}</>
                 ) : <p className={`text-[12px] ${selStep.status === "failed" ? "text-neg" : "text-muted"}`}>{selStep.error || selStep.summary || selStep.status}</p>}
               </div>
               {!readOnly && <button type="button" onClick={() => removeBlock(sel.id)} className="mt-4 flex items-center gap-1 text-[11.5px] text-muted hover:text-neg"><Trash2 className="h-3.5 w-3.5" />Remove block</button>}
@@ -319,7 +409,7 @@ function Editor({ id }: { id: number }) {
               </nav>
               {panel === "canvas" ? (
                 <div className="space-y-4">
-                  {errors.length > 0 && <section><h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-neg">Fix before running</h3><ul className="space-y-1">{errors.map((i, k) => <li key={k}><button type="button" onClick={() => setSelected(i.nodeId)} className="text-left text-[12px] text-neg hover:underline">{NODE[graph.nodes.find((n) => n.id === i.nodeId)?.type ?? ""]?.label ?? "A block"}: {i.message}</button></li>)}</ul></section>}
+                  {errors.length > 0 && <section><h3 className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-neg">Fix before running</h3><ul className="space-y-1">{errors.map((i, k) => <li key={k}><button type="button" onClick={() => select(i.nodeId)} className="text-left text-[12px] text-neg hover:underline">{NODE[graph.nodes.find((n) => n.id === i.nodeId)?.type ?? ""]?.label ?? "A block"}: {i.message}</button></li>)}</ul></section>}
                   {!readOnly && tips.length > 0 && (
                     <section>
                       <h3 className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted"><Lightbulb className="h-3 w-3" />What could come next</h3>
@@ -381,25 +471,22 @@ function Editor({ id }: { id: number }) {
               )}
             </div>
           )}
-        </aside>
+        </Dock>
       </div>
 
       {compare && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setCompare(null)}>
-          <div className="panel max-h-[85vh] w-full max-w-[1100px] overflow-y-auto p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between"><h2 className="text-[15px] font-semibold">Side by side</h2><button type="button" onClick={() => setCompare(null)} aria-label="Close"><X className="h-4 w-4" /></button></div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[compare.a, compare.b].map((r, k) => (
-                <div key={k} className="space-y-2">
-                  <div className="text-[11px] uppercase tracking-wider text-muted">{k === 0 ? "This canvas" : "The branch"} · run {r.id}</div>
-                  {r.steps.filter((s) => s.status === "done" && s.preview).map((s) => (
-                    <div key={s.nodeId} className="rounded-lg border border-line p-2"><div className="text-[12px] font-medium">{NODE[s.type]?.label ?? s.type}</div><div className="mb-1.5 text-[11.5px] text-muted">{s.summary}</div>{s.preview && <MiniPreview preview={s.preview} large />}</div>
-                  ))}
-                </div>
-              ))}
-            </div>
+        <Modal title="Side by side" onClose={closeCompare}>
+          <div className="grid gap-3 md:grid-cols-2">
+            {[compare.a, compare.b].map((r, k) => (
+              <div key={k} className="space-y-2">
+                <div className="text-[11px] uppercase tracking-wider text-muted">{k === 0 ? "This canvas" : "The branch"} · run {r.id}</div>
+                {r.steps.filter((s) => s.status === "done" && s.preview).map((s) => (
+                  <div key={s.nodeId} className="rounded-lg border border-line p-2"><div className="text-[12px] font-medium">{NODE[s.type]?.label ?? s.type}</div><div className="mb-1.5 text-[11.5px] text-muted">{s.summary}</div>{s.preview && <MiniPreview preview={s.preview} large />}</div>
+                ))}
+              </div>
+            ))}
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

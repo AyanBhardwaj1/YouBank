@@ -16,7 +16,7 @@ import { dealsSince, newsroomDeals } from "./deals";
 import { redFlags } from "./findings";
 import { ingestMany } from "./ingest";
 import { companyByTicker, nodesById } from "./store";
-import { latestModels, scorecardText, type ModelMetrics } from "./train";
+import { latestModels, scorecardText, withBaselines } from "./train";
 import { watchedCompanies } from "./universe";
 
 /** Tickers people with the beta on watch. */
@@ -26,7 +26,7 @@ async function watchedTickers(): Promise<string[]> {
   return rows.map((r) => String(r.ticker ?? "").toUpperCase()).filter(Boolean);
 }
 
-const FLAG_TITLE: Record<string, string> = { restatement: "a restatement warning", auditor_change: "an auditor change", bankruptcy: "a bankruptcy filing", delisting: "a listing notice", impairment: "an impairment", leadership_turnover: "leadership turnover", insider_exit: "an insider exit", insider_cluster: "insider selling", circular_ownership: "circular ownership", shared_director: "a shared director", related_party: "a related-party link" };
+const FLAG_TITLE: Record<string, string> = { restatement: "a restatement warning", auditor_change: "an auditor change", bankruptcy: "a bankruptcy filing", delisting: "a listing notice", impairment: "an impairment", leadership_turnover: "leadership turnover", insider_exit: "an insider exit", insider_cluster: "insider selling", circular_ownership: "circular ownership", shared_director: "a shared director", related_party: "a related-party link", interlocking_directorate: "a possible interlocking directorate (a section 8 screen)" };
 
 /** New red flags (from the last two weeks) of watched companies, as feed cards; returns the new cards' ids. */
 export async function flagCards(nodeIds: number[]): Promise<number[]> {
@@ -37,14 +37,18 @@ export async function flagCards(nodeIds: number[]): Promise<number[]> {
   for (const n of nodes) {
     for (const f of (await redFlags(n)).filter((x) => x.date >= since && x.kind !== "shared_director")) {
       const [row] = await requireDb().insert(schema.edgeDetections).values({
-        key: `flag:${n.id}:${f.kind}:${f.date}`, kind: "graph_flag", module: "networks",
+        key: `flag:${n.id}:${f.kind}:${f.date}${f.key ? `:${f.key}` : ""}`, kind: "graph_flag", module: "networks",
         title: `${n.name}: ${f.title}`.slice(0, 200), summary: f.detail.slice(0, 1200),
         why: `Edge reads ${n.name}'s filings on EDGAR every week: 8-K items (auditor changes, restatements, departures), insider filings (Form 4) and ownership filings (Schedule 13D/13G). This card is ${FLAG_TITLE[f.kind] ?? "a flag"} found there; the filings are linked below.`,
         confidence: 0.9, magnitude: f.severity === "high" ? 0.9 : 0.5, tickers: [n.ticker], bbox: null,
         visual: { type: "flag", company: { id: n.id, name: n.name, ticker: n.ticker }, flag: f }, observedAt: new Date(f.date),
       }).onConflictDoNothing().returning({ id: schema.edgeDetections.id });
       if (!row) continue;
-      await record(`detection:${row.id}`, (f.urls ?? []).map((u) => ({ sourceName: "SEC EDGAR filing", sourceUrl: u, license: "Public filing (SEC EDGAR)", method: "read from the filing's structured data", modelVersion: "", retrievedAt: new Date() })));
+      await record(`detection:${row.id}`, [
+        ...(f.urls ?? []).map((u) => ({ sourceName: "SEC EDGAR filing", sourceUrl: u, license: "Public filing (SEC EDGAR)", method: "read from the filing's structured data", modelVersion: "", retrievedAt: new Date() })),
+        // A regulator's notice the flag applies (the FTC's section 8 thresholds).
+        ...(f.refs ?? []).map((r) => ({ sourceName: r.label, sourceUrl: r.url, license: "US government work (public domain)", method: "threshold applied by the screen", modelVersion: "", retrievedAt: new Date() })),
+      ]);
       out.push(row.id);
     }
   }
@@ -55,7 +59,7 @@ export async function flagCards(nodeIds: number[]): Promise<number[]> {
 export async function predictionCards(): Promise<number[]> {
   const [cur, prev] = await latestModels();
   if (!cur) return [];
-  const metrics = cur.metrics as ModelMetrics;
+  const metrics = await withBaselines(cur);
   const out: number[] = [];
   for (const t of await watchedTickers()) {
     const n = await companyByTicker(t);
@@ -68,7 +72,8 @@ export async function predictionCards(): Promise<number[]> {
     if (prev && !fresh.length) continue;
     const names = await nodesById(now.map((p) => p.candidate));
     const list = now.map((p) => ({ id: p.candidate, name: names.get(p.candidate)?.name ?? "?", ticker: names.get(p.candidate)?.ticker ?? "", score: p.score, rank: p.rank, fresh: fresh.some((f) => f.candidate === p.candidate) }));
-    const hits = metrics.gnn?.asTarget?.hits5 ?? null;
+    // How often the real buyer was in the top five (the service's asAcquirer: buyers ranked for a target).
+    const hits = metrics.gnn?.asAcquirer?.hits5 ?? null;
     const [row] = await requireDb().insert(schema.edgeDetections).values({
       key: `pred:${cur.id}:${n.id}:acquirer`, kind: "graph_prediction", module: "networks",
       title: `Likely buyers of ${n.name}: ${list.slice(0, 3).map((x) => x.name).join(", ")}`.slice(0, 200),

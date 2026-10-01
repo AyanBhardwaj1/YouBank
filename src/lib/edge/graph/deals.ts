@@ -16,6 +16,7 @@ import { htmlToText } from "@/lib/edgar/filingText";
 import { tickerByName, tickerMap } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { quoteFound } from "../docs/text";
+import { small } from "../models";
 import { isDealVehicle, normName, titleCase } from "./parse";
 
 /** Whether two names belong to one corporate family ("Energy Transfer LP" and "Energy Transfer Partners"). Pure. */
@@ -102,7 +103,7 @@ export async function mergerDeals(me: { cik: string; name: string }, since: stri
       try {
         const text = await readText(p.sample.url);
         const r = await structured(Direction, "edge-graph-deal", "You read an SEC merger filing. Say whether it describes an acquisition between company A and company B, which one is the buyer (the one acquiring or absorbing the other), and the deal's status. Quote the words that show it. If the filing is not about a deal between these two, say not_a_deal.",
-          `A: ${me.name}\nB: ${p.otherName}\nForm: ${p.sample.form}\n\n${text}`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 400, timeoutMs: 45_000 });
+          `A: ${me.name}\nB: ${p.otherName}\nForm: ${p.sample.form}\n\n${text}`, { override: small(), maxTokens: 400, timeoutMs: 45_000 });
         verdict = { ...r.data, a: me.cik };
         if (!quoteFound(r.data.quote, text)) verdict = { ...verdict, kind: "unclear" };
       } catch (e) { logError(e, { where: "edge-graph-deal" }); continue; }
@@ -152,7 +153,7 @@ export async function completedDeals(me: { cik: string; name: string }, since: s
         const at = full.search(/item\s*2\.01/i);
         const text = full.slice(Math.max(0, at), Math.max(0, at) + 6000) || full.slice(0, 6000);
         const r = await structured(Completed, "edge-graph-201", "You read the Item 2.01 section of an 8-K (completion of an acquisition or disposition). List each completed deal: the counterparty as named, whether the filer bought or sold, what changed hands, the completion date, and the exact words that say so. Leave out anything not completed.",
-          `Filer: ${me.name}\n\n${text}`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 700, timeoutMs: 45_000 });
+          `Filer: ${me.name}\n\n${text}`, { override: small(), maxTokens: 700, timeoutMs: 45_000 });
         found = r.data.deals.filter((d) => d.counterparty.trim().length > 2 && quoteFound(d.quote, text));
       } catch (e) { logError(e, { where: "edge-graph-201" }); continue; }
       await cacheSet(key, JSON.stringify(found), 365 * 86_400_000);

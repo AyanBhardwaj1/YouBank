@@ -128,7 +128,9 @@ export function AnswerView({ a, onCite }: { a: DocAnswer; onCite: (t: ViewTarget
             {checked && checked.quotes > 0 && <span className="flex items-center gap-1"><Check className="h-3 w-3 text-pos" />{checked.verified} of {checked.quotes} quotes found in their passages</span>}
             {checked && checked.dropped > 0 && <span>· {checked.dropped} unsupported claim{checked.dropped === 1 ? "" : "s"} removed</span>}
             {a.scopeDocs !== undefined && <span>· {a.scopeDocs} document{a.scopeDocs === 1 ? "" : "s"} in scope</span>}
+            {checked?.recovered ? <span>· {checked.recovered} found on a second reading</span> : null}
           </div>
+          {a.method && <p className="mt-1 text-[10.5px] leading-snug text-faint">{a.method}.</p>}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {!a.notFound && a.answerId ? <SendToStudio title={a.question.slice(0, 120)} source={`answer:${a.answerId}`} items={[{ label: "Answer", value: a }]} /> : null}

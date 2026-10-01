@@ -23,7 +23,7 @@ export type LibDoc = {
 export type Library = { docs: LibDoc[]; filings: LibDoc[]; usage: { bytes: number; files: number; quotaBytes: number; quotaFiles: number } };
 
 export type PassageView = {
-  doc: { id: number; title: string; source: string; url: string; mime: string; lang: string; fileId: number | null; pages: number; durationSec: number; ticker: string; form: string };
+  doc: { id: number; title: string; source: string; url: string; mime: string; lang: string; fileId: number | null; pages: number; durationSec: number; ticker: string; form: string; transcription?: string };
   passage: { id: number; ord: number; page: number; section: string; speaker: string; tStart: number | null; tEnd: number | null; text: string };
   around: { id: number; ord: number; text: string; page: number; tStart: number | null; speaker: string }[];
   raw: string | null;
@@ -43,6 +43,45 @@ export const READING = new Set(["queued", "parsing", "indexing"]);
 
 export const fmtBytes = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(b >= 100 * 1024 ** 2 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The wait before the next check: `ms` while all is well, doubling with each failure in a row (5 s, 10 s, 20 s…), up to a minute. Pure, for tests. */
+export const pollDelay = (ms: number, failures: number) => Math.min(ms * 2 ** Math.min(failures, 8), Math.max(ms, 60_000));
+
+/**
+ * Load now (or after `ms` with `wait`), then again every `ms` for as long as `keep` says so. A hidden tab
+ * skips its checks and makes one when it is shown again; a failure is retried later (see pollDelay)
+ * instead of ending the polling; after `forMs` it stops. Returns the stop function, for an effect's
+ * cleanup: it aborts the load in flight, and nothing that arrives afterwards is acted on.
+ */
+export function poll<T>(load: (signal: AbortSignal) => Promise<T>, keep: (data: T) => boolean, opts: { ms?: number; wait?: boolean; forMs?: number; onError?: (e: unknown) => void } = {}): () => void {
+  const { ms = 5000, forMs = Infinity } = opts;
+  const ac = new AbortController();
+  const until = Date.now() + forMs;
+  let failures = 0, due = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const later = () => { if (!ac.signal.aborted && Date.now() < until) timer = setTimeout(check, pollDelay(ms, failures)); };
+  const run = () => load(ac.signal)
+    .then((data) => { if (ac.signal.aborted) return; failures = 0; if (keep(data)) later(); })
+    .catch((e) => { if (ac.signal.aborted) return; failures++; opts.onError?.(e); later(); });
+  const check = () => {
+    if (ac.signal.aborted) return;
+    if (document.visibilityState === "hidden") due = true;
+    else void run();
+  };
+  const onShow = () => { if (due && document.visibilityState !== "hidden") { due = false; check(); } };
+  document.addEventListener("visibilitychange", onShow);
+  if (opts.wait) later(); else void run();
+  return () => { ac.abort(); clearTimeout(timer); document.removeEventListener("visibilitychange", onShow); };
+}
+
+let warmedAt = 0;
+
+/** Wake the reranker on the ML service ahead of a question (fire and forget; at most every three minutes). */
+export function warmReranker(): void {
+  if (Date.now() - warmedAt < 3 * 60_000) return;
+  warmedAt = Date.now();
+  void fetch("/api/edge/ask/warm", { method: "POST", keepalive: true }).catch(() => undefined);
+}
 
 async function failure(res: Response): Promise<Error> {
   const j = (await res.json().catch(() => ({}))) as { error?: string };

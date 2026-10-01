@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { post, useApi } from "@/components/news/client";
 import { clockOf, wordDiff } from "@/lib/edge/docs/text";
+import { onTabKeys, tabProps } from "../tabs";
 import { errorText, type ChangeRow, type DocCompare, type Library, type Radar, type ViewTarget } from "./client";
 
 const TONE: Record<ChangeRow["status"], { label: string; bar: string; text: string; icon: typeof Plus }> = {
@@ -92,7 +93,7 @@ function FilingRadar({ initial, suggest }: { initial?: { ticker: string; form?: 
         {suggest.filter((t) => t !== ticker).slice(0, 5).map((t) => <button key={t} type="button" onClick={() => go(t)} className="num rounded-full border border-dashed border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg">{t}</button>)}
       </form>
       {asked && radar.loading && <div className="flex items-center gap-2 text-[12px] text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading both filings and matching paragraphs…</div>}
-      {radar.error && <p className="text-[12px] text-neg">{radar.error}</p>}
+      {radar.error && <p className="text-[12px] text-neg">{radar.error} <button type="button" onClick={radar.reload} className="text-accent hover:underline">Try again</button></p>}
       {r && (
         <div className={`panel rise space-y-3 p-3 transition-opacity ${radar.loading ? "opacity-50" : ""}`}>
           <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
@@ -152,6 +153,7 @@ function DocsRadar({ onCite }: { onCite: (t: ViewTarget) => void }) {
         <button type="button" disabled={!a || !b || a === b || busy} onClick={() => void run()} className="ctl flex items-center gap-1 bg-accent px-3 py-1 font-semibold text-accent-fg disabled:opacity-50">{busy && <Loader2 className="h-3 w-3 animate-spin" />}Compare</button>
       </div>
       {!docs.length && lib.data && <p className="text-[12px] text-muted">Upload or import two documents first, such as two quarters&apos; earnings calls.</p>}
+      {lib.error && !lib.data && <p className="text-[12px] text-neg">Could not load your documents: {lib.error} <button type="button" onClick={lib.reload} className="text-accent hover:underline">Try again</button></p>}
       {error && <p className="text-[12px] text-neg">{error}</p>}
       {res && (
         <div className="panel rise space-y-4 p-3">
@@ -201,8 +203,8 @@ export function ChangeRadar({ onCite, suggest, initial }: { onCite: (t: ViewTarg
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg border border-line p-0.5" role="tablist" aria-label="What to compare">
-          {(["filings", "docs"] as const).map((m) => <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`rounded-md px-2.5 py-0.5 text-[12px] ${mode === m ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{m === "filings" ? "A company's filings" : "Two documents or calls"}</button>)}
+        <div className="flex items-center gap-0.5 rounded-lg border border-line p-0.5" role="tablist" aria-label="What to compare" onKeyDown={onTabKeys}>
+          {(["filings", "docs"] as const).map((m) => <button key={m} type="button" {...tabProps(mode === m)} onClick={() => setMode(m)} className={`rounded-md px-2.5 py-0.5 text-[12px] ${mode === m ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{m === "filings" ? "A company's filings" : "Two documents or calls"}</button>)}
         </div>
         <span className="text-[11.5px] text-muted">{mode === "filings" ? "The latest filing against the one before, paragraph by paragraph." : "What is new, what is gone, and how the speakers' confidence moved."}</span>
       </div>

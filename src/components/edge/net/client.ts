@@ -2,16 +2,21 @@
 
 /** Networks' client shapes and colours (one colour per kind of node and link, shared by every view). */
 import type { Flag } from "@/lib/edge/graph/algo";
-import type { GEdge, GNode, Intro, Prediction, Step, TreeNode } from "@/lib/edge/graph/findings";
+import type { GEdge, GNode, Intro, Owner, Owners, Prediction, Step, TreeNode } from "@/lib/edge/graph/findings";
 import type { ModelMetrics } from "@/lib/edge/graph/train";
 
-export type { Flag, GEdge, GNode, Intro, Prediction, Step, TreeNode };
+export type { Flag, GEdge, GNode, Intro, Owner, Owners, Prediction, Step, TreeNode };
 
 export type Missing = { missing: true; ticker: string; name: string; listed: boolean };
 export type CompanyView = {
   node: GNode; industry: string; place: string; revenue: number | null; assets: number | null;
   counts: { directors: number; officers: number; holders: number; stakes: number; subsidiaries: number; customers: number; suppliers: number; deals: number };
   deals: GEdge[]; refreshed: Record<string, string>; flags: Flag[];
+  metrics?: {
+    pct: number | null;
+    community: { id: number; size: number; label: string; top: { id: number; name: string; ticker: string }[] } | null;
+    brokers: { id: number; name: string; communities: number; companies: number; at: { id: number; name: string; ticker: string }[] }[];
+  } | null;
 };
 export type Picks = { items: Prediction[]; scorecard: string; version: string | null; trainedAt: string | null; metrics: ModelMetrics | null; graph: { nodes: GNode[]; links: GEdge[] } };
 export type Sub = { nodes: GNode[]; links: GEdge[] };

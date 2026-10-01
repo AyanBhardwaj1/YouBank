@@ -10,7 +10,7 @@
 import dynamic from "next/dynamic";
 import { AlertTriangle, Check, CircleStop, ExternalLink, Eye, Loader2, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, post, useApi, useNow } from "@/components/news/client";
+import { api, post, useApi } from "@/components/news/client";
 import { EdgeCardView } from "@/components/edge/Cards";
 import type { AssetCollection, EdgeCard, EdgeState, ProformaVisual } from "@/components/edge/client";
 import type { MapMarker } from "@/components/edge/EarthMap";
@@ -29,7 +29,8 @@ import type { Command } from "@/lib/functions";
 const EarthMap = dynamic(() => import("@/components/edge/EarthMap"), { ssr: false, loading: () => <div className="shimmer h-full w-full" /> });
 
 type Run = (c: Command) => void;
-const KIND: Record<string, string> = { ground_change: "Ground", deal_proforma: "Deal", filing_change: "Filing", graph_flag: "Red flag", graph_prediction: "Model" };
+const EARTH_KINDS = new Set(["ground_change", "radar_change", "flaring", "methane_plume", "permits"]);
+const KIND: Record<string, string> = { ground_change: "Ground", radar_change: "Radar", flaring: "Flaring", methane_plume: "Methane", permits: "Permits", deal_proforma: "Deal", filing_change: "Filing", graph_flag: "Red flag", graph_prediction: "Model" };
 const openTab = (url: string) => window.open(url, "_blank", "noopener");
 
 function Waiting({ error, what }: { error: string | null; what: string }) {
@@ -54,7 +55,7 @@ function Heading({ children, action }: { children: React.ReactNode; action?: Rea
 }
 
 /** A finding in a line, opening to the full feed card. */
-function FindingRow({ card, now, open, onToggle, onRun }: { card: EdgeCard; now: number; open: boolean; onToggle: () => void; onRun: Run }) {
+function FindingRow({ card, open, onToggle, onRun }: { card: EdgeCard; open: boolean; onToggle: () => void; onRun: Run }) {
   const at = card.observedAt ?? card.detectedAt;
   return (
     <li className="rounded-md border border-line">
@@ -65,7 +66,7 @@ function FindingRow({ card, now, open, onToggle, onRun }: { card: EdgeCard; now:
       </button>
       {open && (
         <div className="border-t border-line p-2">
-          <EdgeCardView card={card} index={0} now={now}
+          <EdgeCardView card={card} index={0}
             onOpenDeal={(c) => openTab(whatIfUrl((c.visual as ProformaVisual).parties.map((p) => p.tickers[0] ?? p.label), (c.visual as ProformaVisual).place))}
             onOpenRadar={() => openTab(radarUrl(card.tickers[0] ?? ""))}
             onOpenNetworks={(t) => onRun({ ticker: t, fn: "NET", via: "click" })} />
@@ -103,7 +104,6 @@ function useOverview(ticker: string) {
 }
 
 export function EdgeScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
-  const now = useNow();
   const q = useOverview(ticker);
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -142,7 +142,7 @@ export function EdgeScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
       <section>
         <Heading action={<a href="/app/edge?view=feed" target="_blank" rel="noreferrer" className="text-[10.5px] text-accent hover:underline">The feed</a>}>What Edge found</Heading>
         {!d.cards.length ? <p className="text-[11.5px] text-muted">Nothing yet in the last year: no ground change at its mapped sites, deal footprint, filing rewrite, red flag or model pick. {d.watch ? "It is checked daily." : "Watch it to have it checked daily."}</p> : (
-          <ul className="space-y-1">{d.cards.map((c) => <FindingRow key={c.id} card={c} now={now} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} onRun={onRun} />)}</ul>
+          <ul className="space-y-1">{d.cards.map((c) => <FindingRow key={c.id} card={c} open={open === c.id} onToggle={() => setOpen(open === c.id ? null : c.id)} onRun={onRun} />)}</ul>
         )}
       </section>
 
@@ -189,14 +189,14 @@ const centreOf = (c: EdgeCard) => {
 };
 
 export function GeoScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
-  const now = useNow();
   const q = useOverview(ticker);
   const state = useApi<EdgeState>("/api/edge");
   const has = !!q.data && q.data.assets.plants + q.data.assets.pipelines > 0;
   const assets = useApi<AssetCollection>(has ? `/api/edge/assets?place=permian&tickers=${encodeURIComponent(ticker)}` : null);
   const [focus, setFocus] = useState<{ lon: number; lat: number; zoom?: number; key: number } | null>(null);
   const [open, setOpen] = useState<number | null>(null);
-  const ground = useMemo(() => (q.data?.cards ?? []).filter((c) => c.kind === "ground_change"), [q.data]);
+  // Everything Earth finds at the sites: ground and radar change, flaring, methane, drilling permits.
+  const ground = useMemo(() => (q.data?.cards ?? []).filter((c) => EARTH_KINDS.has(c.kind)), [q.data]);
   const markers: MapMarker[] = useMemo(() => ground.flatMap((c) => { const at = centreOf(c); return at ? [{ id: c.id, ...at, title: c.title, kind: c.kind }] : []; }), [ground]);
   if (!q.data || !state.data) return <Waiting error={q.error ?? state.error} what={`${ticker} on the ground`} />;
   const permian = state.data.places.find((p) => p.key === "permian") ?? state.data.places[0];
@@ -209,15 +209,15 @@ export function GeoScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
         </div>
       )}
       <section>
-        <Heading>What satellites saw change</Heading>
-        {!ground.length ? <p className="text-[11.5px] text-muted">No ground change at its mapped sites in the last year. {q.data.watch ? "Its sites are checked daily." : <button type="button" onClick={() => onRun({ ticker, fn: "EDGE", via: "click" })} className="text-accent hover:underline">Watch it from EDGE</button>}</p> : (
+        <Heading>What changed on the ground</Heading>
+        {!ground.length ? <p className="text-[11.5px] text-muted">No ground or radar change, flaring or jump in drilling permits at its mapped sites in the last year. {q.data.watch ? "Its sites are checked daily." : <button type="button" onClick={() => onRun({ ticker, fn: "EDGE", via: "click" })} className="text-accent hover:underline">Watch it from EDGE</button>}</p> : (
           <ul className="space-y-1">{ground.map((c) => (
-            <FindingRow key={c.id} card={c} now={now} open={open === c.id} onRun={onRun}
+            <FindingRow key={c.id} card={c} open={open === c.id} onRun={onRun}
               onToggle={() => { const next = open === c.id ? null : c.id; setOpen(next); const at = centreOf(c); if (next && at) setFocus({ ...at, zoom: 12, key: Date.now() }); }} />
           ))}</ul>
         )}
       </section>
-      <p className="text-[10.5px] text-faint">Imagery: Copernicus Sentinel-2 (ESA), via Microsoft Planetary Computer. Assets: EIA. Map: OpenFreeMap, OpenStreetMap contributors.</p>
+      <p className="text-[10.5px] text-faint">Imagery: Copernicus Sentinel-2 and Sentinel-1 (ESA), via Microsoft Planetary Computer. Heat: NASA FIRMS (VIIRS). Permits: Texas RRC, New Mexico OCD. Assets: EIA. Map: OpenFreeMap, OpenStreetMap contributors.</p>
     </div>
   );
 }

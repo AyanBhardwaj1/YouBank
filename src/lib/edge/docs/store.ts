@@ -11,7 +11,7 @@ import { memo } from "@/lib/memo";
 import { myTeamIds } from "@/lib/teams/db";
 import { deleteObject, deletePrefix, r2Ready } from "../infra/r2";
 import { limits } from "../infra/usage";
-import type { Passage } from "./chunk";
+import { passageHeader, type Passage } from "./chunk";
 import { embedTexts, vectorLiteral } from "./embed";
 
 export const USER_QUOTA_BYTES = 500 * 1024 * 1024;
@@ -45,16 +45,23 @@ export async function roomForPassages(): Promise<{ ok: boolean; reason?: string 
   return (await chunksBytes()) < limits().docsDbBytes ? { ok: true } : { ok: false, reason: "Document search is full for the beta; older documents need removing before more can be indexed." };
 }
 
-/** Embed passages and store them (replacing any the document had). Returns how many. */
+/**
+ * Embed passages and store them (replacing any the document had). Returns how many. Each is embedded
+ * with its header ("Company (TICKER) · form · period · section", see passageHeader), so a passage that
+ * never names its company or period still matches questions that do; the stored text, which quotes are
+ * checked against, is the passage alone.
+ */
 export async function indexPassages(docId: number, passages: Passage[]): Promise<number> {
   const room = await roomForPassages();
   if (!room.ok) throw Object.assign(new Error(room.reason!), { status: 507 });
   const db = requireDb();
+  const [doc] = await db.select({ title: schema.edgeDocs.title, source: schema.edgeDocs.source, meta: schema.edgeDocs.meta }).from(schema.edgeDocs).where(eq(schema.edgeDocs.id, docId));
+  const info = { title: doc?.title ?? "", source: doc?.source ?? "", meta: (doc?.meta ?? {}) as { ticker?: string; form?: string; period?: string; filed?: string; company?: string } };
   await db.delete(schema.edgeChunks).where(eq(schema.edgeChunks.docId, docId));
   const list = passages.slice(0, 4000);
   for (let i = 0; i < list.length; i += 120) {
     const batch = list.slice(i, i + 120);
-    const vectors = await embedTexts(batch.map((p) => `${p.section ? `${p.section}: ` : ""}${p.text}`));
+    const vectors = await embedTexts(batch.map((p) => `${passageHeader(info, p)}\n${p.text}`));
     await db.execute(sql`insert into edge_chunks (doc_id, ord, page, t_start, t_end, speaker, section, text, embedding, tsv) values ${sql.join(batch.map((p, k) => sql`(${docId}, ${p.ord}, ${p.page}, ${p.tStart ?? null}, ${p.tEnd ?? null}, ${(p.speaker ?? "").slice(0, 80)}, ${p.section.slice(0, 80)}, ${p.text}, ${vectorLiteral(vectors[k])}::halfvec(512), to_tsvector('english', ${p.text}))`), sql`, `)}
       on conflict (doc_id, ord) do nothing`);
   }

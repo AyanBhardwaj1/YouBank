@@ -5,6 +5,7 @@
  * ranked feed, and small formatters. Fetching and polling reuse the Newsroom's helpers, which pause in
  * hidden tabs and back off on errors.
  */
+import { useSyncExternalStore } from "react";
 import { useApi } from "@/components/news/client";
 import type { Blend } from "@/lib/edge/access";
 import type { EdgeCard, Scope } from "@/lib/edge/feed";
@@ -24,7 +25,7 @@ export type EdgeState = {
   covered: { key: string; name: string; bbox: Bbox }[];
 };
 
-export type FeedData = { cards: EdgeCard[]; counts: Record<Scope, number>; total: number; generatedAt: string };
+export type FeedData = { cards: EdgeCard[]; counts: Record<Scope, number>; total: number; kinds?: Record<string, number>; generatedAt: string };
 
 export type GroundVisual = {
   type: "before_after";
@@ -51,6 +52,54 @@ export type FilingVisual = {
   summary: string[]; samples: { status: "added" | "removed" | "changed"; text: string; before?: string }[];
 };
 
+export type FlaringVisual = {
+  type: "flaring";
+  site: { name: string; kind: string; company: string; ticker: string; lon: number; lat: number; capacityMMcfd: number };
+  bbox: Bbox; radiusKm: number;
+  days: { date: string; n: number; frp: number; sats: string[] }[];
+  stats: { detections: number; days: number; frpTotal: number; frpMax: number; nearestM: number; satellites: number; high: number };
+  hits: { lon: number; lat: number; frp: number; date: string; time: string; sat: string; conf: string; night: boolean; m: number }[];
+  heat: { url: string; photo: string; date: string; scene: string; hot: number } | null;
+  reported: { period: string; flaredMcf: number; ventedMcf: number; radiusKm: number; facilities: { id: string; name: string; operator: string; type: string; km: number; flaredMcf: number; ventedMcf: number; url: string }[] } | null;
+  history: { week: string; days: number; frp: number }[];
+};
+
+export type RadarVisual = {
+  type: "radar_change";
+  site: { name: string; kind: string; company: string; ticker: string; lon: number; lat: number; capacityMMcfd: number };
+  bbox: Bbox;
+  before: { url: string; date: string; scene: string; dates: string[] };
+  after: { url: string; date: string; scene: string; dates: string[] };
+  overlay: string;
+  orbit: { direction: "ascending" | "descending"; relative: number };
+  stats: { newObjects: number; newAreaM2: number; largestM2: number; strong: number; known: number; goneObjects: number; goneAreaM2: number; groundRatio: number; clearPct: number; passes: { before: number; after: number } };
+  objects: { lon: number; lat: number; areaM2: number; peakDb: number; where: string; fresh: boolean }[];
+};
+
+export type PermitItem = { api: string; name: string; operator: string; lon: number; lat: number; km: number; date: string; url: string; state: "NM" | "TX" };
+export type PermitsVisual = {
+  type: "permits";
+  site: { name: string; kind: string; company: string; ticker: string; lon: number; lat: number; capacityMMcfd: number };
+  radiusKm: number; asOf: string; from: string; dated: boolean; last30: number; prior90: number;
+  /** Permits in each 30-day window, oldest first; the last is the 30 days of the card. */
+  windows: number[];
+  operators: { name: string; n: number }[];
+  permits: PermitItem[];
+  tx: { permitted: number; since: string } | null;
+};
+
+export type MethaneVisual = {
+  type: "methane_plume";
+  site: { name: string; kind: string; company: string; ticker: string; lon: number; lat: number; capacityMMcfd: number };
+  radiusKm: number; bbox: Bbox; date: string; platform: string;
+  rateKgH: number | null; uncertaintyKgH: number | null; nearestM: number;
+  /** The plume picture as a data URI ("" when it could not be kept). */
+  image: string;
+  plumes: { id: string; lon: number; lat: number; m: number; rateKgH: number | null; uncertaintyKgH: number | null }[];
+  earlier: { id: string; date: string; m: number; rateKgH: number | null; platform: string }[];
+  credit: string;
+};
+
 export type FlagVisual = { type: "flag"; company: { id: number; name: string; ticker: string }; flag: { kind: string; severity: "high" | "medium"; title: string; detail: string; date: string; people?: string[]; urls?: string[] } };
 export type PredictionVisual = { type: "prediction"; subject: { id: number; name: string; ticker: string }; direction: "acquirers" | "targets"; items: { id: number; name: string; ticker: string; score: number; rank: number; fresh: boolean }[]; scorecard: string; version: string };
 
@@ -62,7 +111,19 @@ export type AssetFeature = {
 export type AssetCollection = { type: "FeatureCollection"; features: AssetFeature[] };
 export type Imagery = { tiles: string; minzoom: number; maxzoom: number; from: string; to: string; attribution: string };
 
-export const useEdgeState = () => useApi<EdgeState>("/api/edge");
+export const useEdgeState = (initial?: EdgeState, seededAt?: string) => useApi<EdgeState>("/api/edge", 0, initial, seededAt);
+
+/* One clock for every relative time on the page: a single half-minute timer, and only the components that
+   show a time re-render when it ticks (0 until the first tick, so server and first client render agree). */
+let clock = 0;
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+const clockListeners = new Set<() => void>();
+function subscribeClock(l: () => void) {
+  clockListeners.add(l);
+  if (!clockTimer) { clock = Date.now(); clockTimer = setInterval(() => { clock = Date.now(); for (const f of clockListeners) f(); }, 30_000); }
+  return () => { clockListeners.delete(l); if (!clockListeners.size && clockTimer) { clearInterval(clockTimer); clockTimer = null; } };
+}
+export const useClock = () => useSyncExternalStore(subscribeClock, () => clock, () => 0);
 
 export const fmtNum = (v: number, dp = 0) => v.toLocaleString("en-US", { maximumFractionDigits: dp, minimumFractionDigits: dp });
 

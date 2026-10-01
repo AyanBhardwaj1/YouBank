@@ -5,11 +5,13 @@
  * watches in colour, findings as markers (click one to see its card), and a recent satellite layer.
  */
 import dynamic from "next/dynamic";
-import { Layers, Loader2, Satellite, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Box, Layers, Loader2, Satellite, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { SiteModel } from "@/lib/edge/site3d";
 import { EdgeCardView } from "./Cards";
-import { useApi, type AssetCollection, type EdgeCard, type EdgeState, type FeedData, type Imagery } from "./client";
+import { api, useApi, type AssetCollection, type Bbox, type EdgeCard, type EdgeState, type FeedData, type GroundVisual, type Imagery, type RadarVisual } from "./client";
 import type { MapAsset, MapMarker } from "./EarthMap";
+import { DrillingNearby, PlanetScenes } from "./SitePanels";
 import { TerrainPanel } from "./Terrain";
 
 const EarthMap = dynamic(() => import("./EarthMap"), { ssr: false, loading: () => <MapLoading /> });
@@ -17,6 +19,9 @@ const EarthMap = dynamic(() => import("./EarthMap"), { ssr: false, loading: () =
 export function MapLoading() {
   return <div className="flex h-full w-full items-center justify-center bg-elevated/40 text-[12px] text-muted"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading the map</div>;
 }
+
+/** Findings drawn as markers: the ones tied to a place on the ground. */
+const MAPPED = new Set(["ground_change", "flaring", "radar_change", "permits", "methane_plume"]);
 
 /** Distinct colours for watched companies (Okabe-Ito, then two extras). */
 export const WATCH_COLORS = ["#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#D55E00", "#F0E442", "#0072B2"];
@@ -28,7 +33,18 @@ export function centreOf(card: EdgeCard): { lon: number; lat: number } | null {
   return null;
 }
 
-export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; now: number; focus: { card: EdgeCard; key: number; threeD?: boolean } | null; onOpenDeal: (c: EdgeCard) => void }) {
+/** Builds the 3D model of a site, saying what it is doing. */
+function SiteButton({ state, query, onModel }: { state: { model: SiteModel | null; busy: boolean; key: string }; query: string; onModel: () => void }) {
+  const mine = state.key === query;
+  return (
+    <button type="button" disabled={state.busy} onClick={onModel} className="ctl flex w-full items-center justify-center gap-1.5 border border-accent/50 bg-accent-soft/40 px-2.5 py-1.5 text-[12px] font-medium text-accent hover:bg-accent-soft disabled:opacity-60">
+      {state.busy && mine ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Box className="h-3.5 w-3.5" />}
+      {state.busy && mine ? "Reading lidar and the aerial photograph…" : state.model && mine ? "Shown in 3D on the map" : "Model this site in 3D (lidar and aerial photo)"}
+    </button>
+  );
+}
+
+export function MapView({ state, focus, onOpenDeal }: { state: EdgeState; focus: { card: EdgeCard; key: number; threeD?: boolean } | null; onOpenDeal: (c: EdgeCard) => void }) {
   const region = state.covered[0];
   const assets = useApi<AssetCollection>(`/api/edge/assets?place=${region.key}`);
   const feed = useApi<FeedData>("/api/edge/feed?scope=all", 120_000);
@@ -37,6 +53,25 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
   const [picked, setPicked] = useState<number | null>(focus?.card.id ?? null);
   const [asset, setAsset] = useState<MapAsset | null>(null);
   const [zoom, setZoom] = useState(0);
+  const [site, setSite] = useState<{ model: SiteModel | null; busy: boolean; error: string | null; key: string }>({ model: null, busy: false, error: null, key: "" });
+  const [want3D, setWant3D] = useState(0);
+  const [jump, setJump] = useState<{ lon: number; lat: number; zoom: number; pitch: number; key: number } | null>(null);
+
+  // A site in 3D: the newest aerial photograph and what lidar sees standing there, flown to and tilted.
+  const modelSite = (query: string, at: { lon: number; lat: number }) => {
+    setSite({ model: null, busy: true, error: null, key: query });
+    api<SiteModel>(`/api/edge/site3d?${query}`)
+      .then((model) => { setSite({ model, busy: false, error: null, key: query }); setWant3D(Date.now()); setJump({ ...at, zoom: 15.4, pitch: 62, key: Date.now() }); })
+      .catch((e) => setSite({ model: null, busy: false, error: e instanceof Error ? e.message : String(e), key: query }));
+  };
+  // Opened with "See it in 3D": model that site straight away.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !focus?.threeD || focus.card.kind !== "ground_change") return;
+    opened.current = true;
+    const at = centreOf(focus.card);
+    if (at) queueMicrotask(() => modelSite(`detection=${focus.card.id}`, at));
+  }, [focus]);
 
   const highlight = useMemo(() => state.watches.filter((w) => w.kind === "company" && w.target.ticker).map((w, i) => ({ ticker: w.target.ticker!, label: w.label, color: WATCH_COLORS[i % WATCH_COLORS.length] })), [state.watches]);
   const cards = useMemo(() => {
@@ -44,14 +79,16 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
     if (focus && !all.some((c) => c.id === focus.card.id)) all.unshift(focus.card);
     return all;
   }, [feed.data, focus]);
-  const markers: MapMarker[] = useMemo(() => cards.flatMap((c) => { const p = centreOf(c); return p && c.kind === "ground_change" ? [{ id: c.id, lon: p.lon, lat: p.lat, title: c.title, kind: c.kind }] : []; }), [cards]);
+  const markers: MapMarker[] = useMemo(() => cards.flatMap((c) => { const p = centreOf(c); return p && MAPPED.has(c.kind) ? [{ id: c.id, lon: p.lon, lat: p.lat, title: c.title, kind: c.kind }] : []; }), [cards]);
   const fly = useMemo(() => { const p = focus ? centreOf(focus.card) : null; return p ? { ...p, zoom: focus!.threeD ? 13.6 : 13.2, ...(focus!.threeD ? { pitch: 62 } : {}), key: focus!.key } : null; }, [focus]);
   const card = cards.find((c) => c.id === picked) ?? null;
+  // Ground and radar changes draw what changed over the map, on the box they compared.
+  const overlay = useMemo(() => { const v = card?.kind === "ground_change" || card?.kind === "radar_change" ? (card.visual as GroundVisual | RadarVisual) : null; return v?.overlay && v.bbox ? { url: v.overlay, bbox: v.bbox as Bbox } : null; }, [card]);
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="panel relative h-[64vh] min-h-[420px] overflow-hidden">
-        <EarthMap bbox={region.bbox} assets={assets.data} highlight={highlight} markers={markers} satellite={satOn ? sat.data : null} focus={fly} initial3D={!!focus?.threeD}
+        <EarthMap bbox={region.bbox} assets={assets.data} highlight={highlight} markers={markers} satellite={satOn ? sat.data : null} focus={jump ?? fly} initial3D={!!focus?.threeD} want3D={want3D} site={site.model} overlay={overlay}
           onMarker={(id) => { setPicked(id); setAsset(null); }} onAsset={(a) => { setAsset(a); setPicked(null); }} onZoom={setZoom} />
         <div className="pointer-events-none absolute left-2 top-2 flex max-w-[70%] flex-col gap-1.5">
           <div className="pointer-events-auto flex flex-wrap gap-1">
@@ -69,6 +106,19 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
           </div>
         </div>
         {sat.error && satOn && <div className="absolute bottom-8 left-2 rounded bg-bg/90 px-2 py-1 text-[11px] text-neg">Satellite layer unavailable: {sat.error}</div>}
+        {site.model && (
+          <div className="glass absolute bottom-8 left-2 max-w-[min(420px,80%)] rounded-lg border border-line bg-bg/90 px-2.5 py-2 text-[11px] shadow">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">Site in 3D</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#F2A93B]" />{site.model.counts.tanks} tank{site.model.counts.tanks === 1 ? "" : "s"}{site.model.tankBarrels ? ` (about ${Math.round(site.model.tankBarrels / 1000).toLocaleString("en-US")}k barrels of shell)` : ""}</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#E5534B]" />{site.model.counts.towers} tower{site.model.counts.towers === 1 ? "" : "s"}</span>
+              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-[#D7DEE6]" />{site.model.counts.structures} other</span>
+              <button type="button" onClick={() => setSite({ model: null, busy: false, error: null, key: "" })} aria-label="Remove the site model" className="ml-auto text-muted hover:text-fg"><X className="h-3.5 w-3.5" /></button>
+            </div>
+            <p className="mt-1 leading-snug text-muted">{[site.model.photo ? `Aerial photo: USDA NAIP, ${site.model.photo.date}` : "", site.model.lidar ? `heights: USGS 3DEP lidar, ${site.model.lidar.year}` : ""].filter(Boolean).join("; ")}. {site.model.notes[0]}</p>
+          </div>
+        )}
+        {site.error && <div className="absolute bottom-8 left-2 rounded bg-bg/90 px-2 py-1 text-[11px] text-neg">{site.error}</div>}
       </div>
       <aside className="min-w-0">
         {asset && !card ? (
@@ -80,7 +130,9 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
             <div className="panel p-3">
               <h3 className="text-[13.5px] font-semibold">{asset.name || asset.operator}</h3>
               <p className="text-[11.5px] text-muted">{[asset.company && asset.company !== asset.operator ? `${asset.company}${asset.ticker ? ` (${asset.ticker})` : ""}, operated by ${asset.operator}` : `${asset.operator || asset.company}${asset.ticker ? ` (${asset.ticker})` : ""}`, asset.kind === "processing_plant" && asset.cap ? `${Math.round(asset.cap)} MMcfd` : ""].filter(Boolean).join(" · ")}</p>
+              {asset.kind !== "pipeline" && <div className="mt-2"><SiteButton state={site} query={`asset=${asset.id}`} onModel={() => modelSite(`asset=${asset.id}`, { lon: asset.lon, lat: asset.lat })} /></div>}
               <div className="mt-2"><TerrainPanel key={asset.id} asset={asset.id} /></div>
+              {asset.kind !== "pipeline" && <div className="mt-2 space-y-2"><DrillingNearby key={`d${asset.id}`} asset={asset.id} /><PlanetScenes key={`p${asset.id}`} asset={asset.id} /></div>}
             </div>
           </div>
         ) : card ? (
@@ -89,7 +141,8 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
               <span>Selected finding</span>
               <button type="button" onClick={() => setPicked(null)} className="flex items-center gap-1 rounded px-1 hover:text-fg"><X className="h-3.5 w-3.5" /> Close</button>
             </div>
-            <EdgeCardView card={card} index={0} now={now} onOpenDeal={onOpenDeal} />
+            {card.kind === "ground_change" && centreOf(card) && <div className="mb-2"><SiteButton state={site} query={`detection=${card.id}`} onModel={() => modelSite(`detection=${card.id}`, centreOf(card)!)} /></div>}
+            <EdgeCardView card={card} index={0} onOpenDeal={onOpenDeal} />
           </div>
         ) : (
           <div className="panel p-4 text-[12.5px] text-muted">

@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       .from(schema.edgeChunks).where(and(eq(schema.edgeChunks.docId, c.docId), gte(schema.edgeChunks.ord, c.ord - 2), lte(schema.edgeChunks.ord, c.ord + 2))).orderBy(schema.edgeChunks.ord);
     const turns = ((d.meta as { turns?: Turn[] }).turns ?? []);
     return NextResponse.json({
-      doc: { id: d.id, title: d.title, source: d.source, url: d.url, mime: d.mime, lang: d.lang, fileId: d.fileId, pages: d.pages, durationSec: d.durationSec, ticker: String((d.meta as { ticker?: string }).ticker ?? ""), form: String((d.meta as { form?: string }).form ?? "") },
+      doc: { id: d.id, title: d.title, source: d.source, url: d.url, mime: d.mime, lang: d.lang, fileId: d.fileId, pages: d.pages, durationSec: d.durationSec, ticker: String((d.meta as { ticker?: string }).ticker ?? ""), form: String((d.meta as { form?: string }).form ?? ""), transcription: String((d.meta as { transcription?: { credit?: string } }).transcription?.credit ?? "") },
       passage: { id: c.id, ord: c.ord, page: c.page, section: c.section, speaker: c.speaker, tStart: c.tStart, tEnd: c.tEnd, text: c.text },
       around, raw: d.fileId ? `/api/edge/files/${d.fileId}/raw` : null,
       tone: turns.length ? toneOf(turns, c.tStart) : null,

@@ -4,6 +4,8 @@
  *   2014-16 oil collapse;
  * - shocks a person writes ("oil -30%, rates +150bp"), read by rule, with a small model for the rest
  *   ("a supplier outage cuts revenue 15%");
+ * - narratives ("a 2008-style credit crunch"), which a small model turns into views per factor (median,
+ *   10-90% range, probability, horizon, historical analog) for the views chain in views.ts;
  * - live-event scenarios proposed from the Newsroom, Earth's findings and the graph's red flags, each
  *   citing what it came from;
  * - AI-imagined tail risks, with their reasoning, labeled as imagined.
@@ -13,7 +15,9 @@ import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
 import { logError } from "@/lib/errors";
+import { small } from "../models";
 import { FACTOR_LABEL, FACTORS, type Factor } from "./data";
+import { cleanView, type Narrative, type View } from "./views";
 
 export const REPLAYS: Record<string, { label: string; from: string; to: string; note: string }> = {
   "2008": { label: "2008 financial crisis", from: "2008-09-02", to: "2009-03-09", note: "Lehman's failure to the March 2009 low" },
@@ -57,12 +61,52 @@ export async function shockFromText(text: string, tickers: string[]): Promise<Sh
   if (!leftover || leftover.replace(/[^a-z]/gi, "").length < 4) return shock;
   try {
     const r = await structured(Translated, "edge-scen-shock", `You translate a described event into market moves for a scenario over its horizon: the U.S. stock market, oil and gas stocks, WTI crude, Henry Hub gas, the 10-year Treasury yield, and extra moves for the named companies (${tickers.join(", ") || "none named"}). Be proportionate and plain; leave unaffected factors null.`,
-      `Event: ${leftover}${Object.keys(shock.factors).length ? `\nAlready set: ${JSON.stringify(shock.factors)}` : ""}`, { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 500, timeoutMs: 40_000 });
+      `Event: ${leftover}${Object.keys(shock.factors).length ? `\nAlready set: ${JSON.stringify(shock.factors)}` : ""}`, { override: small(), maxTokens: 500, timeoutMs: 40_000 });
     for (const f of FACTORS) if (shock.factors[f] === undefined && r.data.factors[f] !== null) shock.factors[f] = r.data.factors[f]!;
     for (const t of r.data.tickers) if (tickers.includes(t.ticker.toUpperCase()) && shock.tickers[t.ticker.toUpperCase()] === undefined) shock.tickers[t.ticker.toUpperCase()] = t.move;
     shock.reasoning = r.data.reasoning;
   } catch (e) { logError(e, { where: "edge-scen-shock" }); }
   return shock;
+}
+
+const Views = z.object({
+  views: z.array(z.object({
+    factor: z.enum(FACTORS),
+    median: z.number().describe("the most likely move over the horizon: a fraction for prices (-0.3 is down 30%), percentage points for the 10-year yield"),
+    low: z.number().describe("the 10th percentile of the move: a bad but believable outcome in this scenario"),
+    high: z.number().describe("the 90th percentile of the move"),
+    probability: z.number().describe("the chance, 0 to 1, as of today, that this happens over the horizon (how likely the narrative is, not the move given the narrative)"),
+    horizon: z.number().int().describe("trading days the move plays out over, 5 to 252"),
+    analog: z.object({ name: z.string(), from: z.string().describe("YYYY-MM-DD"), to: z.string().describe("YYYY-MM-DD") }).nullable().describe("the episode since 2000 most like this move, with its start and end dates; null if none fits"),
+  })).max(5),
+  tickers: Translated.shape.tickers,
+  reasoning: z.string().describe("two or three sentences on the chain from the narrative to these moves, and why the analog fits"),
+});
+
+/**
+ * A narrative turned into views per factor by a small model: only the factors it moves directly (the
+ * rest are filled from history), each with a median, a 10-90% range, its probability, horizon and
+ * historical analog. Moves the person wrote as numbers (`set`) are kept exactly as medians. Null when
+ * the model gives nothing usable.
+ */
+export async function viewsFromText(text: string, tickers: string[], set: Shock): Promise<Narrative | null> {
+  const fixed = FACTORS.filter((f) => set.factors[f] !== undefined);
+  const r = await structured(Views, "edge-scen-views", `You turn a narrative into views for a market stress scenario on five factors: the U.S. stock market (market), oil and gas stocks (energy), WTI crude (oil), Henry Hub gas (gas) and the 10-year Treasury yield (rates). Give a view only for the factors the narrative moves directly; the others are filled in from history. For each: the median move over the horizon, a 10th-90th percentile range, the chance it happens, the horizon in trading days, and the episode since 2000 most like it, with dates. Size the moves like the episodes they resemble: if the narrative reads like 2008, 2020 or the 2014-16 oil collapse, use moves of that size, not a softened version. Extra moves for the named companies (${tickers.join(", ") || "none named"}) go in tickers, beyond what the factors imply.`,
+    `Narrative: ${text}${fixed.length ? `\nAlready set by the person (keep these medians exactly): ${fixed.map((f) => `${f} ${set.factors[f]}`).join(", ")}` : ""}`, { override: small(), maxTokens: 900, timeoutMs: 45_000 });
+  const views: View[] = r.data.views.filter((v) => FACTORS.includes(v.factor) && Number.isFinite(v.median)).map((v) => cleanView({ ...v, median: set.factors[v.factor] ?? v.median, analog: v.analog && /^\d{4}-\d{2}-\d{2}$/.test(v.analog.from) && /^\d{4}-\d{2}-\d{2}$/.test(v.analog.to) ? v.analog : null }));
+  // A number the person wrote that the model left out still becomes a view, with a range of a third of the move either way.
+  for (const f of fixed) if (!views.some((v) => v.factor === f)) { const m = set.factors[f]!; views.push(cleanView({ factor: f, median: m, low: m - Math.abs(m) / 3, high: m + Math.abs(m) / 3, probability: 1, horizon: views[0]?.horizon ?? 60, analog: null })); }
+  const unique = views.filter((v, i) => views.findIndex((x) => x.factor === v.factor) === i);
+  if (!unique.length) return null;
+  const moves: Record<string, number> = { ...set.tickers };
+  for (const t of r.data.tickers) { const tk = t.ticker.toUpperCase(); if (tickers.includes(tk) && moves[tk] === undefined && Number.isFinite(t.move)) moves[tk] = Math.max(-0.95, Math.min(3, t.move)); }
+  return { text, reasoning: r.data.reasoning, views: unique, tickers: moves };
+}
+
+/** Views in words, for labels: "WTI crude -30% (-50% to -10%) over 60 days". Pure. */
+export function describeViews(views: View[]): string {
+  const f = (v: View, x: number) => (v.factor === "rates" ? `${x >= 0 ? "+" : ""}${Math.round(x * 100)}bp` : `${x >= 0 ? "+" : ""}${Math.round(x * 100)}%`);
+  return views.map((v) => `${FACTOR_LABEL[v.factor]} ${f(v, v.median)} (${f(v, v.low)} to ${f(v, v.high)}) over ${v.horizon} days`).join(", ") || "no views";
 }
 
 /** A shock in words, for labels. Pure. */
@@ -97,7 +141,7 @@ export async function eventProposals(tickers: string[]): Promise<Proposal[]> {
   if (!items.length) return [];
   try {
     const r = await structured(Proposed, "edge-scen-events", `You propose market scenarios an analyst covering ${tickers.join(", ") || "energy"} should stress-test now, grounded only in the numbered items (news, satellite findings, filing red flags). For each: a short title, the reasoning citing items by number, a horizon, and the moves it implies (fractions for prices, percentage points for the 10-year yield, extra moves for named companies).`,
-      items.map((x, i) => `[${i + 1}] ${x.text}`).join("\n"), { override: { model: "gpt-5.6-luna", effort: "low" }, maxTokens: 1600, timeoutMs: 60_000 });
+      items.map((x, i) => `[${i + 1}] ${x.text}`).join("\n"), { override: small(), maxTokens: 1600, timeoutMs: 60_000 });
     return r.data.scenarios.map((s) => ({
       title: s.title, kind: "event" as const, reasoning: s.reasoning, horizon: Math.max(10, Math.min(120, s.horizon)),
       shock: toShock(s.factors, s.tickers, tickers, s.title), sources: [...new Set(s.cites)].map((n) => items[n - 1]).filter(Boolean).map((x) => ({ label: x.label, url: x.url })),
@@ -117,7 +161,7 @@ const Tails = z.object({
 export async function tailRisks(tickers: string[]): Promise<Proposal[]> {
   try {
     const r = await structured(Tails, "edge-scen-tails", "You imagine tail risks for an investment analyst: plausible but unlikely events that would hit these companies hard and are not already the consensus worry. Reason step by step from mechanism to price moves; be specific about the region and the channel (pipelines, contracts, commodity prices, rates, regulation). Moves are fractions for prices and percentage points for the 10-year yield.",
-      `Companies: ${tickers.join(", ") || "U.S. energy and midstream"}`, { override: { model: "gpt-5.6-luna", effort: "medium" }, maxTokens: 1800, timeoutMs: 90_000 });
+      `Companies: ${tickers.join(", ") || "U.S. energy and midstream"}`, { override: small("medium"), maxTokens: 1800, timeoutMs: 90_000 });
     return r.data.scenarios.map((s) => ({ title: s.title, kind: "tail" as const, reasoning: s.reasoning, probability: s.probability, horizon: Math.max(10, Math.min(252, s.horizon)), shock: toShock(s.factors, s.tickers, tickers, s.title), sources: [] }));
   } catch (e) { logError(e, { where: "edge-scen-tails" }); return []; }
 }

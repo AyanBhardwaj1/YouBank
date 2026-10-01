@@ -1,10 +1,14 @@
 """
-Smoke test for the deployed ``youbank-edge-ml`` app.
+Smoke test for the deployed ``youbank-edge-ml`` app (or a copy of it, such as the staging app).
 
     ml/.venv/bin/modal run ml/smoke.py                          # every task (cold then warm), HTTP checks, cleanup
     ml/.venv/bin/modal run ml/smoke.py --only geo.refine,docs.parse
     ml/.venv/bin/modal run ml/smoke.py --no-http                # skip the HTTP/Inngest checks
     ml/.venv/bin/modal run ml/smoke.py --report-path report.json  # also write the full JSON report
+    ml/.venv/bin/modal run ml/smoke.py --target youbank-edge-ml-staging   # test the staging copy
+    EDGE_ML_APP=youbank-edge-ml-staging ml/.venv/bin/modal run ml/smoke.py  # the same
+
+The target is --target, else $EDGE_ML_APP, else youbank-edge-ml (the same variable edge_ml.py deploys under).
 
 Test inputs are generated inside a Modal container (no secrets on the local machine), uploaded to R2 under
 ml/test/<run>/, and every object the run writes (inputs and outputs) is deleted at the end.
@@ -14,12 +18,13 @@ spawn one async task and confirm its edge/ml.done event reached Inngest (HTTP 20
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 
 import modal
 
-APP = "youbank-edge-ml"
+APP = os.environ.get("EDGE_ML_APP", "").strip() or "youbank-edge-ml"  # default target; --target overrides
 app = modal.App("youbank-edge-ml-smoke")
 SECRET = modal.Secret.from_name("youbank-edge")
 image = (
@@ -56,6 +61,60 @@ GEO_INPUT = {
         {"kind": 2, "x": 39.4, "y": 235.6, "bbox": [29, 224, 51, 248], "pixels": 430},
     ],
 }
+
+# AlphaEarth: Orla gained two ponds between the 2024 and 2025 embeddings; DCP's Goldsmith plant (Ector County) did
+# not visibly change (both checked against Sentinel-2 imagery).
+GOLDSMITH_BBOX = [-102.64774, 31.9697, -102.62126, 31.99231]
+EMBED_INPUT = {"bbox": ORLA_BBOX, "years": [2024, 2025]}
+
+RERANK_QUERY = "Which company is adding a cryogenic processing train at the Orla plant, and how large is it?"
+RERANK_ANSWER = "p-042"
+
+
+def rerank_input(n: int = 100, words: int = 300, seed: int = 4) -> dict:
+    """100 passages of about 400 tokens: one answers the query, two mention Orla without answering it, the rest are
+    other energy and deal news assembled from a fixed list of sentences (deterministic, no network)."""
+    import random
+
+    rng = random.Random(seed)
+    filler = [
+        "Midstream operators reported steady throughput across their gathering systems during the quarter.",
+        "The company reaffirmed its full-year guidance and expects capital spending near the low end of the range.",
+        "Natural gas prices at the Waha hub traded below Henry Hub for most of the month as pipelines ran full.",
+        "Analysts asked about leverage targets, buybacks and the timing of the next dividend increase.",
+        "A new crude gathering line in the Delaware Basin entered service ahead of schedule and under budget.",
+        "Regulators approved the merger after the parties agreed to divest two storage terminals on the Gulf Coast.",
+        "Produced water volumes rose as operators completed more wells in the northern Midland Basin.",
+        "The board authorised a share repurchase programme of up to one billion dollars over three years.",
+        "Rig counts in the Permian were flat week over week while frac crews declined slightly.",
+        "Management highlighted contract renewals with investment-grade customers at higher fees.",
+        "The utility filed a rate case seeking recovery of grid hardening investments made after the storm.",
+        "Liquefied natural gas exports reached a record as two new trains began commercial operation.",
+        "The refinery restarted its fluid catalytic cracking unit after a two-week maintenance turnaround.",
+        "Private equity sponsors continued to sell mineral and royalty interests to public consolidators.",
+        "The ethane rejection rate fell as petrochemical demand improved along the Texas coast.",
+        "Hedging gains offset part of the decline in realised prices for natural gas liquids.",
+        "Several operators said electricity shortages in West Texas delayed compressor installations.",
+        "A credit rating agency upgraded the issuer after leverage fell below four times EBITDA.",
+    ]
+
+    def passage(extra: str = "") -> str:
+        out, pos = [], rng.randrange(0, 12)
+        while len(" ".join(out).split()) < words:
+            out.append(rng.choice(filler))
+        if extra:
+            out.insert(pos % len(out), extra)
+        return " ".join(out)
+
+    texts = {f"p-{i:03d}": passage() for i in range(n)}
+    texts[RERANK_ANSWER] = passage("Energy Transfer said it is adding a 275 MMcf/d cryogenic processing train at its "
+                                   "Orla plant in Reeves County, Texas, with start-up planned for the second half of "
+                                   "next year.")
+    texts["p-007"] = passage("Orla, a small community in Reeves County, sits near several gas processing plants and "
+                             "a busy highway used by oilfield trucks.")
+    texts["p-077"] = passage("Satellite imagery of the Orla area showed new well pads and a water pond near the "
+                             "highway, but no plant construction.")
+    return {"query": RERANK_QUERY, "passages": [{"id": k, "text": v} for k, v in texts.items()]}
 
 
 # ------------------------------------------------------------------------------------------------
@@ -209,6 +268,19 @@ def _audio() -> tuple[bytes, str, str]:
             subprocess.run(["espeak-ng", "-v", "en-us", "-s", "150", "-w", f.name,
                             "The quarterly results beat expectations. Revenue grew eleven percent."], check=True)
             return open(f.name, "rb").read(), "audio/wav", "espeak-ng synthesized"
+
+
+def _speech_fr() -> bytes:
+    """About 15 s of French speech from espeak-ng (WAV)."""
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        subprocess.run(["espeak-ng", "-v", "fr", "-s", "140", "-w", f.name,
+                        "Le conseil d'administration a approuvé l'acquisition de l'usine de traitement de gaz. "
+                        "La clôture de la transaction est prévue au troisième trimestre, sous réserve des "
+                        "autorisations réglementaires habituelles."], check=True)
+        return open(f.name, "rb").read()
 
 
 def _graph(seed: int = 7, fund: float = 3.0, director: float = 3.0, portfolio: float = 2.5, same: float = 0.7,
@@ -396,6 +468,8 @@ def make_fixtures(run: str) -> dict:
     half = len(audio) // 2
     audio_input = {"parts": [put("audio.part0", audio[:half], amime), put("audio.part1", audio[half:], amime)],
                    "mime": amime, "language": "auto"}
+    french = _speech_fr()  # language detection must route this to Whisper
+    audio_fr = {"key": put("audio-fr.wav", french, "audio/wav"), "mime": "audio/wav", "language": "auto", "name": "fr.wav"}
     g = _graph(truth=True)
     oracle = _oracle(g, "2023-07-01")
     g.pop("truth")
@@ -409,20 +483,21 @@ def make_fixtures(run: str) -> dict:
     series_input = {"dataKey": put("returns.json", json.dumps(_returns()).encode(), "application/json"),
                     "window": 60, "n": 64, "seed": 3, "steps": 1500}
     topics_input = {"vectorsKey": put("vectors.json", json.dumps(_vectors()).encode(), "application/json")}
-    return {"keys": keys, "docs": docs, "audio": audio_input, "audioSource": source, "graph": graph_input,
+    return {"keys": keys, "docs": docs, "audio": audio_input, "audioFr": audio_fr, "audioSource": source,
+            "graph": graph_input,
             "graphSize": {"nodes": len(g["nodes"]), "edges": len(g["edges"]), "deals": len(g["deals"])},
             "graphOracle": oracle,
             "tabular": tab_input, "series": series_input, "topics": topics_input}
 
 
 @app.function(image=image, secrets=[SECRET], timeout=1200, cpu=0.5, memory=512)
-def http_checks(run: str, async_task: str, async_input: dict) -> dict:
+def http_checks(run: str, async_task: str, async_input: dict, target: str = APP) -> dict:
     import os
 
     import requests
 
-    api = modal.Function.from_name(APP, "api").get_web_url()
-    st = modal.Function.from_name(APP, "status").get_web_url()
+    api = modal.Function.from_name(target, "api").get_web_url()
+    st = modal.Function.from_name(target, "status").get_web_url()
     auth = {"Authorization": f"Bearer {os.environ['EDGE_ML_SECRET']}"}
     out = {"apiUrl": api, "statusUrl": st}
     out["noAuth"] = requests.post(api, json={"task": "health"}, timeout=60).status_code
@@ -438,8 +513,10 @@ def http_checks(run: str, async_task: str, async_input: dict) -> dict:
         out[label] = {"http": r.status_code, "ok": body.get("ok"), "latency": round(time.time() - t0, 2),
                       "seconds": body.get("seconds"), "costUsd": body.get("costUsd"),
                       "checks": (body.get("result") or {}).get("checks"),
+                      "app": (body.get("result") or {}).get("app"),
                       "versions": {k: (body.get("result") or {}).get("versions", {}).get(k)
-                                   for k in ("python", "modal", "torch", "faster-whisper", "torch-geometric")}}
+                                   for k in ("python", "modal", "torch", "faster-whisper", "torch-geometric",
+                                             "onnx-asr", "onnxruntime")}}
     t0 = time.time()
     r = requests.post(api, json={"task": async_task, "input": async_input, "async": True, "correlation": f"smoke:{run}"},
                       headers=auth, timeout=60)
@@ -483,6 +560,9 @@ def peek(keys: list) -> dict:
                  "notes": p.get("notes"), "width": p.get("width"), "height": p.get("height")} for p in d["pages"][:3]]}
         elif k.startswith("ml/transcripts/"):
             out[k] = {"language": d["language"], "duration": d["duration"], "segments": len(d["segments"]),
+                      "model": d.get("model"), "engine": d.get("engine"), "detected": d.get("detected"),
+                      "fallback": d.get("fallback"), "words": sum(len(x.get("words") or []) for x in d["segments"]),
+                      "firstSegment": {x: d["segments"][0].get(x) for x in ("start", "end", "text")} if d["segments"] else None,
                       "text": " ".join(x["text"] for x in d["segments"])[:400]}
         elif "/tab-" in k:
             out[k] = {"quality": d["quality"], "sample": d["rows"][:3],
@@ -529,23 +609,30 @@ def _output_keys(result) -> list:
 
 
 @app.local_entrypoint()
-def main(only: str = "", no_http: bool = False, keep: bool = False, report_path: str = ""):
+def main(only: str = "", no_http: bool = False, keep: bool = False, report_path: str = "", target: str = ""):
+    target = target.strip() or APP
     run = time.strftime("%Y%m%dT%H%M%S")
     wanted = {t.strip() for t in only.split(",") if t.strip()} or None
-    print(f"smoke run {run}: building fixtures")
+    print(f"smoke run {run} against {target}: building fixtures")
     fx = make_fixtures.remote(run)
     created = list(fx["keys"])
     plan = [
         ("health", "health", {}, []),
-        ("geo.refine", "geo_refine", GEO_INPUT, []),
+        # the extra call forces the fallback pair (Prithvi-EO-1.0 + SAM ViT-B)
+        ("geo.refine", "geo_refine", GEO_INPUT, [{**GEO_INPUT, "legacy": True, "name": "legacy pair"}]),
+        ("geo.embed_change", "geo_embed_change", EMBED_INPUT,
+         [{"bbox": GOLDSMITH_BBOX, "years": [2024, 2025], "name": "goldsmith (quiet)"}]),
         ("docs.parse", "docs_parse", fx["docs"]["text.pdf"], [v for k, v in fx["docs"].items() if k != "text.pdf"]),
-        ("audio.transcribe", "audio_transcribe", fx["audio"], []),
+        ("docs.rerank", "docs_rerank", rerank_input(), []),
+        # English goes to Parakeet; French must go to Whisper; engine=whisper forces the fallback
+        ("audio.transcribe", "audio_transcribe", fx["audio"],
+         [fx["audioFr"], {**fx["audio"], "engine": "whisper", "name": "engine=whisper"}]),
         ("graph.train", "graph_train", fx["graph"], []),
         ("synth.tabular", "synth_tabular", fx["tabular"], []),
         ("synth.series", "synth_series", fx["series"], []),
         ("topics.map", "topics_map", fx["topics"], []),
     ]
-    report, lock = {"run": run, "graphSize": fx["graphSize"], "graphOracle": fx["graphOracle"],
+    report, lock = {"run": run, "target": target, "graphSize": fx["graphSize"], "graphOracle": fx["graphOracle"],
                     "audioSource": fx["audioSource"]}, threading.Lock()
 
     def call(fn, task, payload):
@@ -554,7 +641,7 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         return env, round(time.time() - t0, 2)
 
     def run_task(task, name, payload, extras):
-        fn = modal.Function.from_name(APP, name)
+        fn = modal.Function.from_name(target, name)
         rec = {}
         try:
             env1, lat1 = call(fn, task, payload)
@@ -568,8 +655,9 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
             rec["more"] = []
             for p in extras:
                 env, lat = call(fn, task, p)
-                rec["more"].append({"name": p.get("name"), "latency": lat, "seconds": env["seconds"], "ok": env["ok"],
-                                    "error": env["error"], "result": env["result"]})
+                rec["more"].append({"name": p.get("name"), "latency": lat, "seconds": env["seconds"],
+                                    "costUsd": env["costUsd"], "ok": env["ok"], "error": env["error"],
+                                    "result": env["result"]})
                 keys += _output_keys(env["result"])
         except Exception as e:
             rec = {"exception": f"{type(e).__name__}: {e}"}
@@ -587,7 +675,7 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
 
     if not no_http:
         print("  http checks")
-        http = http_checks.remote(run, "topics.map", fx["topics"])
+        http = http_checks.remote(run, "topics.map", fx["topics"], target)
         report["http"] = http
         created.extend(_output_keys((http.get("asyncStatus") or {}).get("result")))
 

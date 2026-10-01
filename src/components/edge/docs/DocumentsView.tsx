@@ -6,6 +6,7 @@
  * the topics of a big corpus. Any citation opens the source viewer at the exact place.
  */
 import { useCallback, useState } from "react";
+import { onTabKeys, tabProps } from "../tabs";
 import { AskPanel, type AskScope } from "./AskPanel";
 import { ChangeRadar } from "./ChangeRadar";
 import { CitationViewer } from "./CitationViewer";
@@ -29,9 +30,9 @@ export function DocumentsView({ tickers, open }: { tickers: string[]; open?: Doc
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none]" role="tablist" aria-label="Documents">
+        <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none]" role="tablist" aria-label="Documents" onKeyDown={onTabKeys}>
           {TABS.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] ${tab === t.id ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{t.label}</button>
+            <button key={t.id} type="button" {...tabProps(tab === t.id)} onClick={() => setTab(t.id)} className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] ${tab === t.id ? "bg-elevated text-fg" : "text-muted hover:text-fg"}`}>{t.label}</button>
           ))}
         </div>
         <p className="text-[11.5px] text-muted">Every quote is checked against its source before you see it.</p>

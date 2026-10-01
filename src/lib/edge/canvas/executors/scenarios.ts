@@ -8,7 +8,7 @@ import { eventProposals, parseShock, tailRisks } from "../../scen/drivers";
 import { runMarket, type Driver, type Method } from "../../scen/market";
 import { withShock } from "../../scen/run";
 import { saveScenario } from "../../scen/store";
-import { copulaSynth, ctganSynth, tableRealism, type TableIn } from "../../scen/tables";
+import { cartSynth, copulaSynth, ctganSynth, tableRealism, tableTooWide, type TableIn } from "../../scen/tables";
 import { register } from "../engine";
 import { marketValue, type Companies, type Findings, type ProformaValue, type Table } from "../values";
 
@@ -57,15 +57,19 @@ register("scen.synthetic", {
   async start(ctx) {
     const t = (ctx.inputs.table ?? [])[0] as Table | undefined;
     if (!t?.rows?.length) throw Object.assign(new Error("Wire in a table to copy."), { status: 400 });
+    const wide = tableTooWide(t);
+    if (wide) throw Object.assign(new Error(wide), { status: 400 });
     const input: TableIn = { columns: t.columns, rows: t.rows, title: t.title };
     const rows = Math.max(50, Math.min(10_000, Number(ctx.config.rows) || 1000)), seed = Math.max(1, Math.floor(Number(ctx.config.seed) || 7));
     await ctx.progress("learn");
-    const method = ctx.config.method === "ctgan" || (ctx.config.method !== "statistical" && t.rows.length >= 2000) ? "ctgan" : "copula";
+    // Sequential trees by default (free, on the server); the copula and the ML service's GAN stay selectable for comparison.
+    const method = ctx.config.method === "ctgan" ? "ctgan" : ctx.config.method === "statistical" ? "copula" : "cart";
     await ctx.progress("generate");
-    const synth = method === "ctgan" ? await ctganSynth(input, rows, seed) : copulaSynth(input, rows, seed);
+    const synth = method === "ctgan" ? await ctganSynth(input, rows, seed) : method === "copula" ? copulaSynth(input, rows, seed) : cartSynth(input, rows, seed);
     await ctx.progress("validate");
     const realism = tableRealism(input, synth);
     const table: Table = { title: synth.title, columns: synth.columns, rows: synth.rows, synthetic: { recipe: synth.synthetic!.recipe, seed, realism: realism.score } };
-    return { outputs: { table }, summary: `SYNTHETIC · ${rows.toLocaleString("en-US")} rows by ${method === "ctgan" ? "CTGAN" : "Gaussian copula"}, realism ${realism.score}${realism.warnings.length ? ` (${realism.warnings[0]})` : ""}`, preview: { kind: "stats", items: [{ label: "Rows", value: rows.toLocaleString("en-US") }, { label: "Method", value: method === "ctgan" ? "CTGAN" : "Gaussian copula" }, { label: "Realism", value: `${realism.score} / 100` }, { label: "Seed", value: String(seed) }] } };
+    const label = method === "ctgan" ? "CTGAN" : method === "copula" ? "Gaussian copula" : "sequential trees (CART)";
+    return { outputs: { table }, summary: `SYNTHETIC · ${rows.toLocaleString("en-US")} rows by ${label}, realism ${realism.score}${realism.warnings.length ? ` (${realism.warnings[0]})` : ""}`, preview: { kind: "stats", items: [{ label: "Rows", value: rows.toLocaleString("en-US") }, { label: "Method", value: label }, { label: "Realism", value: `${realism.score} / 100` }, { label: "Seed", value: String(seed) }] } };
   },
 });
