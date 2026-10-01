@@ -7,6 +7,7 @@
  * the header says how many passed and what was removed. Any citation opens the source viewer.
  */
 import { AlertTriangle, Check, Copy, Globe, Languages, Mic, FileText } from "lucide-react";
+import { SendToStudio } from "../SendToStudio";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clockOf } from "@/lib/edge/docs/text";
 import { answerMarkdown, directOf, SOURCE_LABEL, type Cite, type DocAnswer, type ViewTarget } from "./client";
@@ -129,7 +130,10 @@ export function AnswerView({ a, onCite }: { a: DocAnswer; onCite: (t: ViewTarget
             {a.scopeDocs !== undefined && <span>· {a.scopeDocs} document{a.scopeDocs === 1 ? "" : "s"} in scope</span>}
           </div>
         </div>
-        <button type="button" onClick={copy} className="ctl flex items-center gap-1 border border-line px-2 py-1 text-[11px] text-muted hover:text-fg">{copied ? <Check className="h-3 w-3 text-pos" /> : <Copy className="h-3 w-3" />}{copied ? "Copied" : "Copy with sources"}</button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {!a.notFound && a.answerId ? <SendToStudio title={a.question.slice(0, 120)} source={`answer:${a.answerId}`} items={[{ label: "Answer", value: a }]} /> : null}
+          <button type="button" onClick={copy} className="ctl flex items-center gap-1 border border-line px-2 py-1 text-[11px] text-muted hover:text-fg">{copied ? <Check className="h-3 w-3 text-pos" /> : <Copy className="h-3 w-3" />}{copied ? "Copied" : "Copy with sources"}</button>
+        </div>
       </header>
 
       <div className={`rounded-md border-l-2 px-3 py-2 text-[13.5px] leading-relaxed ${a.notFound ? "border-faint bg-elevated/40 text-muted" : "border-accent bg-accent-soft/40"}`}>

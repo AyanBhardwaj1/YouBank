@@ -4,6 +4,7 @@
  * for a signal. Synthetic values carry their recipe and seed and say so wherever they go. Pure.
  */
 import type { Kind } from "./catalog";
+import type { MarketResult } from "../scen/market";
 
 export type Companies = { items: { ticker: string; name: string }[] };
 export type Places = { items: { key?: string; name: string; bbox: number[] }[] };
@@ -142,4 +143,21 @@ export function kindOfValue(v: unknown): Kind | null {
     if ("ticker" in first) return "companies";
   }
   return null;
+}
+
+const pctOf = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
+
+/** A market scenario's result as the value that travels on wires and into Studio. Pure. */
+export function marketValue(r: MarketResult, id: number | null, driver: string): Scenario {
+  const port = r.summary.finals.find((f) => f.series === "Portfolio") ?? r.summary.finals[0];
+  const fanOf = (name: string) => { const f = r.summary.fans.find((x) => x.series === name)!; return { label: name === "Portfolio" ? "Equal-weight portfolio" : name, p5: f.p5, p50: f.p50, p95: f.p95 }; };
+  return {
+    ...(id ? { id } : {}), title: r.title, driver: `${driver}${r.replay ? `: ${r.replay.label}` : r.shock ? `: ${r.shock.described}` : ""}`, synthetic: true, recipe: r.recipe, seed: r.seed, horizon: r.horizon, paths: r.paths,
+    stats: [
+      { label: "Median outcome", value: pctOf(port.p50) }, { label: "Bad case (5th percentile)", value: pctOf(port.p5) }, { label: "Chance of a loss", value: `${Math.round(port.probLoss * 100)}%` },
+      { label: "Expected shortfall (95%)", value: pctOf(-port.cvar95) }, { label: "Worst drawdown in 1 of 20 paths", value: pctOf(r.summary.drawdown.p95) },
+      ...r.summary.finals.filter((f) => f.series !== "Portfolio").slice(0, 4).map((f) => ({ label: `${f.series} median`, value: pctOf(f.p50) })),
+    ],
+    fan: ["Portfolio", ...r.names.slice(0, 3)].filter((n) => r.summary.fans.some((x) => x.series === n)).map(fanOf), realism: r.realism.score,
+  };
 }

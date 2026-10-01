@@ -231,7 +231,7 @@ export async function ownershipTree(node: NodeRow): Promise<{ root: GNode; up: T
   return { root: nodeOf(node), up, down };
 }
 
-export type Intro = { contact: { name: string; email: string; company: string; title: string; via: string }; steps: Step[]; hops: number; strength: number };
+export type Intro = { contact: { name: string; email: string; company: string; title: string; via: string; ownerId?: string }; steps: Step[]; hops: number; strength: number };
 
 const personKey = (name: string) => { const w = normName(name).split(" ").filter((x) => x.length > 1); return w.length >= 2 ? `${w[0]} ${w[w.length - 1]}` : w.join(" "); };
 
@@ -259,7 +259,7 @@ export async function warmIntros(userId: string, target: NodeRow, limit = 8): Pr
   const out: Intro[] = [];
   for (const c of contacts) {
     const recency = c.lastSeenAt ? Math.exp(-(Date.now() - c.lastSeenAt.getTime()) / (365 * 86_400_000)) : 0.3;
-    const base = { name: c.name || c.email, email: c.email, company: c.company, title: c.title, via: viaOf(c.userId) };
+    const base = { name: c.name || c.email, email: c.email, company: c.company, title: c.title, via: viaOf(c.userId), ownerId: c.userId };
     const known = { text: `${c.userId === userId ? "You know" : "Your teammate knows"} ${c.name || c.email}${c.company ? ` (${c.title ? `${c.title}, ` : ""}${c.company})` : ""}`, url: "", asOf: c.lastSeenAt ? c.lastSeenAt.toISOString().slice(0, 10) : null };
     // 1. The contact is one of the graph's people near the target.
     for (const pid of peopleByKey.get(personKey(c.name)) ?? []) {

@@ -6,7 +6,7 @@
  * introductions, who a shock would reach, red flags, and its deal history. Every step links to its
  * filing.
  */
-import { AlertTriangle, Check, Copy, ExternalLink, Users } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Loader2, Mail, Users } from "lucide-react";
 import { useState } from "react";
 import { post, useApi } from "@/components/news/client";
 import { type CompanyView, type Exposure, type Intros, type Picks, type Prediction, type Step } from "./client";
@@ -64,7 +64,17 @@ function IntroList({ ticker, name }: { ticker: string; name: string }) {
   const { data, reload } = useApi<Intros>(`/api/edge/graph/intros?ticker=${encodeURIComponent(ticker)}`);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<number | null>(null);
+  const [drafting, setDrafting] = useState<number | null>(null);
+  const [drafted, setDrafted] = useState<Record<number, { ok: boolean; text: string }>>({});
   const toggle = async () => { setBusy(true); try { await post("/api/edge/graph/pool", { on: !data?.pooled }); reload(); } finally { setBusy(false); } };
+  // Written by the Relationships agent in the person's voice, then queued or sent under their autopilot rules.
+  const request = async (i: number) => {
+    setDrafting(i);
+    try {
+      const r = await post<{ to: string; scheduled: boolean; reasons: string[] }>("/api/edge/graph/intro", { ticker, index: i });
+      setDrafted((d) => ({ ...d, [i]: { ok: true, text: r.scheduled ? `Written to ${r.to}; autopilot sends it after its hold, inside your sending hours.` : `Written to ${r.to}; it is waiting in your review queue.` } }));
+    } catch (e) { setDrafted((d) => ({ ...d, [i]: { ok: false, text: e instanceof Error ? e.message : String(e) } })); } finally { setDrafting(null); }
+  };
   const draft = (i: number) => {
     const it = data!.items[i];
     const last = it.steps[it.steps.length - 1]?.text ?? "";
@@ -83,9 +93,13 @@ function IntroList({ ticker, name }: { ticker: string; name: string }) {
           {data.items.map((it, i) => (
             <li key={i} className="rounded-md border border-line px-2.5 py-2">
               <div className="flex items-center gap-2 text-[12.5px]"><span className="font-medium">{it.contact.name}</span><span className="text-[10.5px] text-muted">{it.contact.via} · {it.hops} step{it.hops === 1 ? "" : "s"}</span>
-                <button type="button" onClick={() => draft(i)} className="ml-auto flex items-center gap-1 text-[11px] text-accent hover:underline">{copied === i ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied === i ? "Copied" : "Copy an intro request"}</button>
+                <span className="ml-auto flex items-center gap-2.5">
+                  <button type="button" disabled={drafting !== null || !!drafted[i]?.ok} onClick={() => void request(i)} className="flex items-center gap-1 text-[11px] text-accent hover:underline disabled:opacity-50">{drafting === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}Draft an intro request</button>
+                  <button type="button" onClick={() => draft(i)} className="flex items-center gap-1 text-[11px] text-muted hover:text-fg" aria-label="Copy an intro request">{copied === i ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}{copied === i ? "Copied" : "Copy"}</button>
+                </span>
               </div>
               <div className="mt-1"><Steps steps={it.steps} /></div>
+              {drafted[i] && <p className={`mt-1 text-[11px] ${drafted[i].ok ? "text-muted" : "text-neg"}`}>{drafted[i].text}{drafted[i].ok && <a href="/app/crm?tab=drafts" className="ml-1 text-accent hover:underline">Open the queue</a>}</p>}
             </li>
           ))}
         </ol>

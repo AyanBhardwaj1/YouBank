@@ -366,7 +366,7 @@ export const crmDrafts = pgTable("crm_drafts", {
   contactId: integer("contact_id"),
   campaignLeadId: integer("campaign_lead_id"),
   /** Which step of a campaign, which nurture rule, which signal: whatever produced it. */
-  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string }>().notNull().default({}),
+  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[] }>().notNull().default({}),
   /** Set when autopilot will send it: the time it goes, unless someone stops it first. */
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   /** Why autopilot handed it to a person instead of sending, in plain words. */

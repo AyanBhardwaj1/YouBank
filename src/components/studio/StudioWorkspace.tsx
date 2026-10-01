@@ -11,6 +11,7 @@ import { tasksFor } from "@/lib/studio/roles";
 import type { SemDiff } from "@/lib/studio/checkpoints";
 import { newId, type CellStyle } from "@/lib/studio/types";
 import { DeckView } from "./DeckView";
+import { EdgePushes } from "./EdgePushes";
 import { Grid, cellSel, selRange, type Sel } from "./Grid";
 import { useStudio, type LogItem } from "./useStudio";
 import { Select } from "@/components/ui/Select";
@@ -231,6 +232,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               </button>
             )}
           </div>
+          <EdgePushes docId={id} onAccepted={(label) => st.setNotice(`${label}. Undo it from History.`)} />
 
           {side === "agent" && (
             <>
@@ -374,7 +376,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
                 ))}
                 {st.checkpoints && !st.checkpoints.length && <li className="text-muted">None yet.</li>}
               </ul>
-              <p className="mt-4 font-semibold">Agent runs</p>
+              <p className="mt-4 font-semibold">Agent and Edge runs</p>
               <ul className="mt-1 space-y-2">
                 {meta.runs.map((r) => (
                   <li key={r.id} className="ctl border border-line bg-bg/40 p-2">
@@ -389,7 +391,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <ul className="mt-1 space-y-1">
                 {meta.history.map((h) => (
                   <li key={h.id} className="flex items-start justify-between gap-2">
-                    <span><span className={h.actor === "agent" ? "text-accent" : "text-fg"}>{h.actor === "agent" ? "Agent" : h.actorName || "Someone"}</span> <span className="text-muted">{h.label}</span></span>
+                    <span><span className={h.actor === "agent" || h.actor === "edge" ? "text-accent" : "text-fg"}>{h.actor === "agent" ? "Agent" : h.actor === "edge" ? "Edge" : h.actorName || "Someone"}</span> <span className="text-muted">{h.label}</span></span>
                     <button type="button" onClick={() => void st.undoEvent(h.id)} className="shrink-0 text-[10.5px] text-muted underline hover:text-fg">Undo</button>
                   </li>
                 ))}

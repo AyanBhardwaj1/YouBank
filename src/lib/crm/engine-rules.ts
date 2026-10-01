@@ -77,6 +77,7 @@ export function scopeOfBucket(bucket: string): AutonomyScope | null {
   if (bucket.startsWith("campaign")) return "campaigns";
   if (bucket.startsWith("follow_up")) return "followUps";
   if (bucket.startsWith("nurture")) return "nurture";
+  if (bucket.startsWith("intro")) return "intros";
   return null;
 }
 

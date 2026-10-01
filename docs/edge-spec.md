@@ -200,10 +200,12 @@ polished.
 - **Terminal.** `EDGE <ticker>` opens the overview, and GEO, NET, SIM and ASK open panels beside DES
   and COMPS.
 - **Newsroom.** Deal cards show an inline pro-forma map that opens the full what-if in Edge.
-- **Studio and the Office add-in.** Maps, networks and scenario sheets are pushed live with review:
-  Studio shows "update available" with a diff, and accepted updates are tracked in history. The
-  add-in handles Excel and PowerPoint.
-- **CRM.** Warm-intro drafts, and Edge findings attached to accounts.
+- **Studio and the Office add-in.** Edge results are pushed with review: Studio and the Excel add-in
+  list what is waiting and what it would add, and an accepted push is one run in History that can be
+  undone. Accepted changes reach Excel through the add-in's sync, and PowerPoint through its deck
+  refresh.
+- **CRM.** Intro requests drafted from warm paths under the person's autopilot setting, and Edge
+  findings on the contacts and pipeline deals at the companies concerned.
 - **Alerts.** Big changes go out immediately (in-app, email, push, Slack, through the Newsroom's
   delivery), and everything else goes into a daily visual digest.
 
@@ -243,7 +245,7 @@ polished.
 | 3 | Documents · RAG | Built (2026-09-30) |
 | 4 | Networks · GNN | Built (2026-09-30) |
 | 5 | Scenarios · Synthetic data | Built (2026-09-30) |
-| 6 | Integrations (Terminal, Newsroom, Studio, CRM), story mode, monitors and alerts, onboarding canvas | Next |
+| 6 | Integrations (Terminal, Newsroom, Studio, Office, CRM), story mode, monitors, alerts and the digest, onboarding canvas, audit export | Built (2026-09-30) |
 
 ### What milestone 1 does
 
@@ -367,6 +369,49 @@ polished.
 - **Canvas.** The Scenarios block (any driver, for wired-in companies, findings or deals) and the
   Synthetic data block (a labeled copy of a wired-in table).
 
+### What milestone 6 does (Edge across YouBank)
+
+- **Alerts and the digest** (`notify.ts`, `digest.ts`).
+  - New findings are matched against everyone's watches.
+  - Big ones alert at once through the person's Newsroom channels and quiet hours:
+    - a ground change of 2+ hectares at confidence 0.6 or more;
+    - a deal that screens high;
+    - a filing that rewrote its risk factors;
+    - a high-severity red flag.
+  - The rest go into a daily visual digest: up to six findings, drawn as in the feed (satellite
+    before and after, a filing's edits, a deal's footprint, a model's picks).
+  - The digest is sent hourly by the job runner at each person's morning-brief hour, in their time
+    zone, through the brief's channels. It always goes to the bell. Each finding is sent once.
+- **Terminal** (`src/components/terminal/screens/EdgeScreens.tsx`). With the beta on:
+  - **EDGE** is one company across Edge: findings, likely buyers and targets with the first reason
+    path, red flags, assets on the map, and Watch.
+  - **GEO** is its plants and pipelines with the ground changes on a map.
+  - **NET** is the relationship graph and the findings tabs.
+  - **SIM** runs a stress: `SIM`, `SIM 2008`, `SIM oil -30%`.
+  - **ASK** asks the company's filings and the person's documents, with checked quotes.
+  - Without the beta, GEO and NET stay tickers (GEO Group, Cloudflare); with it, `NET DES` reaches
+    Cloudflare, as `PG DES` already did.
+- **Newsroom.** A merger's story shows its pro-forma map when both sides own mapped assets, with
+  "Open the what-if" (`/app/edge?view=whatif&parties=ET,TRGP&place=permian`). The deal tracker links
+  each merger to the what-if.
+- **Studio and Office** (`push.ts`, the Push to Studio block, Send to Studio on scenarios and answers).
+  - A push adds new sheets and slides only, never edits to existing cells. Text that looks like a
+    formula is kept as text, and synthetic tables say so in their first row.
+  - The push waits in Studio's side panel and the Excel add-in until someone with edit rights
+    accepts or dismisses it. A newer push from the same source replaces a waiting one.
+  - Accepting commits it as one "Edge" run that History can undo; Excel picks it up on its next sync.
+- **CRM** (`intros.ts`, `crm.ts`).
+  - "Draft an intro request" on a warm path writes the email in the person's voice, to the contact or,
+    for a teammate's pooled contact, to the teammate.
+  - The request follows a new autopilot setting, "Intro requests from Edge's warm paths" (default
+    Ask me). Off keeps copy-only.
+  - Findings become signals on contacts and open pipeline deals at the companies named, matched as
+    the Newsroom matches. A big one also suggests reconnecting, for approval.
+- **Stories, onboarding and audit.**
+  - The Story block publishes a scrolling report, private until shared, with PowerPoint and PDF.
+  - Turning the beta on builds and runs a first canvas for the person's role.
+  - The feed exports every card's audit trail as CSV.
+
 ### How the detector was checked
 
 Eight sites were read by eye against the overlay, then 13 findings across ET, EPD, OKE and TRGP. At
@@ -393,9 +438,9 @@ synthetic scenes.
 
 ### Known limits and follow-ups
 
-- **Imagery is hotlinked.** Card images are rendered on request by Microsoft Planetary Computer's
-  data API. Once the Cloudflare R2 keys are in, crops move to R2 so heavy traffic does not lean on
-  MPC.
+- **Imagery is hotlinked.** Card and digest images are rendered on request by Microsoft Planetary
+  Computer's data API. R2 is now set up; copying crops there, so heavy traffic does not lean on MPC,
+  is a follow-up.
 - **The data is old or coarse in places.**
   - EIA plant capacities are from 2017.
   - The EIA pipeline map has transmission and intrastate lines, not most gathering, so a gatherer

@@ -10,6 +10,7 @@ import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
 import { graphUniverse } from "./graph/universe";
 import { finishRefine as finishScenario, startRefine as startScenario } from "./scen/run";
+import { sendDigests } from "./digest";
 import { notifyWatchers } from "./notify";
 import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
 import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
@@ -33,6 +34,12 @@ export const canvasRun = inngest.createFunction(
 export const monitorsTick = inngest.createFunction(
   { id: "edge-monitors-tick", triggers: { cron: "20 * * * *" }, concurrency: 1, retries: 1 },
   async ({ step }) => metered(asSteps(step)).run("tick", () => tickMonitors(Date.now() + 200_000)),
+);
+
+/** Each person's daily digest, at their morning brief's hour. */
+export const digestTick = inngest.createFunction(
+  { id: "edge-digest", triggers: { cron: "35 * * * *" }, concurrency: 1, retries: 1 },
+  async ({ step }) => metered(asSteps(step)).run("send", () => sendDigests(Date.now() + 200_000)),
 );
 
 export const detectionRefine = inngest.createFunction(
@@ -138,4 +145,4 @@ export const scenarioRefine = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine];
+export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine];

@@ -2,12 +2,13 @@
  * Findings to the people who watch them. A big finding (a large, confident ground change; a deal that
  * screens high; a filing that rewrote its risk factors; a high-severity red flag) goes out straight
  * away through the person's alert channels; everything else waits for their daily digest. Each person
- * hears about a finding once.
+ * hears about a finding once. Findings also go onto the contacts who work at the companies in them.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { logError } from "@/lib/errors";
 import { alertLater, alertNow } from "./alerts";
+import { noteFindingsForNetworks } from "./crm";
 import { matches } from "./feed";
 import type { Bbox } from "./sources/eia";
 import { BETA_ON } from "./watches";
@@ -26,8 +27,8 @@ export function isBig(d: Pick<Detection, "kind" | "confidence" | "magnitude" | "
 }
 
 /** Route new findings to the people whose watches they match; returns how many alerts and digest items went out. */
-export async function notifyWatchers(detectionIds: number[]): Promise<{ now: number; later: number }> {
-  const out = { now: 0, later: 0 };
+export async function notifyWatchers(detectionIds: number[]): Promise<{ now: number; later: number; contacts: number }> {
+  const out = { now: 0, later: 0, contacts: 0 };
   if (!detectionIds.length) return out;
   const db = requireDb();
   const found = await db.select().from(schema.edgeDetections).where(inArray(schema.edgeDetections.id, [...new Set(detectionIds)].slice(0, 500)));
@@ -49,5 +50,6 @@ export async function notifyWatchers(detectionIds: number[]): Promise<{ now: num
       } catch (e) { logError(e, { where: "edge-notify" }); }
     }
   }
+  out.contacts = await noteFindingsForNetworks(found, isBig).catch((e) => { logError(e, { where: "edge-notify-crm" }); return 0; });
   return out;
 }

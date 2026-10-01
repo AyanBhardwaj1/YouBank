@@ -11,6 +11,8 @@ import { Select } from "@/components/ui/Select";
 import { api, post, useApi } from "@/components/news/client";
 import type { Proposal } from "@/lib/edge/scen/drivers";
 import type { MarketResult } from "@/lib/edge/scen/market";
+import { marketValue } from "@/lib/edge/canvas/values";
+import { SendToStudio } from "../SendToStudio";
 import { FanChart, Histogram, pct, RealismPanel, SyntheticTag } from "./parts";
 
 const FACTOR_NAME: Record<string, string> = { market: "Market", energy: "Oil & gas stocks", oil: "WTI", gas: "Henry Hub", rates: "10y yield" };
@@ -51,9 +53,12 @@ export function MarketResultView({ r, id, status, onRefined }: { r: MarketResult
         </table>
         <p className="px-2 py-1 text-[10.5px] text-faint">Betas from daily returns over {r.history.days} days ({r.history.from} to {r.history.to}) against the factors; the 10-year yield beta is per percentage point.</p>
       </div>
-      {id && r.paths < 5000 && (
-        <button type="button" disabled={refining} onClick={() => void refine()} className="ctl flex items-center gap-1.5 border border-line px-3 py-1 text-[12px] hover:border-accent/50 disabled:opacity-60">{refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}{refining ? "Refining in the background…" : "Refine: 10,000 paths"}</button>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {id && r.paths < 5000 && (
+          <button type="button" disabled={refining} onClick={() => void refine()} className="ctl flex items-center gap-1.5 border border-line px-3 py-1 text-[12px] hover:border-accent/50 disabled:opacity-60">{refining ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}{refining ? "Refining in the background…" : "Refine: 10,000 paths"}</button>
+        )}
+        <SendToStudio key={`${id}-${r.paths}`} title={r.title} source={id ? `scenario:${id}` : "scenario"} items={[{ label: r.title.slice(0, 40), value: marketValue(r, id, r.driver) }]} />
+      </div>
     </div>
   );
 }

@@ -44,6 +44,14 @@ import { copulaSynth, fillGaps, identifiers, tableRealism, type TableIn } from "
 import { parseCsv } from "@/lib/edge/scen/run";
 import { eiaDaily, frenchColumns } from "@/lib/edge/scen/data";
 import { isBig } from "@/lib/edge/notify";
+import { digestDue, digestEmail } from "@/lib/edge/digest";
+import { parseCommand } from "@/lib/functions";
+import { simRequest, whatIfFrom, whatIfUrl } from "@/lib/edge/links";
+import { pushPatches } from "@/lib/edge/push";
+import { studioTarget } from "@/lib/edge/canvas/executors/studio";
+import type { StudioDocData } from "@/lib/studio/types";
+import { peopleAt, plainRegistrant } from "@/lib/edge/crm";
+import { introBrief } from "@/lib/edge/intros";
 import { composeSections, sectionTitle } from "@/lib/edge/story";
 import { starterTemplate } from "@/lib/edge/onboard";
 import { z } from "zod";
@@ -474,6 +482,40 @@ async function main() {
     check("a banker's first canvas is the buyer finder once the model has trained, the asset watch before", starterTemplate("banker", true, all) === "buyer-finder" && starterTemplate("banker", false, all) === "asset-watch" && starterTemplate("student", true, all) === "asset-watch");
     check("a first canvas whose blocks are not ready falls back to the asset watch", starterTemplate("markets", true, new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo"])) === "asset-watch");
     check("section titles read naturally", sectionTitle("ranking", { finding: "Likely acquirers", subject: "Targa", items: [] }) === "Likely acquirers for Targa");
+    const mail = digestEmail([
+      { id: 1, kind: "ground_change", title: "New pad <west>", summary: "Cleared ground", confidence: 0.7, visual: { before: { url: "https://x/b.png", date: "2026-08-01" }, after: { url: "https://x/a.png", date: "2026-09-01" } } },
+      { id: 2, kind: "filing_change", title: "10-Q rewrote risks", summary: "Two new risks", confidence: 0.9, visual: { counts: { added: 2, removed: 1, changed: 3, unchanged: 20 } } },
+    ], "https://app.example", "Wednesday, September 30");
+    check("the digest shows before and after pictures and a filing's edits, escaped, with one link home", mail.subject === "Edge: 2 findings at what you watch" && mail.html.includes('src="https://x/b.png"') && mail.html.includes("2 new · 3 reworded · 1 dropped") && mail.html.includes("New pad &lt;west&gt;") && !mail.html.includes("<west>") && mail.text.includes("https://app.example/app/edge?view=feed"));
+    const at = new Date("2026-09-30T11:35:00Z"); // 7:35 in New York, 12:35 in London
+    check("a digest goes out at the hour of the person's brief, in their time zone", digestDue({ enabled: true, time: "07:00", timezone: "America/New_York" }, at) && !digestDue({ enabled: true, time: "07:00", timezone: "Europe/London" }, at) && digestDue({ enabled: true, time: "12:30", timezone: "Europe/London" }, at));
+    check("without a brief it goes at 8 in New York", digestDue(undefined, new Date("2026-09-30T12:35:00Z")) && !digestDue(undefined, at));
+  }
+
+  {
+    console.log("edge across the app");
+    const cmd = (s: string, edge: boolean) => { const r = parseCommand(s, "ET", edge); return r.ok ? `${r.command.ticker}|${r.command.fn}|${r.command.arg ?? ""}` : `error:${r.error}`; };
+    check("without the beta GEO and NET stay tickers", cmd("NET", false) === "NET|DES|" && cmd("GEO", false) === "GEO|DES|" && cmd("EDGE", false) === "EDGE|DES|");
+    check("with the beta they are Edge's functions on the active ticker, and a function after them still makes them tickers", cmd("NET", true) === "ET|NET|" && cmd("NET DES", true) === "NET|DES|" && cmd("KMI EDGE", true) === "KMI|EDGE|");
+    check("ASK and SIM take words", cmd("KMI ASK what drove volumes?", true) === "KMI|ASK|what drove volumes?" && cmd("SIM oil -30%", true) === "ET|SIM|oil -30%" && cmd("ET SIM", true) === "ET|SIM|");
+    const sr = (a?: string) => simRequest("ET", a) as { driver: string; replay?: string; shockText?: string };
+    check("SIM runs the base case, a replay or a written shock", sr().driver === "none" && sr("2008").replay === "2008" && sr("oil 2014").replay === "oil2014" && sr("oil -30%").driver === "shock" && sr("oil -30%").shockText === "oil -30%");
+    const model: StudioDocData = { title: "Model", workbook: { order: ["s1"], sheets: { s1: { id: "s1", name: "Edge Ranking", cells: { A1: { v: 1 } } } } }, deck: { order: [], slides: {}, theme: { primary: "#000000", accent: "#111111", font: "Arial" } }, comments: [] };
+    const before = JSON.stringify(model);
+    const ranking = { finding: "Likely acquirers", subject: "Targa", items: [{ name: "=HYPERLINK(1)", ticker: "ET", score: 0.61, reasons: ["shares a director"] }, { name: "Kinder Morgan", ticker: "KMI", score: 0.4, reasons: [] }] };
+    const scen = { title: "Oil -30%", driver: "shock", synthetic: true as const, recipe: "GARCH", seed: 7, horizon: 60, paths: 1000, stats: [{ label: "Median outcome", value: "-4.0%" }], fan: [{ label: "Portfolio", p5: [0, -0.1], p50: [0, -0.02], p95: [0, 0.05] }] };
+    const pp = pushPatches(model, [{ kind: "ranking", label: "Ranking", value: ranking }, { kind: "scenario", label: "Oil -30%", value: scen }], "From YouBank Edge.");
+    const sheets = pp.flatMap((p) => (p.op === "sheet_add" ? [p.sheet.name] : []));
+    const cells = pp.flatMap((p) => (p.op === "cells" ? Object.values(p.cells) : []));
+    check("a push adds new sheets and slides only, named apart from existing ones, and leaves the model as it was", sheets.join("|") === "Edge Ranking 2|Edge Oil -30%" && pp.filter((p) => p.op === "slide_upsert").length === 2 && pp.every((p) => p.op !== "cells" || !p.sheet.startsWith("s1")) && JSON.stringify(model) === before, sheets);
+    check("pushed text never becomes a formula, and synthetic sheets say so first", cells.some((c) => c?.v === " =HYPERLINK(1)") && !cells.some((c) => c?.f) && cells.some((c) => typeof c?.v === "string" && c.v.startsWith("SYNTHETIC DATA: GARCH, seed 7")));
+    const net = new Map([["energy transfer", [{ contactId: 1, name: "Ann Lee", company: "Energy Transfer" }]], ["targa resources", [{ contactId: 2, name: "Bo Diaz", company: "Targa Resources Corp." }]]]);
+    check("findings reach contacts at the companies named, matched the way the Newsroom matches, once each", peopleAt(net, ["Energy Transfer LP", "Targa Resources Corp", "Energy Transfer", "XY"]).map((p) => p.contactId).join() === "1,2");
+    check("SEC registrant names are cleaned before matching", plainRegistrant("ONEOK INC /NEW/") === "ONEOK INC" && plainRegistrant("ENTERPRISE PRODUCTS PARTNERS L.P.") === "ENTERPRISE PRODUCTS PARTNERS LP" && peopleAt(new Map([["enterprise products partners", [{ contactId: 9, name: "Cy", company: "Enterprise Products Partners" }]]]), [plainRegistrant("ENTERPRISE PRODUCTS PARTNERS L.P.")]).length === 1);
+    const intro = { contact: { name: "Ann Lee", email: "ann@x.com", company: "Acme", title: "", via: "your contact" }, steps: [{ text: "You know Ann Lee", url: "", asOf: null }, { text: "Ann Lee is a director of Targa", url: "", asOf: null }], hops: 1, strength: 1 };
+    check("an intro request asks the contact, or the teammate who knows them, and gives the path", introBrief(intro, "Targa", null).startsWith("Ask Ann whether") && introBrief(intro, "Targa", null).includes("Ann Lee is a director of Targa") && introBrief(intro, "Targa", "Sam").startsWith("Ask Sam, a teammate, to introduce me to Ann Lee (Acme)"));
+    check("a Studio target is an id or a Studio link", studioTarget("12") === 12 && studioTarget("https://youbank.app/app/studio/45") === 45 && studioTarget("") === null && studioTarget("new") === null);
+    check("a deal's what-if link round-trips and keeps to known places", whatIfFrom("ET, TRGP", "mars")?.parties.join() === "ET,TRGP" && whatIfFrom("ET, TRGP", "mars")?.place === "permian" && whatIfFrom("ET", "permian") === null && whatIfUrl(["ET", "Targa Resources"], "delaware") === "/app/edge?view=whatif&parties=ET%2CTarga%20Resources&place=delaware");
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

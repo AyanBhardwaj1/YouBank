@@ -6,7 +6,7 @@
  * and the tech radar (sector radars are in Radar.tsx).
  */
 import { motion } from "motion/react";
-import { ArrowUpRight, CalendarDays, Flame, GitFork, MessageSquare, Star, ThumbsUp } from "lucide-react";
+import { ArrowUpRight, CalendarDays, Flame, GitFork, Map as MapIcon, MessageSquare, Star, ThumbsUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Brief } from "@/lib/news/brief";
 import type { CalEvent, WatchRow } from "@/lib/news/calendar";
@@ -15,6 +15,10 @@ import type { StoryCard as Story } from "@/lib/news/views";
 import { fmtPct, fmtUsd, useMotionLevel, type Spark } from "./client";
 import { Sparkline } from "./DataArt";
 import { StoryCard } from "./StoryCard";
+import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { whatIfUrl } from "@/lib/edge/links";
+
+const MERGERS = new Set(["acquisition", "merger", "take_private", "tender"]);
 
 export type BriefData = { brief: Brief; forYou: Story[]; cards: Record<number, Story> };
 export type DealsData = { deals: (Story["deal"] & { id: number; clusterId: number; headline: string; announcedAt: string; sector: string; sourceUrl: string })[]; league: { financial: LeagueRow[]; legal: LeagueRow[] } };
@@ -129,7 +133,13 @@ export function BriefBlock({ data, sparks, now, onOpen, onSave, compact = false 
 }
 
 export function DealTracker({ data, onOpenCluster, limit }: { data: DealsData; onOpenCluster: (id: number) => void; limit?: number }) {
+  const { edge } = useWorkspace();
   const rows = limit ? data.deals.slice(0, limit) : data.deals;
+  // With the Edge beta on, a merger opens straight into the deal what-if (both sides on the map).
+  const whatIf = (d: DealsData["deals"][number]) => {
+    const sides = [d.acquirerTicker || d.acquirer, d.targetTicker || d.target].filter(Boolean);
+    return edge && MERGERS.has(d.kind) && sides.length === 2 ? whatIfUrl(sides) : null;
+  };
   if (!rows.length) return <p className="text-[11.5px] text-muted">No deals parsed yet. Announcements appear here as the Newsroom reads them.</p>;
   return (
     <div className="overflow-x-auto">
@@ -138,7 +148,7 @@ export function DealTracker({ data, onOpenCluster, limit }: { data: DealsData; o
         <tbody>{rows.map((d) => (
           <tr key={d.id} onClick={() => onOpenCluster(d.clusterId)} className="cursor-pointer border-t border-line transition hover:bg-elevated/60">
             <td className="whitespace-nowrap py-1.5 pr-3 text-muted">{new Date(d.announcedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
-            <td className="max-w-[340px] pr-3 font-sans text-fg"><span className="line-clamp-1">{[d.acquirer, d.target].filter(Boolean).join(" → ") || d.headline}</span></td>
+            <td className="max-w-[340px] pr-3 font-sans text-fg"><span className="flex items-center gap-1.5"><span className="line-clamp-1">{[d.acquirer, d.target].filter(Boolean).join(" → ") || d.headline}</span>{whatIf(d) && <a href={whatIf(d)!} onClick={(e) => e.stopPropagation()} title="What they would own together, on Edge's map" aria-label="Open the deal what-if in Edge" className="shrink-0 text-muted hover:text-accent"><MapIcon className="h-3 w-3" /></a>}</span></td>
             <td className="whitespace-nowrap pr-3 font-sans text-muted">{d.kind.replace("_", " ")}{d.round ? ` · ${d.round}` : ""}</td>
             <td className="pr-3 text-right text-fg">{fmtUsd(d.valueUsd)}</td>
             <td className={`pr-3 text-right ${d.premium !== null ? "text-pos" : "text-faint"}`}>{d.premium !== null ? fmtPct(d.premium, 0) : "—"}</td>

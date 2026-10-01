@@ -1,6 +1,6 @@
 import type { Profile } from "./roles";
 
-export type FunctionGroup = "company" | "market" | "workspace";
+export type FunctionGroup = "company" | "market" | "workspace" | "edge";
 type FnDef = { label: string; hint: string; group: FunctionGroup; /** Takes free text after the code, e.g. a screen in words. */ args?: boolean };
 
 /**
@@ -47,6 +47,11 @@ export const FUNCTIONS = {
   PG: { label: "Peer groups", hint: "Saved peer groups", group: "workspace" },
   TOOLS: { label: "Tools", hint: "Workflows and calculators for your role", group: "workspace" },
   TOOL: { label: "Tool", hint: "Run a workflow in a panel: TICKER TOOL <id>", group: "workspace", args: true },
+  EDGE: { label: "Edge", hint: "Everything Edge knows about a company: findings, buyers and targets, red flags, assets", group: "edge" },
+  GEO: { label: "Ground", hint: "Its plants and pipelines on the map, and what satellites saw change there", group: "edge" },
+  NET: { label: "Network", hint: "Its relationships from SEC filings, likely buyers and targets, warm intros", group: "edge" },
+  SIM: { label: "Stress", hint: "Simulate its stock: SIM, SIM 2008, SIM oil -30%", group: "edge", args: true },
+  ASK: { label: "Ask filings", hint: "Ask its filings and your documents, with quotes: ASK what drove volumes?", group: "edge", args: true },
 } as const satisfies Record<string, FnDef>;
 
 export type FunctionCode = keyof typeof FUNCTIONS;
@@ -59,8 +64,15 @@ export function isFunctionCode(s: string): s is FunctionCode {
   return (FUNCTION_CODES as string[]).includes(s);
 }
 
+/**
+ * Edge's functions exist only for people with the Edge beta on. Without it their codes stay plain
+ * tickers (GEO and NET are listed companies), as PG, AI and MA do when a function follows them.
+ */
+export const EDGE_CODES: ReadonlySet<string> = new Set(FUNCTION_CODES.filter((f) => (FUNCTIONS[f] as FnDef).group === "edge"));
+export const isCommandCode = (s: string, edge: boolean): s is FunctionCode => isFunctionCode(s) && (edge || !EDGE_CODES.has(s));
+
 /** Market and workspace functions do not act on a ticker (TOOL and TOOLS do, through the active one). */
-export const needsTicker = (fn: FunctionCode) => (FUNCTIONS[fn] as FnDef).group === "company" || fn === "TOOL" || fn === "TOOLS";
+export const needsTicker = (fn: FunctionCode) => { const g = (FUNCTIONS[fn] as FnDef).group; return g === "company" || g === "edge" || fn === "TOOL" || fn === "TOOLS"; };
 const takesArgs = (fn: FunctionCode) => (FUNCTIONS[fn] as FnDef).args === true;
 
 function build(fn: FunctionCode, ticker: string, rest: string[]): { ok: true; command: Command } | { ok: false; error: string } {
@@ -73,19 +85,21 @@ function build(fn: FunctionCode, ticker: string, rest: string[]): { ok: true; co
 /**
  * Parse a command line. "SNOW COMPS", "comps", "ddog", "SNOW TOOL dcf", "WEI", "EQS revenue growth
  * above 20%". A bare ticker opens DES; a bare company function uses the active ticker. A ticker that is
- * also a function code (PG, AI, MA) works when a function follows it: "PG DES".
+ * also a function code (PG, AI, MA) works when a function follows it: "PG DES". Edge's codes count only
+ * with the beta on.
  */
-export function parseCommand(input: string, activeTicker: string): { ok: true; command: Command } | { ok: false; error: string } {
+export function parseCommand(input: string, activeTicker: string, edge = false): { ok: true; command: Command } | { ok: false; error: string } {
   const raw = input.trim().split(/\s+/).filter(Boolean);
   const tokens = raw.map((t) => t.toUpperCase());
   if (tokens.length === 0) return { ok: false, error: "Type a ticker and a function, e.g. SNOW COMPS" };
   const [first, second] = tokens;
+  const code = (s: string): s is FunctionCode => isCommandCode(s, edge);
 
-  const tickerFirst = TICKER_RE.test(first) && !!second && isFunctionCode(second) && (!isFunctionCode(first) || !takesArgs(first) || tokens.length === 2);
-  if (isFunctionCode(first) && !tickerFirst) return build(first, activeTicker, raw.slice(1));
+  const tickerFirst = TICKER_RE.test(first) && !!second && code(second) && (!code(first) || !takesArgs(first) || tokens.length === 2);
+  if (code(first) && !tickerFirst) return build(first, activeTicker, raw.slice(1));
   if (!TICKER_RE.test(first)) return { ok: false, error: `"${first}" is not a ticker or a function` };
   if (!second) return { ok: true, command: { ticker: first, fn: "DES" } };
-  if (!isFunctionCode(second)) return { ok: false, error: `Unknown function "${second}". Try ${FUNCTION_CODES.slice(0, 12).join(", ")}…` };
+  if (!code(second)) return { ok: false, error: `Unknown function "${second}". Try ${FUNCTION_CODES.slice(0, 12).join(", ")}…` };
   return build(second, first, raw.slice(2));
 }
 

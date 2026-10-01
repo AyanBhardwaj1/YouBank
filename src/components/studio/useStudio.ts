@@ -140,7 +140,7 @@ export function useStudio(id: number) {
         last = Math.max(last, e.id);
         // My own edits were applied the moment I made them; replaying them could briefly undo a later keystroke.
         if (e.actor === me.current && !e.runId) { applied.current.add(e.id); return; }
-        if (!applied.current.has(e.id)) { receive(e.id, e.patches, e.actor === "agent"); refreshMetaSoon(); }
+        if (!applied.current.has(e.id)) { receive(e.id, e.patches, e.actor === "agent" || e.actor === "edge"); refreshMetaSoon(); }
       });
     };
     const shut = () => { es?.close(); es = null; };

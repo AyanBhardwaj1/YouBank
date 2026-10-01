@@ -80,19 +80,43 @@ const watchCounts = () => memo("edge:watch-counts", 5 * 60_000, async () => {
 const recentPublic = () => memo("edge:recent-public", 5 * 60_000, () => requireDb().select().from(schema.edgeDetections)
   .where(sql`${since(30)} and ${schema.edgeDetections.ownerId} is null`).orderBy(sql`${schema.edgeDetections.detectedAt} desc`).limit(200));
 
+/** A finding as a feed card, scored with the person's blend (sources are added per page). */
+function cardOf(d: Row, scope: Scope, relevance: number, reasons: string[], blend: Blend, now: number): Omit<EdgeCard, "sources"> {
+  const ageDays = Math.max(0, (now - (d.observedAt ?? d.detectedAt).getTime()) / DAY);
+  const signals: Signals = { relevance, size: sizeOf(d.kind, d.magnitude), novelty: noveltyOf(d.kind, ageDays), confidence: d.confidence };
+  return {
+    id: d.id, kind: d.kind, module: d.module, title: d.title, summary: d.summary, why: d.why, confidence: d.confidence, magnitude: d.magnitude,
+    tickers: d.tickers, bbox: d.bbox, visual: d.visual, observedAt: d.observedAt?.toISOString() ?? null, detectedAt: d.detectedAt.toISOString(),
+    scope, reasons, signals, score: score(signals, blend, ageDays),
+  };
+}
+
+/** Cards with their provenance trail. */
+async function withSources(page: Omit<EdgeCard, "sources">[]): Promise<EdgeCard[]> {
+  const trail = await trailFor(page.map((c) => `detection:${c.id}`));
+  return page.map((c) => ({
+    ...c,
+    sources: trail.filter((t) => t.subject === `detection:${c.id}`).map((t) => ({ name: t.sourceName, url: t.sourceUrl, license: t.license, method: t.method, modelVersion: t.modelVersion, retrievedAt: t.retrievedAt.toISOString() })),
+  }));
+}
+
+/** Everything found about one company that the person may see (public findings and their own), newest first. */
+export async function companyCards(userId: string, ticker: string, watches: Watch[], blend: Blend, limit = 8): Promise<EdgeCard[]> {
+  const now = Date.now();
+  const rows = await requireDb().select().from(schema.edgeDetections)
+    .where(sql`${since(365)} and (${schema.edgeDetections.ownerId} is null or ${schema.edgeDetections.ownerId} = ${userId}) and ${schema.edgeDetections.tickers} ? ${ticker}`)
+    .orderBy(sql`${schema.edgeDetections.detectedAt} desc`).limit(Math.max(1, Math.min(40, limit)));
+  return withSources(rows.map((d) => {
+    const mine = matches(d, watches).filter((w) => w.mine);
+    return cardOf(d, mine.length ? "mine" : "trending", mine.length ? 1 : 0.5, mine.length ? [`You watch ${mine[0].label}`] : [], blend, now);
+  }));
+}
+
 export async function edgeFeed(userId: string, watches: Watch[], blend: Blend, opts: { scope?: Scope | "all"; offset?: number; limit?: number } = {}): Promise<{ cards: EdgeCard[]; counts: Record<Scope, number>; total: number }> {
   const now = Date.now();
   const [own, pool, counts] = await Promise.all([candidates(userId, watches), recentPublic(), watchCounts()]);
   const scored = new Map<number, Omit<EdgeCard, "sources">>();
-  const toCard = (d: Row, scope: Scope, relevance: number, reasons: string[]) => {
-    const ageDays = Math.max(0, (now - (d.observedAt ?? d.detectedAt).getTime()) / DAY);
-    const signals: Signals = { relevance, size: sizeOf(d.kind, d.magnitude), novelty: noveltyOf(d.kind, ageDays), confidence: d.confidence };
-    return {
-      id: d.id, kind: d.kind, module: d.module, title: d.title, summary: d.summary, why: d.why, confidence: d.confidence, magnitude: d.magnitude,
-      tickers: d.tickers, bbox: d.bbox, visual: d.visual, observedAt: d.observedAt?.toISOString() ?? null, detectedAt: d.detectedAt.toISOString(),
-      scope, reasons, signals, score: score(signals, blend, ageDays),
-    };
-  };
+  const toCard = (d: Row, scope: Scope, relevance: number, reasons: string[]) => cardOf(d, scope, relevance, reasons, blend, now);
   for (const d of own) {
     const hit = matches(d, watches);
     if (!hit.length) continue;
@@ -114,11 +138,6 @@ export async function edgeFeed(userId: string, watches: Watch[], blend: Blend, o
   const scope = opts.scope ?? "all";
   const chosen = all.filter((c) => scope === "all" || c.scope === scope).sort((a, b) => b.score - a.score || b.detectedAt.localeCompare(a.detectedAt));
   const offset = Math.max(0, opts.offset ?? 0), limit = Math.max(1, Math.min(40, opts.limit ?? 20));
-  const page = chosen.slice(offset, offset + limit);
-  const trail = await trailFor(page.map((c) => `detection:${c.id}`));
-  const cards: EdgeCard[] = page.map((c) => ({
-    ...c,
-    sources: trail.filter((t) => t.subject === `detection:${c.id}`).map((t) => ({ name: t.sourceName, url: t.sourceUrl, license: t.license, method: t.method, modelVersion: t.modelVersion, retrievedAt: t.retrievedAt.toISOString() })),
-  }));
+  const cards = await withSources(chosen.slice(offset, offset + limit));
   return { cards, counts: tally, total: chosen.length };
 }

@@ -9,5 +9,6 @@ import "./networks";
 import "./scenarios";
 import "./outputs";
 import "./story";
+import "./studio";
 
 export { availableTypes } from "../engine";

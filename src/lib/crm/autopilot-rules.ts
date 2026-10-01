@@ -13,7 +13,7 @@ import { DAY_MS } from "./model";
 export const AUTONOMY_LEVELS = ["off", "approve", "auto"] as const;
 export type Autonomy = (typeof AUTONOMY_LEVELS)[number];
 
-export const AUTONOMY_SCOPES = ["external", "internal", "campaigns", "followUps", "nurture"] as const;
+export const AUTONOMY_SCOPES = ["external", "internal", "campaigns", "followUps", "nurture", "intros"] as const;
 export type AutonomyScope = (typeof AUTONOMY_SCOPES)[number];
 
 export const SCOPE_LABEL: Record<AutonomyScope, string> = {
@@ -22,6 +22,7 @@ export const SCOPE_LABEL: Record<AutonomyScope, string> = {
   campaigns: "Cold email campaigns",
   followUps: "Follow-ups when nobody answers",
   nurture: "Reconnecting with quiet contacts",
+  intros: "Intro requests from Edge's warm paths",
 };
 
 export const SCOPE_HINT: Record<AutonomyScope, Record<Autonomy, string>> = {
@@ -30,6 +31,7 @@ export const SCOPE_HINT: Record<AutonomyScope, Record<Autonomy, string>> = {
   campaigns: { off: "Campaigns do not send.", approve: "Each campaign email waits for you.", auto: "Campaign emails go out on schedule. A campaign can override this." },
   followUps: { off: "Only suggested; you decide.", approve: "The follow-up is drafted, waiting for you.", auto: "The follow-up is written and sent." },
   nurture: { off: "Rules do not write.", approve: "Reconnection notes wait for you.", auto: "Reconnection notes go out. A rule can override this." },
+  intros: { off: "Edge shows the path; you write the request yourself.", approve: "The request is drafted, waiting for you.", auto: "The request is written and sent when it clears every check." },
 };
 
 export const AUTONOMY_LABEL: Record<Autonomy, string> = { off: "Off", approve: "Ask me", auto: "Autopilot" };
@@ -62,7 +64,7 @@ export type AutopilotSettings = {
 export const DEFAULT_AUTOPILOT: AutopilotSettings = {
   enabled: false,
   regulated: false,
-  autonomy: { external: "approve", internal: "approve", campaigns: "approve", followUps: "off", nurture: "approve" },
+  autonomy: { external: "approve", internal: "approve", campaigns: "approve", followUps: "off", nurture: "approve", intros: "approve" },
   holdMinutes: 5,
   dailyCap: 40,
   window: { tz: "UTC", start: 8, end: 19, weekdays: true },

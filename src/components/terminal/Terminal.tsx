@@ -24,8 +24,10 @@ const openedRecently = (openedAt?: number) => !!openedAt && Date.now() - openedA
 const sameCmd = (a: Command, b: Command) => a.ticker === b.ticker && a.fn === b.fn && (a.arg ?? "") === (b.arg ?? "");
 
 export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string; arg?: string } }) {
-  const { config, profile } = useWorkspace();
-  const fns = functionsForProfile(profile);
+  const { config, profile, edge } = useWorkspace();
+  // With the Edge beta on, EDGE joins the strip just before the AI.
+  const base = functionsForProfile(profile);
+  const fns: FunctionCode[] = edge ? (base.includes("AI") ? base.flatMap((f) => (f === "AI" ? ["EDGE" as const, f] : [f])) : [...base, "EDGE"]) : base;
   const startTicker = initial?.ticker || config.initialPanels[0]?.ticker || config.watchlist[0] || "SNOW";
   const [activeTicker, setActiveTicker] = useState(startTicker);
   const [panels, setPanels] = useState<OpenPanel[]>(() => {

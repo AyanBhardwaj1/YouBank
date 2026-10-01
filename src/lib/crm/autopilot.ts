@@ -36,6 +36,7 @@ export function scopeOf(draft: Pick<DraftRow, "kind" | "meta">): AutonomyScope |
     case "follow_up": return "followUps";
     case "campaign": return "campaigns";
     case "nurture": return "nurture";
+    case "intro": return "intros";
     default: return null;
   }
 }

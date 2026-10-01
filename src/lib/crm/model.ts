@@ -129,10 +129,10 @@ export function companyDomain(email: string): string {
  * What a draft is for. Every kind waits in the same review queue; it leaves when a person sends it,
  * or when autopilot sends it because that person turned autopilot on for that kind of email.
  */
-export const DRAFT_KINDS = ["reply", "follow_up", "nurture", "campaign", "compose"] as const;
+export const DRAFT_KINDS = ["reply", "follow_up", "nurture", "campaign", "compose", "intro"] as const;
 export type DraftKind = (typeof DRAFT_KINDS)[number];
 export const DRAFT_KIND_LABEL: Record<DraftKind, string> = {
-  reply: "Reply", follow_up: "Follow-up", nurture: "Reconnect", campaign: "Campaign", compose: "New email",
+  reply: "Reply", follow_up: "Follow-up", nurture: "Reconnect", campaign: "Campaign", compose: "New email", intro: "Intro request",
 };
 
 /**

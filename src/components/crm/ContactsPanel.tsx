@@ -7,7 +7,7 @@ import { Empty, Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { confirmDialog } from "@/components/ui/Dialog";
 
-type Signal = { id: number; title: string; url: string; strength: string };
+type Signal = { id: number; kind: string; title: string; url: string; strength: string };
 type Contact = {
   id: number; email: string; name: string; title: string; company: string; kind: string; notes: string; startupId: number | null;
   optedOutAt: string | null; lastContactAt: string | null; lastSentAt: string | null; exchanges: number; signals: Signal[];
@@ -97,9 +97,9 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
             </div>
             {c.signals.map((s) => (
               <p key={s.id} className="mt-1.5 flex items-start gap-1.5 text-[11px]">
-                <Icon name="TrendingUp" className="mt-0.5 h-3 w-3 shrink-0 text-pos" />
-                <span>{s.title}{s.strength === "name" ? <span className="text-muted"> (matched on company name)</span> : null}</span>
-                {s.url && <a href={s.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">filing</a>}
+                <Icon name={s.kind === "edge" ? "Radar" : s.kind === "news" ? "Newspaper" : "TrendingUp"} className={`mt-0.5 h-3 w-3 shrink-0 ${s.kind === "edge" ? "text-accent" : "text-pos"}`} />
+                <span>{s.kind === "edge" ? <span className="text-muted">Edge: </span> : null}{s.title}{s.strength === "name" ? <span className="text-muted"> (matched on company name)</span> : null}</span>
+                {s.url && <a href={s.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">{s.kind === "edge" ? "in Edge" : s.kind === "news" ? "story" : "filing"}</a>}
               </p>
             ))}
             {notes?.id === c.id ? (

@@ -30,7 +30,7 @@ type Thread = {
 type Deal = {
   id: number; name: string; stage: string; sector: string; round: string;
   amountUsd: number | null; valuationUsd: number | null; nextStep: string; contactId: number | null;
-  startupId: number | null; source: string;
+  startupId: number | null; source: string; edge?: { title: string; url: string } | null;
 };
 type Contact = { id: number; email: string; name: string; title: string; company: string; kind: string; startupId: number | null };
 type Counts = { threads: number; pendingDrafts: number; needsReply: number; pendingActions: number; byStage: Record<string, number> };
@@ -271,6 +271,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
                         </p>
                         {c && <p className="mt-0.5 truncate text-[11px] text-muted">{c.name || c.email}{c.title ? `, ${c.title}` : ""}</p>}
                         {d.nextStep && <p className="mt-1.5 text-[11px]"><span className="text-muted">Next:</span> {d.nextStep}</p>}
+                        {d.edge && <a href={d.edge.url} target="_blank" rel="noreferrer" className="mt-1.5 flex items-start gap-1 text-[11px] hover:underline"><Icon name="Radar" className="mt-0.5 h-3 w-3 shrink-0 text-accent" /><span><span className="text-muted">Edge:</span> {d.edge.title}</span></a>}
                         <Select value={d.stage} disabled={!!busy} onChange={(v) => move(d.id, v as Stage)}
                           className="mt-2 w-full ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11px] outline-none focus:border-accent/60">
                           {pipeline.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}

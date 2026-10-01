@@ -9,6 +9,7 @@ import { ingestCompany } from "@/lib/edge/graph/ingest";
 import { companyByTicker, graphSize } from "@/lib/edge/graph/store";
 import { scorecardText, type ModelMetrics } from "@/lib/edge/graph/train";
 import { sendJob } from "@/lib/edge/infra/jobs";
+import { draftIntro } from "@/lib/edge/intros";
 import { resolveTicker, searchTickers } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { rateLimit } from "@/lib/locks";
@@ -23,8 +24,9 @@ const PRIVATE = { "cache-control": "private, max-age=120" };
  * Networks · GNN, by view: company (overview and red flags), acquirers and targets (the deal model's
  * picks with reason paths), exposure, subgraph, map, tree, intros (warm introductions for this person),
  * status (graph size and the model's scorecard) and search. POST: build (read a company into the graph
- * now), pool (share CRM contacts with teammates for intros), and for admins refresh (the whole universe)
- * and train.
+ * now), pool (share CRM contacts with teammates for intros), intro (draft an intro request from a warm
+ * path, under the person's autopilot setting for intro requests), and for admins refresh (the whole
+ * universe) and train.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ view: string }> }) {
   return guarded(async (user) => {
@@ -65,7 +67,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ view: string }>
       case "tree": return NextResponse.json(await ownershipTree(node), { headers: PRIVATE });
       case "intros": {
         const p = await requireEdge(user.id);
-        return NextResponse.json({ items: await warmIntros(user.id, node), pooled: p.prefs.poolContacts });
+        // Whose contact it is stays on the server; the person sees "your contact" or a teammate's name.
+        const items = (await warmIntros(user.id, node)).map((i) => ({ ...i, contact: { name: i.contact.name, email: i.contact.email, company: i.contact.company, title: i.contact.title, via: i.contact.via } }));
+        return NextResponse.json({ items, pooled: p.prefs.poolContacts });
       }
       case "map": {
         const g = await subgraph(node, 160);
@@ -82,10 +86,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ view: string }
   return guarded(async (user) => {
     await requireEdge(user.id);
     const view = (await ctx.params).view;
-    const body = (await req.json().catch(() => ({}))) as { ticker?: string; on?: boolean };
+    const body = (await req.json().catch(() => ({}))) as { ticker?: string; on?: boolean; index?: number };
     if (view === "pool") {
       const prefs = await saveEdge(user.id, { poolContacts: body.on === true });
       return NextResponse.json({ pooled: prefs.poolContacts });
+    }
+    if (view === "intro") {
+      const ticker = String(body.ticker ?? "").toUpperCase();
+      const index = Number(body.index);
+      if (!TICKER.test(ticker) || !Number.isInteger(index) || index < 0 || index > 20) return NextResponse.json({ error: "Pick a path." }, { status: 400 });
+      await rateLimit(`edge-intro:${user.id}`, 20, 3_600_000, "Many intro requests this hour; try again later.");
+      return NextResponse.json(await draftIntro(user, ticker, index));
     }
     if (view === "train" || view === "refresh") {
       if (!isAdmin(user)) return NextResponse.json({ error: "Only admins can rebuild the graph or retrain the model." }, { status: 403 });

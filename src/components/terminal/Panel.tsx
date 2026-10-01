@@ -56,6 +56,11 @@ const LearnScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) 
 const TopScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.TopScreen), { loading: ScreenLoading });
 const CnScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.CnScreen), { loading: ScreenLoading });
 const NiScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.NiScreen), { loading: ScreenLoading });
+const EdgeScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.EdgeScreen), { loading: ScreenLoading });
+const GeoScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.GeoScreen), { loading: ScreenLoading });
+const NetScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.NetScreen), { loading: ScreenLoading });
+const SimScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.SimScreen), { loading: ScreenLoading });
+const AskScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.AskScreen), { loading: ScreenLoading });
 
 type Props = {
   panel: OpenPanel;
@@ -111,6 +116,11 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "EQS": return <EqsScreen onRun={onRun} arg={panel.arg} activeTicker={activeTicker} />;
       case "PORT": return <PortScreen onRun={onRun} arg={panel.arg} activeTicker={activeTicker} />;
       case "LEARN": return <LearnScreen onRun={onRun} activeTicker={activeTicker} />;
+      case "EDGE": return <EdgeScreen ticker={t} onRun={onRun} />;
+      case "GEO": return <GeoScreen ticker={t} onRun={onRun} />;
+      case "NET": return <NetScreen ticker={t} onRun={onRun} />;
+      case "SIM": return <SimScreen ticker={t} arg={panel.arg} />;
+      case "ASK": return <AskScreen ticker={t} arg={panel.arg} />;
     }
     if (loading) return <Loading ticker={t} />;
     if (error || !company) return <ErrorState ticker={t} error={error ?? "No data"} />;
@@ -123,7 +133,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
     }
   })();
 
-  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
+  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">

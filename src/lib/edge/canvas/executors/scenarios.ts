@@ -10,7 +10,7 @@ import { withShock } from "../../scen/run";
 import { saveScenario } from "../../scen/store";
 import { copulaSynth, ctganSynth, tableRealism, type TableIn } from "../../scen/tables";
 import { register } from "../engine";
-import type { Companies, Findings, ProformaValue, Scenario, Table } from "../values";
+import { marketValue, type Companies, type Findings, type ProformaValue, type Table } from "../values";
 
 const pct = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
 
@@ -48,16 +48,7 @@ register("scen.simulate", {
     await ctx.progress("validate");
     const saved = await saveScenario(ctx.userId, { kind: "market", title: r.title, driver, spec: spec as unknown as Record<string, unknown>, result: r as unknown as Record<string, unknown> });
     const port = r.summary.finals.find((f) => f.series === "Portfolio")!;
-    const fanOf = (name: string) => { const f = r.summary.fans.find((x) => x.series === name)!; return { label: name === "Portfolio" ? "Equal-weight portfolio" : name, p5: f.p5, p50: f.p50, p95: f.p95 }; };
-    const value: Scenario = {
-      id: saved.id, title: r.title, driver: `${driver}${r.replay ? `: ${r.replay.label}` : r.shock ? `: ${r.shock.described}` : ""}`, synthetic: true, recipe: r.recipe, seed: r.seed, horizon: r.horizon, paths: r.paths,
-      stats: [
-        { label: "Median outcome", value: pct(port.p50) }, { label: "Bad case (5th percentile)", value: pct(port.p5) }, { label: "Chance of a loss", value: `${Math.round(port.probLoss * 100)}%` },
-        { label: "Expected shortfall (95%)", value: pct(-port.cvar95) }, { label: "Worst drawdown in 1 of 20 paths", value: pct(r.summary.drawdown.p95) },
-        ...r.summary.finals.filter((f) => f.series !== "Portfolio").slice(0, 4).map((f) => ({ label: `${f.series} median`, value: pct(f.p50) })),
-      ],
-      fan: ["Portfolio", ...r.names.slice(0, 3)].map(fanOf), realism: r.realism.score,
-    };
+    const value = marketValue(r, saved.id, driver);
     return { outputs: { scenario: value }, summary: `SYNTHETIC · ${r.title}: median ${pct(port.p50)}, 5th percentile ${pct(port.p5)} over ${r.horizon} days (realism ${r.realism.score})`, preview: { kind: "chart", synthetic: true, series: [{ label: "p5", values: value.fan![0].p5 }, { label: "median", values: value.fan![0].p50 }, { label: "p95", values: value.fan![0].p95 }] } };
   },
 });

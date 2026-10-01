@@ -25,13 +25,13 @@ import { WhatIf } from "./WhatIf";
 export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif";
 const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
 
-export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null }) {
+export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null, initialDeal = null }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null; initialDeal?: { parties: string[]; place: string } | null }) {
   const now = useNow();
   const [view, setView] = useState<EdgeView>(initialView);
   useSubNav("/app/edge", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as EdgeView); });
   const edge = useEdgeState();
   const [focus, setFocus] = useState<{ card: EdgeCard; key: number } | null>(null);
-  const [deal, setDeal] = useState<{ parties: string[]; place?: string; key: number } | null>(null);
+  const [deal, setDeal] = useState<{ parties: string[]; place?: string; key: number } | null>(initialDeal ? { ...initialDeal, key: 1 } : null);
   const [docs, setDocs] = useState<DocsOpen | null>(initialDocs);
   const [net, setNet] = useState<{ ticker: string | null; key: number }>({ ticker: initialCompany, key: 0 });
 
@@ -62,9 +62,10 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
             </div>
             <p className="mt-1 max-w-[70ch] text-[12.5px] text-muted">What satellites, networks and documents show before the news does, on the things you watch.</p>
           </div>
-          <nav className="flex items-center gap-0.5 rounded-lg border border-line p-0.5" aria-label="Edge views">
+          {/* On a phone the seven views scroll sideways rather than push the page wider. */}
+          <nav className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none]" aria-label="Edge views">
             {VIEWS.map((v) => (
-              <button key={v.id} type="button" onClick={() => setView(v.id)} aria-current={view === v.id ? "page" : undefined} className={`relative rounded-md px-3 py-1 text-[12.5px] transition ${view === v.id ? "text-fg" : "text-muted hover:text-fg"}`}>
+              <button key={v.id} type="button" onClick={() => setView(v.id)} aria-current={view === v.id ? "page" : undefined} className={`relative shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] transition ${view === v.id ? "text-fg" : "text-muted hover:text-fg"}`}>
                 {view === v.id && <motion.span layoutId="edge-view" className="absolute inset-0 rounded-md bg-elevated" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
                 <span className="relative">{v.label}</span>
               </button>

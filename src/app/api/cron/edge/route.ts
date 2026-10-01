@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { secretsMatch } from "@/lib/crm/crypto";
 import { scanDeals } from "@/lib/edge/dealwatch";
+import { sendDigests } from "@/lib/edge/digest";
 import { scanFilings } from "@/lib/edge/docs/filingwatch";
 import { graphDaily } from "@/lib/edge/graph/jobs";
+import { jobsReady } from "@/lib/edge/infra/jobs";
 import { notifyWatchers } from "@/lib/edge/notify";
 import { checkDue } from "@/lib/edge/watches";
 import { describeFailure } from "@/lib/errors";
@@ -16,7 +18,8 @@ export const maxDuration = 300;
  * once, least recently checked first), build pro-forma cards for new deals that touch the map, compare
  * new 10-Ks and 10-Qs of watched companies with the previous ones, and keep the relationship graph
  * current (watched companies re-read, the Newsroom's deals folded in, the deal model retrained when a
- * deal was announced since it last trained).
+ * deal was announced since it last trained). Big findings alert their watchers at once; the rest go in
+ * the daily digest.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -31,7 +34,9 @@ export async function GET(req: Request) {
     // Big findings alert their watchers now; the rest wait for the digest.
     const alerts = await notifyWatchers([...watches.found, ...deals, ...filings]).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-notify").message }));
     const graph = await graphDaily().catch((e) => ({ error: describeFailure(e, 500, "edge-cron-graph").message }));
-    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, alerts, graph });
+    // Digests go hourly from the job runner at each person's brief time; without it, once a day from here.
+    const digests = jobsReady() ? "hourly" : await sendDigests(deadline, { anyHour: true }).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-digest").message }));
+    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, alerts, graph, digests });
   } catch (e) {
     return NextResponse.json({ ok: false, error: describeFailure(e, 500, "edge-cron").message }, { status: 500 });
   }

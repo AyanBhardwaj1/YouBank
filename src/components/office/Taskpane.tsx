@@ -516,6 +516,44 @@ function useExcelLink(docId: number, onSignOut: () => void) {
   return { ...control, meta, status, setStatus, error, setError, needsChoice, setNeedsChoice, enqueue, writeToExcel, focus, flush, pull, fail, persistCursor };
 }
 
+type EdgePending = { id: number; title: string; sheets: string[]; slides: string[] };
+
+/** Edge results waiting for this model: accepting one adds its sheets (and slides) as one undoable run, which syncs into Excel. */
+function EdgeQueue({ docId, onNote, onSignOut }: { docId: number; onNote: (t: string) => void; onSignOut: () => void }) {
+  const [items, setItems] = useState<EdgePending[]>([]);
+  const [busy, setBusy] = useState<number | null>(null);
+  const load = useCallback(() => {
+    api<{ pushes: EdgePending[] }>(`/api/edge/pushes?doc=${docId}`).then((r) => setItems(r.pushes)).catch((e) => { if (e instanceof NotConnected) onSignOut(); });
+  }, [docId, onSignOut]);
+  useEffect(() => {
+    queueMicrotask(load);
+    const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 60_000);
+    return () => clearInterval(t);
+  }, [load]);
+  if (!items.length) return null;
+  const decide = async (id: number, action: "accept" | "dismiss") => {
+    setBusy(id);
+    try { await api(`/api/edge/pushes/${id}`, { json: { action } }); if (action === "accept") onNote("Added from Edge; it arrives in Excel in a moment. Undo it from YouBank's History."); }
+    catch (e) { onNote(msg(e)); }
+    finally { setBusy(null); load(); }
+  };
+  return (
+    <div className="space-y-1.5 border-b border-line bg-accent-soft/40 px-3 py-2 text-[11.5px]">
+      <p className="font-semibold">From Edge, waiting for you</p>
+      {items.map((p) => (
+        <div key={p.id} className="ctl border border-line bg-panel p-1.5">
+          <p className="font-medium">{p.title}</p>
+          <p className="text-[10.5px] text-muted">Adds {[p.sheets.length ? `sheet${p.sheets.length === 1 ? "" : "s"} ${p.sheets.join(", ")}` : "", p.slides.length ? `${p.slides.length} slide${p.slides.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ") || "nothing new"}; your cells are not touched.</p>
+          <div className="mt-1 flex gap-2">
+            <button type="button" disabled={busy !== null} onClick={() => void decide(p.id, "accept")} className="ctl bg-accent px-2 py-0.5 font-semibold text-bg disabled:opacity-50">{busy === p.id ? "Adding…" : "Accept"}</button>
+            <button type="button" disabled={busy !== null} onClick={() => void decide(p.id, "dismiss")} className="ctl border border-line px-2 py-0.5 disabled:opacity-50">Dismiss</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ExcelLinked({ docId, me, onUnlink, onSignOut }: { docId: number; me: Me; onUnlink: () => void; onSignOut: () => void }) {
   const link = useExcelLink(docId, onSignOut);
   const log = useRunLog();
@@ -615,6 +653,7 @@ function ExcelLinked({ docId, me, onUnlink, onSignOut }: { docId: number; me: Me
           </div>
         </div>
       )}
+      <EdgeQueue docId={docId} onNote={setNote} onSignOut={onSignOut} />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {tab === "agent" && (log.lines.length ? (
           <>

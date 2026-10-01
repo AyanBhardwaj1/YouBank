@@ -4,11 +4,11 @@ import { FUNCTIONS, FUNCTION_CODES, functionsForProfile, type FunctionGroup } fr
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { catalogFor } from "@/lib/workflows/catalog";
 
-const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["market", "Markets and economy"], ["workspace", "Workspace"]];
+const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["edge", "Edge (beta)"], ["market", "Markets and economy"], ["workspace", "Workspace"]];
 
 /** Keyboard and command reference, opened with "?" in the terminal. */
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
-  const { profile, config } = useWorkspace();
+  const { profile, config, edge } = useWorkspace();
   const fns = functionsForProfile(profile);
   const tools = catalogFor(profile).slice(0, 8);
   const keys: [string, string][] = [
@@ -34,6 +34,8 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
               <li><span className="num text-accent">EQS</span> <span className="text-muted">growing over 20% with net margins above 10%</span>: screen in plain English</li>
               <li><span className="num text-accent">PORT AAPL 40 MSFT 30 KO 30</span> risk of a portfolio</li>
               <li><span className="num text-accent">PG DES</span> a ticker that is also a code works with a function after it</li>
+              {edge && <li><span className="num text-accent">{config.watchlist[0] ?? "SNOW"} ASK</span> <span className="text-muted">what drove volumes?</span>: ask its filings, with quotes</li>}
+              {edge && <li><span className="num text-accent">{config.watchlist[0] ?? "SNOW"} SIM oil -30%</span> stress its stock; <span className="num text-accent">SIM 2008</span> replays a year</li>}
             </ul>
             <div className="mt-4 text-[10.5px] uppercase tracking-wider text-muted">Keys</div>
             <dl className="mt-2 space-y-1 text-[12px]">
@@ -43,7 +45,7 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
           <div>
             <div className="text-[10.5px] uppercase tracking-wider text-muted">Functions <span className="normal-case tracking-normal text-faint">(yours in bold)</span></div>
             <div className="mt-2 max-h-[46vh] space-y-3 overflow-auto pr-1">
-              {GROUPS.map(([g, label]) => (
+              {GROUPS.filter(([g]) => edge || g !== "edge").map(([g, label]) => (
                 <div key={g}>
                   <div className="mb-1 text-[10px] uppercase tracking-wider text-faint">{label}</div>
                   <dl className="grid grid-cols-[52px_1fr] gap-x-2 gap-y-0.5 text-[11.5px]">

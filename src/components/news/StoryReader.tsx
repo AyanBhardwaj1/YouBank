@@ -3,14 +3,17 @@
 /**
  * Reading a story: the side peek (the feed stays beside it; arrow keys step through stories) and the
  * full page share one body. What happened, the key numbers, why it matters (and, on request, why it
- * matters to you), deal terms with the premium and implied multiples, every source with a link to its
- * publisher, the companies in it (straight into the terminal), and related stories.
+ * matters to you), deal terms with the premium and implied multiples (and, with the Edge beta on, the
+ * deal on Edge's map), every source with a link to its publisher, the companies in it (straight into the
+ * terminal), and related stories.
  */
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, ExternalLink, EyeOff, Maximize2, Network, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { StoryView } from "@/lib/news/views";
+import { DealMap } from "@/components/edge/DealMap";
+import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { ago, fmtPct, fmtUsd, post, useApi, useMotionLevel, useNow, useSparks } from "./client";
 import { hueOf, StoryArt } from "./DataArt";
 
@@ -22,6 +25,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
   const { data: s, error, reload } = useApi<StoryView>(`/api/news/story/${id}`);
+  const { edge } = useWorkspace();
   const now = useNow();
   const sparks = useSparks(s?.tickers ?? []);
   const [why, setWhy] = useState<{ id: number; text: string | null; busy: boolean; reason?: string }>({ id: 0, text: null, busy: false });
@@ -102,6 +106,7 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
             {s.deal.investors.length > 0 && <div className="sm:col-span-2"><div className="text-[10.5px] text-muted">Investors</div><div className="mt-0.5 text-[12.5px] text-fg">{s.deal.investors.join(", ")}</div></div>}
             {s.deal.advisors.length > 0 && <div className="sm:col-span-2"><div className="text-[10.5px] text-muted">Advisors</div><div className="mt-1 flex flex-wrap gap-1.5">{s.deal.advisors.map((a) => <span key={`${a.firm}-${a.side}`} className="rounded-[4px] bg-elevated px-2 py-0.5 text-[11px] text-fg">{a.firm} <span className="text-muted">{a.role}, {a.side}</span></span>)}</div></div>}
           </div>
+          {edge && <DealMap storyId={id} />}
         </Section>
       )}
 

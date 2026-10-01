@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const savedTheme = typeof extra.theme === "string" ? extra.theme : null;
   const edge = edgePrefs(extra, profile.role).beta;
   return (
-    <WorkspaceProvider profile={profile}>
+    <WorkspaceProvider profile={profile} edge={edge}>
       <ThemeSync theme={savedTheme} />
       {/* Keyed on the beta switch so turning Edge on or off rebuilds the bars with it. */}
       <AppShell key={edge ? "edge" : "base"} email={user.email} edge={edge} initialNav={normalizeNavPrefs(extra.nav, profile.role, { edge })}>{children}</AppShell>

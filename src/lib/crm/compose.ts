@@ -15,8 +15,10 @@ import { getSettings, personaFor, standingOrders } from "./settings";
  * A new email to anyone, from a one-line brief: "ask Maya for a 20-minute call next week about the
  * pilot". The agent writes it from what YouBank knows about the person and their company; it lands in
  * the review queue like any draft. New emails are never sent by autopilot: a person asked for this one.
+ * Intro requests (from Edge's warm paths) are written the same way and follow the person's own setting
+ * for intro requests.
  */
-export async function composeDraft(userId: string, input: { to: string; name?: string; company?: string; brief: string }): Promise<DraftRow> {
+export async function composeDraft(userId: string, input: { to: string; name?: string; company?: string; brief: string }, opts: { kind?: "compose" | "intro"; meta?: DraftRow["meta"] } = {}): Promise<DraftRow> {
   const db = requireDb();
   const email = input.to.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw new Error("That is not an email address");
@@ -31,7 +33,8 @@ export async function composeDraft(userId: string, input: { to: string; name?: s
     .orderBy(desc(schema.crmMessages.sentAt)).limit(4);
   const [ctx, settings, playbook, directory] = await Promise.all([loadUserContext(userId), getSettings(userId), listPlaybook(userId), directoryRecord(contact.startupId)]);
 
-  const [lessons, examples, known] = await Promise.all([lessonsFor(userId, "compose"), ownExamples(userId, brief), knowledgeNote(userId, contact.id)]);
+  const kind = opts.kind ?? "compose";
+  const [lessons, examples, known] = await Promise.all([lessonsFor(userId, kind), ownExamples(userId, brief), knowledgeNote(userId, contact.id)]);
   const { data, provider, model } = await writeCompose({
     mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known].filter(Boolean).join("\n\n"),
     playbook: renderPlaybook(selectPlaybook(asEntries(playbook), brief)), brief,
@@ -40,7 +43,7 @@ export async function composeDraft(userId: string, input: { to: string; name?: s
   }, { prefs: ctx.prefs });
 
   const [row] = await db.insert(schema.crmDrafts).values({
-    userId, kind: "compose", contactId: contact.id, toAddresses: [{ name: contact.name, address: email }],
+    userId, kind, contactId: contact.id, toAddresses: [{ name: contact.name, address: email }], ...(opts.meta ? { meta: opts.meta } : {}),
     subject: data.subject, body: data.body, originalBody: data.body, rationale: data.rationale, citations: data.openQuestions.map((q) => ({ label: q, url: "" })),
     confidence: data.confidence, sensitive: data.sensitive, provider, model,
   }).returning();
