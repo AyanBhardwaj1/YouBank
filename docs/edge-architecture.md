@@ -6,12 +6,12 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 
 | Part | Where | What it holds or does |
 |---|---|---|
-| Pages and API | The Next.js app on Vercel (Hobby, functions in `cle1`) | `/app/edge`, `/story/[slug]`, the Terminal, Newsroom, Studio and CRM hooks; `/api/edge/*` |
+| Pages and API | The Next.js app on Vercel (Hobby, functions in `cle1`) | `/app/edge`, `/story/[slug]`, the Terminal, Newsroom, Studio and CRM hooks; `/api/edge/*`. The maps are MapLibre; the Networks map's 3D arcs are deck.gl, loaded only when 3D is switched on |
 | Database | Neon Postgres with PostGIS and pgvector | the `edge_*` tables below; signals in `crm_signals`; alerts in `news_notifications` |
 | Files | Cloudflare R2, through `aws4fetch` (`src/lib/edge/infra/r2.ts`) | uploads (in 4 MB parts), transcripts, parsed documents, graph exports and models, factor history, large scenario results, exports |
 | Background jobs | Inngest (`src/lib/edge/functions.ts`, served at `/api/inngest`) | canvas runs, monitors, the digest, document reading, the graph, scenario refinement |
 | ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine`, `docs.parse`, `audio.transcribe`, `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `health` |
-| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2 via Microsoft Planetary Computer, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
+| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2 and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, AWS Terrain Tiles for the 3D map, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
 | Language models | the app's OpenAI/Anthropic setup, under the AI spend caps | answers, memos, card text, intro drafts |
 
 ## Code map (`src/lib/edge/`)
@@ -19,7 +19,7 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Area | Files |
 |---|---|
 | Access and the beta | `access.ts` (`requireEdge`, prefs, limits), `onboard.ts` (first canvas) |
-| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `sources/` |
+| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `terrain.ts` (elevation and its analyses), `ground.ts` (terrain for findings and assets), `sources/` |
 | Watches, feed, alerts | `watches.ts`, `feed.ts`, `notify.ts`, `alerts.ts`, `digest.ts`, `crm.ts`, `provenance.ts` |
 | Documents | `docs/` (ingest, chunking, answers, change radar, topics, filing watch) |
 | Networks | `graph/` (parse, ingest, store, algorithms, deals, training, findings, jobs) |

@@ -82,6 +82,14 @@ export const NODES: NodeDef[] = [
     defaults: { sites: 3, months: 6, minConfidence: 0.3, refine: true },
   },
   {
+    type: "earth.terrain", module: "earth", label: "Terrain", tech: "GeoAI", icon: "Mountain", blurb: "The ground at sites and ground changes: slope, relief, and the earth new pads took to level, from lidar where it has been flown",
+    inputs: [{ name: "in", label: "Ground changes or companies", kinds: ["findings", "companies"], required: true }],
+    outputs: [{ name: "table", label: "Terrain", kind: "table" }],
+    steps: [{ id: "elevation", label: "Read elevation" }, { id: "measure", label: "Measure" }],
+    fields: [{ key: "sites", label: "Most sites", type: "number", min: 1, max: 12 }],
+    defaults: { sites: 6 },
+  },
+  {
     type: "earth.proforma", module: "earth", label: "Deal what-if", tech: "GeoAI", icon: "Handshake", blurb: "What the companies would own together, where they overlap, and likely divestitures",
     inputs: [{ name: "companies", label: "Two to four companies", kinds: ["companies"], required: true }],
     outputs: [{ name: "proforma", label: "Pro-forma", kind: "proforma" }],

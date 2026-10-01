@@ -30,12 +30,12 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
   const [view, setView] = useState<EdgeView>(initialView);
   useSubNav("/app/edge", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as EdgeView); });
   const edge = useEdgeState();
-  const [focus, setFocus] = useState<{ card: EdgeCard; key: number } | null>(null);
+  const [focus, setFocus] = useState<{ card: EdgeCard; key: number; threeD?: boolean } | null>(null);
   const [deal, setDeal] = useState<{ parties: string[]; place?: string; key: number } | null>(initialDeal ? { ...initialDeal, key: 1 } : null);
   const [docs, setDocs] = useState<DocsOpen | null>(initialDocs);
   const [net, setNet] = useState<{ ticker: string | null; key: number }>({ ticker: initialCompany, key: 0 });
 
-  const showOnMap = (card: EdgeCard) => { setFocus({ card, key: Date.now() }); setView("map"); };
+  const showOnMap = (card: EdgeCard, opts?: { threeD?: boolean }) => { setFocus({ card, key: Date.now(), threeD: opts?.threeD }); setView("map"); };
   const openDeal = (card: EdgeCard) => {
     const v = card.visual as ProformaVisual;
     setDeal({ parties: v.parties.map((p) => p.tickers[0] ?? p.label), place: v.place, key: Date.now() });

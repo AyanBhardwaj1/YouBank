@@ -9,7 +9,8 @@ import { Layers, Loader2, Satellite, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { EdgeCardView } from "./Cards";
 import { useApi, type AssetCollection, type EdgeCard, type EdgeState, type FeedData, type Imagery } from "./client";
-import type { MapMarker } from "./EarthMap";
+import type { MapAsset, MapMarker } from "./EarthMap";
+import { TerrainPanel } from "./Terrain";
 
 const EarthMap = dynamic(() => import("./EarthMap"), { ssr: false, loading: () => <MapLoading /> });
 
@@ -27,13 +28,14 @@ export function centreOf(card: EdgeCard): { lon: number; lat: number } | null {
   return null;
 }
 
-export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; now: number; focus: { card: EdgeCard; key: number } | null; onOpenDeal: (c: EdgeCard) => void }) {
+export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; now: number; focus: { card: EdgeCard; key: number; threeD?: boolean } | null; onOpenDeal: (c: EdgeCard) => void }) {
   const region = state.covered[0];
   const assets = useApi<AssetCollection>(`/api/edge/assets?place=${region.key}`);
   const feed = useApi<FeedData>("/api/edge/feed?scope=all", 120_000);
   const [satOn, setSatOn] = useState(!!focus);
   const sat = useApi<Imagery>(satOn ? `/api/edge/imagery?place=${region.key}` : null);
   const [picked, setPicked] = useState<number | null>(focus?.card.id ?? null);
+  const [asset, setAsset] = useState<MapAsset | null>(null);
   const [zoom, setZoom] = useState(0);
 
   const highlight = useMemo(() => state.watches.filter((w) => w.kind === "company" && w.target.ticker).map((w, i) => ({ ticker: w.target.ticker!, label: w.label, color: WATCH_COLORS[i % WATCH_COLORS.length] })), [state.watches]);
@@ -43,13 +45,14 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
     return all;
   }, [feed.data, focus]);
   const markers: MapMarker[] = useMemo(() => cards.flatMap((c) => { const p = centreOf(c); return p && c.kind === "ground_change" ? [{ id: c.id, lon: p.lon, lat: p.lat, title: c.title, kind: c.kind }] : []; }), [cards]);
-  const fly = useMemo(() => { const p = focus ? centreOf(focus.card) : null; return p ? { ...p, zoom: 13.2, key: focus!.key } : null; }, [focus]);
+  const fly = useMemo(() => { const p = focus ? centreOf(focus.card) : null; return p ? { ...p, zoom: focus!.threeD ? 13.6 : 13.2, ...(focus!.threeD ? { pitch: 62 } : {}), key: focus!.key } : null; }, [focus]);
   const card = cards.find((c) => c.id === picked) ?? null;
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="panel relative h-[64vh] min-h-[420px] overflow-hidden">
-        <EarthMap bbox={region.bbox} assets={assets.data} highlight={highlight} markers={markers} satellite={satOn ? sat.data : null} focus={fly} onMarker={setPicked} onZoom={setZoom} />
+        <EarthMap bbox={region.bbox} assets={assets.data} highlight={highlight} markers={markers} satellite={satOn ? sat.data : null} focus={fly} initial3D={!!focus?.threeD}
+          onMarker={(id) => { setPicked(id); setAsset(null); }} onAsset={(a) => { setAsset(a); setPicked(null); }} onZoom={setZoom} />
         <div className="pointer-events-none absolute left-2 top-2 flex max-w-[70%] flex-col gap-1.5">
           <div className="pointer-events-auto flex flex-wrap gap-1">
             <button type="button" onClick={() => setSatOn((v) => !v)} aria-pressed={satOn} className={`glass flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] shadow ${satOn ? "border-accent/60 bg-bg/90 text-accent" : "border-line bg-bg/80 text-muted hover:text-fg"}`}>
@@ -68,7 +71,19 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
         {sat.error && satOn && <div className="absolute bottom-8 left-2 rounded bg-bg/90 px-2 py-1 text-[11px] text-neg">Satellite layer unavailable: {sat.error}</div>}
       </div>
       <aside className="min-w-0">
-        {card ? (
+        {asset && !card ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px] text-muted">
+              <span>{asset.kind === "pipeline" ? "Pipeline" : "Processing plant"}</span>
+              <button type="button" onClick={() => setAsset(null)} className="flex items-center gap-1 rounded px-1 hover:text-fg"><X className="h-3.5 w-3.5" /> Close</button>
+            </div>
+            <div className="panel p-3">
+              <h3 className="text-[13.5px] font-semibold">{asset.name || asset.operator}</h3>
+              <p className="text-[11.5px] text-muted">{[asset.company && asset.company !== asset.operator ? `${asset.company}${asset.ticker ? ` (${asset.ticker})` : ""}, operated by ${asset.operator}` : `${asset.operator || asset.company}${asset.ticker ? ` (${asset.ticker})` : ""}`, asset.kind === "processing_plant" && asset.cap ? `${Math.round(asset.cap)} MMcfd` : ""].filter(Boolean).join(" · ")}</p>
+              <div className="mt-2"><TerrainPanel key={asset.id} asset={asset.id} /></div>
+            </div>
+          </div>
+        ) : card ? (
           <div>
             <div className="mb-1.5 flex items-center justify-between text-[11px] text-muted">
               <span>Selected finding</span>
@@ -81,6 +96,7 @@ export function MapView({ state, now, focus, onOpenDeal }: { state: EdgeState; n
             <h3 className="text-[13px] font-semibold text-fg">The {region.name}, mapped</h3>
             <p className="mt-1.5 leading-relaxed">{assets.data ? `${assets.data.features.filter((f) => f.properties.kind === "pipeline").length.toLocaleString()} pipeline segments and ${assets.data.features.filter((f) => f.properties.kind === "processing_plant").length} processing plants` : "Pipelines and processing plants"} from EIA maps, each matched to its listed parent where one is known. Click a pipeline or plant for its operator; click a marker to see what changed there.</p>
             <p className="mt-2 leading-relaxed">Turn on Satellite and zoom in to see the ground itself: the clearest Sentinel-2 pixels of the last six weeks, 10 m across.</p>
+            <p className="mt-2 leading-relaxed">Turn on 3D to tilt the map over the terrain, with each plant a column by its capacity; drag with the right button (two fingers on a phone) to turn it. Click a pipeline for its elevation profile, or a plant for the ground around it, read from USGS lidar where it has been flown.</p>
             {markers.length > 0 && <p className="mt-2 text-accent">{markers.length} {markers.length === 1 ? "finding" : "findings"} on the map.</p>}
           </div>
         )}

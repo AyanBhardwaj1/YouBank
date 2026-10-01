@@ -7,7 +7,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { Download, Loader2, Radar as RadarIcon, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
-import { EdgeCardView } from "./Cards";
+import { EdgeCardView, type OnMap } from "./Cards";
 import { api, post, useApi, type Blend, type EdgeCard, type EdgeState, type FeedData, type Scope } from "./client";
 
 const SCOPES: { id: Scope | "all"; label: string }[] = [
@@ -20,7 +20,7 @@ const SIGNALS: { key: keyof Blend; label: string; hint: string }[] = [
   { key: "confidence", label: "Confidence", hint: "How sure Edge is" },
 ];
 
-export function FeedView({ state, now, onMap, onOpenDeal, onOpenRadar, onOpenNetworks, onBlend }: { state: EdgeState; now: number; onMap: (c: EdgeCard) => void; onOpenDeal: (c: EdgeCard) => void; onOpenRadar: (c: EdgeCard) => void; onOpenNetworks: (ticker: string) => void; onBlend: () => void }) {
+export function FeedView({ state, now, onMap, onOpenDeal, onOpenRadar, onOpenNetworks, onBlend }: { state: EdgeState; now: number; onMap: OnMap; onOpenDeal: (c: EdgeCard) => void; onOpenRadar: (c: EdgeCard) => void; onOpenNetworks: (ticker: string) => void; onBlend: () => void }) {
   const [scope, setScope] = useState<Scope | "all">("all");
   const [tuning, setTuning] = useState(false);
   const [blend, setBlend] = useState(state.blend);

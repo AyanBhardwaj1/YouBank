@@ -194,6 +194,17 @@ polished.
   - drawing on the map.
 - **Analysis.** Geospatial foundation models (NASA/IBM Prithvi, Segment Anything) in the ML service
   detect changes, and a vision LLM explains them in words.
+- **Terrain.** Free elevation data, best first:
+  - USGS 3DEP lidar at 2 m, where it has been flown;
+  - USGS 3DEP at 10 m across the United States;
+  - Copernicus at 30 m worldwide.
+- **What terrain gives.**
+  - For a site: its slope, relief, and where it sits against the ground around it.
+  - Under a ground change: the ground before it, and the earth new bare ground took to level (balanced
+    cut and fill).
+  - For a pipeline: its elevation profile.
+- **3D.** The map tilts over the terrain with shaded relief, and plants stand as columns by capacity.
+  On the Networks map, deal and ownership links rise as arcs.
 
 ## Everywhere else in YouBank
 
@@ -412,6 +423,38 @@ polished.
   - Turning the beta on builds and runs a first canvas for the person's role.
   - The feed exports every card's audit trail as CSV.
 
+### What the 3D and terrain release adds (2026-10-01)
+
+- **Terrain** (`terrain.ts`, `ground.ts`, `/api/edge/terrain`).
+  - Elevation comes from Microsoft Planetary Computer as raw arrays.
+    - USGS 3DEP lidar, a bare-earth model at 2 m, from the newest survey flown before the change.
+    - Else USGS 3DEP seamless at 10 m.
+    - Else Copernicus GLO-30.
+    - Tiles that cover parts of a site are merged on one grid.
+  - For a ground change, the elevation is read on its change mask's grid, two cells to each mask cell.
+  - Results:
+    - slope (Horn's method) and relief;
+    - where each change sits, as the share of the surrounding ground that is lower;
+    - for new bare ground, the earth moved to level it flat at the height that balances cut and fill,
+      plus a topsoil range.
+  - Pipelines are sampled about 500 times along their EIA line. That gives climb and descent (with a
+    noise threshold), extremes, and the steepest stretch.
+  - Results are kept a month, and a finding's elevation source joins its audit trail.
+  - On the test branch, Permian sites read 2018 and 2019 lidar. A 5 ha pad on a 1.5° slope came to
+    about 27,000 m³ each way, and the Gulf Coast Express profile ran from 932 m to 19 m.
+- **Where it shows.**
+  - Ground-change cards have Terrain, with "See it in 3D".
+  - On the map, clicking a pipeline shows its profile, and clicking a plant shows its ground.
+  - The canvas Terrain block makes one row per site for memos, exports and Studio.
+- **3D** (`EarthMap.tsx`, `net/NetMap.tsx`).
+  - Earth maps (the region map, the what-if, Newsroom deal maps and Terminal GEO) get a 3D switch.
+    It adds terrain from AWS Open Data's Terrain Tiles, relief exaggerated 1, 2 or 4 times, shaded
+    relief, a sky, and plant columns sized by capacity until zoomed in close.
+  - The Networks map's 3D switch tilts the map and draws each link as a raised arc. deck.gl draws the
+    arcs on its own canvas, loaded only when 3D is first switched on.
+- **Not done:** true 3D change detection needs paid data (see Known limits). That covers stockpile
+  volumes, tank fill from shadows, and the height of new construction.
+
 ### How the detector was checked
 
 Eight sites were read by eye against the overlay, then 13 findings across ET, EPD, OKE and TRGP. At
@@ -456,3 +499,9 @@ synthetic scenes.
   universe grows. Private companies appear only through filings that name them.
 - **MPC is sometimes slow.** One pass saw a request take over a minute. Every check has a deadline,
   and a site that times out is simply checked on the next pass.
+- **Terrain is a snapshot, not a change.**
+  - Lidar surveys are dated, for example 2018 or 2019 in the Permian. Cut and fill therefore assume
+    the survey predates the work, and a card says so when it may not.
+  - Measuring 3D change itself needs sub-metre imagery or repeated lidar, which are not free. That
+    covers stockpile volumes, tank fill levels and construction height.
+  - Pipeline profiles follow EIA's drawn line, which only approximates the route.

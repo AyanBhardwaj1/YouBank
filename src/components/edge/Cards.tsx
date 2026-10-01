@@ -6,10 +6,11 @@
  * sure Edge is and why, and where every part came from, with the audit trail one click away.
  */
 import { motion, useReducedMotion } from "motion/react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, Download, ExternalLink, Map as MapIcon, MapPin, Network, Radar, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, Download, ExternalLink, Map as MapIcon, MapPin, Mountain, Network, Radar, Sparkles, Users } from "lucide-react";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Compare } from "./Compare";
+import { TerrainPanel } from "./Terrain";
 import { wordDiff } from "@/lib/edge/docs/text";
 import { ago, confidenceLabel, fmtNum, type EdgeCard, type FilingVisual, type FlagVisual, type GroundVisual, type PredictionVisual, type ProformaVisual } from "./client";
 
@@ -82,9 +83,12 @@ function Shell({ card, index, children, kicker, icon }: { card: EdgeCard; index:
   );
 }
 
-export function GroundCard({ card, index, now, onMap }: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void }) {
+export type OnMap = (card: EdgeCard, opts?: { threeD?: boolean }) => void;
+
+export function GroundCard({ card, index, now, onMap }: { card: EdgeCard; index: number; now: number; onMap?: OnMap }) {
   const v = card.visual as GroundVisual;
   const when = card.observedAt ?? card.detectedAt;
+  const [terrain, setTerrain] = useState(false);
   return (
     <Shell card={card} index={index} kicker={`Earth · ground change${v.site.ticker ? ` · ${v.site.ticker}` : ""}`} icon="Globe">
       <div className="mt-2.5 px-3.5">
@@ -101,9 +105,13 @@ export function GroundCard({ card, index, now, onMap }: { card: EdgeCard; index:
         </div>
         <p className="text-[12.5px] leading-relaxed text-muted">{card.summary}</p>
         <Reasons card={card} />
+        {terrain && <TerrainPanel detection={card.id} onView3D={onMap ? () => onMap(card, { threeD: true }) : undefined} />}
         <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
           <span>Seen {now ? ago(when, now) : when.slice(0, 10)} · Sentinel-2, 10 m</span>
-          {onMap && <button type="button" onClick={() => onMap(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><MapIcon className="h-3 w-3" /> On the map</button>}
+          <span className="flex items-center gap-2.5">
+            <button type="button" onClick={() => setTerrain((x) => !x)} aria-expanded={terrain} className="inline-flex items-center gap-1 text-accent hover:underline"><Mountain className="h-3 w-3" /> {terrain ? "Hide the terrain" : "Terrain"}</button>
+            {onMap && <button type="button" onClick={() => onMap(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><MapIcon className="h-3 w-3" /> On the map</button>}
+          </span>
         </div>
         <Provenance card={card} />
       </div>
@@ -275,7 +283,7 @@ export function PredictionCard({ card, index, onOpen }: { card: EdgeCard; index:
   );
 }
 
-export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: (card: EdgeCard) => void; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void; onOpenNetworks?: (ticker: string) => void }) {
+export function EdgeCardView(props: { card: EdgeCard; index: number; now: number; onMap?: OnMap; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void; onOpenNetworks?: (ticker: string) => void }) {
   if (props.card.kind === "deal_proforma") return <ProformaCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenDeal} />;
   if (props.card.kind === "ground_change") return <GroundCard card={props.card} index={props.index} now={props.now} onMap={props.onMap} />;
   if (props.card.kind === "filing_change") return <FilingCard card={props.card} index={props.index} now={props.now} onOpen={props.onOpenRadar} />;

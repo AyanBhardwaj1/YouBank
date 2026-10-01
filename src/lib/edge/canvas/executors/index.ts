@@ -4,6 +4,7 @@
  */
 import "./sources";
 import "./earth";
+import "./terrain";
 import "./documents";
 import "./networks";
 import "./scenarios";

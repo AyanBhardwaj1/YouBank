@@ -2,13 +2,16 @@
 
 /**
  * The map-anchored network: companies at their headquarters (located from their EDGAR address), their
- * processing plants from Earth's maps, and the links between located companies drawn as arcs. People
+ * processing plants from Earth's maps, and the links between located companies drawn as arcs; in 3D
+ * the map tilts and each deal, stake or supply link rises as an arc (deck.gl, loaded only then). People
  * and funds have no place, so they stay in the force view. Loaded only when chosen (MapLibre is large).
  */
-import maplibregl, { type GeoJSONSource, type Map as MLMap } from "maplibre-gl";
+import maplibregl, { type GeoJSONSource, type IControl, type Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { Box } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MapBoundary } from "../EarthMap";
+import { tilt } from "../tilt";
 import { LINK_COLOR, LINK_LABEL, NODE_COLOR, type MapData } from "./client";
 
 type GeoData = Parameters<GeoJSONSource["setData"]>[0];
@@ -29,10 +32,22 @@ export function arc(a: [number, number], b: [number, number], steps = 24): [numb
   return Array.from({ length: steps + 1 }, (_, i) => { const t = i / steps, u = 1 - t; return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]] as [number, number]; });
 }
 
+/** "#46B3C9" as [70, 179, 201]. Pure. */
+export function rgbOf(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  return Number.isFinite(n) ? [(n >> 16) & 255, (n >> 8) & 255, n & 255] : [136, 136, 136];
+}
+
+type Arc3D = { from: [number, number]; to: [number, number]; color: [number, number, number]; label: string };
+type Overlay = IControl & { setProps: (p: Record<string, unknown>) => void };
+
 function Canvas({ data, focus }: { data: MapData; focus: number }) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<MLMap | null>(null);
+  const overlay = useRef<Overlay | null>(null);
   const [ready, setReady] = useState(false);
+  const [threeD, setThreeD] = useState(false);
+  const [arcError, setArcError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!el.current) return;
@@ -55,7 +70,7 @@ function Canvas({ data, focus }: { data: MapData; focus: number }) {
     if (!m.getLayer("net-plants")) m.addLayer({ id: "net-plants", type: "circle", source: "net-plants", paint: { "circle-radius": 2.6, "circle-color": "#4FB286", "circle-opacity": 0.8 } });
     if (!m.getLayer("net-points")) {
       m.addLayer({ id: "net-points", type: "circle", source: "net-points", paint: { "circle-radius": ["case", ["==", ["get", "focus"], 1], 9, 6], "circle-color": ["get", "color"], "circle-stroke-width": 1.5, "circle-stroke-color": isDark() ? "#0a0c0f" : "#ffffff" } });
-      m.addLayer({ id: "net-labels", type: "symbol", source: "net-points", layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.2], "text-anchor": "top" }, paint: { "text-color": isDark() ? "#e6e8eb" : "#1d2430", "text-halo-color": isDark() ? "#0a0c0f" : "#ffffff", "text-halo-width": 1.4 } });
+      m.addLayer({ id: "net-labels", type: "symbol", source: "net-points", layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Regular"], "text-size": 11, "text-offset": [0, 1.2], "text-anchor": "top" }, paint: { "text-color": isDark() ? "#e6e8eb" : "#1d2430", "text-halo-color": isDark() ? "#0a0c0f" : "#ffffff", "text-halo-width": 1.4 } });
       const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
       const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
       for (const layer of ["net-points", "net-plants", "net-arcs"]) {
@@ -70,10 +85,53 @@ function Canvas({ data, focus }: { data: MapData; focus: number }) {
     }
   }, [data, focus, ready]);
 
+  // 3D: tilt the map and raise every located link as an arc; flat again when off.
+  useEffect(() => {
+    const m = map.current;
+    if (!m || !ready) return;
+    let live = true;
+    if (!threeD) {
+      if (overlay.current) { m.removeControl(overlay.current); overlay.current = null; }
+      if (m.getLayer("net-arcs")) m.setLayoutProperty("net-arcs", "visibility", "visible");
+      if (m.getPitch() > 0) tilt(m, 0, 0);
+      return;
+    }
+    const located = new Map(data.nodes.filter((n) => typeof n.lon === "number" && typeof n.lat === "number").map((n) => [n.id, n]));
+    const arcs: Arc3D[] = data.links.filter((l) => located.has(l.s) && located.has(l.d) && l.s !== l.d).map((l) => {
+      const a = located.get(l.s)!, b = located.get(l.d)!;
+      return { from: [a.lon!, a.lat!], to: [b.lon!, b.lat!], color: rgbOf(LINK_COLOR[l.kind] ?? "#888888"), label: l.label };
+    });
+    void Promise.all([import("@deck.gl/mapbox"), import("@deck.gl/layers")]).then(([{ MapboxOverlay }, { ArcLayer }]) => {
+      if (!live || !map.current) return;
+      const layer = new ArcLayer<Arc3D>({
+        id: "net-arcs-3d", data: arcs, pickable: true, greatCircle: false, widthUnits: "pixels", getWidth: 2.5, getHeight: 0.55,
+        getSourcePosition: (d) => d.from, getTargetPosition: (d) => d.to, getSourceColor: (d) => [...d.color, 230], getTargetColor: (d) => [...d.color, 140],
+      });
+      if (overlay.current) overlay.current.setProps({ layers: [layer] });
+      else {
+        // Its own canvas over the map, kept in step with the camera; sharing MapLibre's context stalls its redraws.
+        overlay.current = new MapboxOverlay({ interleaved: false, layers: [layer], getTooltip: ({ object }: { object?: Arc3D }) => (object ? { text: object.label } : null) }) as unknown as Overlay;
+        map.current.addControl(overlay.current);
+      }
+      if (map.current.getLayer("net-arcs")) map.current.setLayoutProperty("net-arcs", "visibility", "none");
+      const dark = isDark();
+      map.current.setSky({ "sky-color": dark ? "#0b1322" : "#a9cdee", "horizon-color": dark ? "#1c2838" : "#e6eef6", "fog-color": dark ? "#0b1322" : "#eef2f6", "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.5, "fog-ground-blend": 0.4, "atmosphere-blend": 0.7 });
+      if (map.current.getPitch() < 20) tilt(map.current, 55, -15);
+    }).catch(() => { if (live) { setArcError("This browser could not draw the 3D arcs."); setThreeD(false); } });
+    return () => { live = false; };
+  }, [threeD, ready, data]);
+
   const kinds = [...new Set(data.links.map((l) => l.kind))];
   return (
     <div className="relative h-[520px] w-full overflow-hidden rounded-lg border border-line">
-      <div ref={el} className="absolute inset-0" />
+      <div ref={el} className="h-full w-full" />
+      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1">
+        <button type="button" onClick={() => { setArcError(null); setThreeD((v) => !v); }} aria-pressed={threeD} title={threeD ? "Back to the flat map" : "Tilt the map and raise each link as an arc (drag with the right button to turn)"}
+          className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow ${threeD ? "border-accent/60 bg-panel/95 text-accent" : "border-line bg-panel/90 text-muted hover:text-fg"}`}>
+          <Box className="h-3.5 w-3.5" /> 3D
+        </button>
+        {arcError && <span className="rounded bg-panel/95 px-2 py-0.5 text-[10.5px] text-neg">{arcError}</span>}
+      </div>
       <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-panel/85 px-2 py-1 text-[10.5px] text-muted">
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ background: NODE_COLOR.company }} />Headquarters</span>
         {data.plants.length > 0 && <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#4FB286]" />Processing plants</span>}

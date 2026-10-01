@@ -54,7 +54,10 @@ export function evidenceOf(kind: Kind | string, v: unknown): Evidence[] {
     }
     case "table": {
       const t = v as Table;
-      return [{ label: `${t.synthetic ? "SYNTHETIC " : ""}table${t.title ? `: ${t.title}` : ""}`, text: `${t.rows.length} rows; columns ${t.columns.map((c) => c.name).join(", ")}.${t.synthetic ? ` Synthetic (${t.synthetic.recipe}, seed ${t.synthetic.seed}).` : ""}`, synthetic: !!t.synthetic }];
+      const head = { label: `${t.synthetic ? "SYNTHETIC " : ""}table${t.title ? `: ${t.title}` : ""}`, text: `${t.rows.length} rows; columns ${t.columns.map((c) => c.name).join(", ")}.${t.synthetic ? ` Synthetic (${t.synthetic.recipe}, seed ${t.synthetic.seed}).` : ""}`, synthetic: !!t.synthetic };
+      // A short table's rows are evidence in themselves (a terrain reading, a ranking someone typed in).
+      const rows = t.rows.length <= 50 ? t.rows.slice(0, 8).map((r, i) => ({ label: `${t.title ?? "Table"}, row ${i + 1}`, text: t.columns.map((c, j) => `${c.name}: ${r[j] ?? ""}`).join("; "), synthetic: !!t.synthetic })) : [];
+      return [head, ...rows];
     }
     case "memo": { const m = v as Memo; return [{ label: m.title, text: m.markdown.slice(0, 1500) }]; }
     case "signal": { const s = v as Signal; return [{ label: `Signal: ${s.metric}`, text: `${s.value}${s.triggered ? " (crossed its line)" : ""}. ${s.detail}` }]; }

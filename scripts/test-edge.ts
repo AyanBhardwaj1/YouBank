@@ -52,6 +52,9 @@ import { studioTarget } from "@/lib/edge/canvas/executors/studio";
 import type { StudioDocData } from "@/lib/studio/types";
 import { peopleAt, plainRegistrant } from "@/lib/edge/crm";
 import { introBrief } from "@/lib/edge/intros";
+import { cellSize, components, densify, levelling, maskFromOverlay, parseNpy, profileStats, quantileSorted, rankBelow, readSite, sampleGrid, slopeDegrees, type Grid } from "@/lib/edge/terrain";
+import { hexagon, positionWords } from "@/lib/edge/terrain-view";
+import { overlayPng, type ChangeResult } from "@/lib/edge/change";
 import { composeSections, sectionTitle } from "@/lib/edge/story";
 import { starterTemplate } from "@/lib/edge/onboard";
 import { z } from "zod";
@@ -516,6 +519,57 @@ async function main() {
     check("an intro request asks the contact, or the teammate who knows them, and gives the path", introBrief(intro, "Targa", null).startsWith("Ask Ann whether") && introBrief(intro, "Targa", null).includes("Ann Lee is a director of Targa") && introBrief(intro, "Targa", "Sam").startsWith("Ask Sam, a teammate, to introduce me to Ann Lee (Acme)"));
     check("a Studio target is an id or a Studio link", studioTarget("12") === 12 && studioTarget("https://youbank.app/app/studio/45") === 45 && studioTarget("") === null && studioTarget("new") === null);
     check("a deal's what-if link round-trips and keeps to known places", whatIfFrom("ET, TRGP", "mars")?.parties.join() === "ET,TRGP" && whatIfFrom("ET, TRGP", "mars")?.place === "permian" && whatIfFrom("ET", "permian") === null && whatIfUrl(["ET", "Targa Resources"], "delaware") === "/app/edge?view=whatif&parties=ET%2CTarga%20Resources&place=delaware");
+  }
+
+  {
+    console.log("terrain and 3D");
+    const npy = (shape: number[], values: number[]) => {
+      let header = `{'descr': '<f4', 'fortran_order': False, 'shape': (${shape.join(", ")}), }`;
+      header += " ".repeat((64 - ((10 + header.length + 1) % 64)) % 64) + "\n";
+      const buf = new Uint8Array(10 + header.length + values.length * 4);
+      buf.set([0x93, ...Buffer.from("NUMPY"), 1, 0], 0);
+      const dv = new DataView(buf.buffer);
+      dv.setUint16(8, header.length, true);
+      buf.set(Buffer.from(header), 10);
+      values.forEach((v, i) => dv.setFloat32(10 + header.length + i * 4, v, true));
+      return buf;
+    };
+    const arr = parseNpy(npy([2, 1, 3], [871.5, 872, 873.25, 255, 0, 255]));
+    check("the elevation API's NumPy arrays are read with their shape and mask band", arr.shape.join() === "2,1,3" && arr.data[2] === 873.25 && arr.data[4] === 0);
+    const c = cellSize([0, 0, 0.01, 0.01], 10, 10);
+    check("cells are measured in metres at the box's latitude", Math.abs(c.x - 111.32) < 0.1 && Math.abs(c.y - 110.574) < 0.1);
+    const W = 8, tilt = Math.tan((10 * Math.PI) / 180);
+    const plane = { width: W, height: W, cell: { x: 10, y: 10 }, valid: new Uint8Array(W * W).fill(1), z: Float32Array.from({ length: W * W }, (_, i) => (i % W) * 10 * tilt) };
+    const sl = slopeDegrees(plane);
+    check("slope on a plane tilted 10° reads 10° inside and nothing at the edge", Math.abs(sl[3 * W + 3] - 10) < 0.01 && Number.isNaN(sl[0]));
+    const lv = levelling([0, 2, 4, 6], 2);
+    check("levelling balances cut and fill at the mean ground level", lv.level === 3 && lv.cut === 8 && lv.fill === 8);
+    const m5 = new Uint8Array(25); m5[0] = 1; m5[6] = 1; m5[12] = 1; m5[24] = 1; m5[4] = 2;
+    check("change outlines group by touching cells (corners count), largest first", components(m5, 5, 5, 1, 1).map((b) => b.length).join() === "3,1" && components(m5, 5, 5, 1, 2).length === 1);
+    const back = maskFromOverlay(`data:image/png;base64,${overlayPng({ width: 4, height: 1, mask: Uint8Array.from([0, 1, 2, 1]) } as unknown as ChangeResult).toString("base64")}`);
+    check("a ground change's overlay reads back as its mask", Array.from(back.mask).join() === "0,1,2,1" && back.width === 4);
+    const pts = densify([[[0, 0], [0.01, 0]]], 100);
+    check("a line is sampled every 100 m to its end", pts.length === 13 && Math.abs(pts[1].km - 0.1) < 1e-9 && Math.abs(pts[pts.length - 1].km - 1.11195) < 0.001, pts.map((p) => p.km));
+    const ps = profileStats([0, 1, 2, 3, 4], [100, 110, 105, 105.5, 104.6], 1);
+    check("a profile's climb and descent ignore wiggles under the noise", ps.climb === 10 && ps.descent === 5 && ps.steepest.gradePct === 1, ps);
+    const g4 = { bbox: [0, 0, 2, 2] as [number, number, number, number], width: 2, height: 2, z: Float32Array.from([0, 10, 20, 30]), valid: new Uint8Array(4).fill(1) };
+    check("elevation between cells is interpolated", sampleGrid(g4, 1, 1) === 15 && sampleGrid(g4, 5, 5) === null);
+    check("quantiles and ranks on sorted values", quantileSorted([1, 2, 3, 4, 5], 0.5) === 3 && rankBelow([1, 2, 3, 4], 3) === 0.5);
+    const G = 48;
+    const grid: Grid = {
+      bbox: [-103.9, 31.8, -103.89, 31.81], width: G, height: G, cell: { x: 10, y: 10 }, valid: new Uint8Array(G * G).fill(1), z: Float32Array.from({ length: G * G }, (_, i) => (i % G) * 10 * tilt), coverage: 1,
+      source: { key: "lidar", name: "USGS 3DEP lidar", resolutionM: 2, vintage: "flown 2018 (TX_Test_2018)", accuracy: "about ±0.2 m", license: "Public domain", url: "", items: ["x"] },
+    };
+    const mask24 = new Uint8Array(24 * 24);
+    for (let y = 8; y < 13; y++) for (let x = 8; x < 13; x++) mask24[y * 24 + x] = 1;
+    const site = readSite(grid, { mask: mask24, width: 24, height: 24 }, { lon: -103.895, lat: 31.805 }, { changedAfter: "2025-03-01", image: false });
+    const pad = site.pads[0];
+    check("a site's new pad on a slope: its ground, slope, cut equal to fill, and where it sits", site.pads.length === 1 && pad.kind === "cleared" && pad.cutM3 === pad.fillM3 && (pad.cutM3 ?? 0) > 0 && Math.abs(pad.slopeDeg - 10) < 0.5 && pad.position > 0.3 && pad.position < 0.7 && site.earthwork?.hectares === pad.hectares, pad);
+    check("a survey older than the change raises no warning; a newer one does", !site.notes.some((n) => n.includes("may be after")) && readSite(grid, null, null, { changedAfter: "2017-01-01", image: false }).notes.some((n) => n.includes("may be after")));
+    const hx = hexagon(-103.9, 31.8, 1000);
+    const dx = (hx[0][0] + 103.9) * 111_320 * Math.cos((31.8 * Math.PI) / 180), dy = (hx[0][1] - 31.8) * 110_574;
+    check("a plant's column is a closed hexagon of the right radius", hx.length === 7 && hx[0] === hx[6] && Math.abs(Math.hypot(dx, dy) - 1000) < 1);
+    check("where a site sits is said in words", positionWords(0.1).startsWith("low-lying") && positionWords(0.9).startsWith("on high ground") && positionWords(0.5).startsWith("mid-slope"));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
