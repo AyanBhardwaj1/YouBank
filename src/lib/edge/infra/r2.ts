@@ -27,10 +27,22 @@ function aws(): AwsClient {
 const base = () => { const e = env(); return `https://${e.account}.r2.cloudflarestorage.com/${e.bucket}`; };
 const objectUrl = (key: string) => `${base()}/${key.split("/").map(encodeURIComponent).join("/")}`;
 
+/**
+ * One signed request, retried on 5xx and 429. The signed headers go out with the original body, not as
+ * a Request object: Next.js rebuilds a Request passed to fetch with its body as a stream, which drops
+ * Content-Length, and R2 refuses an upload without it (411).
+ */
 async function call(url: string, init: RequestInit & { timeoutMs?: number }, op: "a" | "b" | "free"): Promise<Response> {
-  const res = await aws().fetch(url, { ...init, signal: AbortSignal.timeout(init.timeoutMs ?? 30_000) });
+  const { timeoutMs, ...rest } = init;
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const signed = await aws().sign(url, rest);
+    res = await fetch(signed.url, { method: signed.method, headers: signed.headers, body: rest.body ?? undefined, cache: "no-store", signal: AbortSignal.timeout(timeoutMs ?? 30_000) });
+    if (res.status < 500 && res.status !== 429) break;
+    if (attempt < 2) { await res.body?.cancel().catch(() => undefined); await new Promise((r) => setTimeout(r, 250 * 2 ** attempt)); }
+  }
   if (op !== "free") addUsage("r2", op === "a" ? "class_a" : "class_b", 1);
-  return res;
+  return res!;
 }
 
 async function fail(res: Response, what: string): Promise<never> {
@@ -66,7 +78,8 @@ export async function getJson<T>(key: string): Promise<T | null> {
 }
 
 export async function headObject(key: string): Promise<{ bytes: number; type: string } | null> {
-  const res = await call(objectUrl(key), { method: "HEAD" }, "b");
+  // Asked for uncompressed, so R2 states the object's real size.
+  const res = await call(objectUrl(key), { method: "HEAD", headers: { "accept-encoding": "identity" } }, "b");
   if (res.status === 404) return null;
   if (!res.ok) await fail(res, `head ${key}`);
   return { bytes: Number(res.headers.get("content-length") ?? 0), type: res.headers.get("content-type") ?? "" };
