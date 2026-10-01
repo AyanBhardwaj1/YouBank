@@ -8,11 +8,14 @@
 import { Check, Loader2, Radar, X } from "lucide-react";
 import { useState } from "react";
 import { post, useApi } from "@/components/news/client";
+import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 
 type Pending = { id: number; title: string; kind: string; source: string; createdAt: string; mine: boolean; text: string; sheets: string[]; slides: string[] };
 
 export function EdgePushes({ docId, onAccepted }: { docId: number; onAccepted?: (label: string) => void }) {
-  const { data, reload } = useApi<{ pushes: Pending[] }>(`/api/edge/pushes?doc=${docId}`, 60_000);
+  // People with the Edge beta check every minute; teammates without it see what is waiting when they open the model.
+  const { edge } = useWorkspace();
+  const { data, reload } = useApi<{ pushes: Pending[] }>(`/api/edge/pushes?doc=${docId}`, edge ? 60_000 : 0);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (!data?.pushes.length) return null;
