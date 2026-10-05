@@ -206,7 +206,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <span className="min-w-0 truncate text-[10.5px] text-muted">{selRange(sel)} on {sheet.name}</span>
               {st.agent.running
                 ? <button type="button" onClick={st.stop} className="ml-auto ctl border border-neg/50 px-2.5 py-1 text-[11.5px] text-neg max-md:min-h-10 max-md:px-5">Stop</button>
-                : <button type="button" disabled={!prompt.trim()} onClick={() => runPrompt(prompt)} className="ml-auto ctl bg-accent px-3 py-1 text-[11.5px] font-semibold text-bg disabled:opacity-40 max-md:min-h-10 max-md:px-5">Run<span className="max-md:hidden"> ⌘↵</span></button>}
+                : <button type="button" disabled={!prompt.trim()} onClick={() => runPrompt(prompt)} className="ml-auto shrink-0 whitespace-nowrap ctl bg-accent px-3 py-1 text-[11.5px] font-semibold text-bg disabled:opacity-40 max-md:min-h-10 max-md:px-5">Run<span className="max-md:hidden"> ⌘↵</span></button>}
             </div>
           </div>
         </>
