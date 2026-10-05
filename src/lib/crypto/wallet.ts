@@ -27,27 +27,34 @@ export type Activity = { chain: ChainKey; hash: string; at: string; direction: "
 
 /** ENS name to address, on Ethereum. */
 export async function resolveEns(name: string): Promise<string> {
-  const addr = await cacheJson(`crypto:ens:${name}`, 60 * MIN, async () => (await evmClient("ethereum").getEnsAddress({ name: normalize(name) })) ?? "").catch(() => "");
+  let addr: string;
+  try { addr = await cacheJson(`crypto:ens:${name}`, 60 * MIN, async () => (await evmClient("ethereum").getEnsAddress({ name: normalize(name) })) ?? ""); }
+  catch { throw new CryptoDataError("Could not look up that ENS name just now. Try again in a minute."); }
   if (!addr) throw new CryptoDataError(`${name} does not resolve to an address.`, 404);
   return getAddress(addr);
 }
 
-async function evmBalances(address: `0x${string}`): Promise<Balance[]> {
+/** Balances on every EVM chain, and the chains whose node did not answer. Throws when none did. */
+async function evmBalances(address: `0x${string}`): Promise<{ balances: Balance[]; missed: string[] }> {
   const out: Balance[] = [];
+  const missed: string[] = [];
   await Promise.all(EVM_CHAINS.map(async (key) => {
     if (!isEvmKey(key)) return;
     const c = CHAINS[key], client = evmClient(key);
     const [native, tokens] = await Promise.all([
       client.getBalance({ address }).catch(() => null),
-      client.multicall({ contracts: c.tokens.map((t) => ({ address: t.address as `0x${string}`, abi: erc20Abi, functionName: "balanceOf" as const, args: [address] as const })), allowFailure: true }).catch(() => []),
+      client.multicall({ contracts: c.tokens.map((t) => ({ address: t.address as `0x${string}`, abi: erc20Abi, functionName: "balanceOf" as const, args: [address] as const })), allowFailure: true }).catch(() => null),
     ]);
+    // With allowFailure, a dead node comes back as a failure per call rather than an exception.
+    if (native === null && (tokens === null || tokens.every((r) => r.status === "failure"))) { missed.push(c.name); return; }
     if (native && native > BigInt(0)) out.push({ chain: key, symbol: c.native.symbol, name: `${c.native.symbol} on ${c.name}`, asset: c.native.coingecko, quantity: Number(formatUnits(native, c.native.decimals)), stable: false });
-    tokens.forEach((r, i) => {
+    (tokens ?? []).forEach((r, i) => {
       const t = c.tokens[i];
       if (r && r.status === "success" && typeof r.result === "bigint" && r.result > BigInt(0)) out.push({ chain: key, symbol: t.symbol, name: t.name, asset: t.coingecko, quantity: Number(formatUnits(r.result, t.decimals)), stable: !!t.stable });
     });
   }));
-  return out;
+  if (missed.length === EVM_CHAINS.length) throw new CryptoDataError("The public nodes for Ethereum and its L2s are not answering right now. Try again in a minute.");
+  return { balances: out, missed };
 }
 
 async function btcBalance(address: string): Promise<Balance[]> {
@@ -81,7 +88,7 @@ async function solBalances(address: string): Promise<{ balances: Balance[]; unpr
 }
 
 export type WalletView = {
-  wallets: { input: string; address: string; kind: string; label: string; error?: string }[];
+  wallets: { input: string; address: string; kind: string; label: string; error?: string; warning?: string }[];
   holdings: Holding[];
   risk: RiskView;
   unpricedTokens: number;
@@ -91,11 +98,11 @@ export type WalletView = {
 };
 
 /** Balances of one address on every chain it can live on, cached two minutes. */
-async function balancesOf(kind: string, address: string): Promise<{ balances: Balance[]; unpriced: number }> {
-  return cacheJson(`crypto:wallet:v1:${address.toLowerCase()}`, 2 * MIN, async () => {
-    if (kind === "evm") return { balances: await evmBalances(address as `0x${string}`), unpriced: 0 };
-    if (kind === "bitcoin") return { balances: await btcBalance(address), unpriced: 0 };
-    return solBalances(address);
+async function balancesOf(kind: string, address: string): Promise<{ balances: Balance[]; unpriced: number; missed: string[] }> {
+  return cacheJson(`crypto:wallet:v2:${address.toLowerCase()}`, 2 * MIN, async () => {
+    if (kind === "evm") return { ...(await evmBalances(address as `0x${string}`)), unpriced: 0 };
+    if (kind === "bitcoin") return { balances: await btcBalance(address), unpriced: 0, missed: [] };
+    return { ...(await solBalances(address)), missed: [] };
   });
 }
 
@@ -113,7 +120,7 @@ export async function walletView(inputs: WalletInput[], costs: Record<string, nu
       const kind = p.kind === "ens" ? "evm" : p.kind;
       const b = await balancesOf(kind, address);
       all.push(...b.balances); unpriced += b.unpriced;
-      wallets.push({ input: w.address, address, kind, label: w.label ?? "" });
+      wallets.push({ input: w.address, address, kind, label: w.label ?? "", ...(b.missed.length ? { warning: `${b.missed.join(", ")} did not answer, so balances there are missing` } : {}) });
       activity.push(...(await recentActivity(kind, address).catch(() => [])));
     } catch (e) {
       wallets.push({ input: w.address, address: p.address, kind: p.kind, label: w.label ?? "", error: e instanceof CryptoDataError ? e.message : "Could not read this address just now" });

@@ -563,7 +563,7 @@ export function WalletScreen({ arg }: Props) {
       const res = await fetch(`/api/crypto/wallet?address=${encodeURIComponent(a.trim())}`);
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Could not read that address");
-      setView({ busy: false, data: j.view ?? undefined, error: j.view?.wallets?.[0]?.error });
+      setView({ busy: false, data: j.view?.wallets?.[0]?.error ? undefined : j.view ?? undefined, error: j.view?.wallets?.[0]?.error });
     } catch (e) { setView({ busy: false, error: e instanceof Error ? e.message : "Could not read that address" }); }
   };
   // WALLET <address> reads the address once when the panel opens.
@@ -600,6 +600,7 @@ export function PortfolioBody({ view: v, extra }: { view: WalletView; extra?: Re
         <Tile label="Volatility, 1 year" value={fp(r.vol, 0)} sub={r.historyCoverage < 1 ? `${fp(r.historyCoverage, 0)} of risky value covered` : "at today's weights"} />
         <Tile label="1-day VaR, 95%" value={ok(r.var95) ? usd(r.var95 * r.totalUsd) : "—"} sub={ok(r.var95) ? `${fp(r.var95)}; worst 5% average ${fp(r.es95)}` : undefined} subTone="text-neg" />
       </Tiles>
+      {v.wallets.filter((w) => w.error || w.warning).map((w) => <p key={w.input} className={`text-[11px] ${w.error ? "text-neg" : "text-chart-emphasis"}`}>{w.label || shortAddress(w.address || w.input)}: {w.error ?? w.warning}.</p>)}
       {r.pnl && <div className="rounded-md border border-line bg-elevated/40 px-2.5 py-1.5 text-[11.5px]">Profit and loss on the {fp(r.pnl.covered, 0)} of value you entered a cost for: <span className={`num font-semibold ${tone(r.pnl.gainUsd)}`}>{usd(r.pnl.gainUsd)} ({fsp(r.pnl.gainPct)})</span> on a cost of {usd(r.pnl.costUsd)}.</div>}
       {extra}
       <div className="grid gap-4 @4xl:grid-cols-[2fr_1fr]">

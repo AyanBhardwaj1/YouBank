@@ -15,9 +15,11 @@ export async function GET(req: Request) {
   return guarded(async (user) => {
     const q = new URL(req.url).searchParams;
     const one = q.get("address")?.trim();
+    // A pasted address is read as is: no saved rows needed (WALLET in the terminal works this way).
+    if (one) return NextResponse.json({ addresses: [], costs: {}, view: await walletView([{ address: one.slice(0, 120) }]) }, { headers: { "cache-control": "no-store" } });
     const role = q.get("role") === "watch" ? "watch" : "own";
     const [saved, costs] = await Promise.all([listAddresses(user.id), costsFor(user.id)]);
-    const inputs = one ? [{ address: one.slice(0, 120) }] : saved.filter((a) => a.role === role).map((a) => ({ address: a.address, label: a.label }));
+    const inputs = saved.filter((a) => a.role === role).map((a) => ({ address: a.address, label: a.label }));
     const view = inputs.length ? await walletView(inputs, role === "own" ? costs : {}) : null;
     return NextResponse.json({ addresses: saved, costs, view }, { headers: { "cache-control": "no-store" } });
   });
