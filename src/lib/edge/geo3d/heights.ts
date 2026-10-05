@@ -20,7 +20,8 @@ export function tileXY(lon: number, lat: number, z: number): [number, number] {
   return [((lon + 180) / 360) * n, ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n];
 }
 
-export type GroundGrid = { bbox: Bbox; width: number; height: number; z: number[]; zoom: number };
+/** `missing`: elevation tiles that did not load (their part of the grid is a flat stand-in). */
+export type GroundGrid = { bbox: Bbox; width: number; height: number; z: number[]; zoom: number; missing?: number };
 
 /** Height at a point of a ground grid by bilinear interpolation (cells are samples at cell centres). Pure. */
 export function heightAt(g: GroundGrid, lon: number, lat: number): number {

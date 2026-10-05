@@ -31,8 +31,11 @@ export async function groundGrid(bbox: Bbox, size = 64, zoom = 14): Promise<Grou
   await Promise.all(
     Array.from({ length: (tx1 - tx0 + 1) * (ty1 - ty0 + 1) }, (_, i) => [tx0 + (i % (tx1 - tx0 + 1)), ty0 + Math.floor(i / (tx1 - tx0 + 1))]).map(async ([x, y]) => {
       const url = TERRARIUM_TILES.replace("{z}", String(zoom)).replace("{x}", String(x)).replace("{y}", String(y));
-      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
-      tiles.set(`${x}/${y}`, res?.ok ? decodeTerrarium(Buffer.from(await res.arrayBuffer())) : null);
+      // A tile that does not arrive (or arrives broken) is a gap, not a failed twin.
+      const heights = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) })
+        .then(async (res) => (res.ok ? decodeTerrarium(Buffer.from(await res.arrayBuffer())) : null))
+        .catch(() => null);
+      tiles.set(`${x}/${y}`, heights);
     }),
   );
   const z: number[] = new Array(size * size).fill(Number.NaN);
@@ -47,6 +50,7 @@ export async function groundGrid(bbox: Bbox, size = 64, zoom = 14): Promise<Grou
     }
   }
   fillGaps(z);
-  return { bbox, width: size, height: size, z, zoom };
+  const missing = [...tiles.values()].filter((t) => !t).length;
+  return { bbox, width: size, height: size, z, zoom, ...(missing ? { missing } : {}) };
 }
 

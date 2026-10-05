@@ -186,6 +186,8 @@ async function twinBase(at: { lon: number; lat: number; name: string }): Promise
     eiaPipelines(bbox).catch(() => []),
     surveysAt(at.lon, at.lat).catch(() => []),
   ]);
+  // Elevation tiles that did not load leave flat ground under the models: keep such a twin an hour, not a week.
+  if (ground.missing) { partial = true; notes.push("Some of the ground's elevation tiles did not load, so models may not sit exactly on the terrain; try again later."); }
   const h = (lon: number, lat: number) => Math.round(heightAt(ground, lon, lat) * 10) / 10;
   const models = mergeModels(site, osm, h);
   const tubes: TwinTube[] = [
