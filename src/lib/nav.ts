@@ -41,10 +41,10 @@ export const FEATURES: NavFeature[] = [
     links: [tab("/app/vc", "tab", "directory", "Startup directory", true), tab("/app/vc", "tab", "formd", "Private raises")],
   },
   {
-    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, pipeline and follow-ups",
+    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",
     links: [
       tab("/app/crm", "tab", "drafts", "Review queue", true), tab("/app/crm", "tab", "inbox", "Inbox"), tab("/app/crm", "tab", "pipeline", "Pipeline"),
-      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
+      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "meetings", "Meetings"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
       tab("/app/crm", "tab", "nurture", "Nurture"), tab("/app/crm", "tab", "agent", "Agent & autopilot"),
     ],
   },

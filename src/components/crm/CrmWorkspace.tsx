@@ -12,6 +12,7 @@ import { CampaignsPanel } from "./CampaignsPanel";
 import { ContactsPanel } from "./ContactsPanel";
 import { InsightsPanel } from "./InsightsPanel";
 import { MailboxBar, type MailboxInfo } from "./MailboxBar";
+import { MeetingsPanel } from "./MeetingsPanel";
 import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
@@ -45,6 +46,7 @@ const TABS = [
   { id: "inbox", label: "Inbox", icon: "Mail" },
   { id: "pipeline", label: "Pipeline", icon: "Layers" },
   { id: "contacts", label: "Contacts", icon: "Users" },
+  { id: "meetings", label: "Meetings", icon: "Calendar" },
   { id: "insights", label: "Insights", icon: "Activity" },
   { id: "campaigns", label: "Campaigns", icon: "Target" },
   { id: "nurture", label: "Nurture", icon: "RefreshCw" },
@@ -78,8 +80,8 @@ function threadStatus(t: Thread): { label: string; tone: string } | null {
   return null;
 }
 
-export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab }: {
-  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null;
+export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab, initialMeeting = null }: {
+  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null; initialMeeting?: number | null;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
@@ -319,6 +321,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
       )}
 
       {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} /></div>}
+      {tab === "meetings" && <div className="mt-5"><MeetingsPanel ctx={ctx} initialMeeting={initialMeeting} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "insights" && <div className="mt-5"><InsightsPanel ctx={ctx} /></div>}
       {tab === "nurture" && <div className="mt-5"><NurturePanel ctx={ctx} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "campaigns" && <div className="mt-5"><CampaignsPanel ctx={ctx} onDrafted={() => undefined} /></div>}
