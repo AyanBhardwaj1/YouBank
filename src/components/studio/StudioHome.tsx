@@ -12,7 +12,7 @@ import { TEMPLATES, type TemplateId } from "@/lib/studio/templates";
 type DocItem = { id: number; title: string; kind: string; ticker: string; updatedAt: string; sheets: number; slides: number; mine: boolean; teamId: number | null };
 
 const ago = (iso: string) => { const s = (Date.now() - new Date(iso).getTime()) / 1000; return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)}m ago` : s < 86400 ? `${Math.round(s / 3600)}h ago` : `${Math.round(s / 86400)}d ago`; };
-const ICON: Record<string, string> = { dcf: "LineChart", comps: "Table", valuation: "Presentation", lbo: "Landmark", merger: "Handshake", cap_table: "PieChart", blank: "FileSpreadsheet", upload: "Upload" };
+const ICON: Record<string, string> = { dcf: "LineChart", comps: "Table", valuation: "Presentation", lbo: "Landmark", merger: "Handshake", cap_table: "PieChart", blank: "FileSpreadsheet", upload: "Upload", token_multiples: "Coins", token_dcf: "LineChart", staking_yield: "Percent", crypto_comps: "Table" };
 
 export function StudioHome() {
   const router = useRouter();

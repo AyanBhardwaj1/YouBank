@@ -6,6 +6,7 @@ import { validSnapshot, workbookFromSnapshot } from "@/lib/studio/sync";
 import { emptyDeck } from "@/lib/studio/types";
 import { jsonBody } from "@/lib/office/body";
 import { TEMPLATES, type TemplateId } from "@/lib/studio/templates";
+import { isCryptoTemplate } from "@/lib/studio/crypto-templates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,8 +31,10 @@ export async function POST(req: Request) {
     }
     const template = (TEMPLATES.some((t) => t.id === body.template) ? body.template : "blank") as TemplateId;
     const ticker = body.ticker?.trim().toUpperCase().replace(/[^A-Z.\-]/g, "").slice(0, 10) || null;
+    // Crypto templates take a token symbol or CoinGecko id ("1INCH", "uniswap"), digits and case kept.
+    const token = isCryptoTemplate(template) ? body.ticker?.trim().replace(/[^A-Za-z0-9.\-]/g, "").slice(0, 60) || null : null;
     if (TEMPLATES.find((t) => t.id === template)?.ticker && template === "comps" && !ticker) return NextResponse.json({ error: "Trading comps need a ticker" }, { status: 400 });
-    const d = await newDocument(template, { ticker, peers: body.peers?.slice(0, 14), acquirer: body.acquirer?.trim().toUpperCase() || null, title: body.title?.trim() });
+    const d = await newDocument(template, { ticker: token ?? ticker, peers: body.peers?.slice(0, 14), acquirer: body.acquirer?.trim().toUpperCase() || null, title: body.title?.trim() });
     const row = await createDoc(user, { ...d, kind: template, ticker: ticker ?? "", teamId: body.teamId ?? null });
     return NextResponse.json({ id: row.id, notes: d.notes });
   });
