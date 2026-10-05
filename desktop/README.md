@@ -228,8 +228,9 @@ the email agent's status and watch checks every few hours. A run that fails wait
   paths on the configured site).
 - **Navigation.** The main window only loads the configured site, the app's own pages and the sign-in
   pages the site hands off to (Google and Neon Auth, over https). Other links open in the browser.
-  `file:`, `data:` and other schemes are refused. Downloads go to the Downloads folder without
-  overwriting anything.
+  `file:`, `javascript:` and other schemes are refused (`blob:` and `data:` are allowed for the site's
+  own CSV downloads; such pages match no capability, so they get no app commands). Downloads go to the
+  Downloads folder without overwriting anything.
 - **Consent.** Local files, Excel and PowerPoint, alerts and scheduled tasks each start with a screen
   saying exactly what they do, and stay off until accepted. The Rust side keeps anything without consent
   switched off whatever a page sends.

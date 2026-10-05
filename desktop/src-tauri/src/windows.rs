@@ -40,6 +40,9 @@ pub enum Nav {
 pub fn classify(url: &Url, site: &Url) -> Nav {
     match url.scheme() {
         "tauri" | "about" => return Nav::Allow,
+        // The site's own downloads (CSV exports built in the page). Such pages have no origin the
+        // capabilities match, so they get no app commands.
+        "blob" | "data" => return Nav::Allow,
         "http" | "https" => {}
         "mailto" | "tel" => return Nav::External,
         _ => return Nav::Block,
@@ -291,6 +294,8 @@ mod tests {
         assert_eq!(classify(&u("https://youbank-nu.vercel.app.evil.example/"), &site), Nav::External);
         assert_eq!(classify(&u("https://evilneon.tech/"), &site), Nav::External);
         assert_eq!(classify(&u("file:///etc/passwd"), &site), Nav::Block);
+        assert_eq!(classify(&u("javascript:alert(1)"), &site), Nav::Block);
+        assert_eq!(classify(&u("data:text/csv,a,b"), &site), Nav::Allow);
         assert_eq!(classify(&u("mailto:a@b.co"), &site), Nav::External);
     }
 }
