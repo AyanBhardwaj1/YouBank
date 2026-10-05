@@ -88,14 +88,14 @@ export function CapScreen({ company: c, onRun }: { company: CompanyData; onRun: 
                   </div>); })}
               </div>
             ) : <div className="text-[11px] text-muted">No principal maturity schedule tagged. Ask the AI to read the debt footnote.</div>}
-            <table className="num mt-3 w-full text-[11px]">
+            <div className="table-scroll"><table className="num mt-3 w-full text-[11px]">
               <tbody>
                 <tr className="border-b border-line/60"><td className="py-1 font-sans text-muted">Operating lease liability</td><td className="py-1 text-right">{view.opLease ? `$${fmtMoney(mm(view.opLease.value))}` : "n/a"}</td><td className="py-1 pl-3 text-right text-faint">{view.opLease?.end ?? ""}</td></tr>
                 <tr className="border-b border-line/60"><td className="py-1 font-sans text-muted">Finance lease liability</td><td className="py-1 text-right">{view.finLease ? `$${fmtMoney(mm(view.finLease.value))}` : "n/a"}</td><td className="py-1 pl-3 text-right text-faint">{view.finLease?.end ?? ""}</td></tr>
                 <tr className="border-b border-line/60"><td className="py-1 font-sans text-muted">Adj. EBITDA (ex-SBC)</td><td className="py-1 text-right">{view.adj !== null ? `$${fmtMoney(view.adj)}` : "n/a"}</td><td className="py-1 pl-3 text-right text-faint">LTM {c.ltm.periodEnd}</td></tr>
                 <tr><td className="py-1 font-sans text-muted">Free cash flow</td><td className="py-1 text-right">{d.fcf !== null ? `$${fmtMoney(d.fcf)}` : "n/a"}</td><td className="py-1 pl-3 text-right text-faint">LTM</td></tr>
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
       )}

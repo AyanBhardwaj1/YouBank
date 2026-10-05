@@ -64,7 +64,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
                   <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
                   <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : `${rows.length} names · click to open`}</span>
                 </div>
-                <div className="overflow-auto">
+                <div className="table-scroll overflow-auto">
                   <table className="w-full whitespace-nowrap text-[11.5px]">
                     <thead className="text-[10px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Ticker</th><th className="py-1 pr-3 text-right font-normal">Price</th><th className="py-1 pr-3 text-right font-normal">Today</th><th className="py-1 pr-3 text-right font-normal">EV/Rev</th><th className="py-1 pr-3 text-right font-normal">Growth</th><th className="py-1 pr-3 text-right font-normal">FCF margin</th><th className="py-1 pr-1 text-right font-normal">Revenue trend</th></tr></thead>
                     <tbody>

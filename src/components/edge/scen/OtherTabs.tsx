@@ -119,7 +119,7 @@ function TablePreview({ t, filled, max = 25 }: { t: TableIn; filled?: Filled[]; 
   const rows = filled?.length ? [...new Set(filled.map((f) => f.row))].slice(0, max).map((i) => ({ i, r: t.rows[i] })) : t.rows.slice(0, max).map((r, i) => ({ i, r }));
   const fmt = (v: unknown) => (typeof v === "number" ? (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-US") : Number(v.toFixed(3)).toString()) : String(v ?? ""));
   return (
-    <div className="max-h-[360px] overflow-auto rounded-md border border-line">
+    <div className="table-scroll max-h-[360px] overflow-auto rounded-md border border-line">
       <table className="w-full text-[11px]">
         <thead className="sticky top-0 bg-elevated"><tr>{t.columns.map((c) => <th key={c.name} className="whitespace-nowrap px-2 py-1 text-left font-sans font-semibold">{c.name}</th>)}</tr></thead>
         <tbody>{rows.map(({ i, r }) => (

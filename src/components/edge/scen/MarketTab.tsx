@@ -28,7 +28,7 @@ function NarrativePanel({ n }: { n: NarrativeResult }) {
   return (
     <div className="space-y-2 rounded-lg border border-line p-2.5 text-[11.5px]">
       <div className="flex flex-wrap items-baseline justify-between gap-2"><div className="text-[12px] font-semibold">Views from the narrative <span className="font-normal text-muted">(a small model&apos;s, checked against history)</span></div><span className="text-muted">The model puts it at about {Math.round(n.probability * 100)}% likely</span></div>
-      <div className="overflow-x-auto">
+      <div className="table-scroll overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead><tr className="text-left text-muted"><th className="font-normal">Factor</th><th className="text-right font-normal">As written</th><th className="text-right font-normal">Used</th><th className="text-right font-normal">Days</th><th className="pl-2 font-normal">Analog the model named</th></tr></thead>
           <tbody>{n.views.map((v) => (
@@ -99,7 +99,7 @@ export function MarketResultView({ r, id, status, onRefined }: { r: MarketResult
           <RealismPanel r={r.realism} note={r.driver === "none" ? undefined : "The scenario's own machinery on ordinary days (no shock) against the real last three years; the scenario itself is meant to be unusual."} />
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-line">
+      <div className="table-scroll overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-[11.5px]">
           <thead className="bg-elevated/50"><tr className="text-left"><th className="px-2 py-1 font-sans font-semibold">Ticker</th>{Object.keys(FACTOR_NAME).map((k) => <th key={k} className="px-2 py-1 text-right font-sans font-normal text-muted">β {FACTOR_NAME[k]}</th>)}<th className="px-2 py-1 text-right font-sans font-normal text-muted">Own vol</th><th className="px-2 py-1 text-right font-sans font-normal text-muted">R²</th><th className="px-2 py-1 text-right font-sans font-normal text-muted">Median</th><th className="px-2 py-1 text-right font-sans font-normal text-muted">5th pct</th></tr></thead>
           <tbody>{r.exposures.map((e) => { const f = r.summary.finals.find((x) => x.series === e.ticker); return (

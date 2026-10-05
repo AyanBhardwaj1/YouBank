@@ -137,20 +137,20 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">
-      <header className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-elevated/70 px-2.5">
+      <header className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-elevated/70 px-2.5 max-md:h-11">
         <div className="flex min-w-0 items-center gap-2">
           <span className="ctl bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold tracking-wider text-accent">{panel.fn}</span>
           {needsTicker(panel.fn) && panel.fn !== "TOOLS" && t && <span className="num font-semibold text-fg">{t}</span>}
           <span className="truncate text-muted" title={title}>{title}</span>
           {company?.ltm.periodEnd && NEEDS_COMPANY.has(panel.fn) && <span className="num hidden text-[10px] text-faint xl:inline">LTM {company.ltm.periodEnd}</span>}
         </div>
-        <div className="flex items-center gap-0.5 text-muted opacity-60 transition-opacity group-hover:opacity-100">
+        <div className="hover-reveal flex items-center gap-0.5 text-muted opacity-60 transition-opacity group-hover:opacity-100">
           <button type="button" onClick={onToggleMax} aria-label={maximized ? "Restore panel" : "Maximize panel"} title={maximized ? "Restore" : "Maximize"}
-            className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-fg">{maximized ? "⤡" : "⤢"}</button>
-          <button type="button" onClick={onClose} aria-label="Close panel" title="Close" className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-neg">×</button>
+            className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-fg max-md:h-10 max-md:w-10 max-md:text-[16px]">{maximized ? "⤡" : "⤢"}</button>
+          <button type="button" onClick={onClose} aria-label="Close panel" title="Close" className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-neg max-md:h-10 max-md:w-10 max-md:text-[18px]">×</button>
         </div>
       </header>
-      <div className="@container min-h-0 flex-1 overflow-auto">{body}</div>
+      <div className="@container scroll-touch min-h-0 flex-1 overflow-auto">{body}</div>
     </section>
   );
 }

@@ -70,15 +70,15 @@ function ProformaView({ v }: { v: ProformaValue }) {
       <div className="grid grid-cols-3 gap-2 text-center">
         {[["Processing", `${fmt(v.combined.capacityMMcfd)} MMcfd`], ["Share", `${Math.round(v.combined.capacityShare * 100)}%`], ["Pipeline", `${fmt(v.combined.pipelineKm)} km`]].map(([k, x]) => <div key={k} className="rounded-md bg-elevated/60 px-2 py-1.5"><div className="text-[10px] uppercase tracking-wider text-muted">{k}</div><div className="num text-[14px] font-semibold">{x}</div></div>)}
       </div>
-      <table className="w-full text-[11.5px]">
+      <div className="table-scroll"><table className="w-full text-[11.5px]">
         <thead><tr className="text-left text-[10.5px] text-muted"><th className="font-medium">Company</th><th className="text-right font-medium">Plants</th><th className="text-right font-medium">MMcfd</th><th className="text-right font-medium">Pipe km</th></tr></thead>
         <tbody>{v.parties.map((p) => <tr key={p.label} className="border-t border-line"><td className="py-0.5">{p.label}</td><td className="text-right">{p.plants}</td><td className="num text-right">{fmt(p.capacityMMcfd)}</td><td className="num text-right">{fmt(p.pipelineKm)}</td></tr>)}</tbody>
-      </table>
+      </table></div>
       {v.counties.length > 0 && (
-        <table className="w-full text-[11.5px]">
+        <div className="table-scroll"><table className="w-full text-[11.5px]">
           <thead><tr className="text-left text-[10.5px] text-muted"><th className="font-medium">County</th><th className="text-right font-medium">HHI before</th><th className="text-right font-medium">After</th><th className="text-right font-medium">Change</th></tr></thead>
           <tbody>{v.counties.slice(0, 10).map((c) => <tr key={c.name} className="border-t border-line"><td className="py-0.5">{c.name}{c.flag === "high" && <span className="ml-1 text-[10px] text-neg">screens high</span>}</td><td className="num text-right">{fmt(c.hhiBefore)}</td><td className="num text-right">{fmt(c.hhiAfter)}</td><td className="num text-right">{c.delta ? `+${fmt(c.delta)}` : "—"}</td></tr>)}</tbody>
-        </table>
+        </table></div>
       )}
       {v.divestitures.length > 0 && <div className="rounded-lg border border-neg/30 bg-neg/5 px-2.5 py-1.5"><div className="text-[11px] font-medium text-neg">Likely divestitures</div><div className="text-[11px] text-muted">{v.divestitures.map((d) => `${d.plant} (${d.company}, ${fmt(d.capacityMMcfd)} MMcfd, ${d.county})`).join("; ")}</div></div>}
       <p className="text-[10.5px] text-faint">{v.method}</p>
@@ -90,7 +90,7 @@ function TableView({ v }: { v: Table }) {
   return (
     <div>
       {v.synthetic && <div className="mb-1.5 rounded-md border border-accent/40 bg-accent-soft px-2 py-1 text-[11px] text-accent">Synthetic data · {v.synthetic.recipe} · seed {v.synthetic.seed}{v.synthetic.realism !== undefined ? ` · realism ${Math.round(v.synthetic.realism)}` : ""}</div>}
-      <div className="overflow-x-auto">
+      <div className="table-scroll overflow-x-auto">
         <table className="min-w-full text-[11px]">
           <thead><tr className="text-left text-[10.5px] text-muted">{v.columns.map((c) => <th key={c.name} className="whitespace-nowrap pr-3 font-medium">{c.name}</th>)}</tr></thead>
           <tbody>{v.rows.slice(0, 25).map((r, i) => <tr key={i} className="border-t border-line">{r.map((x, j) => <td key={j} className="num whitespace-nowrap py-0.5 pr-3">{typeof x === "number" ? fmt(x, 3) : x ?? ""}</td>)}</tr>)}</tbody>

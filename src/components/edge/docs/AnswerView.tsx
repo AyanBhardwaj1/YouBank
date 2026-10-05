@@ -144,7 +144,7 @@ export function AnswerView({ a, onCite }: { a: DocAnswer; onCite: (t: ViewTarget
       </div>
 
       {a.table && a.table.rows.length > 0 && (
-        <div className="overflow-x-auto rounded-md border border-line">
+        <div className="table-scroll overflow-x-auto rounded-md border border-line">
           <table className="w-full text-[12px]">
             <thead className="bg-elevated/60"><tr>{a.table.columns.map((c) => <th key={c} className="px-2 py-1.5 text-left font-sans font-semibold">{c}</th>)}</tr></thead>
             <tbody>{a.table.rows.map((r, i) => <tr key={i} className="border-t border-line">{r.map((v, j) => <td key={j} className="px-2 py-1.5 align-top font-sans">{v}</td>)}</tr>)}</tbody>

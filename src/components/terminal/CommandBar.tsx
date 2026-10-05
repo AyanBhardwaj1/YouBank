@@ -102,16 +102,16 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
       />
       {error && <span className="absolute right-2 text-[11px] text-neg" role="alert">{error}</span>}
       {open && suggestions.length > 0 && (
-        <ul className="rise float absolute left-0 top-full z-50 mt-1 w-[460px] overflow-hidden ctl border border-line-strong bg-raised" role="listbox">
+        <ul className="rise float absolute left-0 top-full z-50 mt-1 w-[460px] max-w-[calc(100vw-16px)] overflow-hidden ctl border border-line-strong bg-raised max-md:fixed max-md:inset-x-2 max-md:top-full max-md:mt-1 max-md:w-auto max-md:max-w-none" role="listbox">
           {suggestions.map((s, i) => (
             <li key={s.text} role="option" aria-selected={i === index}
               onMouseDown={(e) => { e.preventDefault(); choose(s); }} onMouseEnter={() => setIndex(i)}
-              className={`flex cursor-pointer items-center justify-between px-3 py-1.5 ${i === index ? "bg-accent-soft text-fg" : "text-fg/90"}`}>
+              className={`flex cursor-pointer items-center justify-between px-3 py-1.5 max-md:min-h-11 ${i === index ? "bg-accent-soft text-fg" : "text-fg/90"}`}>
               <span className="num font-semibold">{s.label}</span>
               <span className="truncate pl-4 text-[11px] text-muted">{s.hint}</span>
             </li>
           ))}
-          <li className="flex justify-between border-t border-line px-3 py-1 text-[10px] text-muted">
+          <li className="flex justify-between border-t border-line px-3 py-1 text-[10px] text-muted max-md:hidden">
             <span>↑↓ navigate · Tab complete · Enter run</span><span>Esc close</span>
           </li>
         </ul>

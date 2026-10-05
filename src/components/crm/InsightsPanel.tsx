@@ -127,7 +127,7 @@ export function InsightsPanel({ ctx }: { ctx: PanelCtx }) {
               <div className="text-[12px] text-muted">No topics tagged for them yet. <button type="button" onClick={() => void tag()} className="text-accent hover:underline">Tag recent emails</button> ({data.knowledge.untagged} untagged).</div>
             ) : (
               <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-                <table className="w-full text-[12px]">
+                <div className="table-scroll"><table className="w-full text-[12px]">
                   <thead className="text-[10.5px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Topic</th><th className="py-1 text-left font-normal">Knows it</th><th className="py-1 text-left font-normal">Engages</th><th className="py-1 text-left font-normal">Evidence</th></tr></thead>
                   <tbody>
                     {open.k.topics.slice(0, 14).map((s) => (
@@ -139,7 +139,7 @@ export function InsightsPanel({ ctx }: { ctx: PanelCtx }) {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></div>
                 <div>
                   <div className="text-[10.5px] uppercase tracking-wider text-muted">Worth raising next</div>
                   <ul className="mt-1 space-y-1 text-[12px]">{open.k.talkingPoints.map((p) => <li key={p.topic}><span className="font-semibold">{p.topic}</span> <span className="text-muted">— {p.why}</span></li>)}</ul>
@@ -153,7 +153,7 @@ export function InsightsPanel({ ctx }: { ctx: PanelCtx }) {
       )}
 
       <Section title="Relationships" note="Strength: recency-weighted emails times how two-way they are, scaled to your own mail volume">
-        <div className="overflow-x-auto rounded-md border border-line">
+        <div className="table-scroll overflow-x-auto rounded-md border border-line">
           <table className="w-full text-[12px]">
             <thead className="text-[10.5px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="px-3 py-1.5 text-left font-normal">Contact</th><th className="px-2 py-1.5 text-left font-normal">Strength</th><th className="px-2 py-1.5 text-right font-normal">Two-way</th><th className="px-2 py-1.5 text-right font-normal">Reply odds</th><th className="px-2 py-1.5 text-right font-normal">Last heard</th><th className="px-2 py-1.5 text-right font-normal">Last wrote</th></tr></thead>
             <tbody>
@@ -193,7 +193,7 @@ export function InsightsPanel({ ctx }: { ctx: PanelCtx }) {
               </div>
               <div className="text-[10.5px] text-muted">Wins are exact (Poisson-binomial); value is 10,000 simulated outcomes with amounts varying around what was entered.</div>
             </div>
-            <div className="overflow-x-auto rounded-md border border-line">
+            <div className="table-scroll overflow-x-auto rounded-md border border-line">
               <table className="w-full text-[12px]">
                 <thead className="text-[10.5px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="px-3 py-1.5 text-left font-normal">Deal</th><th className="px-2 py-1.5 text-left font-normal">Stage</th><th className="px-2 py-1.5 text-right font-normal">Amount</th><th className="px-2 py-1.5 text-right font-normal">Stage odds</th><th className="px-2 py-1.5 text-right font-normal">Win odds</th><th className="px-2 py-1.5 text-left font-normal">Why</th></tr></thead>
                 <tbody>

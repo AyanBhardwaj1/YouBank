@@ -168,7 +168,7 @@ function DocsRadar({ onCite }: { onCite: (t: ViewTarget) => void }) {
           {res.tone && res.tone.length > 0 && (
             <div className="overflow-x-auto">
               <div className="mb-1 text-[11.5px] font-semibold">Hedging and tone, speaker by speaker</div>
-              <table className="w-full text-[11.5px]">
+              <div className="table-scroll"><table className="w-full text-[11.5px]">
                 <thead><tr className="text-left text-muted"><th className="font-normal">Speaker</th><th className="text-right font-normal">Hedging</th><th className="text-right font-normal">Change</th><th className="text-right font-normal">Tone</th><th className="text-right font-normal">Change</th></tr></thead>
                 <tbody>{res.tone.map((t) => (
                   <tr key={t.speaker} className="border-t border-line">
@@ -177,7 +177,7 @@ function DocsRadar({ onCite }: { onCite: (t: ViewTarget) => void }) {
                     <td className="text-right">{t.after.tone.toFixed(2)}</td><td className={`text-right ${t.tone > 0.05 ? "text-pos" : t.tone < -0.05 ? "text-neg" : "text-muted"}`}>{t.tone >= 0 ? "+" : ""}{t.tone.toFixed(2)}</td>
                   </tr>
                 ))}</tbody>
-              </table>
+              </table></div>
               <p className="mt-1 text-[10.5px] text-faint">More hedging reads as less certainty. Scored per turn by a language model; listen before concluding.</p>
             </div>
           )}

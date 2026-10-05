@@ -65,7 +65,7 @@ function ScreenBody({ step }: { step: Step }) {
   if (step.fn === "COMPS") {
     return (
       <div className="p-3">
-        <table className="w-full text-[11px]">
+        <div className="table-scroll"><table className="w-full text-[11px]">
           <thead className="text-[9.5px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Ticker</th><th className="py-1 pr-2 text-right font-normal">EV/Rev</th><th className="py-1 pr-2 text-right font-normal">Growth</th><th className="py-1 pr-2 text-right font-normal">GM</th><th className="py-1 pr-1 text-right font-normal">R40</th></tr></thead>
           <tbody className="stagger">
             {peers.slice(0, 6).map((p) => (
@@ -79,7 +79,7 @@ function ScreenBody({ step }: { step: Step }) {
             ))}
             <tr className="bg-elevated/70 text-[10.5px] font-semibold"><td className="py-1 text-muted">Median</td><td className="num py-1 pr-2 text-right">{xx(m.evRev)}</td><td className="num py-1 pr-2 text-right">{pct(m.growth)}</td><td className="num py-1 pr-2 text-right">{pct(m.gm)}</td><td className="num py-1 pr-1 text-right">{m.r40?.toFixed(0) ?? "NM"}</td></tr>
           </tbody>
-        </table>
+        </table></div>
         <div className="mt-2"><HBar title="EV / LTM revenue" maxBars={7} format={(v) => xx(v)} referenceLine={m.evRev ? { value: m.evRev, label: `median ${xx(m.evRev)}` } : undefined}
           data={peers.slice(0, 7).map((p) => ({ key: p.ticker, label: p.ticker, value: p.evRevLtm, emphasis: p.ticker === c.ticker }))} /></div>
       </div>
@@ -113,13 +113,13 @@ function ScreenBody({ step }: { step: Step }) {
         <Tile label="LTM revenue" value={money(c.revenue)} sub={`${pct(c.growth)} y/y`} tone="pos" />
         <Tile label="FCF margin" value={pct(c.fcfm)} sub={money((c.revenue ?? 0) * (c.fcfm ?? 0))} tone="pos" />
       </div>
-      <table className="w-full text-[11px]">
+      <div className="table-scroll"><table className="w-full text-[11px]">
         <tbody className="stagger">
           {rows.map(([k, v, s]) => (
             <tr key={k} className="border-b border-line/60"><td className="py-1 text-muted">{k}</td><td className="num py-1 text-right">{v}</td><td className="py-1 pl-3 text-right text-[10px] text-muted">{s}</td></tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <Columns title="Quarterly revenue, USD millions" height={110} data={c.quarters.map((q) => ({ label: q.label.replace("FY", "'"), value: q.revenue }))} format={(v) => money(v)} />
     </div>
   );
