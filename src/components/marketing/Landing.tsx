@@ -10,6 +10,7 @@ import { DemoComps } from "./DemoComps";
 import { DemoAi } from "./DemoAi";
 import { DemoDirectory } from "./DemoDirectory";
 import { ThemeShowcase } from "./ThemeShowcase";
+import { PLANS, usd, type PlanId } from "@/lib/billing/plans";
 import { AdaptiveDemo } from "./AdaptiveDemo";
 import { Reveal, CountUp } from "@/components/motion/Reveal";
 import { Icon } from "@/components/ui/Icon";
@@ -71,13 +72,23 @@ const SEGMENTS = [
   { icon: "GraduationCap", title: "Students recruiting into finance", body: "Real comps and DCFs on real filings, deal walk-throughs from 8-Ks, and the same desk you will use on the job." },
 ];
 
-/** Planned plans, from the pricing research. Nothing is billed during the beta. */
-const PLANS = [
-  { name: "Campus", price: "Free", unit: "with a .edu address", points: ["The full terminal and data", "AI workflows with a monthly allowance", "Recruiting pack: practice comps, deal walk-throughs"] },
-  { name: "Pro", price: "$39", unit: "per month, or $29 billed yearly", points: ["Everything in Campus, higher limits", "Relationships agent and one mailbox", "Nurture, signals and compose"], highlight: false },
-  { name: "Deal Team", price: "$149", unit: "per seat per month, three seats minimum", points: ["Autopilot and campaigns", "The adaptive engine across the team", "Shared workspaces and live collaboration"], highlight: true },
-  { name: "Enterprise", price: "From $249", unit: "per seat per month, yearly", points: ["Regulated mode and audit exports", "SSO, admin controls, data residency options", "Bring your own data licences"] },
-];
+/**
+ * The public price cards, from the same PLANS the app bills with (src/lib/billing/plans.ts), so the site
+ * and the plan page cannot disagree. Free is left to the hero's sign-up; Campus leads.
+ */
+const perMonth = (id: PlanId) => PLANS[id].monthlyUsd ?? PLANS[id].yearlyMonthlyUsd ?? 0;
+const unitOf = (id: PlanId) => {
+  const p = PLANS[id], seat = p.minSeats > 1 ? "per seat per month" : "per month";
+  const how = p.monthlyUsd ? (p.yearlyMonthlyUsd ? `, or ${usd(p.yearlyMonthlyUsd)} billed yearly` : "") : ", billed yearly";
+  return `${seat}${how}${p.minSeats > 1 ? `; ${p.minSeats === 3 ? "three" : p.minSeats === 5 ? "five" : p.minSeats} seats minimum` : ""}`;
+};
+const PRICE_CARDS = (["campus", "pro", "team", "enterprise"] as PlanId[]).map((id) => ({
+  name: PLANS[id].name,
+  price: perMonth(id) ? usd(perMonth(id)) : "Free",
+  unit: id === "campus" ? "with a .edu address" : unitOf(id),
+  points: [...PLANS[id].points, `AI allowance: ${usd(PLANS[id].ai.monthlyUsd)} a month${PLANS[id].minSeats > 1 ? " per seat" : ""}`],
+  highlight: id === "team",
+}));
 
 const METHOD = [
   { k: "Fundamentals", v: "SEC XBRL company facts. LTM = fiscal year plus year-to-date less prior year-to-date, with the concept the filer actually used, restatements deduped by accession." },
@@ -96,7 +107,7 @@ const FAQ = [
   { q: "Does it work in my own Excel and PowerPoint?", a: "Yes. Install the YouBank add-in (Excel and PowerPoint on the web, Windows or Mac, with Microsoft 365 or Office 2021 and later) and connect it with a code. Link a workbook and the agent writes into it cell by cell while you watch; your edits sync back to YouBank; decks in PowerPoint refresh from the model. An IT admin can deploy it to a whole team." },
   { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API, with the source link on every figure. Anything from the web is cited. If a number is derived, the method is stated next to it." },
   { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an agent that produces the deliverable and does the follow-through." },
-  { q: "What does it cost?", a: "Free while in beta. The plans below are what we intend to charge afterwards; nothing is billed today." },
+  { q: "What does it cost?", a: `There is a Free plan, Campus is free with a .edu address, and Pro is ${usd(PLANS.pro.monthlyUsd ?? 0)} a month (${usd(PLANS.pro.yearlyMonthlyUsd ?? 0)} billed yearly). Each plan includes a monthly AI allowance; when it runs out, AI pauses until the 1st and everything else keeps working. Beta accounts will be told well before anything is billed.` },
 ];
 
 export function Landing({ toolCounts }: { toolCounts: { total: number; ai: number; calc: number } }) {
@@ -425,11 +436,11 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
       <section id="pricing" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Pricing</h2>
-          <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">Free while in beta.</p>
-          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">These are the plans we intend to offer after the beta. Nothing is billed today, and beta accounts will be told well before anything changes.</p>
+          <p className="mt-2 text-[22px] font-semibold leading-snug tracking-tight">Start free. Pay for the AI you need.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Every plan has the terminal and the public data. Paid plans add a larger monthly AI allowance and the premium features; the allowance is what keeps prices honest, because model time is most of what YouBank costs to run. Prices are in US dollars, before tax. Beta accounts will be told well before anything is billed.</p>
         </Reveal>
         <div className="mt-7 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {PLANS.map((p, i) => (
+          {PRICE_CARDS.map((p, i) => (
             <Reveal key={p.name} delay={i * 60}>
               <div className={`flex h-full flex-col panel p-5 ${p.highlight ? "glow border-accent/50" : ""}`}>
                 <h3 className="text-[14px] font-semibold">{p.name}</h3>
