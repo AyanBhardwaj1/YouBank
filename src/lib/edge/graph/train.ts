@@ -131,9 +131,12 @@ export async function exportGraph() {
 /** Export the graph and start training on the ML service; the returned call finishes with `edge/ml.done`. */
 /**
  * What a GPU retraining asks of the ML service (premium: edge.graph-gpu): twice the width, more passes
- * and twenty minutes, on its graph.train.gpu task. The CPU run keeps the service's defaults.
+ * and ten minutes a fit, on its graph.train.gpu task. The budget is per fit and a run fits twice (the
+ * backtest model, then the final one), so two budgets plus loading and scoring must stay inside the
+ * task's 30-minute timeout, or the paid run is cut off with nothing saved. The CPU run keeps the
+ * service's defaults.
  */
-export const GPU_TRAINING = { hidden: 128, epochs: 120, budgetSeconds: 1200 };
+export const GPU_TRAINING = { hidden: 128, epochs: 120, budgetSeconds: 600 };
 
 export async function startTraining(reason: string, opts: { gpu?: boolean } = {}): Promise<{ modelId: number; version: string; callId: string } | { skipped: string }> {
   if (!mlReady() || !r2Ready()) return { skipped: "The ML service or file storage is not set up." };
