@@ -7,7 +7,8 @@ contract every premium feature follows.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Plans | `src/lib/billing/plans.ts` | The plans in order (free, campus, pro, team, enterprise) and their list prices |
+| Plans | `src/lib/billing/plans.ts` | The plans in order (free, campus, pro, team, enterprise), their list prices, minimum seats and AI allowances; why they are what they are is in `docs/pricing.md` |
+| Billing | `src/lib/billing/stripe.ts`, `/api/billing/{checkout,confirm,portal,webhook,status}` | Stripe Checkout, the billing portal and the webhook that writes `subscriptions`; Settings, under Plan |
 | Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`); each feature names the least plan that includes it |
 | Entitlements | `src/lib/billing/entitlements.ts` | `entitlements(user)`, `canUse(user, id)` and `requireFeature(user, id)` on the server |
 | Plan API | `GET /api/billing/plan` | The signed-in person's plan and unlocked feature ids |
@@ -29,6 +30,8 @@ contract every premium feature follows.
 
 ## Adding a feature
 
-1. Add an entry to your area's file in `src/lib/billing/features/` with a stable `area.name` id.
+1. Add an entry to your area's file in `src/lib/billing/features/` with a stable `area.name` id. If it
+   costs money per use, set `metered: true` and `costPerUseUsd`: the pricing model counts it, and
+   `scripts/test-billing.ts` fails if it pushes a plan below its margin target.
 2. Call `requireFeature(user, "<id>")` in the route that starts it, before any paid call.
 3. Wrap the control in `PremiumGate`, or put a `PremiumBadge` beside it.

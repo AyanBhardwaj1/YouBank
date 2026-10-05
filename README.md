@@ -48,9 +48,10 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
 10. [Testing](#testing)
 11. [Security, privacy and compliance](#security-privacy-and-compliance)
 12. [Research behind the product](#research-behind-the-product)
-13. [Roadmap](#roadmap)
-14. [Repository layout](#repository-layout)
-15. [Further docs](#further-docs)
+13. [Plans and billing](#plans-and-billing)
+14. [Roadmap](#roadmap)
+15. [Repository layout](#repository-layout)
+16. [Further docs](#further-docs)
 
 ---
 
@@ -319,6 +320,11 @@ names the model behind each number and gives a range.
 4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
 cost are recorded and shown in Settings. See [docs/research/ai-inference.md](docs/research/ai-inference.md).
+
+**Allowances.** Each person's model spend is capped per UTC day and per calendar month by their plan's AI
+allowance, from Free ($1.50 a day, $5 a month) to Enterprise ($60 a day, $300 a month per seat).
+Administrators have no cap. Settings, under Plan, shows what has been used. At the cap, AI pauses and
+everything else keeps working. Prices and allowances: [Plans and billing](#plans-and-billing).
 
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
 
@@ -1158,6 +1164,11 @@ bash scripts/preflight.sh                                         # everything t
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Gmail API connection via OAuth; the redirect defaults to `<origin>/api/crm/gmail/callback` |
 | `AUTOPILOT_SPOT_CHECK_RATE` | no | Overrides the spot-check rate (tests only) |
 | `NEWS_AI_BUDGET_USD` | no | The Newsroom's monthly AI cap; default `25` |
+| `AI_USER_DAILY_USD`, `AI_USER_MONTHLY_USD` | no | Replace every plan's daily and monthly AI allowance (the plans' own amounts are in `src/lib/billing/plans.ts`) |
+| `AI_GLOBAL_DAILY_USD` | no | Everyone's AI spend per UTC day; default `200` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | for billing | Stripe; without them the plan page shows prices and says billing isn't switched on |
+| `STRIPE_PRICE_PRO_MONTHLY`, `STRIPE_PRICE_PRO_YEARLY`, `STRIPE_PRICE_TEAM_MONTHLY`, `STRIPE_PRICE_TEAM_YEARLY`, `STRIPE_PRICE_ENTERPRISE_YEARLY` | for billing | Stripe price ids, printed by `scripts/stripe-setup.ts`; a plan without its id is shown but cannot be bought |
+| `ADMIN_EMAILS` | no | Comma-separated administrators: every plan feature, no AI cap |
 | `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
@@ -1223,7 +1234,15 @@ bash scripts/preflight.sh                                         # everything t
      --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
    neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
    ```
-7. **Verify.**
+7. **Billing (Stripe).** Create the products and prices, and the webhook endpoint, from `PLANS`:
+   ```bash
+   STRIPE_SECRET_KEY=sk_live_... pnpm exec tsx scripts/stripe-setup.ts --live \
+     --webhook https://<your-domain>/api/billing/webhook
+   ```
+   - Set the printed `STRIPE_*` lines in Vercel.
+   - In the Stripe dashboard, switch on the customer portal and allow plan changes between these prices.
+   - Run it first with a test key (`sk_test_...`, no `--live`) on a preview deployment.
+8. **Verify.**
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
 
@@ -1239,6 +1258,7 @@ bash scripts/preflight.sh                                         # everything t
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
+| Billing (65 tests) | `pnpm exec tsx scripts/test-billing.ts` (`--table` prints the cost model) | Every paid plan's margin at typical use against the target, the worst case at the full AI allowance, Free and Campus cost ceilings; AI caps by plan and their overrides; the monthly-allowance message; checkout requests; the row a Stripe subscription writes and stale cancellations; webhook signatures, tampering and replay |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
@@ -1339,15 +1359,40 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Trust has to be earned and measured.** Recent work shows a model's self-graded confidence is poorly
   calibrated. That is why autonomy is certified on the person's own decisions, with exact bounds and
   anytime-valid demotion.
-- **Pricing belongs in the $30–$300 per seat per month band.** The planned plans are below; nothing is
-  billed during the beta.
+- **Pricing started in the $30–$300 per seat per month band.** The cost model in
+  [docs/pricing.md](docs/pricing.md) moved it: model time is most of what YouBank costs, so the prices
+  below keep at least 75% of the list price at typical use and stay positive even for someone who uses the
+  whole AI allowance. See [Plans and billing](#plans-and-billing).
 
-| Plan | Price | For |
-|---|---|---|
-| Campus | Free with a .edu address | Students: the full terminal and data, AI workflows with a monthly allowance, a recruiting pack |
-| Pro | $39 a month, or $29 billed yearly | Individuals: higher limits, the relationships agent and one mailbox |
-| Deal Team | $149 per seat a month, three seats minimum | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces |
-| Enterprise | From $249 per seat a month, yearly | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+---
+
+## Plans and billing
+
+| Plan | Price | AI allowance per seat | For |
+|---|---|---|---|
+| Free | $0 | $1.50 a day, $5 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Campus | Free with a .edu address | $3 a day, $15 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
+| Pro | $119 a month, or $99 a month billed yearly | $12 a day, $60 a month | Individuals: a full AI allowance, the relationships agent and one mailbox |
+| Deal Team | $229 per seat a month, or $189 billed yearly; three seats minimum | $25 a day, $130 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces |
+| Enterprise | $449 per seat a month, billed yearly; five seats minimum | $60 a day, $300 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+
+- **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
+  dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
+  - `src/lib/billing/costs.ts` holds the same model in code.
+  - `scripts/test-billing.ts` fails if a price, a cost or a new premium feature breaks the margin target.
+- **Premium features.** Premium features are listed in `src/lib/billing/features/`, one file per area,
+  each naming the least plan that includes it.
+  - Settings, under Plan, groups them by area and shows which are unlocked.
+  - The contract every premium feature follows is in [docs/premium.md](docs/premium.md).
+- **Billing is Stripe.**
+  - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
+    who already pays is sent to the portal instead.
+  - `POST /api/billing/portal` opens Stripe's billing portal.
+  - `POST /api/billing/webhook` checks Stripe's signature, then rewrites the person's `subscriptions` row
+    from the subscription as Stripe holds it now. Retried and out-of-order events change nothing extra.
+  - `POST /api/billing/confirm` stores the subscription as soon as someone is back from Checkout.
+  - Without `STRIPE_SECRET_KEY`, the plan page shows the prices and says billing isn't switched on yet.
+- **Nothing is billed during the beta** until the Stripe keys are set.
 
 ---
 
@@ -1374,7 +1419,8 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Company:**
   - SOC 2 Type I;
   - properly licensed market data;
-  - billing for the plans above.
+  - Deal Team and Enterprise seats shared with team members (today a plan belongs to the person who
+    bought it).
 
 ---
 
@@ -1416,6 +1462,8 @@ YouBank/
 | Doc | What |
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
+| [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
+| [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
