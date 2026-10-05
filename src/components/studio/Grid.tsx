@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, X } from "lucide-react";
 import { addr as A1, colName, parseRange } from "@/lib/studio/address";
 import type { Engine } from "@/lib/studio/engine";
 import { translateFormula } from "@/lib/studio/formula";
@@ -8,6 +10,7 @@ import { cellFromInput, type Patch } from "@/lib/studio/ops";
 import type { CellData, CellStyle, SheetData, StudioComment } from "@/lib/studio/types";
 import { isErr } from "@/lib/studio/values";
 import type { Flash } from "./useStudio";
+import { useCoarsePointer } from "@/components/ui/useMedia";
 
 /** A selection: the active cell (ar, ac) and the rectangle around it. */
 export type Sel = { ar: number; ac: number; r1: number; c1: number; r2: number; c2: number };
@@ -35,7 +38,10 @@ export function Grid(props: Props) {
   const { engine, sheet, flash, focus, follow, sel, setSel, onEdit, onUndo, comments, showTypes, readOnly, onStyle, now, agentActive } = props;
   const box = useRef<HTMLDivElement | null>(null);
   const [view, setView] = useState({ top: 0, left: 0, w: 900, h: 600 });
-  const [editing, setEditing] = useState<{ text: string; from: "cell" | "bar" } | null>(null);
+  // "touch" is the phone editor: a bar docked above the on-screen keyboard (TouchEditBar) in place of the
+  // in-cell box, which a keyboard would cover and a finger could not place a cursor in.
+  const [editing, setEditing] = useState<{ text: string; from: "cell" | "bar" | "touch" } | null>(null);
+  const coarse = useCoarsePointer();
   const [resize, setResize] = useState<{ c: number; x: number; w: number } | null>(null);
   const dragging = useRef(false);
   const clip = useRef<{ text: string; sheet: string; r: number; c: number; cells: (CellData | undefined)[][] } | null>(null);
@@ -114,14 +120,20 @@ export function Grid(props: Props) {
     const c = Math.min(nCols, Math.max(1, (extend ? (dc ? (sel.ac === sel.c1 ? sel.c2 : sel.c1) : sel.ac) : sel.ac) + dc));
     if (extend) setSel({ ...sel, r1: Math.min(sel.ar, r), r2: Math.max(sel.ar, r), c1: Math.min(sel.ac, c), c2: Math.max(sel.ac, c) });
     else setSel(cellSel(r, c));
+    reveal(r, c);
+    return { r, c };
+  };
+
+  /** Scroll so a cell is in view, above the keyboard and the touch editor when they cover the grid. */
+  const reveal = (r: number, c: number) => {
     const el = box.current;
-    if (el) {
-      const y = (r - 1) * ROW_H, x = colX(c);
-      if (y < el.scrollTop + fr * ROW_H) el.scrollTop = y - fr * ROW_H;
-      if (y + ROW_H > el.scrollTop + el.clientHeight - HEAD_H - 4) el.scrollTop = y + ROW_H - el.clientHeight + HEAD_H + 4;
-      if (x < el.scrollLeft && c > fc) el.scrollLeft = x;
-      if (x + width(c) > el.scrollLeft + el.clientWidth - RH_W) el.scrollLeft = x + width(c) - el.clientWidth + RH_W + 4;
-    }
+    if (!el) return;
+    const y = (r - 1) * ROW_H, x = colX(c);
+    const h = el.clientHeight - hiddenBelow(el);
+    if (y < el.scrollTop + fr * ROW_H) el.scrollTop = y - fr * ROW_H;
+    if (y + ROW_H > el.scrollTop + h - HEAD_H - 4) el.scrollTop = y + ROW_H - h + HEAD_H + 4;
+    if (x < el.scrollLeft && c > fc) el.scrollLeft = x;
+    if (x + width(c) > el.scrollLeft + el.clientWidth - RH_W) el.scrollLeft = x + width(c) - el.clientWidth + RH_W + 4;
   };
 
   const clearSel = () => {
@@ -210,14 +222,38 @@ export function Grid(props: Props) {
     while (c < nCols && xs[c] <= x) c++;
     return { r: Math.min(nRows, Math.max(1, Math.floor(y / ROW_H) + 1)), c };
   };
+  /** Phones: open the editor docked above the keyboard, and keep the cell in view once the keyboard is up. */
+  const startTouchEdit = () => {
+    if (readOnly) return;
+    setEditing({ text: rawText(activeCell), from: "touch" });
+    window.setTimeout(() => reveal(sel.ar, sel.ac), 380);
+  };
+  /** Commit, step to the next cell, and keep editing there, so a column of inputs goes in without the keyboard closing. */
+  const commitAndMove = (dr: number, dc: number) => {
+    if (editing) commit(editing.text);
+    const { r, c } = move(dr, dc);
+    setEditing({ text: rawText(sheet.cells[A1(r, c)]), from: "touch" });
+  };
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).dataset.nosel) return;
     const { r, c } = cellAt(e.clientX, e.clientY);
-    if (editing) commit(editing.text);
+    // On a touch screen, tapping the cell that is already selected starts editing it (a double tap does too).
+    const again = coarse && !editing && !e.shiftKey && r === sel.ar && c === sel.ac && sel.r1 === sel.r2 && sel.c1 === sel.c2;
+    // The touch editor commits when it loses focus, which this tap causes; committing here as well would save twice.
+    if (editing && editing.from !== "touch") commit(editing.text);
     if (e.shiftKey) setSel({ ...sel, r1: Math.min(sel.ar, r), r2: Math.max(sel.ar, r), c1: Math.min(sel.ac, c), c2: Math.max(sel.ac, c) });
     else setSel(cellSel(r, c));
-    dragging.current = true;
-    box.current?.focus();
+    dragging.current = !coarse;
+    box.current?.focus({ preventScroll: true });
+    if (again) startTouchEdit();
+  };
+  /* The selection handle (touch): drag the dot at the selection's corner to cover a range. */
+  const handleDrag = useRef(false);
+  const onHandleDown = (e: React.PointerEvent) => { e.stopPropagation(); e.preventDefault(); handleDrag.current = true; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); };
+  const onHandleMove = (e: React.PointerEvent) => {
+    if (!handleDrag.current) return;
+    const { r, c } = cellAt(e.clientX, e.clientY);
+    setSel({ ...sel, r1: Math.min(sel.ar, r), r2: Math.max(sel.ar, r), c1: Math.min(sel.ac, c), c2: Math.max(sel.ac, c) });
   };
   const onOver = (e: React.MouseEvent) => {
     if (!dragging.current) return;
@@ -289,8 +325,10 @@ export function Grid(props: Props) {
         <span className="text-[12px] italic text-muted">fx</span>
         <input
           className="num min-w-0 flex-1 ctl border border-line bg-bg px-2 py-0.5 text-[12px] outline-none focus:border-accent/60"
-          value={editing ? editing.text : rawText(activeCell)} readOnly={readOnly} spellCheck={false}
-          onFocus={() => { if (!editing && !readOnly) setEditing({ text: rawText(activeCell), from: "bar" }); }}
+          value={editing ? editing.text : rawText(activeCell)} readOnly={readOnly || coarse} spellCheck={false}
+          aria-label={`Contents of ${selRange(sel)}`}
+          onClick={() => { if (coarse && !editing) startTouchEdit(); }}
+          onFocus={() => { if (!editing && !readOnly && !coarse) setEditing({ text: rawText(activeCell), from: "bar" }); }}
           onChange={(e) => setEditing({ text: e.target.value, from: "bar" })}
           onKeyDown={(e) => {
             if (e.key === "Enter") { e.preventDefault(); commit(editing?.text ?? ""); box.current?.focus(); move(1, 0); }
@@ -302,7 +340,7 @@ export function Grid(props: Props) {
       <div
         ref={box} tabIndex={0} onKeyDown={onKey} onCopy={onCopy} onCut={(e) => { onCopy(e); clearSel(); }} onPaste={onPaste}
         onScroll={(e) => { const t = e.currentTarget; setView((v) => ({ ...v, top: t.scrollTop, left: t.scrollLeft })); }}
-        onMouseDown={onDown} onMouseMove={onOver} onDoubleClick={() => { if (!readOnly) setEditing({ text: rawText(activeCell), from: "cell" }); }}
+        onMouseDown={onDown} onMouseMove={onOver} onDoubleClick={() => { if (readOnly) return; if (coarse) { if (!editing) startTouchEdit(); } else setEditing({ text: rawText(activeCell), from: "cell" }); }}
         className="relative min-h-0 flex-1 overflow-auto outline-none" style={{ background: P.bg, cursor: "cell" }}
       >
         <div style={{
@@ -312,6 +350,15 @@ export function Grid(props: Props) {
           {cols.map((c) => <div key={`v${c}`} style={{ position: "absolute", left: px(c) + width(c) - 1, top: HEAD_H + view.top, width: 1, height: view.h, background: P.grid, zIndex: c <= fc ? 3 : 0 }} />)}
           {nodes}
           <div style={{ position: "absolute", pointerEvents: "none", zIndex: 5, ...rectBox(sel.r1, sel.c1, sel.r2, sel.c2), border: `2px solid ${P.sel}`, background: sel.r1 === sel.r2 && sel.c1 === sel.c2 ? "transparent" : "rgba(26,115,232,.08)" }} />
+          {coarse && !editing && !readOnly && (() => {
+            const b = rectBox(sel.r1, sel.c1, sel.r2, sel.c2);
+            return (
+              <span data-nosel="1" role="presentation" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={() => { handleDrag.current = false; }} onPointerCancel={() => { handleDrag.current = false; }}
+                style={{ position: "absolute", zIndex: 8, left: b.left + b.width - 16, top: b.top + b.height - 16, width: 32, height: 32, touchAction: "none", display: "grid", placeItems: "center" }}>
+                <span data-nosel="1" style={{ width: 12, height: 12, borderRadius: 999, background: P.sel, border: "2px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
+              </span>
+            );
+          })()}
           {agentRect && (
             <div className="studio-cursor" style={{ position: "absolute", pointerEvents: "none", zIndex: 6, ...rectBox(agentRect.r1, agentRect.c1, Math.min(agentRect.r2, nRows), Math.min(agentRect.c2, nCols)), border: `2px solid ${P.agent}`, boxShadow: `0 0 0 3px rgba(232,147,12,.18)` }}>
               <span style={{ position: "absolute", top: -17, left: -2, background: P.agent, color: "#fff", fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 3, fontFamily: FONT, whiteSpace: "nowrap" }}>Agent</span>
@@ -350,6 +397,63 @@ export function Grid(props: Props) {
           {fr > 0 && <div style={{ position: "absolute", left: view.left, top: view.top + HEAD_H + fr * ROW_H - 1, width: view.w, height: 2, background: "#B8BEC6", zIndex: 7 }} />}
           {fc > 0 && <div style={{ position: "absolute", left: view.left + RH_W + colX(fc + 1) - 1, top: view.top, width: 2, height: view.h, background: "#B8BEC6", zIndex: 7 }} />}
         </div>
+      </div>
+      {editing?.from === "touch" && createPortal(
+        <TouchEditBar address={`${sheet.name}!${active}`} text={editing.text} onChange={(text) => setEditing({ text, from: "touch" })}
+          onMove={commitAndMove} onDone={() => { commit(editing.text); box.current?.focus({ preventScroll: true }); }} onCancel={() => { setEditing(null); box.current?.focus({ preventScroll: true }); }} />,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/** How much of the grid's lower edge the touch editor (and the keyboard under it) covers. */
+function hiddenBelow(el: HTMLElement): number {
+  const bar = document.querySelector<HTMLElement>("[data-touch-edit]");
+  return bar ? Math.max(0, el.getBoundingClientRect().bottom - bar.getBoundingClientRect().top) : 0;
+}
+
+/** Characters a phone keyboard hides behind a mode switch, but formulas are made of. */
+const KEYS = ["=", "+", "-", "*", "/", "(", ")", ",", ":", "$", "%", "SUM(", "AVERAGE(", "IF("];
+
+/**
+ * The phone's cell editor, docked above the on-screen keyboard: the cell's address, its contents in a
+ * full-width box, a row of formula keys, and arrows that save and step to the next cell without the
+ * keyboard closing. Return saves and moves down, as in Excel; leaving the box saves; the cross discards.
+ */
+function TouchEditBar({ address, text, onChange, onMove, onDone, onCancel }: {
+  address: string; text: string; onChange: (t: string) => void; onMove: (dr: number, dc: number) => void; onDone: () => void; onCancel: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const cancelled = useRef(false);
+  useEffect(() => { input.current?.focus({ preventScroll: true }); }, [address]);
+  // Buttons act on pointer-down and keep the focus in the box, so the keyboard never drops between taps.
+  const keep = (e: React.SyntheticEvent) => e.preventDefault();
+  const insert = (k: string) => {
+    const el = input.current;
+    if (!el) return;
+    const at = el.selectionStart ?? el.value.length, to = el.selectionEnd ?? at;
+    el.setRangeText(k, at, to, "end");
+    onChange(el.value);
+  };
+  const key = "grid h-9 min-w-9 shrink-0 place-items-center ctl border border-line bg-elevated px-2.5 font-mono text-[13px] text-fg active:bg-raised";
+  return (
+    <div data-touch-edit="" className="fixed inset-x-0 z-[75] border-t border-line-strong bg-panel px-safe shadow-[0_-8px_24px_rgba(0,0,0,.25)]" style={{ bottom: "var(--kb)" }}>
+      <div className="flex items-center gap-2 px-2 pt-2">
+        <span className="num max-w-[38%] shrink-0 truncate ctl bg-accent-soft px-2 py-1 text-[12px] font-semibold text-accent">{address}</span>
+        <input ref={input} value={text} onChange={(e) => onChange(e.target.value)} spellCheck={false} autoCapitalize="off" autoCorrect="off" autoComplete="off" enterKeyHint="next"
+          aria-label={`Edit ${address}`} className="num h-10 min-w-0 flex-1 ctl border border-accent/60 bg-bg px-2 text-fg outline-none"
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onMove(1, 0); } else if (e.key === "Escape") { e.preventDefault(); cancelled.current = true; onCancel(); } }}
+          onBlur={() => { if (!cancelled.current) onDone(); }} />
+        <button type="button" aria-label="Discard the change" onPointerDown={keep} onMouseDown={keep} onClick={() => { cancelled.current = true; onCancel(); }} className="grid h-10 w-10 shrink-0 place-items-center ctl text-muted active:bg-elevated"><X className="h-5 w-5" /></button>
+        <button type="button" aria-label="Save" onPointerDown={keep} onMouseDown={keep} onClick={() => { cancelled.current = true; onDone(); }} className="grid h-10 w-10 shrink-0 place-items-center ctl bg-accent text-accent-fg"><Check className="h-5 w-5" /></button>
+      </div>
+      <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-2 py-2 pb-[max(8px,var(--safe-b))]">
+        {([[-1, 0, ArrowUp, "up"], [1, 0, ArrowDown, "down"], [0, -1, ArrowLeft, "left"], [0, 1, ArrowRight, "right"]] as const).map(([dr, dc, I, name]) => (
+          <button key={name} type="button" aria-label={`Save and move ${name}`} onPointerDown={keep} onMouseDown={keep} onClick={() => onMove(dr, dc)} className={key}><I className="h-4 w-4" /></button>
+        ))}
+        <span className="mx-0.5 w-px shrink-0 bg-line" aria-hidden />
+        {KEYS.map((k) => <button key={k} type="button" onPointerDown={keep} onMouseDown={keep} onClick={() => insert(k)} className={key}>{k}</button>)}
       </div>
     </div>
   );
