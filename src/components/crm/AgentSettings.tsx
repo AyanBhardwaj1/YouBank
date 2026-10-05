@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { PremiumBadge } from "@/components/billing/Premium";
 import {
   AUTONOMY_LABEL, AUTONOMY_LEVELS, AUTONOMY_SCOPES, SCOPE_HINT, SCOPE_LABEL,
   type AutopilotSettings, type AutonomyScope,
@@ -118,7 +119,7 @@ export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
         <label className={`ctl flex items-start gap-3 border p-3 ${ap.enabled ? "border-accent/60 bg-accent-soft/40" : "border-line"} ${ap.regulated ? "opacity-50" : ""}`}>
           <input type="checkbox" checked={ap.enabled} disabled={ap.regulated} onChange={(e) => setAp({ enabled: e.target.checked })} className="mt-1" />
           <span className="text-[12.5px]">
-            <span className="font-semibold">{ap.enabled ? "Autopilot is on" : "Autopilot is off"}</span>
+            <span className="flex items-center gap-2 font-semibold">{ap.enabled ? "Autopilot is on" : "Autopilot is off"} <PremiumBadge feature="relationships.autopilot" /></span>
             <span className="block text-[11px] text-muted">
               {ap.enabled
                 ? "Emails set to Autopilot below are sent from your mailbox automatically, after the hold time and inside your sending hours. Switching this off stops everything at once."

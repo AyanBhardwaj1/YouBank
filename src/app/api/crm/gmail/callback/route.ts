@@ -5,6 +5,7 @@ import { addressFor, saveAccount } from "@/lib/crm/accounts";
 import { exchangeCode, googleConfig } from "@/lib/crm/gmail";
 import { OAUTH_STATE_COOKIE } from "../connect/route";
 import { describeFailure } from "@/lib/errors";
+import { requireMailboxRoom } from "@/lib/crm/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,8 @@ export async function GET(req: Request) {
     const cfg = googleConfig(origin);
     const tokens = await exchangeCode(cfg, code);
     const address = await addressFor(tokens.access_token);
+    // A second mailbox is premium (relationships.extra-mailboxes): checked before anything is stored.
+    await requireMailboxRoom(user, address);
     await saveAccount(user.id, {
       address,
       accessToken: tokens.access_token,
