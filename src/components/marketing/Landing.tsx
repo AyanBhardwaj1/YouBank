@@ -11,11 +11,13 @@ import { DemoAi } from "./DemoAi";
 import { DemoDirectory } from "./DemoDirectory";
 import { ThemeShowcase } from "./ThemeShowcase";
 import { PLANS, usd, type PlanId } from "@/lib/billing/plans";
+import { CREDIT_PACKS } from "@/lib/billing/packs";
 import { AdaptiveDemo } from "./AdaptiveDemo";
 import { Reveal, CountUp } from "@/components/motion/Reveal";
 import { Icon } from "@/components/ui/Icon";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { Logo, LogoMark } from "@/components/brand/Logo";
+import { LegalLinks } from "./SiteChrome";
 
 const ROLE_ICON: Record<RoleId, string> = { banker: "Landmark", pe: "Briefcase", vc: "Rocket", markets: "LineChart", corpfin: "Building2", consultant: "Compass", accountant: "Receipt", student: "GraduationCap" };
 
@@ -131,7 +133,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             <a href="#studio" className="hover:text-fg">Studio</a>
             <a href="#engine" className="hover:text-fg">Adaptive engine</a>
             <a href="#demos" className="hover:text-fg">Demos</a>
-            <a href="#pricing" className="hover:text-fg">Pricing</a>
+            <Link href="/pricing" className="hover:text-fg">Pricing</Link>
             <a href="#data" className="hover:text-fg">Data</a>
           </nav>
           <div className="ml-auto flex items-center gap-2">
@@ -453,6 +455,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             </Reveal>
           ))}
         </div>
+        <p className="mt-4 text-[12px] text-muted">AI credit packs from {usd(CREDIT_PACKS[0].priceUsd)} top up any plan. <Link href="/pricing" className="text-accent hover:underline">Compare every plan, the packs and the FAQ →</Link></p>
       </section>
 
       {/* styles */}
@@ -511,7 +514,8 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             <span className="flex items-center gap-2"><LogoMark size={16} id="foot" /> YouBank</span>
             <span>Data: SEC EDGAR, Financial Modeling Prep, Y Combinator, a16z, Show HN, Wikipedia.</span>
             <span>Not investment advice. Figures are derived from public filings and may be restated.</span>
-            <Link href="/sign-in" className="ml-auto hover:text-fg">Sign in →</Link>
+            <LegalLinks className="ml-auto" />
+            <Link href="/sign-in" className="hover:text-fg">Sign in →</Link>
           </div>
           <p className="text-[10.5px] leading-relaxed">
             <sup>1</sup> Vals AI, Excel Modeling Benchmark (LBO, DCF, M&amp;A and three-statement models), updated 22 September 2026, vals.ai/benchmarks/emb. Wall Street Prep&apos;s 2026 test of AI modelling tools reached a similar verdict: the best tool still underperformed a junior analyst.{" "}
