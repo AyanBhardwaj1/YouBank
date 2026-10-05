@@ -4,7 +4,7 @@ YouBank Edge ML service: Modal app ``youbank-edge-ml``.
 One authenticated HTTP entry point (``api``) dispatches to one Modal function per task,
 plus a ``status`` endpoint for async calls. Tasks:
 
-    health, geo.refine, geo.embed_change, docs.parse, docs.rerank, audio.transcribe,
+    health, geo.refine, geo.embed_change, geo.footprints, docs.parse, docs.rerank, audio.transcribe,
     graph.train, synth.tabular, synth.series, topics.map
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
@@ -62,6 +62,7 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "health": ("health", 0.25, 512, 60, 1),
     "geo.refine": ("geo_refine", 2.0, 7168, 600, 2),  # all four models loaded (a fallback in a warm container): 6.4 GB
     "geo.embed_change": ("geo_embed_change", 1.0, 2048, 300, 2),
+    "geo.footprints": ("geo_footprints", 2.0, 7168, 600, 2),  # SAM 2.1 base+ automatic masks (SAM ViT-B as fallback)
     "docs.parse": ("docs_parse", 2.0, 4096, 900, 3),
     "docs.rerank": ("docs_rerank", 4.0, 2048, 120, 3),
     "audio.transcribe": ("audio_transcribe", 4.0, 8192, 3600, 2),
@@ -1127,6 +1128,28 @@ def _aef_png(change, valid, scale: float = AEF_VMAX, max_side: int = 256, levels
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def _aef_cells(change, valid, n) -> dict | None:
+    """The change map averaged into about n x n cells (the 3D map extrudes them): mean change of the valid pixels in
+    each cell, -1 where a cell has fewer than a quarter of its pixels valid. Row 0 is the north edge. None when no
+    grid was asked for."""
+    import numpy as np
+
+    if n is None:
+        return None
+    n = max(8, min(64, int(n)))
+    h, w = change.shape
+    rows, cols = np.array_split(np.arange(h), min(n, h)), np.array_split(np.arange(w), min(n, w))
+    values = []
+    for r in rows:
+        for c in cols:
+            ok = valid[np.ix_(r, c)]
+            if ok.size == 0 or ok.mean() < 0.25:
+                values.append(-1.0)
+                continue
+            values.append(round(float(np.nanmean(change[np.ix_(r, c)][ok])), 4))
+    return {"width": len(cols), "height": len(rows), "values": values}
+
+
 def _geo_embed_change(inp: dict) -> dict:
     from concurrent.futures import ThreadPoolExecutor
 
@@ -1168,11 +1191,88 @@ def _geo_embed_change(inp: dict) -> dict:
              "p99": q(99), "max": round(float(vals.max()), 4) if vals.size else None,
              "above": {str(t): round(float((vals > t).mean()), 4) if vals.size else None for t in AEF_THRESHOLDS}}
     gt, h, w, crs = grid
+    out_grid = _aef_cells(change, valid, inp.get("grid"))
     return {"years": years, "bbox": bbox, "crs": crs, "shape": [h, w], "pixelMeters": round(abs(gt.a), 2),
+            **({"grid": out_grid} if out_grid else {}),
             "validFraction": round(float(valid.mean()), 4), "stats": stats,
             "png": _aef_png(change, valid), "pngScale": {"vmax": AEF_VMAX, "ramp": "inferno", "nodata": "transparent"},
             "tiles": {str(y): [t["key"] for t in ts] for y, ts in tiles.items()}, "readSeconds": round(t_read, 2),
             "source": "https://source.coop/tge-labs/aef", "license": "CC-BY-4.0", "attribution": AEF_ATTRIBUTION}
+
+
+# ---------------------------------------------------------------------------------------------
+# geo.footprints: Segment Anything's automatic masks over one aerial or satellite image -> outlines
+# ---------------------------------------------------------------------------------------------
+FOOTPRINT_MAX_SIDE = 1024  # images are scaled down to this before segmenting (SAM works at 1024 anyway)
+
+
+def _mask_generator(kind: str, points_per_side: int):
+    """SAM 2.1's automatic mask generator, or the original SAM's, over the already-loaded image model."""
+    model = _geo_model(kind)
+    if kind == "sam2":
+        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+
+        return SAM2AutomaticMaskGenerator(model["sam"].model, points_per_side=points_per_side, points_per_batch=64,
+                                          pred_iou_thresh=0.8, stability_score_thresh=0.9, min_mask_region_area=0)
+    from segment_anything import SamAutomaticMaskGenerator
+
+    return SamAutomaticMaskGenerator(model["sam"].model, points_per_side=points_per_side, points_per_batch=64,
+                                     pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=0)
+
+
+def _geo_footprints(inp: dict) -> dict:
+    """Outline everything in an image: tanks, buildings, pads, ponds. Input {"image": https URL, "bbox": [w, s, e, n]
+    (echoed back), "maxMasks": 400, "pointsPerSide": 24, "minAreaPx": 24}. Result {"polygons": [{"points": [[x, y],
+    ...] in the image's pixels, "areaPx", "score"}], "imageSize": [w, h], "model", "modelVersion", "timings"}. Masks
+    covering more than a fifth of the image (fields, the background) are left out."""
+    import numpy as np
+    from PIL import Image
+
+    url = inp.get("image")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("image must be an https URL of a PNG or JPEG")
+    max_masks = max(1, min(800, int(inp.get("maxMasks") or 400)))
+    pps = max(8, min(32, int(inp.get("pointsPerSide") or 24)))
+    min_area = max(4, int(inp.get("minAreaPx") or 24))
+    t0 = time.monotonic()
+    img = _fetch_png(url)
+    h0, w0 = img.shape[:2]
+    if max(h0, w0) > FOOTPRINT_MAX_SIDE:
+        k = FOOTPRINT_MAX_SIDE / max(h0, w0)
+        img = np.asarray(Image.fromarray(img).resize((max(1, round(w0 * k)), max(1, round(h0 * k))), Image.BILINEAR))
+    h, w = img.shape[:2]
+    t_fetch = time.monotonic() - t0
+    masks, name, fallback = None, None, None
+    for kind in ("sam2", "sam"):
+        try:
+            masks = _mask_generator(kind, pps).generate(img)
+            name = GEO_NAMES[kind]
+            break
+        except Exception as e:
+            traceback.print_exc()
+            fallback = _redact(f"{type(e).__name__}: {e}")[:300]
+    if masks is None:
+        raise RuntimeError(f"no segmentation model could run ({fallback})")
+    t_seg = time.monotonic() - t0 - t_fetch
+    keep = [m for m in masks if min_area <= int(m["area"]) <= 0.2 * h * w]
+    keep.sort(key=lambda m: float(m.get("predicted_iou", 0)) * float(m.get("stability_score", 0)), reverse=True)
+    sx, sy = w0 / w, h0 / h  # outlines in the original image's pixels
+    polys = []
+    for m in keep[:max_masks]:
+        seg = np.asarray(m["segmentation"]).astype(bool)
+        ys, xs = np.nonzero(seg)
+        if not len(xs):
+            continue
+        pts = _outline(seg, float(xs.mean()), float(ys.mean()), sx, sy)
+        if len(pts) >= 3:
+            polys.append({"points": pts, "areaPx": int(round(int(m["area"]) * sx * sy)),
+                          "score": round(float(m.get("predicted_iou", 0)), 4)})
+    out = {"polygons": polys, "imageSize": [w0, h0], "bbox": inp.get("bbox"), "model": name, "modelVersion": name,
+           "masks": len(masks), "kept": len(polys),
+           "timings": {"fetch": round(t_fetch, 2), "segment": round(t_seg, 2), "total": round(time.monotonic() - t0, 2)}}
+    if fallback and name != GEO_NAMES["sam2"]:
+        out["fallbacks"] = {"sam": fallback}
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2911,6 +3011,11 @@ def geo_embed_change(req: dict) -> dict:
     return _execute("geo.embed_change", req, _geo_embed_change)
 
 
+@_task_function("geo.footprints", geo_image, env={**GDAL_ENV, **_threads(_hw_threads(TASKS["geo.footprints"][1]))})
+def geo_footprints(req: dict) -> dict:
+    return _execute("geo.footprints", req, _geo_footprints)
+
+
 @_task_function("docs.parse", docs_image, env={"OMP_THREAD_LIMIT": "1"})
 def docs_parse(req: dict) -> dict:
     return _execute("docs.parse", req, _docs_parse)
@@ -2950,6 +3055,7 @@ TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
     "geo.embed_change": geo_embed_change,
+    "geo.footprints": geo_footprints,
     "docs.parse": docs_parse,
     "docs.rerank": docs_rerank,
     "audio.transcribe": audio_transcribe,
