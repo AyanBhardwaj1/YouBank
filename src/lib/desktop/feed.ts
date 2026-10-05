@@ -35,7 +35,7 @@ export function feedSince(raw: string | null, now = Date.now()): Date {
 }
 
 /** Only paths on our own site go back to the app, so a notification can never open somewhere else. Pure. */
-export const sitePath = (url: string, fallback: string) => (/^\/(?!\/)/.test(url) ? url.slice(0, 500) : fallback);
+export const sitePath = (url: string, fallback: string) => (/^\/(?![/\\])/.test(url) && !url.includes("\\") ? url.slice(0, 500) : fallback);
 
 export async function desktopFeed(userId: string, since: Date, kinds: { alerts: boolean; questions: boolean; deals: boolean }): Promise<DesktopNotice[]> {
   const db = requireDb();

@@ -196,7 +196,7 @@ pub fn show_main(app: &AppHandle) {
 /// answering, the offline screen shows instead and opens the page once it is back.
 pub fn open_site(app: &AppHandle, path: &str) {
     let state = app.state::<AppState>();
-    let url = state.site.join(path.trim_start_matches('/')).unwrap_or_else(|_| state.site.clone());
+    let url = site_page(&state.site, path);
     show_main(app);
     if !state.is_online() {
         *state.resume.lock().unwrap() = Some(url.to_string());
@@ -205,6 +205,12 @@ pub fn open_site(app: &AppHandle, path: &str) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.navigate(url);
     }
+}
+
+/// A path on the site as a full address. Anything that would leave the site (a path such as `/\\host`,
+/// which the URL parser reads as another host) becomes the site's home instead. Pure.
+pub fn site_page(site: &Url, path: &str) -> Url {
+    site.join(path.trim_start_matches('/')).ok().filter(|u| u.origin() == site.origin()).unwrap_or_else(|| site.clone())
 }
 
 /// The site stopped answering: keep the page to come back to and show the offline screen, which retries.
@@ -319,5 +325,14 @@ mod tests {
         assert_eq!(classify(&u("blob:https://evil.example/0b6f1c1e-1111-2222-3333-444455556666"), &site), Nav::Block);
         assert_eq!(classify(&u("blob:null/0b6f1c1e-1111-2222-3333-444455556666"), &site), Nav::Block);
         assert_eq!(classify(&u("mailto:a@b.co"), &site), Nav::External);
+    }
+
+    #[test]
+    fn site_pages() {
+        let site = Url::parse("https://youbank-nu.vercel.app/").unwrap();
+        assert_eq!(site_page(&site, "/app/edge").as_str(), "https://youbank-nu.vercel.app/app/edge");
+        assert_eq!(site_page(&site, "/\\\\evil.example/x").as_str(), "https://youbank-nu.vercel.app/");
+        assert_eq!(site_page(&site, "//evil.example/x").as_str(), "https://youbank-nu.vercel.app/evil.example/x");
+        assert_eq!(site_page(&site, "https://evil.example/").as_str(), "https://youbank-nu.vercel.app/");
     }
 }
