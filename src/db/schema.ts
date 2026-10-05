@@ -1254,6 +1254,158 @@ export const edgePushes = pgTable("edge_pushes", {
   decidedAt: ts("decided_at"),
 }, (t) => [index("edge_pushes_target_idx").on(t.target, t.status)]);
 
+/* ---------------- Edge next (0020): crosswalk, signal store, forecast ledger, deals, agents ---------------- */
+
+/** F1: a company's id in one scheme (cik, ticker, lei, domain, wikidata, wikipedia, greenhouse, lever, ashby, uei, patentsview, ...). */
+export const edgeEntityIds = pgTable("edge_entity_ids", {
+  id: serial("id").primaryKey(),
+  nodeId: integer("node_id").notNull(),
+  scheme: text("scheme").notNull(),
+  value: text("value").notNull(),
+  confidence: real("confidence").notNull().default(1),
+  method: text("method").notNull().default(""),
+  evidenceUrl: text("evidence_url").notNull().default(""),
+  status: text("status").notNull().default("active"), // active | review | rejected
+  verifiedBy: text("verified_by").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_entity_ids_uq").on(t.scheme, t.value), index("edge_entity_ids_node_idx").on(t.nodeId, t.scheme)]);
+
+/** F2: one weekly (or monthly) point of a signal for a company. */
+export const edgeSeries = pgTable("edge_series", {
+  nodeId: integer("node_id").notNull(),
+  metric: text("metric").notNull(),
+  period: date("period").notNull(),
+  value: doublePrecision("value").notNull(),
+  source: text("source").notNull().default(""),
+  retrievedAt: ts("retrieved_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.nodeId, t.metric, t.period] }), index("edge_series_period_idx").on(t.period)]);
+
+export type ForecastRule =
+  | { type: "deal"; role: "target" | "acquirer"; node: number; minStakePct?: number }
+  | { type: "xbrl"; cik: string; concept: string; period: string; op: ">=" | "<=" | "between"; value: number; high?: number; unit?: string }
+  | { type: "manual"; note?: string; parent?: number };
+
+/** F3: a probability Edge stated, when it was stated, and how it turned out. Append-only. */
+export const edgeForecasts = pgTable("edge_forecasts", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  kind: text("kind").notNull(), // deal_target | deal_acquirer | thesis_claim | guidance | ...
+  subject: text("subject").notNull(), // node:123 | thesis:5:claim:3 | doc:88:commitment:4
+  question: text("question").notNull(),
+  probability: real("probability").notNull(),
+  low: real("low"),
+  high: real("high"),
+  baseRate: real("base_rate"),
+  opensAt: ts("opens_at").notNull(),
+  closesAt: ts("closes_at").notNull(),
+  rule: jsonb("rule").$type<ForecastRule>().notNull(),
+  model: text("model").notNull(),
+  modelVersion: text("model_version").notNull(),
+  ownerId: text("owner_id"),
+  supersedes: bigint("supersedes", { mode: "number" }),
+  resolvedAt: ts("resolved_at"),
+  outcome: real("outcome"),
+  resolutionSource: text("resolution_source").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("edge_forecasts_subject_idx").on(t.subject, t.createdAt)]);
+
+export type DealSource = { form: string; url: string; filed: string; role?: string };
+
+/** F4: one deal (E1). Public deals have no owner; private precedents (later) carry one. */
+export const edgeDeals = pgTable("edge_deals", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull(),
+  kind: text("kind").notNull().default("acquisition"), // acquisition | merger | tender | take_private
+  status: text("status").notNull().default("announced"), // announced | completed | terminated
+  announcedAt: date("announced_at"),
+  signedAt: date("signed_at"),
+  closedAt: date("closed_at"),
+  acquirerNode: integer("acquirer_node"),
+  targetNode: integer("target_node"),
+  acquirerName: text("acquirer_name").notNull().default(""),
+  targetName: text("target_name").notNull().default(""),
+  acquirerCik: text("acquirer_cik").notNull().default(""),
+  targetCik: text("target_cik").notNull().default(""),
+  targetTicker: text("target_ticker").notNull().default(""),
+  buyerType: text("buyer_type").notNull().default(""), // strategic | sponsor | sponsor_backed
+  sic: text("sic").notNull().default(""),
+  naics: text("naics").notNull().default(""),
+  country: text("country").notNull().default("US"),
+  equityUsdMm: real("equity_usd_mm"),
+  evUsdMm: real("ev_usd_mm"),
+  evRevenue: real("ev_revenue"),
+  evEbitda: real("ev_ebitda"),
+  premium1d: real("premium_1d"),
+  premiumUnaffected: real("premium_unaffected"),
+  consideration: text("consideration").notNull().default(""), // cash | stock | mixed
+  outcome: text("outcome").notNull().default(""), // completed | terminated | topped | pending
+  newsClusterId: integer("news_cluster_id"),
+  sources: jsonb("sources").$type<DealSource[]>().notNull().default([]),
+  embedding: halfvec("embedding", { dimensions: 512 }),
+  ownerId: text("owner_id"),
+  teamId: integer("team_id"),
+  extractedAt: ts("extracted_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("edge_deals_key_uq").on(t.key), index("edge_deals_target_idx").on(t.targetNode, t.announcedAt), index("edge_deals_sic_idx").on(t.sic, t.announcedAt)]);
+
+/** One extracted deal term with its quote, document, checks and calibrated confidence. */
+export const edgeDealFields = pgTable("edge_deal_fields", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  dealId: integer("deal_id").notNull(),
+  field: text("field").notNull(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  quote: text("quote").notNull().default(""),
+  docUrl: text("doc_url").notNull().default(""),
+  section: text("section").notNull().default(""),
+  confidence: real("confidence").notNull().default(0.5),
+  checks: jsonb("checks").$type<Record<string, unknown>>().notNull().default({}),
+  method: text("method").notNull().default(""),
+  modelVersion: text("model_version").notNull().default(""),
+  verifiedBy: text("verified_by").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("edge_deal_fields_deal_idx").on(t.dealId, t.field)]);
+
+/** F5: a Thesis Agent (E7, next round). */
+export const edgeAgents = pgTable("edge_agents", {
+  id: serial("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  teamId: integer("team_id"),
+  title: text("title").notNull(),
+  thesis: text("thesis").notNull(),
+  status: text("status").notNull().default("planning"), // planning | running | paused | done | stopped
+  horizonEnd: date("horizon_end"),
+  budgetUsd: real("budget_usd").notNull().default(0),
+  spentUsd: real("spent_usd").notNull().default(0),
+  model: text("model").notNull().default(""),
+  cadence: text("cadence").notNull().default("daily"),
+  canvasIds: jsonb("canvas_ids").$type<number[]>().notNull().default([]),
+  memo: jsonb("memo").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("edge_agents_owner_idx").on(t.ownerId, t.status)]);
+
+export const edgeAgentSteps = pgTable("edge_agent_steps", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  agentId: integer("agent_id").notNull(),
+  day: date("day").notNull(),
+  kind: text("kind").notNull(), // plan | tool | evidence | update | redteam | memo | approval
+  tool: text("tool").notNull().default(""),
+  input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),
+  output: jsonb("output").$type<Record<string, unknown>>().notNull().default({}),
+  cost: jsonb("cost").$type<Record<string, number>>().notNull().default({}),
+  error: text("error").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("edge_agent_steps_agent_idx").on(t.agentId, t.id)]);
+
+/** Where a long background job has got to (a cursor, a switch, the last run), by job name. */
+export const edgeJobState = pgTable("edge_job_state", {
+  name: text("name").primaryKey(),
+  state: jsonb("state").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
 
 /* ---------------- Plans and subscriptions ---------------- */
 

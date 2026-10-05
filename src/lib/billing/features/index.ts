@@ -4,13 +4,14 @@
  */
 import { CRYPTO_FEATURES } from "./crypto";
 import { DESKTOP_FEATURES } from "./desktop";
+import { EDGE_NEXT_FEATURES } from "./edge-next";
 import { MAPS_FEATURES } from "./maps";
 import { PREMIUM_FEATURES } from "./premium";
 import type { PremiumFeature } from "./types";
 
 export type { FeatureArea, PremiumFeature } from "./types";
 
-export const FEATURES: PremiumFeature[] = [...PREMIUM_FEATURES, ...MAPS_FEATURES, ...CRYPTO_FEATURES, ...DESKTOP_FEATURES];
+export const FEATURES: PremiumFeature[] = [...PREMIUM_FEATURES, ...MAPS_FEATURES, ...CRYPTO_FEATURES, ...DESKTOP_FEATURES, ...EDGE_NEXT_FEATURES];
 
 const BY_ID = new Map(FEATURES.map((f) => [f.id, f]));
 

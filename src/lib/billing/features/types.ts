@@ -27,4 +27,9 @@ export type PremiumFeature = {
   costPerUseUsd?: number;
   /** What one use is, for reading `costPerUseUsd` (e.g. "an hour-long call at $0.006 a minute"). */
   perUse?: string;
+  /**
+   * Registered for the pricing work before its code exists: no route checks it yet, so it unlocks nothing.
+   * The work that builds it removes the flag in the same change.
+   */
+  planned?: boolean;
 };
