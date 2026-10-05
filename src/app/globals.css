@@ -264,7 +264,9 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 /* The signed-in frame is a fixed-height app, not a document: the page itself never scrolls or rubber-bands
    (each pane scrolls on its own), so a drag that reaches the end of a list does not drag the whole frame. */
-html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
+/* Vertical only: on a desktop, `overscroll-behavior-x: none` on the root would also switch off the trackpad's
+   two-finger swipe back and forward. */
+html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior-y: none; }
 
 /* `background-attachment: fixed` repaints the whole page on every scroll frame on phones (and iOS ignores it). */
 @media (max-width: 1023.98px) { body { background-attachment: scroll; } }
@@ -292,16 +294,18 @@ html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
 
 /* Phone type ramp. The desktop interface is deliberately dense (11px and 12px text at arm's length on a
    big screen); on a phone, held closer but far smaller, every step moves up a notch so body text is at
-   least 12px and labels at least 11px. Unlayered, so it wins over the utilities without !important. */
+   least 12px and labels at least 11px. Unlayered, so it wins over the utilities without !important; for
+   the same reason it skips an element that sets its own phone size (`max-md:text-[14px]`), which would
+   otherwise lose to it. */
 @media (max-width: 639.98px) {
   body { font-size: 13px; line-height: 1.4; }
-  .text-\[8\.5px\], .text-\[9px\], .text-\[9\.5px\] { font-size: 10.5px; }
-  .text-\[10px\] { font-size: 11px; }
-  .text-\[10\.5px\] { font-size: 11.5px; }
-  .text-\[11px\] { font-size: 12px; }
-  .text-\[11\.5px\] { font-size: 12.5px; }
-  .text-\[12px\] { font-size: 13px; }
-  .text-\[12\.5px\] { font-size: 13.5px; }
+  :is(.text-\[8\.5px\], .text-\[9px\], .text-\[9\.5px\]):not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 10.5px; }
+  .text-\[10px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 11px; }
+  .text-\[10\.5px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 11.5px; }
+  .text-\[11px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 12px; }
+  .text-\[11\.5px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 12.5px; }
+  .text-\[12px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 13px; }
+  .text-\[12\.5px\]:not([class*="max-md:text-["], [class*="max-sm:text-["]) { font-size: 13.5px; }
 }
 
 /* A grid that only sets its columns from a breakpoint up (`lg:grid-cols-2`) is one implicit column on a
