@@ -6,10 +6,15 @@
  * client code, shown by the one <DialogHost> in the root layout. One dialog at a time; the next waits
  * its turn. Escape or the backdrop cancels, Enter confirms (Cmd/Ctrl+Enter in a multi-line box), focus
  * stays inside the dialog and returns to where it was, and keys never reach the page behind it.
+ *
+ * On a phone the dialog is a bottom sheet: full width, anchored to the bottom edge where the thumb is,
+ * riding above the on-screen keyboard while a text box is focused (`--kb`), with finger-sized buttons
+ * and the home bar kept clear. It never grows taller than the screen; a long body scrolls inside it.
  */
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, CircleHelp, PenLine } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { usePhone } from "./useMedia";
 
 export type ConfirmOptions = {
   title: string;
@@ -83,6 +88,7 @@ function DialogView({ req }: { req: Request }) {
   const danger = opts.tone === "danger";
   const [text, setText] = useState(opts.defaultValue ?? "");
   const reduce = useReducedMotion();
+  const phone = usePhone();
   const uid = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -128,15 +134,15 @@ function DialogView({ req }: { req: Request }) {
   const field = "ctl w-full border border-line bg-bg/70 px-2.5 py-2 text-[13px] text-fg outline-none transition placeholder:text-faint focus:border-accent/70";
 
   return (
-    <motion.div className="fixed inset-0 z-[90] grid place-items-center p-4" onKeyDown={onKey}
+    <motion.div className="fixed inset-x-0 top-0 z-[90] grid place-items-center p-4 max-md:place-items-end max-md:p-0" style={{ bottom: "var(--kb)" }} onKeyDown={onKey}
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }}>
       <div className="absolute inset-0 bg-bg/65 backdrop-blur-[3px]" aria-hidden onMouseDown={() => finish(false)} />
       <motion.div ref={panelRef} role={kind === "confirm" ? "alertdialog" : "dialog"} aria-modal="true" aria-labelledby={`${uid}-t`} aria-describedby={opts.body ? `${uid}-b` : undefined}
-        initial={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
-        transition={{ type: "spring", stiffness: 520, damping: 36, mass: 0.7 }}
-        className="float relative w-full max-w-[440px] overflow-hidden ctl border border-line-strong bg-raised">
+        initial={reduce ? { opacity: 0 } : phone ? { y: "100%" } : { opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={reduce ? { opacity: 0 } : phone ? { y: "100%" } : { opacity: 0, y: 6, scale: 0.98 }}
+        transition={phone ? { type: "spring", stiffness: 420, damping: 40, mass: 0.8 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.7 }}
+        className="float relative flex max-h-[calc(100dvh-var(--kb)-32px)] w-full max-w-[440px] flex-col overflow-hidden ctl border border-line-strong bg-raised max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-[14px] max-md:border-b-0">
         <div className={`h-0.5 w-full ${danger ? "bg-neg" : "bg-accent"}`} aria-hidden />
-        <div className="flex gap-3.5 p-5">
+        <div className="scroll-touch flex min-h-0 gap-3.5 overflow-y-auto p-5">
           <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${danger ? "bg-neg/15 text-neg" : "bg-accent-soft text-accent"}`}><Glyph className="h-[18px] w-[18px]" aria-hidden /></div>
           <div className="min-w-0 flex-1 pt-0.5">
             <h2 id={`${uid}-t`} className="text-[14.5px] font-semibold leading-snug text-fg">{opts.title}</h2>
@@ -151,18 +157,18 @@ function DialogView({ req }: { req: Request }) {
                 {opts.multiline
                   ? <textarea ref={areaRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={opts.placeholder} rows={4} className={`${field} resize-y leading-relaxed`} />
                   : <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={opts.placeholder} autoComplete="off" spellCheck={opts.match === undefined} className={field} />}
-                {opts.multiline && <span className="mt-1 block text-right text-[10.5px] text-faint">⌘/Ctrl + Enter to {(opts.confirmLabel ?? "save").toLowerCase()}</span>}
+                {opts.multiline && <span className="mt-1 block text-right text-[10.5px] text-faint max-md:hidden">⌘/Ctrl + Enter to {(opts.confirmLabel ?? "save").toLowerCase()}</span>}
               </label>
             )}
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-line bg-elevated/40 px-5 py-3">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-line bg-elevated/40 px-5 py-3 max-md:gap-3 max-md:px-4 max-md:pb-[calc(12px+var(--safe-b))]">
           <button ref={cancelRef} type="button" onClick={() => finish(false)}
-            className="ctl border border-line px-3 py-1.5 text-[12px] text-muted outline-none transition hover:border-line-strong hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/70">
+            className="ctl border border-line px-3 py-1.5 text-[12px] text-muted outline-none transition hover:border-line-strong hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/70 max-md:min-h-11 max-md:flex-1 max-md:text-[14px]">
             {opts.cancelLabel ?? "Cancel"}
           </button>
           <button ref={okRef} type="button" disabled={!ok} onClick={() => finish(true)}
-            className={`ctl px-3.5 py-1.5 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-raised disabled:cursor-not-allowed disabled:opacity-40 ${danger ? "bg-neg text-white hover:brightness-110 focus-visible:ring-neg/60" : "bg-accent text-accent-fg hover:brightness-110 focus-visible:ring-accent/60"}`}>
+            className={`ctl px-3.5 py-1.5 text-[12px] font-semibold outline-none transition max-md:min-h-11 max-md:flex-1 max-md:text-[14px] focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-raised disabled:cursor-not-allowed disabled:opacity-40 ${danger ? "bg-neg text-white hover:brightness-110 focus-visible:ring-neg/60" : "bg-accent text-accent-fg hover:brightness-110 focus-visible:ring-accent/60"}`}>
             {opts.confirmLabel ?? (kind === "prompt" ? "Save" : "Confirm")}
           </button>
         </div>

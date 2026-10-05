@@ -8,6 +8,8 @@ const ThemeCtx = createContext<Ctx | null>(null);
 
 function applyAttr(id: ThemeId) {
   document.documentElement.setAttribute("data-theme", id);
+  // The phone's browser bar (and the iOS status bar area) takes the style's background.
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", themeById(id).vars.bg);
 }
 
 /**

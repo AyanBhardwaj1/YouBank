@@ -77,6 +77,8 @@ body {
   font-size: 12px;
   line-height: 1.35;
   transition: background-color 400ms ease, color 400ms ease;
+  /* A tap should not flash a grey box over what was tapped; every control draws its own pressed state. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .num, table { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -248,3 +250,68 @@ body {
 .edge-flow .react-flow__edge.selected .react-flow__edge-path { stroke: var(--accent) !important; }
 .edge-flow .react-flow__handle { transition: transform 0.1s; }
 .edge-flow .react-flow__handle:hover { transform: scale(1.3); }
+
+/* ---------------- Phones and touch ----------------
+   Every feature works on a phone, so the phone gets its own pass rather than a squeezed desktop.
+   Rules are scoped by what the device can do (pointer: coarse) or by width (below Tailwind's sm, 640px),
+   never by user agent, so a narrow desktop window and a phone behave the same. */
+
+/* iOS enlarges text it judges too small after rotation; type sizes here are deliberate. */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
+/* The signed-in frame is a fixed-height app, not a document: the page itself never scrolls or rubber-bands
+   (each pane scrolls on its own), so a drag that reaches the end of a list does not drag the whole frame. */
+html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
+
+/* `background-attachment: fixed` repaints the whole page on every scroll frame on phones (and iOS ignores it). */
+@media (max-width: 1023.98px) { body { background-attachment: scroll; } }
+
+/* Scroll areas keep their momentum and do not hand the drag to the page when they reach the end. */
+.scroll-touch { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* A strip that scrolls sideways without a scrollbar (tab rows, chips). */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (pointer: coarse) {
+  /* No double-tap-to-zoom wait on controls: a tap acts at once. */
+  a, button, [role="button"], [role="tab"], label, summary, select, input, textarea { touch-action: manipulation; }
+  /* iOS zooms the page into any text box whose type is under 16px when it takes focus, and does not zoom back. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), textarea, select { font-size: 16px !important; }
+  /* Hover-only reveals (row actions that appear on hover) are always shown on touch, where there is no hover. */
+  .hover-reveal { opacity: 1 !important; }
+}
+
+/* A small control keeps its look but answers to a 44px finger: the hit area grows invisibly around it. */
+@media (pointer: coarse) {
+  .hit { position: relative; }
+  .hit::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); transform: translate(-50%, -50%); }
+}
+
+/* Phone type ramp. The desktop interface is deliberately dense (11px and 12px text at arm's length on a
+   big screen); on a phone, held closer but far smaller, every step moves up a notch so body text is at
+   least 12px and labels at least 11px. Unlayered, so it wins over the utilities without !important. */
+@media (max-width: 639.98px) {
+  body { font-size: 13px; line-height: 1.4; }
+  .text-\[8\.5px\], .text-\[9px\], .text-\[9\.5px\] { font-size: 10.5px; }
+  .text-\[10px\] { font-size: 11px; }
+  .text-\[10\.5px\] { font-size: 11.5px; }
+  .text-\[11px\] { font-size: 12px; }
+  .text-\[11\.5px\] { font-size: 12.5px; }
+  .text-\[12px\] { font-size: 13px; }
+  .text-\[12\.5px\] { font-size: 13.5px; }
+}
+
+/* The on-screen keyboard. MobileViewport sets --kb to the height it covers (0 when closed) and
+   data-kb="open" on <html>, so bars pinned to the bottom can ride above it and the tab bar can step aside. */
+:root { --kb: 0px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); }
+html[data-kb="open"] .hide-on-kb { display: none !important; }
+.pb-safe { padding-bottom: var(--safe-b); }
+.pt-safe { padding-top: var(--safe-t); }
+.px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+
+/* Bottom sheets: the grab handle, and a sheet never taller than what the keyboard leaves. */
+.sheet-handle { width: 36px; height: 5px; border-radius: 999px; background: var(--line-strong); }
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-touch { scroll-behavior: auto; }
+}
