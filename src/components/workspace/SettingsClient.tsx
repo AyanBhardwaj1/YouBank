@@ -14,6 +14,7 @@ import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 import { EdgeUpgrades } from "@/components/edge/Upgrades";
+import { DesktopSettings } from "@/components/desktop/DesktopConnect";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -22,6 +23,7 @@ const TABS = [
   { id: "desk", label: "My desk", icon: "Layout" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
+  { id: "desktop", label: "Desktop app", icon: "Download" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
@@ -61,6 +63,8 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
         )}
 
         {tab === "news" && <NewsSettings />}
+
+        {tab === "desktop" && <DesktopSettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

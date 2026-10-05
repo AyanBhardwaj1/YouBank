@@ -56,6 +56,7 @@ export const FEATURES: NavFeature[] = [
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
       tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desktop", "Desktop app"),
     ],
   },
 ];

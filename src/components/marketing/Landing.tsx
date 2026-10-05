@@ -500,7 +500,8 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             <span className="flex items-center gap-2"><LogoMark size={16} id="foot" /> YouBank</span>
             <span>Data: SEC EDGAR, Financial Modeling Prep, Y Combinator, a16z, Show HN, Wikipedia.</span>
             <span>Not investment advice. Figures are derived from public filings and may be restated.</span>
-            <Link href="/sign-in" className="ml-auto hover:text-fg">Sign in →</Link>
+            <Link href="/download" className="ml-auto hover:text-fg">Desktop app</Link>
+            <Link href="/sign-in" className="hover:text-fg">Sign in →</Link>
           </div>
           <p className="text-[10.5px] leading-relaxed">
             <sup>1</sup> Vals AI, Excel Modeling Benchmark (LBO, DCF, M&amp;A and three-statement models), updated 22 September 2026, vals.ai/benchmarks/emb. Wall Street Prep&apos;s 2026 test of AI modelling tools reached a similar verdict: the best tool still underperformed a junior analyst.{" "}
