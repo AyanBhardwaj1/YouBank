@@ -21,6 +21,7 @@ import { federalRegisterUrl, fetchFederalRegister } from "./sources/gov";
 import { fetchRadar } from "./sources/radar";
 import { warmRadars } from "./radar";
 import { fetchRss } from "./sources/rss";
+import { fetchCryptoSignals } from "@/lib/crypto/news";
 import { researchDesk } from "./sources/research";
 import { assignItems, clusterCandidates, clustersToEnrich, createCluster, feedStates, insertItems, itemsOf, mergeDuplicates, prune, recentClusters, refreshCluster, saveFeedState, setEmbeddings, unclusteredItems } from "./store";
 import type { FetchResult } from "./types";
@@ -36,6 +37,8 @@ export function sources(): Source[] {
     { url: federalRegisterUrl(), kind: "gov", everyMin: 180, priority: 2, run: () => fetchFederalRegister() },
     { url: "gdelt:rotation", kind: "gdelt", everyMin: 15, priority: 2, run: () => fetchGdelt() },
     { url: "radar:weekly", kind: "radar", everyMin: 360, priority: 3, run: () => fetchRadar() },
+    // Crypto rounds, unlocks and SEC filings on crypto holdings (src/lib/crypto/news.ts), free sources only.
+    { url: "crypto:signals", kind: "crypto", everyMin: 180, priority: 3, run: () => fetchCryptoSignals() },
   ];
 }
 
