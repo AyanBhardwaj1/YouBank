@@ -16,8 +16,10 @@ on:
   pull_request:
     paths: ["desktop/**", ".github/workflows/desktop.yml"]
 
+# Read-only by default (pull requests, including from forks, run `check` with this); only the release
+# build, which never runs for a pull request, may write the draft release.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: desktop-${{ github.ref }}
@@ -30,6 +32,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Linux libraries
         run: |
           sudo apt-get update
@@ -54,6 +58,8 @@ jobs:
 
   build:
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
