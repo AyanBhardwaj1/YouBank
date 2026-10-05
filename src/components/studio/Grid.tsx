@@ -232,7 +232,10 @@ export function Grid(props: Props) {
   const commitAndMove = (dr: number, dc: number) => {
     if (editing) commit(editing.text);
     const { r, c } = move(dr, dc);
-    setEditing({ text: rawText(sheet.cells[A1(r, c)]), from: "touch" });
+    // At the sheet's edge the move stays on this cell, whose `sheet.cells` entry is still the value from
+    // before the commit; reloading it would put the old text back in the box and save it on the way out.
+    const same = r === sel.ar && c === sel.ac;
+    setEditing({ text: same && editing ? editing.text : rawText(sheet.cells[A1(r, c)]), from: "touch" });
   };
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).dataset.nosel) return;

@@ -83,9 +83,13 @@ export function SlideView({ slide, index, theme, engine, width, selected, onSele
     };
     const up = () => { setLive((l) => { if (l) onMoveEl?.(l.id, l.box); return null; }); setDrag(null); };
     // Pointer events, so a finger can move and size an element as a mouse does.
+    // If the browser takes the touch for a scroll it sends pointercancel instead of pointerup: drop the drag
+    // unsaved, or the next touch anywhere would move the element from where this one started.
+    const cancel = () => { setLive(null); setDrag(null); };
     window.addEventListener("pointermove", mv);
     window.addEventListener("pointerup", up, { once: true });
-    return () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointercancel", cancel, { once: true });
+    return () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); };
   }, [drag, onMoveEl, width]);
 
   if (slide.layout === "title" || slide.layout === "section") {
