@@ -38,6 +38,8 @@ pub fn safe_app_path(p: &str) -> Option<String> {
         && !p.contains("//")
         && !p.contains('\\')
         && !p.contains("..")
+        // A percent-encoded dot ("%2e%2e") is a ".." segment once the URL is parsed.
+        && !p.to_ascii_lowercase().contains("%2e")
         && p.len() <= 500
         && !p.chars().any(|c| c.is_control());
     ok.then(|| p.to_string())
@@ -104,6 +106,8 @@ mod tests {
     fn app_paths() {
         assert!(safe_app_path("/app/edge").is_some());
         assert!(safe_app_path("/app/../api/desktop/me").is_none());
+        assert!(safe_app_path("/app/%2e%2e/api/desktop/me").is_none());
+        assert!(safe_app_path("/app/%2E./api").is_none());
         assert!(safe_app_path("/api/desktop/me").is_none());
         assert!(safe_app_path("/application").is_none());
     }

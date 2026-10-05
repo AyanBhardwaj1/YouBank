@@ -41,8 +41,11 @@ pub fn classify(url: &Url, site: &Url) -> Nav {
     match url.scheme() {
         "tauri" | "about" => return Nav::Allow,
         // The site's own downloads (CSV exports built in the page). Such pages have no origin the
-        // capabilities match, so they get no app commands.
-        "blob" | "data" => return Nav::Allow,
+        // capabilities match, so they get no app commands. Only blobs the site made, and only data
+        // that is not a page: an HTML or SVG `data:` link would otherwise fill the trusted window
+        // with someone else's page (a fake sign-in, say), which browsers refuse at the top level.
+        "blob" => return if url.origin() == site.origin() { Nav::Allow } else { Nav::Block },
+        "data" => return if data_is_document(url) { Nav::Block } else { Nav::Allow },
         "http" | "https" => {}
         "mailto" | "tel" => return Nav::External,
         _ => return Nav::Block,
@@ -55,6 +58,15 @@ pub fn classify(url: &Url, site: &Url) -> Nav {
         return Nav::Allow;
     }
     Nav::External
+}
+
+/// Whether a `data:` URL would render as a page (HTML, XHTML, SVG, XML) rather than download. Pure.
+fn data_is_document(url: &Url) -> bool {
+    let meta = url.path().split(',').next().unwrap_or("");
+    let mime = meta.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    // Percent-encoded media types are decoded by the webview, so decide on the decoded form.
+    let mime = url::form_urlencoded::parse(format!("m={mime}").as_bytes()).next().map(|(_, v)| v.to_ascii_lowercase()).unwrap_or(mime);
+    mime.contains("html") || mime.contains("xml") || mime.contains("svg")
 }
 
 /// A page bundled with the app, as the main window addresses it.
@@ -108,7 +120,8 @@ pub fn create_main(app: &AppHandle, visible: bool) -> tauri::Result<WebviewWindo
                 if let Some(w) = win_app.get_webview_window(MAIN) {
                     let _ = w.navigate(url);
                 }
-            } else if classify(&url, &site) != Nav::Block {
+            } else if matches!(url.scheme(), "http" | "https" | "mailto" | "tel") {
+                // Only web and mail links go to the system; a blob:, data: or tauri: one is dropped.
                 let _ = win_app.opener().open_url(url.as_str(), None::<&str>);
             }
             NewWindowResponse::Deny
@@ -296,6 +309,15 @@ mod tests {
         assert_eq!(classify(&u("file:///etc/passwd"), &site), Nav::Block);
         assert_eq!(classify(&u("javascript:alert(1)"), &site), Nav::Block);
         assert_eq!(classify(&u("data:text/csv,a,b"), &site), Nav::Allow);
+        assert_eq!(classify(&u("data:text/csv;charset=utf-8,a%2Cb"), &site), Nav::Allow);
+        assert_eq!(classify(&u("data:text/html,<script>alert(1)</script>"), &site), Nav::Block);
+        assert_eq!(classify(&u("data:TEXT/HTML;base64,PGgxPg=="), &site), Nav::Block);
+        assert_eq!(classify(&u("data:text%2Fhtml,<h1>x</h1>"), &site), Nav::Block);
+        assert_eq!(classify(&u("data:image/svg+xml,<svg/>"), &site), Nav::Block);
+        assert_eq!(classify(&u("data:application/xhtml+xml,<x/>"), &site), Nav::Block);
+        assert_eq!(classify(&u("blob:https://youbank-nu.vercel.app/0b6f1c1e-1111-2222-3333-444455556666"), &site), Nav::Allow);
+        assert_eq!(classify(&u("blob:https://evil.example/0b6f1c1e-1111-2222-3333-444455556666"), &site), Nav::Block);
+        assert_eq!(classify(&u("blob:null/0b6f1c1e-1111-2222-3333-444455556666"), &site), Nav::Block);
         assert_eq!(classify(&u("mailto:a@b.co"), &site), Nav::External);
     }
 }
