@@ -25,6 +25,9 @@ pnpm exec tsx scripts/test-news.ts > /tmp/youbank-test-news.log 2>&1 && tail -1 
 step "edge"
 pnpm exec tsx scripts/test-edge.ts > /tmp/youbank-test-edge.log 2>&1 && tail -1 /tmp/youbank-test-edge.log || { cat /tmp/youbank-test-edge.log; fail=1; }
 
+step "premium"
+pnpm exec tsx scripts/test-premium.ts > /tmp/youbank-test-premium.log 2>&1 && tail -1 /tmp/youbank-test-premium.log || { cat /tmp/youbank-test-premium.log; fail=1; }
+
 step "launch limits"
 pnpm exec tsx scripts/test-launch.ts > /tmp/youbank-test-launch.log 2>&1 && tail -1 /tmp/youbank-test-launch.log || { cat /tmp/youbank-test-launch.log; fail=1; }
 

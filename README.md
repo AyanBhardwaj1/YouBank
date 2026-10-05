@@ -37,6 +37,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
    - [Teams and live collaboration](#teams-and-live-collaboration)
+   - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
 4. [Data model](#data-model)
@@ -322,6 +323,12 @@ cost are recorded and shown in Settings. See [docs/research/ai-inference.md](doc
 
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
 
+**Deep research (Pro).** Tick "Deep research" under the chat box for a question that matters. The run
+starts with a short plan, uses up to 30 tool steps (against 10) at maximum reasoning effort on the
+flagship model (`AI_DEEP_MODEL` overrides it), checks each figure that drives the conclusion in a second
+source, and ends with a "Not verified" list. It runs only when ticked; a plan without it gets the plan
+message in the chat.
+
 ### Studio: live models and decks
 
 `/app/studio` is a spreadsheet and slide workspace where the agent does analyst work while you watch. You
@@ -343,7 +350,8 @@ that ticker.
   - an audit of the model, shown as a health strip;
   - a refresh of the data tables;
   - a short summary with cell references.
-- **Speed:** choose Fast, Balanced or Thorough.
+- **Speed:** choose Fast, Balanced or Thorough, or **Deep** (Pro): maximum reasoning, up to 40 steps,
+  then a review pass in which the agent is handed the audit's errors and fixes them before the run ends.
 - **Stop:** halts the agent between steps.
 - **Undo this run:** reverses everything the run did. Every single change, by the agent or a person, is
   in the History tab with its own undo.
@@ -583,6 +591,9 @@ A mailbox connects in one of two ways:
   - It uses the `gmail.readonly` and `gmail.send` scopes only.
   - Sync is incremental through Gmail's history API.
 
+**More than one mailbox** (a work and a personal address, or a shared deal inbox) is part of the Deal Team
+plan; the first mailbox is open to everyone. The check runs before a second address is stored.
+
 **Threading.**
 - Threads are keyed by Gmail's thread id where the server exposes it (`X-GM-THRID`). Otherwise the key is
   the root `Message-ID`, found from `References` and `In-Reply-To`.
@@ -669,6 +680,10 @@ honest reason to write. When there is not, it logs why. Each rule has a daily dr
 
 #### Campaigns
 
+Campaigns are part of the Deal Team plan: creating, launching, qualifying and drafting them, by hand or on
+the heartbeat and the nightly run (both skip campaigns for plans without them). Pausing, editing and
+archiving stay open, so nothing is stranded when a plan changes.
+
 Cold outreach, from lead list to follow-ups:
 
 - **Leads** come from the startup directory (filtered) or from a pasted list. Pasted leads without an email
@@ -723,6 +738,11 @@ your sending hours. Each person can turn the morning run off.
 
 Autopilot is **off by default**. When it is on, each kind of email has its own setting: **Off**, **Ask me** or
 **Autopilot**.
+
+Sending on its own is part of the Deal Team plan. Switching it on checks the plan, and the scheduler checks
+it again before every automatic send: if a plan no longer includes it, the master switch counts as off and
+anything already scheduled waits in the review queue with the reason. Reading, triage and drafts that wait
+for you stay open to every plan.
 
 | Kind of email | Default |
 |---|---|
@@ -976,6 +996,36 @@ Graduation offers appear at the top of the queue.
   - Presence is a heartbeat with a 25-second window.
   - A session shared with a team is open to that team; an unshared one stays with whoever started it.
 
+### Premium features
+
+Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
+data and models a key in the environment decides whether it can run at all. They spend money only when
+someone whose plan includes them uses them on purpose (a click, a ticked option); crons, monitors,
+prefetches and page loads always get the free method. Administrators (`ADMIN_EMAILS`) may use everything.
+Locked features stay visible with their plan badge, and trying one shows the plan's message in line with
+a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this list is
+`src/lib/billing/features/premium.ts`, with each feature's cost per use for the pricing model.
+
+| Feature | Plan | Where | What it adds |
+|---|---|---|---|
+| Premium reranking | Pro | Edge · Documents | Voyage rerank-3 (or Cohere Rerank 4) on every question, instead of the free reranker |
+| Stronger answer model | Pro | Edge · Ask, "Stronger model" | `EDGE_ANSWER_MODEL` (e.g. gpt-5.6-sol) writes that answer |
+| Exact-span citations | Pro | Edge · Ask, "Exact-span citations" | Anthropic Citations: quotes cut from the passages by the API |
+| Ask across companies | Pro | Edge · Ask, "Each company separately" | One question answered from each of up to six companies' filings, side by side |
+| Speaker-labelled transcripts | Pro | Edge · Library, on upload or per recording | OpenAI `gpt-4o-transcribe-diarize`; MP3 and WAV of any length, other formats to 24 MB |
+| Hard PDFs read by LlamaParse | Pro | Edge · Library, on upload or per document | LlamaParse v2 (agentic tier) with tables kept whole |
+| Sharper satellite imagery | Pro | Edge · a plant's panel | Planet's PlanetScope and SkySat scenes |
+| TimesFM forecasts | Pro | Edge · Scenarios, Driver forecasts | Google's TimesFM through BigQuery, beside the free drift forecast |
+| Flare volumes (Nightfire) | Enterprise | Edge · a plant's panel | VIIRS Nightfire flares with an estimated volume (licensed data) |
+| GPU retraining of the deal model | Enterprise | Edge · Networks | One retraining on a Modal T4, wider and longer (the weekly one stays on CPU) |
+| Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
+| Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
+| More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
+
+**Settings → Labs → Edge premium upgrades** lists each upgrade with whether YouBank has it switched on and
+whether your plan includes it; administrators also see its cost to us, the settings behind it (names only)
+and the steps to switch it on.
+
 ### Site, onboarding and styles
 
 - **The landing page (`/`)** includes:
@@ -1162,6 +1212,17 @@ bash scripts/preflight.sh                                         # everything t
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
+| `ADMIN_EMAILS` | no | Comma-separated administrators: every premium feature, and admin-only screens |
+| `AI_DEEP_MODEL` | no | The model for deep research; default the flagship of the person's provider |
+| `VOYAGE_API_KEY` or `COHERE_API_KEY` | for premium reranking | Paid rerankers (Pro and up) |
+| `EDGE_ANSWER_MODEL` | for the stronger answer model | e.g. `gpt-5.6-sol` |
+| `EDGE_CITATIONS=anthropic`, `ANTHROPIC_API_KEY`, `EDGE_CITATIONS_MODEL` | for exact-span citations | The model defaults to `claude-sonnet-5-5` |
+| `EDGE_TRANSCRIBE=openai`, `EDGE_TRANSCRIBE_MODEL` | for speaker labels | Uses `OPENAI_API_KEY`; the model defaults to `gpt-4o-transcribe-diarize` |
+| `LLAMA_CLOUD_API_KEY`, `LLAMAPARSE_TIER`, `LLAMA_CLOUD_BASE_URL` | for LlamaParse | Tier defaults to `agentic`; the base URL to `https://api.cloud.llamaindex.ai` (use the EU host for EU projects) |
+| `PLANET_API_KEY` | for Planet imagery | |
+| `NIGHTFIRE_USER`, `NIGHTFIRE_PASSWORD` | for Nightfire | An EOG account under its data licence; `NIGHTFIRE_CLIENT_SECRET`, `NIGHTFIRE_URL_TEMPLATE` and `NIGHTFIRE_TOKEN_URL` only if EOG changes its download client |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` | for TimesFM | A service account key with BigQuery Job User; `TIMESFM_MODEL` (default `TimesFM 2.5`), `BIGQUERY_LOCATION` (default `US`) |
+| `EDGE_ML_GPU=1` | for GPU retraining | After deploying the ML service's `graph.train.gpu` task |
 
 ---
 
@@ -1240,6 +1301,7 @@ bash scripts/preflight.sh                                         # everything t
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
+| Premium (56 tests) | `pnpm exec tsx scripts/test-premium.ts` | The feature registry (unique ids, plans, a cost for every metered feature, every keyed upgrade built and tied to a feature); the premium scope (nothing premium outside it, async propagation, 402 before work, the client's plan message); per-person and administrator views of the upgrades (no setting values); Citations' spans to claims; MP3 frames and WAV headers for cutting audio; diarized pieces in time; LlamaParse jobs and Markdown tables; Nightfire's CSV, grouping and volumes; weekly levels, the drift forecast and the TimesFM query |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
 | Studio end to end | `DATABASE_URL=<branch> pnpm exec tsx scripts/e2e-studio.ts` | With the live model: a valuation pack with a linked deck, a custom formula-linked sheet with a waterfall slide, a turned comment, undoing a run, and exports from the stored document |
@@ -1375,6 +1437,8 @@ Three earlier research reports are behind the adaptive engine, the website and t
   - SOC 2 Type I;
   - properly licensed market data;
   - billing for the plans above.
+- **Premium:** speaker labels for long M4A and MP4 recordings (needs cutting on the ML service); methane
+  cards per plan (today Carbon Mapper is a site licence and its cards are shared findings).
 
 ---
 
