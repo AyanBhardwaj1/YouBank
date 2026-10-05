@@ -18,7 +18,7 @@ import { firstMp3Frame, mp3FrameLength, pieceBytes, planPieces, wavHeader, wavIn
 import { citationSystem, claimsOf, NOT_FOUND, piecesOf } from "@/lib/edge/premium/citations";
 import { mergePieces, parseDiarized, turnsOf } from "@/lib/edge/premium/diarize";
 import { llamaCost, parseLlamaJob, partsFromMarkdown } from "@/lib/edge/premium/llamaparse";
-import { lastNights, mwToMmcfd, parseVnf, volumesNear } from "@/lib/edge/premium/nightfire";
+import { lastNights, mwToMmcfd, nightOf, parseVnf, volumesNear } from "@/lib/edge/premium/nightfire";
 import { readMismatch } from "@/lib/edge/premium/reading";
 import { driftForecast, forecastSql, parseForecastRows, weeklyLevel } from "@/lib/edge/premium/timesfm";
 import type { FactorRow } from "@/lib/edge/scen/data";
@@ -139,6 +139,12 @@ async function main() {
   check("EOG's calibration: 1 MW is about 2.65 MMcf/d", Math.abs(mwToMmcfd(1) - 2.651) < 0.01);
   const v = volumesNear([...dets, { lon: -103.5, lat: 31.9, tempK: 1700, rhMw: 6, at: "20261002-0830", sat: "j01" }], -103.5, 31.9, 7);
   check("passes on one night are averaged, then over every night read; a flare is one group", v.flares.length === 1 && v.nightsSeen === 2 && Math.abs(v.avgRhMw - (5 + 6) / 7) < 0.001 && v.mmcfd > 0, v);
+  {
+    // EOG's files write Date_Mscan with separators; nights must still be told apart.
+    const at = (day: string) => ({ lon: -103.5, lat: 31.9, tempK: 1700, rhMw: 7, at: `2026/10/${day} 08:30:12.345`, sat: "npp" });
+    const s = volumesNear([at("01"), at("02"), at("03")], -103.5, 31.9, 7);
+    check("nights are told apart whatever the date's separators", nightOf("2026/10/01 08:30:12.345") === "20261001" && nightOf("20261001-0830") === "20261001" && s.nightsSeen === 3 && Math.abs(s.avgRhMw - 3) < 0.001, s);
+  }
   check("nothing near is no volume", volumesNear(dets, -100, 40, 7).detections === 0 && volumesNear(dets, -100, 40, 7).mmcfd === 0);
   check("the nights looked at end yesterday", lastNights(2, new Date("2026-10-05T12:00:00Z")).join() === "20261004,20261003");
 

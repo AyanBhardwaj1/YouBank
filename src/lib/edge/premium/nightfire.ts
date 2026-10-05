@@ -73,6 +73,12 @@ export function parseVnf(csv: string, sat: string, boxes: Bbox[]): Detection[] {
   return out;
 }
 
+/**
+ * The night (YYYYMMDD) a detection's Date_Mscan falls on, whatever its separators ("2026/10/01
+ * 08:30:12.345", "2026-10-01 08:30", "20261001-0830"): its first eight digits. Pure.
+ */
+export const nightOf = (at: string) => at.replace(/\D/g, "").slice(0, 8) || at;
+
 const kmBetween = (aLon: number, aLat: number, bLon: number, bLat: number) => {
   const r = Math.PI / 180, dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) ** 2;
@@ -95,7 +101,7 @@ export function volumesNear(dets: Detection[], lon: number, lat: number, nightsR
   // A night's heat is the mean of that night's passes (two satellites can both see a flare).
   const perNight = (ds: typeof near) => {
     const nights = new Map<string, number[]>();
-    for (const d of ds) { const k = d.at.slice(0, 8) || d.at; nights.set(k, [...(nights.get(k) ?? []), d.rhMw]); }
+    for (const d of ds) { const k = nightOf(d.at); nights.set(k, [...(nights.get(k) ?? []), d.rhMw]); }
     return [...nights.values()].reduce((s, v) => s + v.reduce((a, b) => a + b, 0) / v.length, 0) / n;
   };
   const flares = groups.map((g) => {
@@ -104,7 +110,7 @@ export function volumesNear(dets: Detection[], lon: number, lat: number, nightsR
   });
   const avgRhMw = flares.reduce((s, f) => s + f.avgRhMw, 0);
   return {
-    nightsRead, radiusKm, detections: near.length, nightsSeen: new Set(near.map((d) => d.at.slice(0, 8) || d.at)).size,
+    nightsRead, radiusKm, detections: near.length, nightsSeen: new Set(near.map((d) => nightOf(d.at))).size,
     avgRhMw: Math.round(avgRhMw * 1000) / 1000, peakTempK: near.length ? Math.max(...near.map((d) => d.tempK)) : 0,
     mmcfd: Math.round(mwToMmcfd(avgRhMw) * 100) / 100, bcmYear: Math.round(avgRhMw * BCM_PER_MW_YEAR * 10_000) / 10_000, flares,
   };
