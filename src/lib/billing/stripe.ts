@@ -26,6 +26,7 @@ import { logError, OUR_SIDE } from "@/lib/errors";
 import { LEGAL, siteLink, siteUrl } from "@/lib/site";
 import { grantPack, refundPack } from "./credits";
 import { isPackId, packById, type CreditPack, type PackId } from "./packs";
+import { seatHolders, trimSeats } from "./seats";
 import { intervalsFor, isPlanId, LIVE_STATUSES, PLAN_ORDER, PLANS, type BillingInterval, type PlanId } from "./plans";
 
 export const BILLING_OFF = "Billing isn't switched on yet.";
@@ -192,10 +193,6 @@ export function isDuplicate(existing: Pick<SubscriptionRow, "status" | "stripeSu
     && LIVE_STATUSES.includes(existing.status) && LIVE_STATUSES.includes(incoming.status);
 }
 
-/** Hooks other billing modules add (seat trimming); called after a subscription row is written. */
-const afterApply: ((row: RowValues) => Promise<void>)[] = [];
-export const onSubscriptionApplied = (fn: (row: RowValues) => Promise<void>) => { afterApply.push(fn); };
-
 /**
  * Write a person's row from a subscription as Stripe holds it now. Idempotent. When it would be a second
  * live subscription beside the stored one (two checkouts that both went through), the newer of the two is
@@ -221,7 +218,8 @@ export async function applySubscription(userId: string, sub: Stripe.Subscription
     set: { plan, status, seats, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, currentPeriodStart, billingAnchor, cancelAtPeriodEnd, cancelAt, updatedAt: new Date() },
   });
   forgetAiCaps(userId);
-  for (const fn of afterApply) await fn(next);
+  // A lower seat count (or a move off a team plan) takes the newest seats back.
+  for (const id of await trimSeats(userId, next.plan, next.status, next.seats).catch(() => [] as string[])) forgetAiCaps(id);
   return next;
 }
 
@@ -382,14 +380,10 @@ export const WEBHOOK_EVENTS = [
   "charge.refunded",
 ] as const;
 
-/** People to forget cached plans for when a person's subscription changes (seat holders, added by ./seats). */
-const dependents: ((userId: string) => Promise<string[]>)[] = [];
-export const onPlanChanged = (fn: (userId: string) => Promise<string[]>) => { dependents.push(fn); };
-
-/** Drop the cached plan and credits of a person and everyone whose plan follows theirs. */
+/** Drop the cached plan and credits of a person and of everyone holding one of their seats. */
 export async function forgetPlan(userId: string): Promise<void> {
   forgetAiCaps(userId);
-  for (const fn of dependents) for (const id of await fn(userId).catch(() => [] as string[])) forgetAiCaps(id);
+  for (const id of await seatHolders(userId).catch(() => [] as string[])) forgetAiCaps(id);
 }
 
 /** Act on one verified webhook event. Returns the person whose row it touched, if any. */

@@ -1,9 +1,10 @@
 /**
  * Who may use what. Server only.
  *
- * A person's plan comes from their `subscriptions` row (written by billing); without one it is Campus for
- * a .edu address and Free otherwise. Administrators (ADMIN_EMAILS) are treated as Enterprise. A
- * subscription that has lapsed (canceled, unpaid) falls back to the free plan.
+ * A person's plan comes from their `subscriptions` row (written by billing) or a Deal Team or Enterprise
+ * seat someone else's subscription gives them (./seats), whichever is higher; without either it is Campus
+ * for a .edu address and Free otherwise. Administrators (ADMIN_EMAILS) are treated as Enterprise. A
+ * subscription that has lapsed (canceled, unpaid) falls back to the free plan, for its seat holders too.
  *
  * Routes that start a premium feature call `requireFeature` before doing any paid work; the error it
  * throws carries status 402 and a plain message, so `guarded()` shows it to the person as written.
@@ -15,6 +16,7 @@ import { isAdmin } from "@/lib/auth/admin";
 import type { CurrentUser } from "@/lib/auth/user";
 import { featureById, FEATURES } from "./features";
 import { isPlanId, LIVE_STATUSES, planAtLeast, PLANS, type PlanId } from "./plans";
+import { heldSeat } from "./seats";
 
 export type Entitlements = {
   plan: PlanId;
@@ -27,6 +29,8 @@ export type Entitlements = {
    * or the owner's for an assigned seat. Null means the calendar month.
    */
   anchor: string | null;
+  /** Set when the plan comes from a seat on someone else's subscription. */
+  seat: { owner: string | null; team: string | null } | null;
 };
 
 const LIVE = new Set(LIVE_STATUSES);
@@ -64,9 +68,18 @@ export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">
       anchor = row.billingAnchor ?? null;
     }
   }
+  let seat: Entitlements["seat"] = null;
+  if (db && !planAtLeast(plan, "enterprise")) {
+    const held = await heldSeat(user.id).catch(() => null);
+    if (held && planAtLeast(held.plan, plan) && held.plan !== plan) {
+      plan = held.plan;
+      anchor = held.anchor;
+      seat = { owner: held.ownerEmail, team: held.teamName };
+    }
+  }
   if (admin) plan = "enterprise";
   const features = FEATURES.filter((f) => admin || planAtLeast(plan, f.minPlan)).map((f) => f.id);
-  return { plan, admin, status, features, anchor: anchor ? anchor.toISOString() : null };
+  return { plan, admin, status, features, anchor: anchor ? anchor.toISOString() : null, seat };
 });
 
 export async function canUse(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<boolean> {

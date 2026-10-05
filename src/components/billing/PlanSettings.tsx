@@ -19,6 +19,7 @@ import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
 import { CREDIT_PACKS, packById } from "@/lib/billing/packs";
+import type { SeatBoard } from "@/lib/billing/seats";
 import { FEATURES, type FeatureArea } from "@/lib/billing/features";
 import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
@@ -31,6 +32,7 @@ type Status = ClientEntitlements & {
     periodStart: string; periodEnd: string;
     credits: { availableUsd: number; usedUsd: number; leftUsd: number; packs: { pack: string; usd: number; leftUsd: number; boughtAt: string }[] };
   };
+  seats: SeatBoard | null;
 };
 
 type Confirmed = ClientEntitlements & { kind: "plan" | "credits"; paid: boolean; pack: string | null };
@@ -78,6 +80,68 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
           <div className={`h-full rounded-full ${share >= 0.9 ? "bg-neg" : "bg-accent"}`} style={{ width: `${Math.max(2, share * 100)}%` }} />
         </div>
       )}
+    </div>
+  );
+}
+
+async function send<T>(method: "POST" | "DELETE", url: string, body: unknown): Promise<T> {
+  const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = (await r.json().catch(() => ({}))) as T & { error?: string };
+  if (!r.ok) throw new Error(j.error ?? "Something went wrong on our side. Try again in a moment.");
+  return j;
+}
+
+/**
+ * Deal Team and Enterprise seats: the owner gives them to people on teams they own or administer, and
+ * takes them back. The count itself changes under Manage billing (the Stripe portal).
+ */
+function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard) => void }) {
+  const [pick, setPick] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const used = board.assigned.filter((a) => a.active).length;
+  const free = Math.max(0, board.assignable - board.assigned.length);
+  const act = async (fn: () => Promise<{ board: SeatBoard | null }>) => {
+    setBusy(true); setError(null);
+    try { const r = await fn(); if (r.board) onChange(r.board); setPick(""); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  const assign = () => {
+    const [teamId, userId] = pick.split(":");
+    if (userId) void act(() => send("POST", "/api/billing/seats", { userId, teamId: Number(teamId) }));
+  };
+  return (
+    <div className="panel p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-[13.5px] font-semibold">Seats</h3>
+        <span className="text-[11.5px] text-muted"><span className="num font-medium text-fg">{used + 1}</span> of <span className="num">{board.seats}</span> {PLANS[board.plan].name} seats in use, yours included</span>
+      </div>
+      <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Give a seat to someone on a team you own or administer and they get {PLANS[board.plan].name}, with their own AI allowance. Invite people on the <a href="/app/team" className="underline hover:text-fg">Team page</a> first. To add or remove seats, use Manage billing; if you lower the count, the most recently given seats are taken back first.</p>
+      {error && <p role="alert" className="mt-2 text-[12px] text-neg">{error}</p>}
+      {board.assigned.length > 0 && (
+        <ul className="mt-3 divide-y divide-line rounded-lg border border-line text-[12px]">
+          {board.assigned.map((a) => (
+            <li key={a.userId} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate">{a.name || a.email}<span className="text-muted"> · {a.email}{a.teamName ? ` · ${a.teamName}` : ""}</span></span>
+              {!a.active && <span className="text-[11px] text-neg">not active (over the seat count or left the team)</span>}
+              <button type="button" disabled={busy} onClick={() => void act(() => send("DELETE", "/api/billing/seats", { userId: a.userId }))} className="text-[11.5px] text-muted hover:text-neg disabled:opacity-50">Take back</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {board.candidates.length === 0 ? (
+          <p className="text-[11.5px] text-muted">Nobody on your teams is waiting for a seat. Invite people on the Team page.</p>
+        ) : (
+          <>
+            <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || free === 0} aria-label="Person to give a seat to" className="ctl min-w-[220px] border border-line bg-transparent px-2 py-1 text-[12px]">
+              <option value="">{free === 0 ? "All seats are in use" : "Choose someone on your teams…"}</option>
+              {board.candidates.map((c) => <option key={`${c.teamId}:${c.userId}`} value={`${c.teamId}:${c.userId}`}>{c.name || c.email} ({c.email}{c.teamName ? `, ${c.teamName}` : ""})</option>)}
+            </select>
+            <button type="button" disabled={busy || !pick || free === 0} onClick={assign} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving…" : "Give a seat"}</button>
+            <span className="text-[11px] text-faint">{free} free</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -212,6 +276,11 @@ export function PlanSettings() {
             <p className="mt-1 text-[12px] text-muted">
               {status.admin ? "As an administrator you can use everything, with no AI cap." : PLANS[status.plan].blurb}
             </p>
+            {status.seat && !status.admin && (
+              <p className="mt-1.5 text-[12px]">
+                <span className="text-muted">Your seat comes from </span>{status.seat.owner ?? "a teammate"}<span className="text-muted">&apos;s subscription{status.seat.team ? `, through ${status.seat.team}` : ""}. Your AI allowance is your own.</span>
+              </p>
+            )}
             {status.subscription && status.subscription.status !== "none" && (
               <p className="mt-1.5 text-[12px]">
                 <span className={status.subscription.status === "past_due" ? "text-neg" : ""}>{STATUS_LABEL[status.subscription.status] ?? status.subscription.status}</span>
@@ -243,6 +312,8 @@ export function PlanSettings() {
           </div>
         </div>
       )}
+
+      {status?.seats && <Seats board={status.seats} onChange={(seats) => setStatus((s) => (s ? { ...s, seats } : s))} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-[13.5px] font-semibold">Plans</h3>

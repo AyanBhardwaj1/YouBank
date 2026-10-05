@@ -13,6 +13,7 @@ import { checkEnv, checkSiteUrl, checkStripe } from "@/lib/env";
 import Stripe from "stripe";
 import { blockedAt, dailyCapWith, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
 import { effectiveEnd } from "@/lib/billing/credits";
+import { assignableSeats, assignError, seatPlan, seatsToTrim } from "@/lib/billing/seats";
 import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPackId, PACK_MARGIN_TARGET, packFees, packMargin, remainingByGrant, settledUse, splitSpend } from "@/lib/billing/packs";
 import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
@@ -206,6 +207,31 @@ async function main() {
     check("checkout sessions close after about half an hour", sessionExpiry(t) - Math.floor(t / 1000) >= 30 * 60 && sessionExpiry(t) - Math.floor(t / 1000) < 40 * 60);
   }
 
+  console.log("team seats");
+  {
+    const live = { plan: "team", status: "active", seats: 4, member: true };
+    check("the owner holds one seat; the rest can be given", assignableSeats(4) === 3 && assignableSeats(1) === 0 && assignableSeats(0) === 0);
+    check("an assigned seat grants the subscription's plan", seatPlan({ ...live, rank: 0 }) === "team" && seatPlan({ ...live, plan: "enterprise", rank: 2 }) === "enterprise");
+    check("only seats within the count are granted, oldest first", seatPlan({ ...live, rank: 2 }) === "team" && seatPlan({ ...live, rank: 3 }) === null);
+    check("a past-due subscription keeps its seats; a cancelled one does not", seatPlan({ ...live, status: "past_due", rank: 0 }) === "team" && seatPlan({ ...live, status: "canceled", rank: 0 }) === null && seatPlan({ ...live, status: "unpaid", rank: 0 }) === null);
+    check("someone who left the team loses the seat", seatPlan({ ...live, member: false, rank: 0 }) === null);
+    check("Pro has no seats to give", seatPlan({ ...live, plan: "pro", seats: 3, rank: 0 }) === null);
+    const ok = { ownerId: "o", targetId: "m", plan: "team", status: "active", seats: 4, assigned: 1, ownerRole: "owner" as const, targetRole: "member" as const, targetSeatOwner: null };
+    check("an owner can give a seat to a member of their team", assignError(ok) === null);
+    check("an admin of the team can too", assignError({ ...ok, ownerRole: "admin" }) === null);
+    check("a plain member of the team cannot", /own or administer/.test(assignError({ ...ok, ownerRole: "member" }) ?? ""));
+    check("only to people on that team", /Invite them on the Team page/.test(assignError({ ...ok, targetRole: null }) ?? ""));
+    check("never more than the seat count", /All 4 seats are in use/.test(assignError({ ...ok, assigned: 3 }) ?? "") && assignError({ ...ok, assigned: 2 }) === null);
+    check("not to someone already seated, here or elsewhere", /already has one of your seats/.test(assignError({ ...ok, targetSeatOwner: "o" }) ?? "") && /someone else's/.test(assignError({ ...ok, targetSeatOwner: "x" }) ?? ""));
+    check("not to yourself", /hold one seat yourself/.test(assignError({ ...ok, targetId: "o" }) ?? ""));
+    check("not without a live team subscription", /live Deal Team or Enterprise/.test(assignError({ ...ok, plan: "pro" }) ?? "") && /live Deal Team/.test(assignError({ ...ok, status: "canceled" }) ?? "") && /live Deal Team/.test(assignError({ ...ok, plan: null, status: null }) ?? ""));
+    const rows = [3, 1, 2, 4].map((id) => ({ id, assignedAt: new Date(Date.UTC(2026, 9, id)) }));
+    check("lowering the seat count in the portal takes the newest seats back", seatsToTrim(rows, 3, "team", true).map((r) => r.id).join() === "3,4");
+    check("raising it takes nothing back", seatsToTrim(rows, 10, "team", true).length === 0);
+    check("moving to a plan without seats frees them all", seatsToTrim(rows, 1, "pro", true).length === 4);
+    check("a cancelled subscription keeps its assignments for a resubscribe (they grant nothing meanwhile)", seatsToTrim(rows, 1, "team", false).length === 0);
+  }
+
   console.log("checkout requests");
   check("Pro monthly, one seat", JSON.stringify(checkoutRequest({ plan: "pro", interval: "monthly" })) === JSON.stringify({ plan: "pro", interval: "monthly", seats: 1 }));
   check("Pro ignores a seat count", checkoutRequest({ plan: "pro", interval: "yearly", seats: 9 }).seats === 1);
@@ -230,6 +256,7 @@ async function main() {
   check("the period end comes from the subscription item", row.currentPeriodEnd?.getTime() === 1_800_000_000_000);
   check("an unknown price falls back to the plan in the metadata", rowFromSubscription("u1", sub({ price: "price_x", meta: { plan: "enterprise" } }), prices).plan === "enterprise");
   check("a canceled subscription keeps its plan but not its status", rowFromSubscription("u1", sub({ status: "canceled" }), prices).status === "canceled");
+  check("a seat count changed in the portal reaches the row through the webhook", rowFromSubscription("o", sub({ quantity: 7 }), prices).seats === 7);
   check("the billing anchor and period start are stored, for allowance resets", row.billingAnchor?.getTime() === 1_790_000_000_000 && row.currentPeriodStart?.getTime() === (1_800_000_000 - 2_592_000) * 1000);
   check("a live subscription that is not cancelling has no cancel date", !row.cancelAtPeriodEnd && row.cancelAt === null);
   const ending = rowFromSubscription("u1", sub({ cancelAtPeriodEnd: true }), prices);
