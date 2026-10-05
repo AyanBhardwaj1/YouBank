@@ -49,13 +49,14 @@ async function readXlsx(bytes: Uint8Array, name: string): Promise<{ snap: Snapsh
 
 /**
  * Push a local workbook into its Studio document. `base` is the change the local copy was pulled at:
- * if Studio has moved on since, the push would undo those changes, so it is refused (409) unless the
- * person chose to overwrite.
+ * if Studio has moved on since (or the base is missing), the push would undo those changes, so it is
+ * refused (409) unless the person chose to overwrite.
  */
 export async function pushWorkbook(user: CurrentUser, docId: number, bytes: Uint8Array, opts: { name: string; base: number | null; force: boolean }) {
   const row = await requireDoc(user, docId, "edit");
   const latest = await lastEventId(docId);
-  if (!opts.force && opts.base !== null && latest > opts.base) {
+  // Without a base the server cannot tell what the file was pulled at, so that counts as a conflict too.
+  if (!opts.force && (opts.base === null || latest > opts.base)) {
     throw Object.assign(status("This model changed in Studio after you pulled it. Pull a fresh copy (your file is backed up first) or push anyway to overwrite Studio.", 409), { cursor: latest });
   }
   const { snap } = await readXlsx(bytes, opts.name);
