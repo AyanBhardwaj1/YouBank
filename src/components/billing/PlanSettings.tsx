@@ -16,7 +16,7 @@ import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
 import { FEATURES, type FeatureArea } from "@/lib/billing/features";
-import { intervalsFor, PLAN_ORDER, PLANS, planAtLeast, usd, type BillingInterval, type PlanId } from "@/lib/billing/plans";
+import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
 type Status = ClientEntitlements & {
@@ -70,7 +70,10 @@ export function PlanSettings() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [period, setPeriod] = useState<BillingInterval>("monthly");
-  const [seats, setSeats] = useState<Record<PlanId, number>>(() => Object.fromEntries(PLAN_ORDER.map((p) => [p, PLANS[p].minSeats])) as Record<PlanId, number>);
+  // Kept as typed, so "12" can be entered for a three-seat minimum; clamped on blur and when sent.
+  const [seats, setSeats] = useState<Record<PlanId, string>>(() => Object.fromEntries(PLAN_ORDER.map((p) => [p, String(PLANS[p].minSeats)])) as Record<PlanId, string>);
+  // Only the minimum is applied here; above the online maximum the server says to write to us.
+  const seatCount = (id: PlanId) => Math.max(PLANS[id].minSeats, Math.floor(Number(seats[id])) || PLANS[id].minSeats);
   const [busy, setBusy] = useState<string | null>(null);
   // Back from Checkout: read once, from the address this page opened with.
   const params = useSearchParams();
@@ -88,7 +91,9 @@ export function PlanSettings() {
     const clean = () => window.history.replaceState(null, "", "/app/settings?tab=plan");
     if (back.outcome === "done" && back.sessionId) {
       void post<ClientEntitlements>("/api/billing/confirm", { sessionId: back.sessionId })
-        .then((e) => setNote({ tone: "ok", text: `Thank you. You are on ${PLANS[e.plan]?.name ?? "your new plan"} now.` }))
+        .then((e) => setNote(PLANS[e.plan]?.selfServe
+          ? { tone: "ok", text: `Thank you. You are on ${PLANS[e.plan].name} now.` }
+          : { tone: "info", text: "Stripe is still confirming your payment. Your plan changes here as soon as it does." }))
         .catch((e: Error) => setNote({ tone: "error", text: e.message }))
         .finally(() => { refreshPlan(); clean(); void fetchStatus().then(show); });
       return;
@@ -111,6 +116,8 @@ export function PlanSettings() {
   // Unknown until the status loads, so no card claims to be "Current" before then.
   const current: PlanId | null = status?.plan ?? null;
   const enabled = status?.billing.enabled ?? false;
+  // Someone with a live subscription changes plan in the portal; a lapsed one buys anew.
+  const paying = !!status?.subscription?.manageable && LIVE_STATUSES.includes(status.subscription.status);
   const unlocked = new Set(status?.features ?? []);
   const areas = [...new Set(FEATURES.map((f) => f.area))];
   const anyYearlyOnly = PLAN_ORDER.some((p) => PLANS[p].selfServe && !PLANS[p].monthlyUsd);
@@ -220,17 +227,17 @@ export function PlanSettings() {
                     {p.minSeats > 1 && (
                       <label className="flex items-center justify-between gap-2 text-[11.5px] text-muted">
                         Seats
-                        <input type="number" min={p.minSeats} max={500} value={seats[id]} onChange={(e) => setSeats({ ...seats, [id]: Math.max(p.minSeats, Math.floor(Number(e.target.value) || p.minSeats)) })} className="num ctl w-16 border border-line bg-transparent px-2 py-0.5 text-right text-[12px] text-fg" />
+                        <input type="number" min={p.minSeats} max={500} value={seats[id]} onChange={(e) => setSeats({ ...seats, [id]: e.target.value })} onBlur={() => setSeats({ ...seats, [id]: String(seatCount(id)) })} className="num ctl w-16 border border-line bg-transparent px-2 py-0.5 text-right text-[12px] text-fg" />
                       </label>
                     )}
                     <button
                       type="button"
                       disabled={!buyable || !!busy}
-                      onClick={() => shown && go(id, "/api/billing/checkout", { plan: id, interval: shown, seats: seats[id] })}
+                      onClick={() => shown && go(id, "/api/billing/checkout", { plan: id, interval: shown, seats: seatCount(id) })}
                       title={!enabled ? "Billing isn't switched on yet" : !buyable ? "Not on sale online yet" : undefined}
                       className="ctl w-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {busy === id ? "Opening checkout…" : status?.subscription?.manageable && current && planAtLeast(id, current) ? `Switch to ${p.name}` : `Choose ${p.name}`}
+                      {busy === id ? "Opening checkout…" : paying && current && planAtLeast(id, current) ? `Switch to ${p.name}` : `Choose ${p.name}`}
                     </button>
                     {status && !enabled && <p className="text-[10.5px] text-faint">Billing isn&apos;t switched on yet.</p>}
                   </div>
