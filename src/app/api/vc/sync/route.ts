@@ -7,7 +7,7 @@ import { runSync, type SyncSource } from "@/lib/vc/sync";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const SOURCES: SyncSource[] = ["yc", "a16z", "hn", "formd", "thiel"];
+const SOURCES: SyncSource[] = ["yc", "a16z", "hn", "formd", "thiel", "defillama"];
 
 /**
  * Refresh one source of the shared startup directory now. It rewrites what everyone sees and reads SEC
