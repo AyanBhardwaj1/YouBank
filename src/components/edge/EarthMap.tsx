@@ -16,6 +16,7 @@ import type { SiteModel } from "@/lib/edge/site3d";
 import { hexagon } from "@/lib/edge/terrain-view";
 import { tilt as tween } from "./tilt";
 import { partyOf, type AssetCollection, type AssetFeature, type Bbox, type Imagery } from "./client";
+import { addCryptoSitesLayer } from "@/lib/crypto/map-layer"; // Crypto layer (owned by the crypto work)
 
 export type MapParty = { key: string; label: string; color: string; tickers: string[]; companies: string[] };
 export type MapMarker = { id: number; lon: number; lat: number; title: string; kind: string };
@@ -203,6 +204,8 @@ function MapCanvas(props: EarthMapProps) {
       // Findings are rings with a white core, so they never read as a plant.
       m.addLayer({ id: "markers-halo", type: "circle", source: "markers", paint: { "circle-color": accent, "circle-radius": 14, "circle-opacity": 0.18, "circle-blur": 0.5 } });
       m.addLayer({ id: "markers", type: "circle", source: "markers", paint: { "circle-color": "#ffffff", "circle-radius": 4.5, "circle-stroke-color": accent, "circle-stroke-width": 3.5 } });
+      // Crypto layer: Bitcoin mining sites and crypto data centres, self-contained with its own button and popups (src/lib/crypto/map-layer.ts).
+      addCryptoSitesLayer(m, { beforeId: "markers-halo" });
       ready.current = true;
       syncSatellite(m, p.satellite);
       syncOverlay(m, p.overlay);
