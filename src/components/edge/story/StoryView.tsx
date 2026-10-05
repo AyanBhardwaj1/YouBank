@@ -43,7 +43,7 @@ export function StoryView({ story, owner, teams }: { story: StoryData; owner: bo
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">Edge story</div>
           <h1 className="mt-2 font-[family-name:var(--font-display-serif)] text-[34px] leading-tight md:text-[44px]">{story.title}</h1>
           <p className="mt-2 text-[12.5px] text-muted">{new Date(story.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })} · {story.sections.length} sections · every figure is cited or labeled</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2 print:hidden">
+          <div className="mt-4 flex flex-wrap items-center gap-2 print:hidden max-md:[&>a]:min-h-10 max-md:[&>button]:min-h-10">
             <a href={`/api/edge/stories/${story.slug}/pptx`} className="ctl flex items-center gap-1.5 border border-line px-2.5 py-1 text-[12px] hover:border-accent/50"><Download className="h-3.5 w-3.5" />PowerPoint</a>
             <button type="button" onClick={() => window.print()} className="ctl flex items-center gap-1.5 border border-line px-2.5 py-1 text-[12px] hover:border-accent/50"><Printer className="h-3.5 w-3.5" />PDF</button>
             {owner && (

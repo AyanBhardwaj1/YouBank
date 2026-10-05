@@ -29,6 +29,9 @@ export function MobileViewport() {
         const open = covered > 120 || (touch.matches && isTextField(document.activeElement) && window.innerHeight < screenHeight() * 0.72);
         root.style.setProperty("--kb", `${covered > 120 ? covered : 0}px`);
         if (open) root.setAttribute("data-kb", "open"); else root.removeAttribute("data-kb");
+        // The signed-in frame shrinks to the space above the keyboard; iOS has meanwhile panned the page
+        // up to show the field, which would now leave a gap and push the top bar off screen. Pan it back.
+        if (covered > 120 && vv.offsetTop > 0 && document.querySelector(".app-frame")) window.scrollTo(0, 0);
       });
     };
     update();

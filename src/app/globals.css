@@ -316,14 +316,22 @@ html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
    data-kb="open" on <html>, so bars pinned to the bottom can ride above it and the tab bar can step aside. */
 :root { --kb: 0px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); }
 html[data-kb="open"] .hide-on-kb { display: none !important; }
+/* The signed-in frame ends where the keyboard starts (iOS leaves the page full height under it), so a
+   composer or the Studio editor at the bottom of a pane sits just above the keys, not behind them. */
+.app-frame { height: calc(100dvh - var(--kb)); }
 @utility pb-safe { padding-bottom: var(--safe-b); }
 @utility pt-safe { padding-top: var(--safe-t); }
 @utility px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 
 /* Wide tables scroll sideways inside their own box, never the page. On a phone the first column stays
    pinned while the figures scroll, so every row keeps its name in view; the pinned cells take the
-   surface the table sits on (--table-bg, the panel colour unless a parent says otherwise). */
+   surface the table sits on (--table-bg, set by the nearest surface below). */
 .table-scroll { overflow-x: auto; max-width: 100%; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+body { --table-bg: var(--bg); }
+/* Base background classes only (" bg-x", not "hover:bg-x"): a row's hover colour must not repaint every row. */
+.panel, .nr-card, [class^="bg-panel"], [class*=" bg-panel"] { --table-bg: var(--panel); }
+[class^="bg-elevated"], [class*=" bg-elevated"] { --table-bg: var(--elevated); }
+[class^="bg-raised"], [class*=" bg-raised"] { --table-bg: var(--raised); }
 @media (max-width: 767.98px) {
   .table-scroll > table > :is(thead, tbody, tfoot) > tr > :first-child { position: sticky; left: 0; z-index: 1; background: var(--table-bg, var(--panel)); box-shadow: 1px 0 0 var(--line); }
 }

@@ -69,7 +69,7 @@ export function Sheet({ id, label, onClose, children }: { id: string; label: str
   }, [hide]);
   return (
     <div ref={panel} id={id} role="dialog" aria-label={label} tabIndex={-1}
-      className="rise fixed inset-x-0 bottom-0 z-40 flex max-h-[72dvh] flex-col rounded-t-xl border-t border-line-strong bg-panel pb-[env(safe-area-inset-bottom)] shadow-[0_-16px_40px_-12px_rgba(0,0,0,0.45)] outline-none lg:hidden">
+      className="rise fixed inset-x-0 bottom-0 z-[70] flex max-h-[72dvh] flex-col rounded-t-xl border-t border-line-strong bg-panel pb-[env(safe-area-inset-bottom)] shadow-[0_-16px_40px_-12px_rgba(0,0,0,0.45)] outline-none lg:hidden">
       <div className="flex items-center justify-between gap-2 border-b border-line py-1 pl-3 pr-1.5">
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">{label}</span>
         <button type="button" onClick={hide} className="flex items-center gap-1 rounded px-1.5 py-1 text-[11.5px] text-muted outline-none hover:text-fg focus-visible:ring-1 focus-visible:ring-accent/70"><ChevronDown className="h-4 w-4" />Hide</button>
