@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { EmailAddress } from "@/db/schema";
 import { loadUserContext } from "@/lib/ai/persona";
@@ -319,11 +319,12 @@ export async function supersedeReplies(userId: string, threadId: number, reason:
  */
 export async function recordAction(userId: string, a: {
   kind: string; title: string; reasoning?: string; uncertainties?: string[]; payload?: Record<string, unknown>;
-  dedupeKey: string; contactId?: number | null; dealId?: number | null; threadId?: number | null;
+  dedupeKey: string; contactId?: number | null; dealId?: number | null; threadId?: number | null; meetingId?: number | null;
 }): Promise<ActionRow | null> {
   const [row] = await requireDb().insert(schema.crmActions).values({
     userId, kind: a.kind, title: a.title.slice(0, 300), reasoning: a.reasoning ?? "", uncertainties: a.uncertainties ?? [],
     payload: a.payload ?? {}, dedupeKey: a.dedupeKey, contactId: a.contactId ?? null, dealId: a.dealId ?? null, threadId: a.threadId ?? null,
+    ...(a.meetingId ? { meetingId: a.meetingId } : {}),
   }).onConflictDoNothing().returning();
   return row ?? null;
 }
@@ -378,8 +379,9 @@ export async function recordReplies(userId: string, threadId: number, messages: 
 
 /* ---------------- Reads and queue decisions ---------------- */
 
+/** The inbox: email threads. Meeting entries (category "meeting") are history on a contact, not mail to answer. */
 export async function listThreads(userId: string, limit = 50) {
-  return requireDb().select().from(schema.crmThreads).where(eq(schema.crmThreads.userId, userId))
+  return requireDb().select().from(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), ne(schema.crmThreads.category, "meeting")))
     .orderBy(desc(schema.crmThreads.lastMessageAt)).limit(limit);
 }
 

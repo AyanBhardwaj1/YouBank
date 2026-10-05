@@ -1,6 +1,8 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { DAY_MS, STAGE_LABEL, isStage, type Stage } from "./model";
+import { dealPatch } from "@/lib/meetings/diff";
+import { addContact, updateContact } from "./contacts";
 import { createDraft, moveDeal, recordAction, type ActionRow } from "./db";
 import { draftReconnect } from "./nurture";
 import { followUpCandidates, matchFundingSignals, staleDeals, type Filing, type ThreadActivity } from "./scan";
@@ -174,12 +176,15 @@ async function latestThreadFor(userId: string, contactId: number | null, dealId:
   return t ?? null;
 }
 
-/** Carry out a suggestion. Anything that involves email produces a draft for review, never a send. */
-export async function approveAction(userId: string, id: number): Promise<ApproveResult> {
+/**
+ * Carry out a suggestion. Anything that involves email produces a draft for review, never a send.
+ * `input` carries what the person supplied on the card: the email address for "add_contact".
+ */
+export async function approveAction(userId: string, id: number, input: { email?: string } = {}): Promise<ApproveResult> {
   const db = requireDb();
   const a = await claimAction(userId, id);
   try {
-    return await carryOut(userId, a);
+    return await carryOut(userId, a, input);
   } catch (e) {
     // Put it back so it can be tried again.
     await db.update(schema.crmActions).set({ status: "pending", decidedAt: null }).where(eq(schema.crmActions.id, a.id));
@@ -187,7 +192,7 @@ export async function approveAction(userId: string, id: number): Promise<Approve
   }
 }
 
-async function carryOut(userId: string, a: ActionRow): Promise<ApproveResult> {
+async function carryOut(userId: string, a: ActionRow, input: { email?: string } = {}): Promise<ApproveResult> {
   const db = requireDb();
   const p = a.payload as Record<string, unknown>;
   let draftId: number | null = null;
@@ -220,13 +225,53 @@ async function carryOut(userId: string, a: ActionRow): Promise<ApproveResult> {
     const r = await draftReconnect(userId, p.contactId, { signalId: typeof p.signalId === "number" ? p.signalId : undefined, actionId: a.id });
     draftId = r.draft?.id ?? null;
     message = r.draft ? "Reconnection drafted. It is in the review queue, unsent." : `Not drafted: ${r.reason}`;
+  } else if (a.kind === "update_deal") {
+    // Changes a meeting stated; the person accepted them, so they are written now, and only these fields.
+    if (typeof p.dealId !== "number" || !Array.isArray(p.changes)) throw new Error("This suggestion is missing its deal or changes");
+    const patch = dealPatch(p.changes as { field: string; to: unknown }[]);
+    if (!Object.keys(patch).length) throw new Error("Nothing in this suggestion can be applied");
+    const [row] = await db.update(schema.crmDeals).set({ ...patch, updatedAt: new Date() }).where(and(eq(schema.crmDeals.id, p.dealId), eq(schema.crmDeals.userId, userId))).returning();
+    if (!row) throw new Error("Deal not found");
+    message = `${row.name} updated.`;
+  } else if (a.kind === "update_contact") {
+    if (typeof p.contactId !== "number" || !p.changes || typeof p.changes !== "object") throw new Error("This suggestion is missing its contact");
+    const c = p.changes as { title?: string; company?: string };
+    await updateContact(userId, p.contactId, { ...(c.title ? { title: c.title } : {}), ...(c.company ? { company: c.company } : {}) });
+    message = "Contact updated.";
+  } else if (a.kind === "review_contact") {
+    if (typeof p.contactId !== "number") throw new Error("This suggestion is missing its contact");
+    const [c] = await db.select().from(schema.crmContacts).where(and(eq(schema.crmContacts.id, p.contactId), eq(schema.crmContacts.userId, userId)));
+    if (c) await db.update(schema.crmContacts).set({ tags: c.tags.filter((t) => t !== "needs review"), updatedAt: new Date() }).where(eq(schema.crmContacts.id, c.id));
+    message = "Kept in your contacts.";
+  } else if (a.kind === "add_contact") {
+    const email = (input.email ?? "").trim().toLowerCase();
+    if (!email) throw Object.assign(new Error(`Add ${typeof p.name === "string" && p.name ? `${p.name}'s` : "their"} email address first.`), { status: 400 });
+    const c = await addContact(userId, { email, name: typeof p.name === "string" ? p.name : "", title: typeof p.title === "string" ? p.title : "", company: typeof p.company === "string" ? p.company : "" });
+    if (a.meetingId) await requireDb().insert(schema.meetingLinks).values({ meetingId: a.meetingId, userId, kind: "contact", refId: c.id, how: "manual" }).onConflictDoNothing();
+    message = `${c.name || c.email} added to your contacts.`;
   }
 
   const [action] = await db.update(schema.crmActions).set({ draftId }).where(eq(schema.crmActions.id, a.id)).returning();
   return { action, draftId, message };
 }
 
+/**
+ * Dismiss a suggestion. Rejecting a contact a meeting created removes it again, with its meeting
+ * entries, unless something else (an email, a deal, a draft) has used it since.
+ */
 export async function dismissAction(userId: string, id: number): Promise<void> {
-  await requireDb().update(schema.crmActions).set({ status: "dismissed", decidedAt: new Date() })
-    .where(and(eq(schema.crmActions.id, id), eq(schema.crmActions.userId, userId), eq(schema.crmActions.status, "pending")));
+  const db = requireDb();
+  const [a] = await db.update(schema.crmActions).set({ status: "dismissed", decidedAt: new Date() })
+    .where(and(eq(schema.crmActions.id, id), eq(schema.crmActions.userId, userId), eq(schema.crmActions.status, "pending"))).returning();
+  const contactId = (a?.payload as { contactId?: unknown } | undefined)?.contactId;
+  if (a?.kind !== "review_contact" || typeof contactId !== "number") return;
+  const [[mail], [deal], [draft]] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), eq(schema.crmThreads.contactId, contactId), sql`${schema.crmThreads.category} <> 'meeting'`)),
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDeals).where(and(eq(schema.crmDeals.userId, userId), eq(schema.crmDeals.contactId, contactId))),
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDrafts).where(and(eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.contactId, contactId), sql`${schema.crmDrafts.status} <> 'discarded'`)),
+  ]);
+  if ((mail?.n ?? 0) + (deal?.n ?? 0) + (draft?.n ?? 0) > 0) return;
+  await db.delete(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), eq(schema.crmThreads.contactId, contactId), eq(schema.crmThreads.category, "meeting")));
+  await db.delete(schema.meetingLinks).where(and(eq(schema.meetingLinks.userId, userId), eq(schema.meetingLinks.kind, "contact"), eq(schema.meetingLinks.refId, contactId)));
+  await db.delete(schema.crmContacts).where(and(eq(schema.crmContacts.id, contactId), eq(schema.crmContacts.userId, userId)));
 }

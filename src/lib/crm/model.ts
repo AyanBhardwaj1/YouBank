@@ -139,10 +139,12 @@ export const DRAFT_KIND_LABEL: Record<DraftKind, string> = {
  * Suggestions that change a record rather than send mail. Each carries the agent's reasoning and
  * what it was unsure of, and does nothing until approved.
  */
-export const ACTION_KINDS = ["move_stage", "follow_up", "check_in", "reconnect"] as const;
+export const ACTION_KINDS = ["move_stage", "follow_up", "check_in", "reconnect", "update_deal", "update_contact", "review_contact", "add_contact"] as const;
 export type ActionKind = (typeof ACTION_KINDS)[number];
 export const ACTION_KIND_LABEL: Record<ActionKind, string> = {
   move_stage: "Move deal", follow_up: "Follow up", check_in: "Check in", reconnect: "Reconnect",
+  // Proposed by a meeting (lib/meetings/crm): changes stated in it, and people it introduced.
+  update_deal: "Update deal", update_contact: "Update contact", review_contact: "New contact", add_contact: "Add contact",
 };
 
 export const LEAD_STATUSES = ["sourced", "review", "qualified", "disqualified", "active", "replied", "finished", "opted_out"] as const;

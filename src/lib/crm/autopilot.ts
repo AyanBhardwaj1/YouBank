@@ -29,11 +29,14 @@ import { describeFailure } from "@/lib/errors";
  * a new message from the other side, stops them.
  */
 
-/** Which autonomy setting governs a draft. Compose is always manual. */
+/**
+ * Which autonomy setting governs a draft. Compose is always manual, and so is a meeting's follow-up:
+ * it is written from a transcript, where a misheard name or number is easy, so a person always sends it.
+ */
 export function scopeOf(draft: Pick<DraftRow, "kind" | "meta">): AutonomyScope | null {
   switch (draft.kind) {
     case "reply": return draft.meta.audience === "internal" ? "internal" : "external";
-    case "follow_up": return "followUps";
+    case "follow_up": return draft.meta.meetingId ? null : "followUps";
     case "campaign": return "campaigns";
     case "nurture": return "nurture";
     case "intro": return "intros";
