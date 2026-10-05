@@ -6,6 +6,7 @@
  *   pnpm exec tsx scripts/test-maps.ts
  */
 import { featureById } from "@/lib/billing/features";
+import { validTile } from "@/lib/edge/premium/planet";
 import { MAPS_FEATURES } from "@/lib/billing/features/maps";
 import { overlayPng, type ChangeResult } from "@/lib/edge/change";
 import { children, decodePoints, encodePoints, fromMercator, nodeBounds, overlapShare, passes, selectNodes, surveyYear, toMercator, type Bounds3, type PointCloudHeader } from "@/lib/edge/geo3d/ept";
@@ -230,6 +231,12 @@ function main() {
     check("every maps feature is in the maps area with a unique maps.* id", new Set(ids).size === ids.length && MAPS_FEATURES.every((f) => f.area === "maps" && f.id.startsWith("maps.")));
     check("metered features name a cost; perks cost nothing per use", MAPS_FEATURES.every((f) => (f.metered ? (f.costPerUseUsd ?? 0) > 0 : (f.costPerUseUsd ?? 0) === 0)));
     check("the shared registry finds them", !!featureById("maps.lidar") && featureById("maps.planet-drape")?.minPlan === "team");
+  }
+
+  console.log("planet drape tiles");
+  {
+    check("the tile proxy takes the drape's zooms inside the grid", validTile(12, 0, 4095) && validTile(18, 262_143, 1));
+    check("the tile proxy refuses wide zooms, other grids and junk", !validTile(8, 1, 1) && !validTile(19, 1, 1) && !validTile(12, 4096, 0) && !validTile(12, -1, 0) && !validTile(12.5, 1, 1) && !validTile(Number.NaN, 1, 1));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

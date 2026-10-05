@@ -81,9 +81,12 @@ export async function planetScenes(bbox: Bbox): Promise<PlanetScene[]> {
   });
 }
 
-/** Whether an XYZ tile address is one the 3D drape may ask for: whole numbers, zoom 8 to 18, inside the zoom's grid. Pure. */
+/**
+ * Whether an XYZ tile address is one the 3D drape may ask for: whole numbers, zoom 12 to 18 (the drape's
+ * own source range, so a wide low-zoom tile never spends the area quota), inside the zoom's grid. Pure.
+ */
 export function validTile(z: number, x: number, y: number): boolean {
-  return [z, x, y].every(Number.isInteger) && z >= 8 && z <= 18 && x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z;
+  return [z, x, y].every(Number.isInteger) && z >= 12 && z <= 18 && x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z;
 }
 
 /** One 256 px XYZ tile of a scene (Planet's tile service), for draping it in 3D. Counts against the account's quota. */
