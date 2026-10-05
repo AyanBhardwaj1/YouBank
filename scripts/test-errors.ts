@@ -82,6 +82,11 @@ const PLAIN = [
   "The agent is already working on this document. Wait for it to finish, or stop it first.",
   "That message is too long (over 40,000 characters). Shorten it, or open the document in Studio and ask there.",
   "Two of your runs are still going; wait for one to finish.",
+  // PremiumRequiredError (402) and AiLimitError (429), as they are written.
+  "Deal radar is part of the Pro plan. Upgrade in Settings, under Plan, to use it.",
+  "You have reached today's AI limit. It resets at midnight UTC.",
+  "AI features have reached today's limit and come back at midnight UTC. Everything else keeps working.",
+  "That is not a Slack incoming-webhook URL. Paste the one Slack gives you, starting hooks.slack.com/services/.",
 ];
 
 const quiet = console.error;
