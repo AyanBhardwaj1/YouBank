@@ -1254,3 +1254,21 @@ export const edgePushes = pgTable("edge_pushes", {
   decidedAt: ts("decided_at"),
 }, (t) => [index("edge_pushes_target_idx").on(t.target, t.status)]);
 
+
+/* ---------------- Plans and subscriptions ---------------- */
+
+/**
+ * Each person's plan. No row means the free plan (or Campus, for a .edu address). Written by the
+ * billing webhook; administrators (ADMIN_EMAILS) are treated as Enterprise whatever this says.
+ */
+export const subscriptions = pgTable("subscriptions", {
+  userId: text("user_id").primaryKey(),
+  plan: text("plan").notNull().default("free"), // free | campus | pro | team | enterprise
+  status: text("status").notNull().default("active"), // active | trialing | past_due | canceled
+  seats: integer("seats").notNull().default(1),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodEnd: ts("current_period_end"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId)]);
