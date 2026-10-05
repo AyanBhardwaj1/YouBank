@@ -1,17 +1,23 @@
 /**
  * Checks for plans, prices and billing: every paid plan meets the margin target at typical use, nobody can
- * cost more than their plan brings in, the AI caps follow the plan, and the Stripe pieces that can be
- * checked without Stripe (the webhook signature, the row a subscription writes, checkout requests).
+ * cost more than their plan brings in, credit packs keep their margin, the AI caps follow the plan and draw
+ * on credits only after the allowance, allowances reset on the billing anniversary, and the Stripe pieces
+ * that can be checked without Stripe (webhook signatures, idempotent pack grants, the row a subscription
+ * writes, cancellation at period end, checkout requests and the double-checkout guard).
  * No network, no database.
  *   pnpm exec tsx scripts/test-billing.ts
  * With `--table` it also prints the cost and margin table behind docs/pricing.md.
  */
+import { readFileSync } from "node:fs";
+import { checkEnv, checkSiteUrl, checkStripe } from "@/lib/env";
 import Stripe from "stripe";
-import { blockedAt, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
+import { blockedAt, dailyCapWith, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
+import { effectiveEnd } from "@/lib/billing/credits";
+import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPackId, PACK_MARGIN_TARGET, packFees, packMargin, remainingByGrant, settledUse, splitSpend } from "@/lib/billing/packs";
 import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
 import { intervalsFor, PLAN_ORDER, PLANS, yearlySavingPct, type PlanId } from "@/lib/billing/plans";
-import { checkoutRequest, planForPrice, priceEnv, rowFromSubscription, shouldApply } from "@/lib/billing/stripe";
+import { checkoutKey, checkoutRequest, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -104,8 +110,101 @@ async function main() {
   check("the daily cap still applies first", /today's AI limit/.test(blockedAt({ ...base, mine: 12, mineMonth: 60 }) ?? ""));
   check("no person (or an administrator) means no monthly cap", blockedAt({ ...base, mine: null, mineMonth: null }) === null);
   check("an infinite cap never blocks", blockedAt({ ...base, mine: 1e6, userCap: Infinity, mineMonth: 1e6, monthCap: Infinity }) === null);
-  check("Enterprise is not told to upgrade", !/Larger plans/.test(monthCapMessage("enterprise")) && /Larger plans/.test(monthCapMessage("free")));
+  check("Enterprise is not told to upgrade, but is told about credit packs", !/larger plan/i.test(monthCapMessage("enterprise")) && /credit pack/.test(monthCapMessage("enterprise")) && /larger plan/i.test(monthCapMessage("free")));
   check("the reset date rolls over the year", /January 1/.test(monthCapMessage("pro", new Date(Date.UTC(2026, 11, 31)))));
+
+  console.log("credit packs");
+  check("there are $10, $25 and $50 packs, larger ones worth a little more per dollar", CREDIT_PACKS.map((p) => p.priceUsd).join() === "10,25,50" && CREDIT_PACKS.every((p, i) => i === 0 || p.creditUsd / p.priceUsd >= CREDIT_PACKS[i - 1].creditUsd / CREDIT_PACKS[i - 1].priceUsd));
+  for (const pk of CREDIT_PACKS) check(`the ${pk.name.replace("AI credits: ", "")} keeps ${pct(PACK_MARGIN_TARGET)} even when every credit is used`, packMargin(pk) >= PACK_MARGIN_TARGET, { margin: pct(packMargin(pk)), fees: packFees(pk).toFixed(2) });
+  check("a pack never gives more AI than it costs", CREDIT_PACKS.every((p) => p.creditUsd < p.priceUsd));
+  check("pack ids are checked", isPackId("ai25") && !isPackId("ai1000") && throws(() => packRequest({ pack: "ai1000" }), /Choose a credit pack/) && packRequest({ pack: "ai10" }).creditUsd === 6);
+  check("pack price env names follow STRIPE_PRICE_PACK_<ID>", packPriceEnv("ai50") === "STRIPE_PRICE_PACK_AI50");
+
+  console.log("credit drawdown order");
+  check("spend comes from the allowance first", JSON.stringify(splitSpend(20, 25, 15)) === JSON.stringify({ allowance: 20, credits: 0, beyond: 0 }));
+  check("then from credits once the allowance is used", JSON.stringify(splitSpend(31, 25, 15)) === JSON.stringify({ allowance: 25, credits: 6, beyond: 0 }));
+  check("never more credits than there are", JSON.stringify(splitSpend(50, 25, 15)) === JSON.stringify({ allowance: 25, credits: 15, beyond: 10 }));
+  const grants = [
+    { id: 2, pack: "ai25", usd: 15, refundedUsd: 0, createdAt: new Date("2026-10-02") },
+    { id: 1, pack: "ai10", usd: 6, refundedUsd: 0, createdAt: new Date("2026-09-20") },
+    { id: 3, pack: "ai10", usd: 6, refundedUsd: 6, createdAt: new Date("2026-09-25") },
+  ];
+  const left = remainingByGrant(grants, 8);
+  check("packs are used oldest first, refunded ones count for nothing", left.map((g) => `${g.id}:${g.leftUsd}`).join() === "1:0,3:0,2:13", left.map((g) => `${g.id}:${g.leftUsd}`));
+  check("credits carry over: available = granted less earlier periods' use", creditsAvailable(21, 8) === 13 && creditsAvailable(5, 8) === 0);
+  check("a finished period settles from its final spend, up to what was available", settledUse({ capUsd: 25, availableUsd: 6 }, 40) === 6 && settledUse({ capUsd: 25, availableUsd: 6 }, 27.5) === 2.5 && settledUse({ capUsd: 25, availableUsd: 6 }, 10) === 0);
+  check("a period cut short by a new subscription ends where the next began", effectiveEnd({ periodStart: new Date("2026-10-01"), periodEnd: new Date("2026-11-01") }, [new Date("2026-10-15"), new Date("2026-10-01")]).toISOString().startsWith("2026-10-15"));
+  const cred = { ...base, mineMonth: 25, monthCap: 25, credits: 15 };
+  check("at the allowance with credits, AI keeps going", blockedAt(cred) === null);
+  check("with credits used up too, AI stops and says both are used", /AI allowance and your AI credits on the Pro plan/.test(blockedAt({ ...cred, mineMonth: 40 }) ?? ""), blockedAt({ ...cred, mineMonth: 40 }));
+  check("a run's pending cost counts against credits", blockedAt({ ...cred, mineMonth: 38, pending: 2.5 }) !== null);
+  check("without credits the allowance is the end", /It resets on/.test(blockedAt({ ...cred, credits: 0 }) ?? ""));
+  check("holding credits raises a small daily cap to the credit floor", dailyCapWith(0.75, 6) === CREDIT_DAILY_USD && dailyCapWith(30, 6) === 30 && dailyCapWith(0.75, 0) === 0.75);
+  check("so a Free person with credits is not stuck at $0.75 a day", blockedAt({ ...base, plan: "free", userCap: 0.75, mine: 2, mineMonth: 3, monthCap: 3, credits: 6 }) === null);
+  check("but the daily floor goes once the credits are used", /today's AI limit/.test(blockedAt({ ...base, plan: "free", userCap: 0.75, mine: 2, mineMonth: 9.5, monthCap: 3, credits: 6 }) ?? ""));
+
+  console.log("billing anniversaries");
+  const anchor = new Date(Date.UTC(2026, 0, 31, 14, 30));
+  const iso = (d: Date) => d.toISOString().slice(0, 16);
+  const p1 = allowancePeriod(new Date(Date.UTC(2026, 9, 5)), new Date(Date.UTC(2026, 6, 17, 9)));
+  check("a subscriber's allowance runs from one billing date to the next", iso(p1.start) === "2026-09-17T09:00" && iso(p1.end) === "2026-10-17T09:00", [iso(p1.start), iso(p1.end)]);
+  const p2 = allowancePeriod(new Date(Date.UTC(2026, 1, 15)), anchor);
+  check("an anchor on the 31st renews on the last day of shorter months, like Stripe", iso(p2.start) === "2026-01-31T14:30" && iso(p2.end) === "2026-02-28T14:30", [iso(p2.start), iso(p2.end)]);
+  const p3 = allowancePeriod(new Date(Date.UTC(2026, 2, 1)), anchor);
+  check("and back to the 31st when the month has one", iso(p3.start) === "2026-02-28T14:30" && iso(p3.end) === "2026-03-31T14:30", [iso(p3.start), iso(p3.end)]);
+  const p4 = allowancePeriod(new Date(Date.UTC(2027, 0, 3)), new Date(Date.UTC(2025, 11, 10)));
+  check("periods roll over the year", iso(p4.start) === "2026-12-10T00:00" && iso(p4.end) === "2027-01-10T00:00", [iso(p4.start), iso(p4.end)]);
+  const p5 = allowancePeriod(new Date(Date.UTC(2026, 9, 5, 12)));
+  check("without a subscription it is the calendar month", iso(p5.start) === "2026-10-01T00:00" && iso(p5.end) === "2026-11-01T00:00");
+  check("on the anniversary itself a new period starts", iso(allowancePeriod(new Date(Date.UTC(2026, 9, 17, 9)), new Date(Date.UTC(2026, 6, 17, 9))).start) === "2026-10-17T09:00");
+  check("the cap message names the billing date", /It resets on October 17\./.test(monthCapMessage("pro", new Date(Date.UTC(2026, 9, 5)), p1.end)));
+  check("blockedAt passes the period's end through", /resets on October 17/.test(blockedAt({ ...base, mineMonth: 25, monthCap: 25, resetsOn: p1.end }) ?? ""));
+
+  console.log("idempotent payment webhooks");
+  {
+    // Mirrors the unique index on ai_credit_grants.stripe_payment_intent_id with ON CONFLICT DO NOTHING.
+    const byIntent = new Map<string, { userId: string; pack: string }>();
+    const fakeGrant = async (g: { userId: string; pack: string; paymentIntentId: string }) => { if (byIntent.has(g.paymentIntentId)) return false; byIntent.set(g.paymentIntentId, g); return true; };
+    const session = (o: Partial<Stripe.Checkout.Session>) => ({ id: "cs_1", object: "checkout.session", mode: "payment", payment_status: "paid", payment_intent: "pi_1", client_reference_id: "u1", metadata: { kind: "credits", pack: "ai25", userId: "u1" }, amount_total: 2500, currency: "usd", ...o }) as Stripe.Checkout.Session;
+    const first = await grantFromSession(session({}), fakeGrant);
+    await grantFromSession(session({}), fakeGrant); // the webhook retried
+    await grantFromSession(session({ id: "cs_1" }), fakeGrant); // and the return from Checkout raced it
+    check("a pack is granted once however often its payment is reported", first === "u1" && byIntent.size === 1 && byIntent.get("pi_1")?.pack === "ai25");
+    await grantFromSession(session({ id: "cs_2", payment_intent: "pi_2" }), fakeGrant);
+    check("a second purchase (a new payment intent) is granted again", byIntent.size === 2);
+    check("an unpaid session (a slow payment method) grants nothing until paid", (await grantFromSession(session({ payment_intent: "pi_3", payment_status: "unpaid" }), fakeGrant)) === null && !byIntent.has("pi_3"));
+    check("a subscription checkout never grants credits", (await grantFromSession(session({ mode: "subscription", payment_intent: "pi_4" }), fakeGrant)) === null);
+    check("a session without the credits marker grants nothing", (await grantFromSession(session({ payment_intent: "pi_5", metadata: { pack: "ai25" } }), fakeGrant)) === null);
+    check("an unknown pack grants nothing", (await grantFromSession(session({ payment_intent: "pi_6", metadata: { kind: "credits", pack: "ai999" } }), fakeGrant)) === null);
+    const sql0022 = readFileSync(new URL("../drizzle/0022_credits.sql", import.meta.url), "utf8");
+    check("the database enforces it: a unique index on the payment intent", /CREATE UNIQUE INDEX IF NOT EXISTS "ai_credit_grants_payment_intent_uidx" ON "ai_credit_grants" \("stripe_payment_intent_id"\)/.test(sql0022));
+    check("the webhook listens for completed and delayed payments and refunds", ["checkout.session.completed", "checkout.session.async_payment_succeeded", "charge.refunded"].every((e) => (WEBHOOK_EVENTS as readonly string[]).includes(e)));
+  }
+
+  console.log("double-checkout guard");
+  {
+    const t = Date.UTC(2026, 9, 5, 12, 1);
+    check("the same purchase within ten minutes has the same idempotency key", checkoutKey("u1", "team", "monthly", 4, t) === checkoutKey("u1", "team", "monthly", 4, t + 5 * 60_000));
+    check("a different plan, interval or seat count gets its own key", new Set([checkoutKey("u1", "team", "monthly", 4, t), checkoutKey("u1", "team", "yearly", 4, t), checkoutKey("u1", "team", "monthly", 5, t), checkoutKey("u1", "pro", "monthly", 1, t), checkoutKey("u2", "team", "monthly", 4, t)]).size === 5);
+    check("keys expire with the window", checkoutKey("u1", "pro", "monthly", 1, t) !== checkoutKey("u1", "pro", "monthly", 1, t + 11 * 60_000));
+    check("pack keys only absorb a double click", packCheckoutKey("u1", "ai10", t) === packCheckoutKey("u1", "ai10", t + 10_000) && packCheckoutKey("u1", "ai10", t) !== packCheckoutKey("u1", "ai10", t + 120_000));
+    const open = (id: string, mode: "subscription" | "payment", meta: Record<string, string>) => ({ id, url: `https://checkout.stripe.com/${id}`, mode, status: "open" as const, metadata: meta });
+    const sessions = [
+      open("cs_a", "subscription", { plan: "team", interval: "monthly", seats: "4" }),
+      open("cs_b", "subscription", { plan: "pro", interval: "monthly", seats: "1" }),
+      open("cs_c", "payment", { pack: "ai10" }),
+    ];
+    const same = planOpenSessions(sessions, { mode: "subscription", plan: "team", interval: "monthly", seats: 4 });
+    check("an open checkout for the same purchase is reused, and other subscription checkouts expire", same.reuse?.id === "cs_a" && same.expire.join() === "cs_b", same);
+    const other = planOpenSessions(sessions, { mode: "subscription", plan: "enterprise", interval: "yearly", seats: 5 });
+    check("a new purchase expires every open subscription checkout first", other.reuse === null && other.expire.sort().join() === "cs_a,cs_b");
+    check("credit pack checkouts are never expired by a plan checkout", !other.expire.includes("cs_c"));
+    const pk = planOpenSessions(sessions, { mode: "payment", pack: "ai10" });
+    check("an open checkout for the same pack is reused", pk.reuse?.id === "cs_c" && pk.expire.length === 0);
+    check("a second live subscription is recognised as a duplicate", isDuplicate({ status: "active", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_2" }));
+    check("the same subscription, or replacing a lapsed one, is not", !isDuplicate({ status: "active", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_1" }) && !isDuplicate({ status: "canceled", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_2" }) && !isDuplicate(null, { status: "active", stripeSubscriptionId: "sub_2" }));
+    check("checkout sessions close after about half an hour", sessionExpiry(t) - Math.floor(t / 1000) >= 30 * 60 && sessionExpiry(t) - Math.floor(t / 1000) < 40 * 60);
+  }
 
   console.log("checkout requests");
   check("Pro monthly, one seat", JSON.stringify(checkoutRequest({ plan: "pro", interval: "monthly" })) === JSON.stringify({ plan: "pro", interval: "monthly", seats: 1 }));
@@ -121,15 +220,23 @@ async function main() {
   const prices = { [priceEnv("pro", "monthly")]: "price_pro_m", [priceEnv("team", "yearly")]: "price_team_y", [priceEnv("enterprise", "yearly")]: "price_ent_y" };
   check("the price env names follow STRIPE_PRICE_<PLAN>_<INTERVAL>", priceEnv("team", "yearly") === "STRIPE_PRICE_TEAM_YEARLY");
   check("a price id maps back to its plan", planForPrice("price_team_y", prices) === "team" && planForPrice("price_unknown", prices) === null && planForPrice(null, prices) === null);
-  const sub = (o: { id?: string; status?: string; price?: string; quantity?: number; end?: number; meta?: Record<string, string>; customer?: string }) => ({
+  const sub = (o: { id?: string; status?: string; price?: string; quantity?: number; end?: number; meta?: Record<string, string>; customer?: string; cancelAtPeriodEnd?: boolean; cancelAt?: number | null; anchor?: number }) => ({
     id: o.id ?? "sub_1", object: "subscription", status: o.status ?? "active", customer: o.customer ?? "cus_1", metadata: o.meta ?? {},
-    items: { object: "list", data: [{ id: "si_1", price: { id: o.price ?? "price_team_y" }, quantity: o.quantity ?? 4, current_period_end: o.end ?? 1_800_000_000 }] },
+    cancel_at_period_end: o.cancelAtPeriodEnd ?? false, cancel_at: o.cancelAt ?? null, billing_cycle_anchor: o.anchor ?? 1_790_000_000,
+    items: { object: "list", data: [{ id: "si_1", price: { id: o.price ?? "price_team_y" }, quantity: o.quantity ?? 4, current_period_start: (o.end ?? 1_800_000_000) - 2_592_000, current_period_end: o.end ?? 1_800_000_000 }] },
   }) as unknown as Stripe.Subscription;
   const row = rowFromSubscription("u1", sub({}), prices);
   check("a subscription becomes the person's row", row.plan === "team" && row.seats === 4 && row.status === "active" && row.stripeCustomerId === "cus_1" && row.stripeSubscriptionId === "sub_1", row);
   check("the period end comes from the subscription item", row.currentPeriodEnd?.getTime() === 1_800_000_000_000);
   check("an unknown price falls back to the plan in the metadata", rowFromSubscription("u1", sub({ price: "price_x", meta: { plan: "enterprise" } }), prices).plan === "enterprise");
   check("a canceled subscription keeps its plan but not its status", rowFromSubscription("u1", sub({ status: "canceled" }), prices).status === "canceled");
+  check("the billing anchor and period start are stored, for allowance resets", row.billingAnchor?.getTime() === 1_790_000_000_000 && row.currentPeriodStart?.getTime() === (1_800_000_000 - 2_592_000) * 1000);
+  check("a live subscription that is not cancelling has no cancel date", !row.cancelAtPeriodEnd && row.cancelAt === null);
+  const ending = rowFromSubscription("u1", sub({ cancelAtPeriodEnd: true }), prices);
+  check("cancel at period end: still live, cancelling on the period's end", ending.status === "active" && ending.cancelAtPeriodEnd && ending.cancelAt?.getTime() === 1_800_000_000_000);
+  const dated = rowFromSubscription("u1", sub({ cancelAt: 1_799_000_000 }), prices);
+  check("a set cancellation date (newer portals) counts the same way", dated.cancelAtPeriodEnd && dated.cancelAt?.getTime() === 1_799_000_000_000);
+  check("once it has ended there is nothing left to cancel", rowFromSubscription("u1", sub({ status: "canceled", cancelAtPeriodEnd: true }), prices).cancelAt === null);
   check("the same subscription always applies (replays converge)", shouldApply({ status: "active", stripeSubscriptionId: "sub_1" }, { status: "canceled", stripeSubscriptionId: "sub_1" }));
   check("a first subscription applies", shouldApply(undefined, { status: "active", stripeSubscriptionId: "sub_1" }));
   check("an old subscription's cancellation does not undo a newer live one", !shouldApply({ status: "active", stripeSubscriptionId: "sub_2" }, { status: "canceled", stripeSubscriptionId: "sub_1" }));
@@ -148,6 +255,19 @@ async function main() {
   check("the wrong secret is rejected", !wrongSecret);
   const stale = await stripe.webhooks.generateTestHeaderStringAsync({ payload, secret, timestamp: Math.floor(Date.now() / 1000) - 3600 });
   check("an hour-old signature is rejected (replay window)", !(await stripe.webhooks.constructEventAsync(payload, stale, secret).then(() => true, () => false)));
+
+  console.log("environment warnings");
+  {
+    const keyOnly = checkStripe({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_PRICE_PRO_MONTHLY: "price_1" }, false);
+    check("the secret key alone is not called 'off': the warning says billing is on and the webhook is missing", keyOnly.length === 1 && /billing is ON/.test(keyOnly[0]) && !/stays off/.test(keyOnly[0]), keyOnly);
+    check("the webhook secret alone says billing stays off", /stays off/.test(checkStripe({ STRIPE_WEBHOOK_SECRET: "whsec_x" }, false)[0] ?? ""));
+    check("a complete Stripe setup has no warning", checkStripe({ STRIPE_SECRET_KEY: "sk_live_x", STRIPE_WEBHOOK_SECRET: "whsec_x", STRIPE_PRICE_TEAM_YEARLY: "price_1" }, true).length === 0);
+    check("billing on with no plan prices is named", checkStripe({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" }, false).some((w) => w.startsWith("STRIPE_PRICE_")));
+    check("a test key on the production deployment is named", checkStripe({ STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "w", STRIPE_PRICE_PRO_MONTHLY: "p", VERCEL_ENV: "production" }, true).some((w) => /test key/.test(w)));
+    check("the env check includes the Stripe warnings", checkEnv({ STRIPE_SECRET_KEY: "sk_test_x" }, false).invalid.some((w) => w.startsWith("STRIPE_WEBHOOK_SECRET")));
+    check("a malformed site address is named; a good one is not", checkSiteUrl({ NEXT_PUBLIC_SITE_URL: "not a url" }, false).length === 1 && checkSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://youbank.com" }, true).length === 0);
+    check("an unset site address on the production deployment says what links use instead", /youbank-nu\.vercel\.app|example\.com/.test(checkSiteUrl({ VERCEL_ENV: "production", VERCEL_PROJECT_PRODUCTION_URL: "example.com" }, true)[0] ?? ""));
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

@@ -7,22 +7,36 @@
  * portal. Loading this page never calls Stripe or spends anything; only the buttons do.
  *
  * Back from Checkout (`?checkout=done&session_id=...`) it confirms the session with the server, which
- * stores the subscription at once instead of waiting for the webhook, and drops the cached plan
- * (`refreshPlan`) so badges elsewhere read the new one.
+ * stores the subscription (or adds the credit pack) at once instead of waiting for the webhook, and drops
+ * the cached plan (`refreshPlan`) so badges elsewhere read the new one.
+ *
+ * Also here: AI credit packs (bought with a one-time Checkout), the renewal or cancellation date, and the
+ * person's Stripe-hosted invoices and receipts, read only when asked for.
  */
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
+import { CREDIT_PACKS, packById } from "@/lib/billing/packs";
 import { FEATURES, type FeatureArea } from "@/lib/billing/features";
 import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
 type Status = ClientEntitlements & {
-  billing: { enabled: boolean; purchasable: Record<PlanId, BillingInterval[]> };
-  subscription: { plan: string; status: string; seats: number; currentPeriodEnd: string | null; manageable: boolean } | null;
-  ai: { plan: PlanId; admin: boolean; dailyUsd: number | null; monthlyUsd: number | null; todayUsd: number; monthUsd: number };
+  billing: { enabled: boolean; purchasable: Record<PlanId, BillingInterval[]>; packs: boolean };
+  subscription: { plan: string; status: string; seats: number; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; cancelAt: string | null; manageable: boolean } | null;
+  ai: {
+    plan: PlanId; admin: boolean; dailyUsd: number | null; dailyNowUsd: number | null; monthlyUsd: number | null; todayUsd: number; monthUsd: number;
+    periodStart: string; periodEnd: string;
+    credits: { availableUsd: number; usedUsd: number; leftUsd: number; packs: { pack: string; usd: number; leftUsd: number; boughtAt: string }[] };
+  };
+};
+
+type Confirmed = ClientEntitlements & { kind: "plan" | "credits"; paid: boolean; pack: string | null };
+type Bills = {
+  invoices: { id: string; number: string | null; status: string | null; created: string; amount: number; currency: string; url: string | null; pdf: string | null }[];
+  receipts: { id: string; description: string; created: string; amount: number; refunded: number; currency: string; url: string | null }[];
 };
 
 const AREA_LABEL: Record<FeatureArea, string> = {
@@ -35,7 +49,9 @@ const STATUS_LABEL: Record<string, string> = {
   canceled: "Cancelled", unpaid: "Unpaid", incomplete: "Waiting for the first payment", incomplete_expired: "Checkout expired", paused: "Paused",
 };
 
-const dateOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" }) : null);
+const dateOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" }) : null);
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", timeZone: "UTC" });
+const cash = (n: number, currency = "usd") => n.toLocaleString("en-US", { style: "currency", currency: currency.toUpperCase() });
 const money = (n: number) => (n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`);
 
 async function post<T>(url: string, body: unknown): Promise<T> {
@@ -66,6 +82,47 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
   );
 }
 
+/** Stripe-hosted invoices (subscriptions) and receipts (credit packs), fetched only when asked for. */
+function Bills() {
+  const [bills, setBills] = useState<Bills | null>(null);
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const load = () => {
+    setState("loading");
+    fetch("/api/billing/invoices", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<Bills>) : Promise.reject(new Error("failed"))))
+      .then((b) => { setBills(b); setState("idle"); }, () => setState("error"));
+  };
+  if (!bills) {
+    return (
+      <button type="button" onClick={load} disabled={state === "loading"} className="ctl inline-flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:border-accent/50 hover:text-fg disabled:opacity-50">
+        <Icon name="Receipt" className="h-3.5 w-3.5" /> {state === "loading" ? "Loading…" : state === "error" ? "Could not load; try again" : "Invoices and receipts"}
+      </button>
+    );
+  }
+  const rows = [
+    ...bills.invoices.map((i) => ({ id: i.id, when: i.created, what: `Invoice ${i.number ?? ""}`.trim(), amount: cash(i.amount, i.currency), note: i.status === "paid" ? "" : i.status ?? "", url: i.url, pdf: i.pdf })),
+    ...bills.receipts.filter((r) => /credit/i.test(r.description)).map((r) => ({ id: r.id, when: r.created, what: r.description, amount: cash(r.amount, r.currency), note: r.refunded ? `refunded ${cash(r.refunded, r.currency)}` : "", url: r.url, pdf: null as string | null })),
+  ].sort((a, b) => b.when.localeCompare(a.when));
+  return (
+    <div className="w-full">
+      {rows.length === 0 ? <p className="text-[11.5px] text-muted">No invoices or receipts yet.</p> : (
+        <ul className="divide-y divide-line rounded-lg border border-line text-[11.5px]">
+          {rows.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-1.5">
+              <span className="text-muted">{dateOf(r.when)}</span>
+              <span className="min-w-0 flex-1 truncate">{r.what}{r.note && <span className="text-muted"> · {r.note}</span>}</span>
+              <span className="num">{r.amount}</span>
+              {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">View</a>}
+              {r.pdf && <a href={r.pdf} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">PDF</a>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-1 text-[10.5px] text-faint">Hosted by Stripe. Every past invoice, your card and your tax details are under Manage billing.</p>
+    </div>
+  );
+}
+
 export function PlanSettings() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -90,10 +147,14 @@ export function PlanSettings() {
   useEffect(() => {
     const clean = () => window.history.replaceState(null, "", "/app/settings?tab=plan");
     if (back.outcome === "done" && back.sessionId) {
-      void post<ClientEntitlements>("/api/billing/confirm", { sessionId: back.sessionId })
-        .then((e) => setNote(PLANS[e.plan]?.selfServe
-          ? { tone: "ok", text: `Thank you. You are on ${PLANS[e.plan].name} now.` }
-          : { tone: "info", text: "Stripe is still confirming your payment. Your plan changes here as soon as it does." }))
+      void post<Confirmed>("/api/billing/confirm", { sessionId: back.sessionId })
+        .then((e) => setNote(e.kind === "credits"
+          ? e.paid
+            ? { tone: "ok", text: `Thank you. ${usd(packById(e.pack ?? "")?.creditUsd ?? 0)} of AI credits were added to your account.` }
+            : { tone: "info", text: "Stripe is still confirming your payment. Your credits appear here as soon as it does." }
+          : PLANS[e.plan]?.selfServe
+            ? { tone: "ok", text: `Thank you. You are on ${PLANS[e.plan].name} now.` }
+            : { tone: "info", text: "Stripe is still confirming your payment. Your plan changes here as soon as it does." }))
         .catch((e: Error) => setNote({ tone: "error", text: e.message }))
         .finally(() => { refreshPlan(); clean(); void fetchStatus().then(show); });
       return;
@@ -155,19 +216,30 @@ export function PlanSettings() {
               <p className="mt-1.5 text-[12px]">
                 <span className={status.subscription.status === "past_due" ? "text-neg" : ""}>{STATUS_LABEL[status.subscription.status] ?? status.subscription.status}</span>
                 {status.subscription.seats > 1 && <span className="text-muted"> · <span className="num">{status.subscription.seats}</span> seats</span>}
-                {dateOf(status.subscription.currentPeriodEnd) && <span className="text-muted"> · current period ends {dateOf(status.subscription.currentPeriodEnd)}</span>}
+                {LIVE_STATUSES.includes(status.subscription.status) && (status.subscription.cancelAtPeriodEnd && dateOf(status.subscription.cancelAt ?? status.subscription.currentPeriodEnd)
+                  ? <span className="font-medium text-neg"> · Cancels on {dateOf(status.subscription.cancelAt ?? status.subscription.currentPeriodEnd)}</span>
+                  : dateOf(status.subscription.currentPeriodEnd) && <span className="text-muted"> · renews on {dateOf(status.subscription.currentPeriodEnd)}</span>)}
               </p>
             )}
+            {status.subscription?.cancelAtPeriodEnd && LIVE_STATUSES.includes(status.subscription.status) && (
+              <p className="mt-1 text-[11.5px] text-muted">Your plan stays on until then, then moves to the free plan (Campus with a .edu address). Your AI credits stay. To keep the plan, choose Manage billing and renew it.</p>
+            )}
             {status.subscription?.manageable && (
-              <button type="button" disabled={!!busy} onClick={() => go("portal", "/api/billing/portal", {})} className="ctl mt-3 inline-flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:border-accent/50 hover:text-fg disabled:opacity-50">
-                <Icon name="CreditCard" className="h-3.5 w-3.5" /> {busy === "portal" ? "Opening…" : "Manage billing"}
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" disabled={!!busy} onClick={() => go("portal", "/api/billing/portal", {})} className="ctl inline-flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:border-accent/50 hover:text-fg disabled:opacity-50">
+                  <Icon name="CreditCard" className="h-3.5 w-3.5" /> {busy === "portal" ? "Opening…" : "Manage billing"}
+                </button>
+                <Bills />
+              </div>
             )}
           </div>
           <div className="space-y-3">
             <div className="text-[10.5px] uppercase tracking-wider text-muted">AI allowance</div>
-            <Meter label="Today (resets at midnight UTC)" used={status.ai.todayUsd} cap={status.ai.dailyUsd} />
-            <Meter label="This month (resets on the 1st, UTC)" used={status.ai.monthUsd} cap={status.ai.monthlyUsd} />
+            <Meter label="Today (resets at midnight UTC)" used={status.ai.todayUsd} cap={status.ai.dailyNowUsd ?? status.ai.dailyUsd} />
+            <Meter label={`This allowance month (resets on ${shortDate(status.ai.periodEnd)}${status.anchor ? ", your billing date" : ""})`} used={Math.min(status.ai.monthUsd, status.ai.monthlyUsd ?? status.ai.monthUsd)} cap={status.ai.monthlyUsd} />
+            {status.ai.credits.availableUsd > 0 && (
+              <Meter label={`AI credits: ${money(status.ai.credits.leftUsd)} left, used after the allowance`} used={status.ai.credits.usedUsd} cap={status.ai.credits.availableUsd} />
+            )}
           </div>
         </div>
       )}
@@ -248,6 +320,42 @@ export function PlanSettings() {
         })}
       </div>
       {anyYearlyOnly && <p className="text-[11px] text-faint">Enterprise is billed yearly. Prices are in US dollars and exclude tax.</p>}
+
+      <div className="panel p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-[13.5px] font-semibold">AI credit packs</h3>
+          {status && status.ai.credits.leftUsd > 0 && <span className="text-[11.5px] text-muted"><span className="num font-medium text-fg">{money(status.ai.credits.leftUsd)}</span> of credits left</span>}
+        </div>
+        <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Need more AI than your plan includes? A pack keeps AI going once this month&apos;s allowance is used, until its credits run out. Credits never expire, work on any plan, and are measured like the allowance, at the providers&apos; list prices. While you hold credits your daily AI limit is at least $10.</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {CREDIT_PACKS.map((pk) => (
+            <div key={pk.id} className="rounded-lg border border-line p-3">
+              <div className="num text-[18px] font-semibold">{usd(pk.priceUsd)}</div>
+              <div className="text-[11.5px] text-muted">adds {usd(pk.creditUsd)} of AI, about {answersFor(pk.creditUsd).toLocaleString("en-US")} assistant answers</div>
+              <button
+                type="button"
+                disabled={!status?.billing.packs || !!busy}
+                onClick={() => go(`pack:${pk.id}`, "/api/billing/credits", { pack: pk.id })}
+                title={status && !status.billing.packs ? "Billing isn't switched on yet" : undefined}
+                className="ctl mt-2 w-full border border-accent/50 px-3 py-1.5 text-[12px] font-semibold text-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy === `pack:${pk.id}` ? "Opening checkout…" : `Buy ${usd(pk.priceUsd)} pack`}
+              </button>
+            </div>
+          ))}
+        </div>
+        {status && status.ai.credits.packs.length > 0 && (
+          <ul className="mt-3 divide-y divide-line rounded-lg border border-line text-[11.5px]">
+            {status.ai.credits.packs.map((pk, i) => (
+              <li key={`${pk.boughtAt}-${i}`} className="flex items-center justify-between gap-2 px-3 py-1.5">
+                <span>{usd(pk.usd)} of credits, bought {dateOf(pk.boughtAt)}</span>
+                <span className="num text-muted">{pk.leftUsd > 0 ? `${money(pk.leftUsd)} left` : "used up"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-[10.5px] text-faint">One-time payments in US dollars, before tax. Unused packs can be refunded within 14 days; see the <a href="/refunds" className="underline hover:text-fg">refund policy</a>.</p>
+      </div>
 
       <div className="panel p-4">
         <h3 className="text-[13.5px] font-semibold">Premium features</h3>

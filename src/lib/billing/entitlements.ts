@@ -14,7 +14,7 @@ import { db, schema } from "@/db";
 import { isAdmin } from "@/lib/auth/admin";
 import type { CurrentUser } from "@/lib/auth/user";
 import { featureById, FEATURES } from "./features";
-import { isPlanId, planAtLeast, PLANS, type PlanId } from "./plans";
+import { isPlanId, LIVE_STATUSES, planAtLeast, PLANS, type PlanId } from "./plans";
 
 export type Entitlements = {
   plan: PlanId;
@@ -22,27 +22,51 @@ export type Entitlements = {
   status: string;
   /** Ids of the premium features this person may use. */
   features: string[];
+  /**
+   * The billing anchor (ISO) the AI allowance resets on, monthly: the person's own live subscription's,
+   * or the owner's for an assigned seat. Null means the calendar month.
+   */
+  anchor: string | null;
 };
 
-const LIVE = new Set(["active", "trialing", "past_due"]);
+const LIVE = new Set(LIVE_STATUSES);
 
 const isCampusEmail = (email: string) => /\.edu$/i.test(email.trim().split("@")[1] ?? "");
+
+type OwnRow = { plan: string; status: string; billingAnchor?: Date | null };
+
+/**
+ * The person's own subscription row. Reads the billing anchor too, but falls back to the columns from
+ * drizzle/0015 when 0022 has not been applied yet, so a deploy that lands before the migration keeps
+ * everyone's plan.
+ */
+async function ownRow(userId: string): Promise<OwnRow | null> {
+  if (!db) return null;
+  const t = schema.subscriptions;
+  const where = eq(t.userId, userId);
+  const [row] = await db.select({ plan: t.plan, status: t.status, billingAnchor: t.billingAnchor }).from(t).where(where)
+    .catch(() => db!.select({ plan: t.plan, status: t.status }).from(t).where(where))
+    .catch(() => []);
+  return row ?? null;
+}
 
 /** This person's plan and what it unlocks; one lookup per request. */
 export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> => {
   const admin = isAdmin(user);
   let plan: PlanId = isCampusEmail(user.email) ? "campus" : "free";
   let status = "none";
-  if (db) {
-    const [row] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, user.id)).catch(() => []);
-    if (row) {
-      status = row.status;
-      if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) plan = row.plan;
+  let anchor: Date | null = null;
+  const row = await ownRow(user.id);
+  if (row) {
+    status = row.status;
+    if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) {
+      plan = row.plan;
+      anchor = row.billingAnchor ?? null;
     }
   }
   if (admin) plan = "enterprise";
   const features = FEATURES.filter((f) => admin || planAtLeast(plan, f.minPlan)).map((f) => f.id);
-  return { plan, admin, status, features };
+  return { plan, admin, status, features, anchor: anchor ? anchor.toISOString() : null };
 });
 
 export async function canUse(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<boolean> {

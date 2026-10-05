@@ -55,6 +55,40 @@ the Newsroom and every calculator: none of those call a model, so they cost cent
 enough to try the assistant (about a dozen answers a month, three a day). A Free person costs at most
 $5.60 a month whatever they do, and about $2 typically; Campus at most $12.61.
 
+## AI credit packs
+
+| Pack | Price | AI it adds (list price) | About | Stripe fees | Margin if every credit is used |
+|---|---|---|---|---|---|
+| $10 | $10 | $6 | 24 answers | $0.64 | 33.6% |
+| $25 | $25 | $15 | 60 answers | $1.15 | 35.4% |
+| $50 | $50 | $32 | 130 answers | $2.00 | 32.0% |
+
+- **What they are.** One-time Stripe Checkout payments (`mode: "payment"`), sold to anyone signed in, on
+  any plan (Free included). They live in `src/lib/billing/packs.ts`; prices come from
+  `STRIPE_PRICE_PACK_AI10`/`AI25`/`AI50`, or an inline price when those are not set.
+- **How they are used.** The plan's allowance goes first. Once a person's spend in the allowance month
+  passes the plan's monthly amount, each further dollar comes out of their credits, oldest pack first,
+  until they are used up. Credits do not expire and are personal (they never pass to a team). While a
+  person holds credits, their daily cap is at least $10, so a Free or Pro daily cap does not trap a pack.
+- **Why less than face value.** Credits are measured in the same list-price dollars as the allowance, and
+  model time is our cost. A pack therefore adds less AI than it costs: the difference pays Stripe (2.9% +
+  $0.30, plus 0.5% for Stripe Tax; there is no Billing fee on one-time payments) and leaves at least 30%
+  even if every credit is used (`PACK_MARGIN_TARGET`, checked by the test script). Larger packs give a
+  little more per dollar. Credits never bought do not cost anything; credits bought and not used are
+  all margin.
+- **Why packs, not metered overage.** Overage billed in arrears can surprise people and can fail to
+  collect; a pack is paid up front, its limit is visible, and the worst case per person stays bounded by
+  what they have paid for. Metered overage can be added later as a Stripe metered price on the same
+  ledger if customers ask for it.
+- **Accounting.** `ai_credit_grants` holds one row per pack (unique on the payment intent, so a webhook
+  that arrives twice grants once); `ai_credit_draws` holds the credits used per allowance period, written
+  as spend passes the allowance and settled from the usage ledger when the period ends. A refund in
+  Stripe (`charge.refunded`) takes back the refunded share of that pack's credits.
+
+**Plans plus packs at the full allowance.** A Pro person who uses the whole $25 allowance and then a $25
+pack costs us about $29.74 + $15 = $44.74 and pays $59 + $25 = $84: 42% after fees. Packs never lower a
+plan's margin below the plan's own full-allowance figure.
+
 ## Unit costs
 
 What each thing costs us every time it happens. Model calls are priced from `src/lib/ai/pricing.ts` with
@@ -194,12 +228,16 @@ seats on the invoice (the minimum count) and, for yearly billing, over twelve mo
   lists.
 - `src/lib/billing/costs.ts`: unit costs, fixed bills, personas, `costToServe`, `margin` and
   `marginTable`. It is pure and safe on the client; the plan page uses `answersFor` for its answer counts.
-- `src/lib/ai/limits.ts`: enforces the allowance. It reads the person's plan once a minute (from the
-  subscription and the profile's email, so Campus and administrators work in background runs too) and
-  checks today's and this month's spend from the usage ledger. Administrators have no cap.
+- `src/lib/billing/packs.ts`: credit packs, allowance periods (billing anniversaries) and the drawdown
+  arithmetic; `src/lib/billing/credits.ts` reads and writes the credit tables.
+- `src/lib/ai/limits.ts`: enforces the allowance and then the credits. It reads the person's plan every
+  15 seconds (from the subscription, an assigned seat and the profile's email, so Campus and
+  administrators work in background runs too) and checks today's and this allowance month's spend from
+  the usage ledger. Administrators have no cap.
 - Stripe:
-  - `src/lib/billing/stripe.ts` and `/api/billing/{checkout,confirm,portal,webhook,status}` handle
-    Stripe; `scripts/stripe-setup.ts` creates the products and prices from `PLANS`.
+  - `src/lib/billing/stripe.ts` and `/api/billing/{checkout,credits,confirm,portal,invoices,webhook,status}`
+    handle Stripe; `scripts/stripe-setup.ts` creates the products and prices from `PLANS` and
+    `CREDIT_PACKS`, the webhook endpoint and the portal configuration.
   - When a price here changes, run the setup script again. It makes a new Stripe price, and the people
     already on the old one keep it until they change plan.
 
@@ -207,6 +245,7 @@ seats on the invoice (the minimum count) and, for yearly billing, over twelve mo
 
 1. Change a unit price or the token shapes in `costs.ts`, or the model prices in `src/lib/ai/pricing.ts`.
 2. Run `pnpm exec tsx scripts/test-billing.ts --table`.
-3. If a margin falls below target, change the price or the allowance in `plans.ts`.
+3. If a margin falls below target, change the price or the allowance in `plans.ts` (or a pack's credit in
+   `packs.ts`).
 4. Update the tables above.
 5. Run `scripts/stripe-setup.ts` with the live key to publish new prices.

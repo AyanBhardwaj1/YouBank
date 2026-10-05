@@ -2,19 +2,30 @@
  * Stripe billing. Server only.
  *
  * - Prices live in Stripe; their ids come from the environment, one per plan and interval
- *   (STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_TEAM_YEARLY, ...). `scripts/stripe-setup.ts` creates them
- *   from PLANS and prints the lines to set. A Team or Enterprise seat count is the line item's quantity.
+ *   (STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_TEAM_YEARLY, ...) and one per credit pack
+ *   (STRIPE_PRICE_PACK_AI10, ...). `scripts/stripe-setup.ts` creates them from PLANS and CREDIT_PACKS and
+ *   prints the lines to set. A Team or Enterprise seat count is the line item's quantity. A pack whose
+ *   price id is not set is sold with an inline price from CREDIT_PACKS, so packs work as soon as the key is.
  * - Without STRIPE_SECRET_KEY nothing here calls Stripe: the plan page shows prices and says billing is
  *   not switched on, and the routes answer with that sentence.
  * - The `subscriptions` row is only ever written from a subscription as Stripe holds it now (fetched
  *   fresh, never taken from an event's copy), so replayed, duplicated or out-of-order webhooks all
- *   converge on the same row: the webhook is idempotent by construction.
+ *   converge on the same row. Credit packs are granted once per payment intent (a unique index). So the
+ *   webhook is idempotent by construction.
+ * - Every person who reaches Checkout gets one Stripe customer, created with an idempotency key and kept
+ *   on their `subscriptions` row (status "none" until they subscribe). Checkout then never runs twice at
+ *   once for them: an open session for the same purchase is reused, other open subscription sessions are
+ *   expired, the create call carries an idempotency key per person, plan, interval and seats for ten
+ *   minutes, and a second live subscription that still slips through is cancelled and refunded.
  */
 import Stripe from "stripe";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { forgetAiCaps } from "@/lib/ai/limits";
 import { logError, OUR_SIDE } from "@/lib/errors";
+import { LEGAL, siteLink, siteUrl } from "@/lib/site";
+import { grantPack, refundPack } from "./credits";
+import { isPackId, packById, type CreditPack, type PackId } from "./packs";
 import { intervalsFor, isPlanId, LIVE_STATUSES, PLAN_ORDER, PLANS, type BillingInterval, type PlanId } from "./plans";
 
 export const BILLING_OFF = "Billing isn't switched on yet.";
@@ -25,6 +36,16 @@ export class BillingError extends Error {
 }
 
 export const billingEnabled = () => !!process.env.STRIPE_SECRET_KEY?.trim();
+
+/** Stripe Tax on Checkout, once the owner has switched it on (`stripe-setup --tax`, then STRIPE_AUTOMATIC_TAX=1). */
+export const automaticTax = () => /^(1|true|yes|on)$/i.test(process.env.STRIPE_AUTOMATIC_TAX?.trim() ?? "");
+
+/**
+ * Require ticking "I agree to the Terms of Service" in Checkout (STRIPE_TERMS_CONSENT=1). Stripe only
+ * allows it once a terms URL is set in the dashboard (Settings, Public details), so it is off by default;
+ * the terms and refund links are shown under the pay button either way.
+ */
+export const termsConsent = () => /^(1|true|yes|on)$/i.test(process.env.STRIPE_TERMS_CONSENT?.trim() ?? "");
 
 let client: Stripe | null = null;
 /** The Stripe client, created on first use; the SDK pins its own API version. */
@@ -37,9 +58,16 @@ export function stripe(): Stripe {
 
 /** The environment variable that holds a plan's Stripe price id for an interval. */
 export const priceEnv = (plan: PlanId, interval: BillingInterval) => `STRIPE_PRICE_${plan.toUpperCase()}_${interval.toUpperCase()}`;
+/** The environment variable that holds a credit pack's Stripe price id. */
+export const packPriceEnv = (pack: PackId) => `STRIPE_PRICE_PACK_${pack.toUpperCase()}`;
 
 export function priceId(plan: PlanId, interval: BillingInterval): string | null {
   return process.env[priceEnv(plan, interval)]?.trim() || null;
+}
+
+/** A credit pack's Stripe price id, or null to sell it with an inline price from CREDIT_PACKS. */
+export function packPriceId(pack: PackId): string | null {
+  return process.env[packPriceEnv(pack)]?.trim() || null;
 }
 
 /** Which plan a Stripe price id sells, from the same environment variables. */
@@ -71,6 +99,13 @@ export function checkoutRequest(body: unknown): { plan: PlanId; interval: Billin
   return { plan, interval, seats: plan === "pro" ? 1 : seats };
 }
 
+/** Check a credit pack request. Pure. */
+export function packRequest(body: unknown): CreditPack {
+  const id = (body as { pack?: unknown } | null)?.pack;
+  if (!isPackId(id)) throw new BillingError("Choose a credit pack.");
+  return packById(id)!;
+}
+
 /** Run a Stripe call; a Stripe failure is logged and becomes the usual "on our side" sentence with its reference. */
 export async function stripeCall<T>(where: string, fn: (s: Stripe) => Promise<T>): Promise<T> {
   const s = stripe();
@@ -83,8 +118,37 @@ export async function stripeCall<T>(where: string, fn: (s: Stripe) => Promise<T>
   }
 }
 
+/* ---------------- Return pages and terms ---------------- */
+
+/** Where Checkout and the portal send people back to: the Plan tab, on the site's own address. */
+export const planPage = () => siteLink("/app/settings?tab=plan");
+
+/** A billing portal session for a customer, with the configuration stripe-setup made (STRIPE_PORTAL_CONFIGURATION) when set. */
+export function portalSession(customer: string) {
+  const configuration = process.env.STRIPE_PORTAL_CONFIGURATION?.trim() || undefined;
+  return stripeCall("portal", (s) => s.billingPortal.sessions.create({ customer, return_url: planPage(), ...(configuration ? { configuration } : {}) }));
+}
+
+/** The terms and refund links under Checkout's pay button, and the consent box when switched on. */
+export function checkoutTerms(): Pick<Stripe.Checkout.SessionCreateParams, "custom_text" | "consent_collection"> {
+  const base = siteUrl();
+  return {
+    custom_text: { submit: { message: `By paying you agree to the [Terms of Service](${base}${LEGAL.terms}) and the [Refund policy](${base}${LEGAL.refunds}). Prices exclude tax unless shown.` } },
+    ...(termsConsent() ? { consent_collection: { terms_of_service: "required" as const } } : {}),
+  };
+}
+
+/** Stripe Tax on a Checkout Session for an existing customer: compute tax and save the address it needs. */
+export function checkoutTax(): Pick<Stripe.Checkout.SessionCreateParams, "automatic_tax" | "customer_update" | "tax_id_collection"> {
+  return automaticTax() ? { automatic_tax: { enabled: true }, customer_update: { address: "auto", name: "auto" }, tax_id_collection: { enabled: true } } : {};
+}
+
+/* ---------------- Rows ---------------- */
+
 export type SubscriptionRow = typeof schema.subscriptions.$inferSelect;
 type RowValues = Omit<SubscriptionRow, "createdAt" | "updatedAt">;
+
+const at = (n: number | null | undefined) => (typeof n === "number" && n > 0 ? new Date(n * 1000) : null);
 
 /** The row a Stripe subscription means for a person. Pure, for tests. */
 export function rowFromSubscription(userId: string, sub: Stripe.Subscription, env: Record<string, string | undefined> = process.env): RowValues {
@@ -93,11 +157,19 @@ export function rowFromSubscription(userId: string, sub: Stripe.Subscription, en
   const metaPlan = sub.metadata?.plan;
   const plan = planForPrice(item?.price?.id, env) ?? (isPlanId(metaPlan) ? metaPlan : "pro");
   const ends = items.map((i) => i.current_period_end).filter((n): n is number => typeof n === "number");
+  const starts = items.map((i) => i.current_period_start).filter((n): n is number => typeof n === "number");
+  const currentPeriodEnd = ends.length ? new Date(Math.max(...ends) * 1000) : null;
+  // A cancellation the person asked for in the portal is either "at period end" or a set date; both end it then.
+  const cancelAt = at(sub.cancel_at) ?? (sub.cancel_at_period_end ? currentPeriodEnd : null);
   return {
     userId, plan, status: sub.status, seats: Math.max(1, item?.quantity ?? 1),
     stripeCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null,
     stripeSubscriptionId: sub.id,
-    currentPeriodEnd: ends.length ? new Date(Math.max(...ends) * 1000) : null,
+    currentPeriodEnd,
+    currentPeriodStart: starts.length ? new Date(Math.min(...starts) * 1000) : null,
+    billingAnchor: at(sub.billing_cycle_anchor),
+    cancelAtPeriodEnd: !!sub.cancel_at_period_end || (!!cancelAt && LIVE_STATUSES.includes(sub.status)),
+    cancelAt: LIVE_STATUSES.includes(sub.status) ? cancelAt : null,
   };
 }
 
@@ -111,17 +183,45 @@ export function shouldApply(existing: Pick<SubscriptionRow, "status" | "stripeSu
   return LIVE_STATUSES.includes(incoming.status) || !LIVE_STATUSES.includes(existing.status);
 }
 
-/** Write a person's row from a subscription as Stripe holds it now. Idempotent. */
+/**
+ * A second live subscription for someone who already has one: the double checkout this module tries to
+ * prevent. True when `incoming` is live, differs from the stored one, and the stored one is live. Pure.
+ */
+export function isDuplicate(existing: Pick<SubscriptionRow, "status" | "stripeSubscriptionId"> | undefined | null, incoming: Pick<RowValues, "status" | "stripeSubscriptionId">): boolean {
+  return !!existing?.stripeSubscriptionId && existing.stripeSubscriptionId !== incoming.stripeSubscriptionId
+    && LIVE_STATUSES.includes(existing.status) && LIVE_STATUSES.includes(incoming.status);
+}
+
+/** Hooks other billing modules add (seat trimming); called after a subscription row is written. */
+const afterApply: ((row: RowValues) => Promise<void>)[] = [];
+export const onSubscriptionApplied = (fn: (row: RowValues) => Promise<void>) => { afterApply.push(fn); };
+
+/**
+ * Write a person's row from a subscription as Stripe holds it now. Idempotent. When it would be a second
+ * live subscription beside the stored one (two checkouts that both went through), the newer of the two is
+ * cancelled and refunded and the older one stays, whichever event arrives first.
+ */
 export async function applySubscription(userId: string, sub: Stripe.Subscription): Promise<RowValues | null> {
   const db = requireDb();
-  const next = rowFromSubscription(userId, sub);
+  let next = rowFromSubscription(userId, sub);
   const [existing] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, userId));
+  if (existing?.stripeSubscriptionId && isDuplicate(existing, next)) {
+    const other = await stripeCall("subscription", (s) => s.subscriptions.retrieve(existing.stripeSubscriptionId!));
+    if (LIVE_STATUSES.includes(other.status)) {
+      const [keep, drop] = other.created <= sub.created ? [other, sub] : [sub, other];
+      await cancelDuplicate(userId, drop);
+      if (keep.id === existing.stripeSubscriptionId) return null;
+      next = rowFromSubscription(userId, keep);
+    }
+  }
   if (!shouldApply(existing, next)) return null;
-  const { plan, status, seats, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd } = next;
+  const { plan, status, seats, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, currentPeriodStart, billingAnchor, cancelAtPeriodEnd, cancelAt } = next;
   await db.insert(schema.subscriptions).values(next).onConflictDoUpdate({
-    target: schema.subscriptions.userId, set: { plan, status, seats, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, updatedAt: new Date() },
+    target: schema.subscriptions.userId,
+    set: { plan, status, seats, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, currentPeriodStart, billingAnchor, cancelAtPeriodEnd, cancelAt, updatedAt: new Date() },
   });
   forgetAiCaps(userId);
+  for (const fn of afterApply) await fn(next);
   return next;
 }
 
@@ -130,7 +230,10 @@ export async function userForSubscription(sub: Stripe.Subscription): Promise<str
   const fromMeta = sub.metadata?.userId?.trim();
   if (fromMeta) return fromMeta;
   const customer = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
-  if (!customer) return null;
+  return customer ? userForCustomer(customer) : null;
+}
+
+export async function userForCustomer(customer: string): Promise<string | null> {
   const [row] = await requireDb().select({ userId: schema.subscriptions.userId }).from(schema.subscriptions).where(eq(schema.subscriptions.stripeCustomerId, customer)).limit(1);
   return row?.userId ?? null;
 }
@@ -144,11 +247,56 @@ export async function syncSubscription(subscriptionId: string, userHint?: string
   return userId;
 }
 
-/** A finished Checkout Session: store its subscription for the person who started it. */
+/**
+ * Cancel a duplicate subscription at once and refund what its first invoice took. Logged, so the owner
+ * sees it happened. Best effort: a failed refund is logged with the payment to refund by hand.
+ */
+async function cancelDuplicate(userId: string, sub: Stripe.Subscription): Promise<void> {
+  await stripeCall("duplicate:cancel", (s) => s.subscriptions.cancel(sub.id, { prorate: false, invoice_now: false }));
+  const invoiceId = typeof sub.latest_invoice === "string" ? sub.latest_invoice : sub.latest_invoice?.id;
+  let refunded = false;
+  if (invoiceId) {
+    try {
+      const inv = await stripe().invoices.retrieve(invoiceId, { expand: ["payments"] });
+      for (const p of inv.payments?.data ?? []) {
+        const pi = typeof p.payment.payment_intent === "string" ? p.payment.payment_intent : p.payment.payment_intent?.id;
+        if (pi && p.status === "paid") { await stripe().refunds.create({ payment_intent: pi, reason: "duplicate" }, { idempotencyKey: `yb-dup-refund-${pi}` }); refunded = true; }
+      }
+    } catch (e) {
+      logError(e, { status: 500, where: "billing:duplicate:refund" });
+    }
+  }
+  logError(new Error(`Duplicate subscription ${sub.id} for ${userId} cancelled${refunded ? " and refunded" : "; refund its first payment by hand"}`), { status: 409, where: "billing:duplicate" });
+}
+
+/** A finished Checkout Session: a subscription is stored for its person; a credit pack is granted once it is paid. */
 export async function syncCheckoutSession(session: Stripe.Checkout.Session): Promise<string | null> {
+  if (session.mode === "payment") return grantFromSession(session);
   if (session.mode !== "subscription" || !session.subscription) return null;
   const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
   return syncSubscription(subId, session.client_reference_id ?? session.metadata?.userId ?? null);
+}
+
+/** Grant the credit pack a paid Checkout Session bought. Idempotent on its payment intent. Returns the person. */
+export async function grantFromSession(session: Stripe.Checkout.Session, grant: typeof grantPack = grantPack): Promise<string | null> {
+  if (session.mode !== "payment" || session.metadata?.kind !== "credits") return null;
+  const userId = session.client_reference_id ?? session.metadata?.userId ?? null;
+  const pack = session.metadata?.pack;
+  const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+  // Card payments are paid at completion; slower methods arrive later as checkout.session.async_payment_succeeded.
+  if (!userId || !isPackId(pack) || !pi || session.payment_status !== "paid") return null;
+  await grant({ userId, pack, paymentIntentId: pi, sessionId: session.id, paidCents: session.amount_total ?? 0, currency: session.currency });
+  forgetAiCaps(userId);
+  return userId;
+}
+
+/** A refund on a credit pack takes back the same share of its credits. Subscription refunds change nothing here. */
+export async function refundFromCharge(charge: Stripe.Charge): Promise<string | null> {
+  const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+  if (!pi || !charge.amount) return null;
+  const userId = await refundPack(pi, charge.amount_refunded / charge.amount);
+  if (userId) forgetAiCaps(userId);
+  return userId;
 }
 
 /** This person's stored row, if any. */
@@ -157,19 +305,112 @@ export async function subscriptionOf(userId: string): Promise<SubscriptionRow | 
   return row ?? null;
 }
 
-/** The webhook events that change a plan; everything else is acknowledged and ignored. */
-export const WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"] as const;
+/* ---------------- Customers and Checkout ---------------- */
+
+/**
+ * This person's Stripe customer, created once (an idempotency key per person stops two at once) and kept
+ * on their `subscriptions` row. A row created here has status "none": a billing account, no plan.
+ */
+export async function ensureCustomer(user: { id: string; email: string; name?: string }): Promise<string> {
+  const row = await subscriptionOf(user.id);
+  if (row?.stripeCustomerId) return row.stripeCustomerId;
+  const customer = await stripeCall("customer", (s) => s.customers.create(
+    { email: user.email || undefined, name: user.name || undefined, metadata: { userId: user.id } },
+    { idempotencyKey: `yb-customer-${user.id}` },
+  ));
+  const db = requireDb();
+  await db.insert(schema.subscriptions).values({ userId: user.id, plan: "free", status: "none", stripeCustomerId: customer.id })
+    .onConflictDoNothing({ target: schema.subscriptions.userId });
+  await db.update(schema.subscriptions).set({ stripeCustomerId: customer.id, updatedAt: new Date() })
+    .where(and(eq(schema.subscriptions.userId, user.id), isNull(schema.subscriptions.stripeCustomerId)));
+  return (await subscriptionOf(user.id))?.stripeCustomerId ?? customer.id;
+}
+
+/** Ten-minute window for checkout idempotency keys. */
+export const CHECKOUT_WINDOW_MS = 10 * 60_000;
+
+/**
+ * The idempotency key for creating a subscription Checkout Session: the same person, plan, interval and
+ * seats within the same ten minutes get the same session back from Stripe, however many times the button
+ * is pressed or the request is retried. Pure.
+ */
+export const checkoutKey = (userId: string, plan: PlanId, interval: BillingInterval, seats: number, now = Date.now()) =>
+  `yb-checkout-${userId}-${plan}-${interval}-${seats}-${Math.floor(now / CHECKOUT_WINDOW_MS)}`;
+
+/** The same for a credit pack, over one minute (a double click), so a second pack can be bought right after the first. */
+export const packCheckoutKey = (userId: string, pack: PackId, now = Date.now()) => `yb-pack-${userId}-${pack}-${Math.floor(now / 60_000)}`;
+
+type OpenSession = Pick<Stripe.Checkout.Session, "id" | "url" | "mode" | "metadata" | "status">;
+
+/**
+ * Given a person's open Checkout Sessions, which one to send them back to (the same purchase) and which to
+ * expire (any other open subscription checkout, so two can never both be paid). Pure.
+ */
+export function planOpenSessions(open: OpenSession[], want: { mode: "subscription" | "payment"; plan?: string; interval?: string; seats?: number; pack?: string }): { reuse: OpenSession | null; expire: string[] } {
+  const live = open.filter((s) => s.status === "open" && s.mode === want.mode);
+  const same = (s: OpenSession) => want.mode === "payment"
+    ? s.metadata?.pack === want.pack
+    : s.metadata?.plan === want.plan && s.metadata?.interval === want.interval && s.metadata?.seats === String(want.seats);
+  const reuse = live.find((s) => same(s) && !!s.url) ?? null;
+  const expire = want.mode === "subscription" ? live.filter((s) => s.id !== reuse?.id).map((s) => s.id) : [];
+  return { reuse, expire };
+}
+
+/** A person's open Checkout Sessions, reused or expired by planOpenSessions. */
+export async function openSessions(customer: string): Promise<OpenSession[]> {
+  const { data } = await stripeCall("checkout:list", (s) => s.checkout.sessions.list({ customer, status: "open", limit: 20 }));
+  return data;
+}
+
+export async function expireSessions(ids: string[]): Promise<void> {
+  // An already completed or expired session cannot be expired; that is fine.
+  await Promise.all(ids.map((id) => stripe().checkout.sessions.expire(id).catch(() => undefined)));
+}
+
+/** Checkout Sessions expire after 30 minutes (Stripe's minimum), so an abandoned one is not left open for a day. */
+export const sessionExpiry = (now = Date.now()) => Math.floor(now / 1000) + 30 * 60 + 60;
+
+/* ---------------- Webhook ---------------- */
+
+/** The webhook events YouBank acts on; scripts/stripe-setup.ts registers exactly these. */
+export const WEBHOOK_EVENTS = [
+  "checkout.session.completed",
+  "checkout.session.async_payment_succeeded",
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+  "charge.refunded",
+] as const;
+
+/** People to forget cached plans for when a person's subscription changes (seat holders, added by ./seats). */
+const dependents: ((userId: string) => Promise<string[]>)[] = [];
+export const onPlanChanged = (fn: (userId: string) => Promise<string[]>) => { dependents.push(fn); };
+
+/** Drop the cached plan and credits of a person and everyone whose plan follows theirs. */
+export async function forgetPlan(userId: string): Promise<void> {
+  forgetAiCaps(userId);
+  for (const fn of dependents) for (const id of await fn(userId).catch(() => [] as string[])) forgetAiCaps(id);
+}
 
 /** Act on one verified webhook event. Returns the person whose row it touched, if any. */
 export async function handleEvent(event: Stripe.Event): Promise<string | null> {
+  let userId: string | null = null;
   switch (event.type) {
     case "checkout.session.completed":
-      return syncCheckoutSession(event.data.object);
+    case "checkout.session.async_payment_succeeded":
+      userId = await syncCheckoutSession(event.data.object);
+      break;
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted":
-      return syncSubscription(event.data.object.id, event.data.object.metadata?.userId);
+      userId = await syncSubscription(event.data.object.id, event.data.object.metadata?.userId);
+      break;
+    case "charge.refunded":
+      userId = await refundFromCharge(event.data.object);
+      break;
     default:
       return null;
   }
+  if (userId) await forgetPlan(userId);
+  return userId;
 }
