@@ -103,13 +103,15 @@ const plans = new Map<string, { at: number; caps: AiCaps }>();
 export async function aiCaps(userId: string): Promise<AiCaps> {
   const hit = plans.get(userId);
   if (hit && Date.now() - hit.at < PLAN_TTL_MS) return hit.caps;
-  let plan: PlanId = "free", admin = false;
+  let plan: PlanId = "free", admin = false, ok = true;
   try {
     const [p] = await requireDb().select({ email: schema.profiles.email }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
     const e = await entitlements({ id: userId, email: p?.email ?? "" });
     plan = e.plan; admin = e.admin;
-  } catch { /* Free caps; see above */ }
+  } catch { ok = false; /* Free caps; see above */ }
   const caps: AiCaps = { plan, admin, dailyUsd: admin ? null : userDailyUsd(plan), monthlyUsd: admin ? null : userMonthlyUsd(plan) };
+  // A failed lookup is not remembered, so a paying person is not held to Free's caps for a minute after a blip.
+  if (!ok) return caps;
   if (plans.size > 5_000) plans.clear();
   plans.set(userId, { at: Date.now(), caps });
   return caps;
@@ -133,10 +135,12 @@ export async function aiAllowance(userId: string, admin = false): Promise<AiCaps
 export async function aiBlocked(userId: string | null, pendingUsd = 0): Promise<string | null> {
   if (aiDisabled()) return PAUSED;
   const personal = userId && !aiAdmin() ? userId : null;
+  // Everyone's spend does not depend on the plan, so it is read while the plan is looked up.
+  const everyoneSpent = spent(null).catch(() => 0);
   const caps = personal ? await aiCaps(personal) : null;
   const capped = caps && !caps.admin ? personal : null;
   const [all, mine, mineMonth] = await Promise.all([
-    spent(null).catch(() => 0),
+    everyoneSpent,
     capped ? spent(capped, "day").catch(() => 0) : Promise.resolve(null),
     capped ? spent(capped, "month").catch(() => 0) : Promise.resolve(null),
   ]);
