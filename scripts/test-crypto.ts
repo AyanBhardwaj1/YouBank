@@ -108,6 +108,8 @@ async function notary() {
   check("global: dominance and change", near(g.btcDominance, 0.572) && near(g.change24h, -0.012) && g.totalMarketCap === 3.5e12 && g.updatedAt.startsWith("2026"));
   const c = parseCoin({ id: "uniswap", symbol: "uni", name: "Uniswap", categories: ["Decentralized Exchange (DEX)", null], description: { en: "<a href='x'>Uniswap</a> is a   DEX." }, links: { homepage: ["", "https://uniswap.org"] }, platforms: { ethereum: "0x1f98", "": "" }, market_data: { current_price: { usd: 8 }, market_cap: { usd: 5e9 }, fully_diluted_valuation: { usd: 8e9 }, circulating_supply: 6e8, total_supply: 1e9, max_supply: 1e9, ath: { usd: 44 }, price_change_percentage_24h: 2 } });
   check("coin: description stripped of HTML", c.description === "Uniswap is a DEX." && c.homepage === "https://uniswap.org" && c.categories.length === 1 && Object.keys(c.platforms).length === 1 && near(c.d1, 0.02));
+  check("coin: a javascript: homepage is dropped", parseCoin({ id: "x", links: { homepage: ["javascript:alert(1)", "https://ok.example"] }, market_data: {} }).homepage === "https://ok.example");
+  check("raises: only http(s) source links", parseRaises({ raises: [{ date: 1_700_000_000, name: "X", source: "javascript:alert(1)" }] })[0].source === "");
   const ch = parseChart({ prices: [[Date.UTC(2026, 0, 1, 1), 10], [Date.UTC(2026, 0, 1, 23), 11], [Date.UTC(2026, 0, 2), 12], [Date.UTC(2026, 0, 3), 0]] });
   check("chart: one close per day (the last), bad prices dropped", ch.length === 2 && ch[0].close === 11 && ch[1].date === "2026-01-02");
 }

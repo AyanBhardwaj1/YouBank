@@ -15,7 +15,7 @@
 import { cacheJson } from "@/lib/cache";
 import { edgarJson, HOUR as EDGAR_HOUR } from "@/lib/edgar/client";
 import { tickerMap } from "@/lib/edgar/tickers";
-import { arr, cachedJson, CryptoDataError, HOUR, num, str } from "./http";
+import { arr, cachedJson, CryptoDataError, HOUR, num, str, webUrl } from "./http";
 import { SEC_XBRL, type Cite } from "./sources";
 
 const SRC = "DefiLlama";
@@ -42,7 +42,7 @@ export function parseRaises(raw: unknown): Raise[] {
     return {
       date: t ? new Date(t * 1000).toISOString().slice(0, 10) : "", name: str(r.name), round: str(r.round), amountUsd: m(r.amount), valuationUsd: m(r.valuation),
       chains: arr<unknown>(r.chains).map(str).filter(Boolean), sector: str(r.sector), category: str(r.category) || str(r.categoryGroup),
-      leads: arr<unknown>(r.leadInvestors).map(str).filter(Boolean), others: arr<unknown>(r.otherInvestors).map(str).filter(Boolean), source: str(r.source),
+      leads: arr<unknown>(r.leadInvestors).map(str).filter(Boolean), others: arr<unknown>(r.otherInvestors).map(str).filter(Boolean), source: webUrl(r.source),
     };
   }).filter((r) => r.name && r.date).sort((a, b) => (a.date < b.date ? 1 : -1));
 }

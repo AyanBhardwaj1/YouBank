@@ -71,3 +71,5 @@ export const num = (v: unknown): number | null => {
 };
 export const str = (v: unknown): string => (typeof v === "string" ? v.trim() : v === null || v === undefined ? "" : String(v));
 export const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+/** A link from an upstream API, kept only when it is http(s): it ends up in an href, so never javascript: or data:. */
+export const webUrl = (v: unknown): string => { const s = str(v); return /^https?:\/\/[^\s]+$/i.test(s) ? s : ""; };

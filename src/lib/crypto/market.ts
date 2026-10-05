@@ -9,7 +9,7 @@
  * Percent changes are returned as decimals (0.05 is 5%), the convention of every terminal screen.
  */
 import { COINGECKO, coingeckoCoin, type Cite } from "./sources";
-import { arr, cachedJson, CryptoDataError, HOUR, MIN, num, str } from "./http";
+import { arr, cachedJson, CryptoDataError, HOUR, MIN, num, str, webUrl } from "./http";
 
 /** The calls this request may make to CoinGecko: the free API, or the paid Pro API for a person entitled to it. */
 export type Tier = "free" | "pro";
@@ -101,7 +101,7 @@ export function parseCoin(raw: unknown): TokenInfo {
   for (const [k, v] of Object.entries((r.platforms ?? {}) as Record<string, unknown>)) if (k && typeof v === "string" && v) platforms[k] = v;
   return {
     id: str(r.id), symbol: str(r.symbol).toUpperCase(), name: str(r.name), description: desc.slice(0, 1200), categories: arr<unknown>(r.categories).map(str).filter(Boolean).slice(0, 8),
-    homepage: arr<unknown>(links.homepage).map(str).find(Boolean) ?? "", genesis: str(r.genesis_date) || null, platforms,
+    homepage: arr<unknown>(links.homepage).map(webUrl).find(Boolean) ?? "", genesis: str(r.genesis_date) || null, platforms,
     price: usd("current_price"), marketCap: usd("market_cap"), fdv: usd("fully_diluted_valuation"), volume24h: usd("total_volume"),
     circulating: num(m.circulating_supply), total: num(m.total_supply), max: num(m.max_supply), ath: usd("ath"), athDate: str((m.ath_date as Record<string, unknown> | undefined)?.usd) || null,
     d1: pct(m.price_change_percentage_24h), d7: pct(m.price_change_percentage_7d), d30: pct(m.price_change_percentage_30d), y1: pct(m.price_change_percentage_1y),
