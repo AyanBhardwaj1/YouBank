@@ -13,13 +13,16 @@ export const DEEP_EFFORT: Effort = "xhigh";
 
 /**
  * The model for a deep run: AI_DEEP_MODEL when set (and allowed), else the flagship of the provider the
- * person uses. Pure apart from the environment.
+ * person uses when AI_ALLOWED_MODELS allows it, else undefined (the person's usual model). Pure apart
+ * from the environment.
  */
-export function deepModel(prefs: AiPrefs | null | undefined): string {
+export function deepModel(prefs: AiPrefs | null | undefined): string | undefined {
   const env = process.env.AI_DEEP_MODEL?.trim();
   if (env && modelAllowed(env)) return env;
   const provider = (prefs?.model && modelById(prefs.model)?.provider) || prefs?.provider || ((process.env.AI_PROVIDER ?? "openai").toLowerCase() === "anthropic" ? "anthropic" : "openai");
-  return provider === "anthropic" ? "claude-fable-5-1" : "gpt-6-astra";
+  const flagship = provider === "anthropic" ? "claude-fable-5-1" : "gpt-6-astra";
+  // The operator's allow-list is a cost control: a deep run never steps outside it.
+  return modelAllowed(flagship) ? flagship : undefined;
 }
 
 /** How a deep run works, added to the per-request context (after the cached system prompt). */

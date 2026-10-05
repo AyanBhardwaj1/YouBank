@@ -79,6 +79,7 @@ async function main() {
     check("deep runs use the flagship of the person's provider", deepModel({ model: "gpt-5.6-luna" }) === "gpt-6-astra" && deepModel({ model: "claude-sonnet-5" }) === "claude-fable-5-1" && deepModel(null) === "gpt-6-astra");
   });
   env({ AI_DEEP_MODEL: "gpt-5.5-pro", AI_ALLOWED_MODELS: undefined }, () => check("AI_DEEP_MODEL overrides it", deepModel(null) === "gpt-5.5-pro"));
+  env({ AI_DEEP_MODEL: undefined, AI_PROVIDER: undefined, AI_ALLOWED_MODELS: "gpt-5.6-luna" }, () => check("a flagship outside AI_ALLOWED_MODELS is not used", deepModel({ model: "gpt-5.6-luna" }) === undefined));
   check("more steps and a verification protocol", DEEP_MAX_TURNS === 30 && /second source/.test(DEEP_PROTOCOL) && /Not verified/.test(DEEP_PROTOCOL));
 
   console.log("Anthropic Citations");
