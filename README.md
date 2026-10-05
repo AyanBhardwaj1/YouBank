@@ -1224,6 +1224,11 @@ bash scripts/preflight.sh                                         # everything t
    neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
    ```
 7. **Verify.**
+   - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
+     the app serves but something is missing (the tables, a production setting, an optional service half
+     set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
+     the names of missing settings and which services are on need the cron secret
+     (`-H "Authorization: Bearer $CRON_SECRET"`) or an `ADMIN_EMAILS` session. No value is ever shown.
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
 
@@ -1239,6 +1244,7 @@ bash scripts/preflight.sh                                         # everything t
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
+| Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
@@ -1246,7 +1252,7 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
 production.
@@ -1279,6 +1285,23 @@ production.
 - Every install is listed with its last use, and disconnecting one revokes its token at once.
 - Uploaded printouts and data-room files are read as content: the reviewer's marks are the only requests,
   and printed text is never followed as an instruction.
+
+**Errors.**
+- Nobody sees a raw error. A failure meant for people ("This draft was already sent", a permission or a
+  limit) is shown as written; anything that looks internal (SQL, a URL or a key, a stack trace, an HTML
+  error page, a provider's or a parser's own text) becomes "Something went wrong on our side (ref …)",
+  and the full error is logged as one JSON line under that reference (and sent to Sentry when
+  `SENTRY_DSN` is set). One rule decides, in `src/lib/error-text.ts`, shared by the server
+  (`src/lib/errors.ts`) and the browser (`src/lib/client/errors.ts`), which also screens whatever reaches
+  it some other way (a proxy's HTML page, an empty 500, "Failed to fetch") and falls back to a plain line
+  by status: sign in again (401), plan needed (402), no access (403), not found (404), a limit (429),
+  our side (5xx), offline.
+- Streams (the AI chat, workflows, Studio's agent, document answers) end with a screened message, never a
+  dropped connection; errors stored for later (a canvas step, a document's reading, a run) are screened
+  before they are written.
+- A crashed screen shows a plain message, the reference (Next's digest, also in the log line) and Try
+  again and Home. Each workspace has its own boundary, so the navigation stays; a tab left open across a
+  deploy is told to reload.
 
 **Scheduled endpoints.**
 - Cron and heartbeat endpoints require bearer secrets.
