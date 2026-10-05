@@ -15,6 +15,7 @@ import type { GraphValue } from "@/lib/edge/canvas/values";
 import type { Section } from "@/lib/edge/story";
 import { ValueView } from "../canvas/Results";
 import { ForceGraph } from "../net/ForceGraph";
+import { errorMessage } from "@/lib/client/errors";
 
 export type StoryData = { slug: string; title: string; createdAt: string; sections: Section[]; visibility: string; teamId: number | null };
 
@@ -33,7 +34,7 @@ export function StoryView({ story, owner, teams }: { story: StoryData; owner: bo
     setError(null);
     const [visibility, team] = v.split(":");
     try { await api(`/api/edge/stories/${story.slug}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ visibility, teamId: team ? Number(team) : null }) }); setShare(v); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
   };
   const copy = () => { void navigator.clipboard.writeText(window.location.href).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); };
   return (

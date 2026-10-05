@@ -13,6 +13,7 @@ import { api, useApi, type AssetCollection, type Bbox, type EdgeCard, type EdgeS
 import type { MapAsset, MapMarker } from "./EarthMap";
 import { DrillingNearby, PlanetScenes } from "./SitePanels";
 import { TerrainPanel } from "./Terrain";
+import { errorMessage } from "@/lib/client/errors";
 
 const EarthMap = dynamic(() => import("./EarthMap"), { ssr: false, loading: () => <MapLoading /> });
 
@@ -62,7 +63,7 @@ export function MapView({ state, focus, onOpenDeal }: { state: EdgeState; focus:
     setSite({ model: null, busy: true, error: null, key: query });
     api<SiteModel>(`/api/edge/site3d?${query}`)
       .then((model) => { setSite({ model, busy: false, error: null, key: query }); setWant3D(Date.now()); setJump({ ...at, zoom: 15.4, pitch: 62, key: Date.now() }); })
-      .catch((e) => setSite({ model: null, busy: false, error: e instanceof Error ? e.message : String(e), key: query }));
+      .catch((e) => setSite({ model: null, busy: false, error: errorMessage(e), key: query }));
   };
   // Opened with "See it in 3D": model that site straight away.
   const opened = useRef(false);

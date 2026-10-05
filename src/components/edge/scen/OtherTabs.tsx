@@ -17,8 +17,9 @@ import type { Realism } from "@/lib/edge/scen/stats";
 import type { Filled, Privacy, TableIn } from "@/lib/edge/scen/tables";
 import { MarketResultView } from "./MarketTab";
 import { money, pct, PrivacyPanel, RealismPanel, SyntheticTag } from "./parts";
+import { errorMessage } from "@/lib/client/errors";
 
-const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errText = (e: unknown) => (errorMessage(e));
 
 function Slider({ label, value, onChange, min, max, step = 0.01, fmt }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step?: number; fmt: (v: number) => string }) {
   return (

@@ -197,7 +197,7 @@ export function DeckView({ doc, engine, current, setCurrent, onEdit, comments, r
           <>
             <div className="mb-2 flex w-full max-w-[1200px] flex-wrap items-center gap-2 text-[11.5px]">
               {readOnly ? <span className="font-semibold">{slide.title}</span> : (
-                <input value={slide.title} onChange={(e) => upsert({ ...slide, title: e.target.value }, "Retitled a slide")} className="min-w-[220px] flex-1 ctl border border-line bg-bg px-2 py-1 text-[12px] font-semibold outline-none focus:border-accent/60" />
+                <input aria-label="Slide title" value={slide.title} onChange={(e) => upsert({ ...slide, title: e.target.value }, "Retitled a slide")} className="min-w-[220px] flex-1 ctl border border-line bg-bg px-2 py-1 text-[12px] font-semibold outline-none focus:border-accent/60" />
               )}
               {!readOnly && <>
                 <button type="button" title="Move up" onClick={() => moveSlide(-1)} className="ctl border border-line px-1.5 py-1 hover:border-accent/60">↑</button>

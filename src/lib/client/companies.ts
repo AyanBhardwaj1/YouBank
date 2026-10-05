@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CompanyData } from "../types";
+import { errorMessage, readError } from "./errors";
 
 /** Client-side company store: one batch request per set of unseen tickers, shared across every panel. */
 type Entry = { data?: CompanyData; error?: string };
@@ -20,13 +21,19 @@ async function loadBatch(tickers: string[]) {
   need.forEach((t) => inflight.add(t));
   try {
     const res = await fetch(`/api/companies?tickers=${encodeURIComponent(need.join(","))}`);
+    if (!res.ok) {
+      // The whole batch failed (signed out, rate limited, our side): every ticker says why.
+      const why = await readError(res);
+      for (const t of need) store.set(t, { error: why });
+      return;
+    }
     const json = (await res.json()) as Record<string, CompanyData | { error: string }>;
     for (const t of need) {
       const v = json[t];
       store.set(t, v && !("error" in v) ? { data: v } : { error: (v as { error?: string })?.error ?? "Unavailable" });
     }
   } catch (e) {
-    for (const t of need) store.set(t, { error: e instanceof Error ? e.message : "Network error" });
+    for (const t of need) store.set(t, { error: errorMessage(e) });
   } finally {
     need.forEach((t) => inflight.delete(t));
     notify();

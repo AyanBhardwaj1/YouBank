@@ -76,7 +76,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
               </div>
             )}
             <div className="mt-4"><ModelPicker value={{ model: settings.model ?? prefs.model, effort: settings.effort ?? prefs.effort }} onChange={setSettings} /></div>
-            <AiUsage routing={routing} onRouting={(v) => { setRouting(v); void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: { routing: v } }) }); }} />
+            <AiUsage routing={routing} onRouting={(v) => { setRouting(v); void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: { routing: v } }) }).catch(() => undefined); }} />
           </section>
         )}
 
