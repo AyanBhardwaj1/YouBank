@@ -258,7 +258,7 @@ async function notary() {
   check("news: unlocks this week that matter", un.length === 1 && un[0].title === "Arbitrum unlocks 2.3% of circulating supply (about $46.0M) on 2026-10-08");
   const dir = raisesToStartups(raises, 0, now);
   const alpha = dir.find((d) => d.name === "Alpha")!;
-  check("directory: one entry per project with rounds summed", dir.length === 2 && alpha.raisedUsd === 28e6 && alpha.fundingStage === "Series A" && alpha.investors.includes("Coinbase Ventures") && alpha.sourceDate === "2026-10-04");
+  check("directory: one entry per project with rounds summed", dir.length === 2 && alpha.raisedUsd === 28e6 && alpha.fundingStage === "Series A" && (alpha.investors ?? []).includes("Coinbase Ventures") && alpha.sourceDate === "2026-10-04");
   check("directory: days filter", raisesToStartups(raises, 1, now).length === 2 && raisesToStartups(raises, 1, new Date("2026-11-30T00:00:00Z")).length === 0);
 }
 
