@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const token = isCryptoTemplate(template) ? body.ticker?.trim().replace(/[^A-Za-z0-9.\-]/g, "").slice(0, 60) || null : null;
     if (TEMPLATES.find((t) => t.id === template)?.ticker && template === "comps" && !ticker) return NextResponse.json({ error: "Trading comps need a ticker" }, { status: 400 });
     const d = await newDocument(template, { ticker: token ?? ticker, peers: body.peers?.slice(0, 14), acquirer: body.acquirer?.trim().toUpperCase() || null, title: body.title?.trim() });
-    const row = await createDoc(user, { ...d, kind: template, ticker: ticker ?? "", teamId: body.teamId ?? null });
+    const row = await createDoc(user, { ...d, kind: template, ticker: token ?? ticker ?? "", teamId: body.teamId ?? null });
     return NextResponse.json({ id: row.id, notes: d.notes });
   });
 }

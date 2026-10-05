@@ -19,7 +19,7 @@ export async function tokenFinFor(q?: string | null): Promise<TokenFin> {
   const circ = i.circulating ?? 0;
   return {
     id: i.id, symbol: i.symbol, name: i.name, category: v.protocol?.category ?? i.categories[0] ?? "",
-    price: i.price ?? 0, circulating: circ / 1e6, fullyDiluted: (i.max ?? i.total ?? circ) / 1e6,
+    price: i.price ?? 0, circulating: circ / 1e6, fullyDiluted: (i.max ?? i.total ?? circ) / 1e6, maxSupply: i.max ? i.max / 1e6 : null,
     fees: ann(v.cash?.fees30d), revenue: ann(v.cash?.revenue30d), holdersRevenue: ann(v.cash?.holdersRevenue30d), tvl: mm(v.protocol?.tvl),
     source: `https://www.coingecko.com/en/coins/${i.id}`, asOf: i.updatedAt, illustrative: false,
   };

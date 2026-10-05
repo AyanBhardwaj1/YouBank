@@ -18,6 +18,8 @@ export type TokenFin = {
   /** Millions of tokens. */
   circulating: number; fullyDiluted: number;
   /** USD millions a year (the last 30 days annualised, or the last 365). */
+  /** Maximum supply in millions of tokens, null when uncapped (ETH, SOL). Absent: the fully diluted supply is the cap. */
+  maxSupply?: number | null;
   fees: number; revenue: number; holdersRevenue: number; tvl: number;
   source: string; asOf: string | null; illustrative: boolean;
 };
@@ -42,8 +44,10 @@ const sourceNote = (t: TokenFin) => t.illustrative
 const inputs = (s: SheetBuilder, rows: [number, string, Scalar | ReturnType<typeof fx>, string, CellStyle?][]) => {
   for (const [r, t, v, nf, st] of rows) { s.label(`A${r}`, t, st?.b ? { b: true } : {}); s.put(`C${r}`, v, { nf, ...st }); }
 };
-const r2 = (x: number) => Math.round(x * 100) / 100;
-const r1 = (x: number) => Math.round(x * 10) / 10;
+/** Six significant figures: rounding to cents or tenths sent a sub-cent price (or a supply under 50,000 tokens) to zero, and with it the market cap. */
+const sig = (x: number) => (Number.isFinite(x) && x !== 0 ? Number(x.toPrecision(6)) : 0);
+/** Dollars and cents, or six decimals for a token priced under a dollar. */
+const pxFmt = (price: number) => (price > 0 && price < 1 ? "$#,##0.000000_);($#,##0.000000)" : NF.px);
 
 /* ---------------- Fee and revenue multiples ---------------- */
 
@@ -52,10 +56,10 @@ export function buildTokenMultiples(t: TokenFin, name = "Token multiples"): Buil
   s.title(`${t.name} (${t.symbol}): fee and revenue multiples`, sourceNote(t)).widths({ A: 300, B: 20, C: 96, D: 96, E: 96 });
   s.band(4, "Token and network", "E");
   inputs(s, [
-    [5, "Token price (USD)", r2(t.price), NF.px], [6, "Circulating supply (mm tokens)", r1(t.circulating), NF.num], [7, "Fully diluted supply (mm tokens)", r1(t.fullyDiluted), NF.num],
+    [5, "Token price (USD)", sig(t.price), pxFmt(t.price)], [6, "Circulating supply (mm tokens)", sig(t.circulating), NF.num], [7, "Fully diluted supply (mm tokens)", sig(t.fullyDiluted), NF.num],
     [8, "Market cap", fx("C5*C6"), NF.num, { b: true }], [9, "Fully diluted value (FDV)", fx("C5*C7"), NF.num, { b: true }],
-    [10, "Annual fees (paid by users)", r1(t.fees), NF.num], [11, "Annual revenue (kept by the protocol)", r1(t.revenue), NF.num],
-    [12, "Annual holders' revenue (reaches tokenholders)", r1(t.holdersRevenue), NF.num], [13, "Value locked (TVL)", r1(t.tvl), NF.num],
+    [10, "Annual fees (paid by users)", sig(t.fees), NF.num], [11, "Annual revenue (kept by the protocol)", sig(t.revenue), NF.num],
+    [12, "Annual holders' revenue (reaches tokenholders)", sig(t.holdersRevenue), NF.num], [13, "Value locked (TVL)", sig(t.tvl), NF.num],
   ]);
   s.band(15, "Multiples", "E", { C: "Market cap", D: "FDV" });
   const mult: [number, string, string][] = [[16, "x fees", "C10"], [17, "x revenue", "C11"], [18, "x holders' revenue", "C12"], [19, "x value locked", "C13"]];
@@ -72,7 +76,7 @@ export function buildTokenMultiples(t: TokenFin, name = "Token multiples"): Buil
     s.label(`A${r + 3}`, "Upside / (downside) to the price");
     for (const c of ["C", "D", "E"]) {
       s.put(`${c}${r + 1}`, fx(`${c}${r}*$${metric[0]}$${metric.slice(1)}`), { nf: NF.num });
-      s.put(`${c}${r + 2}`, fx(`IF($${supply[0]}$${supply.slice(1)}>0,${c}${r + 1}/$${supply[0]}$${supply.slice(1)},"NM")`), { nf: NF.px, b: true, ...(c === "D" ? { fill: KEY } : {}) });
+      s.put(`${c}${r + 2}`, fx(`IF($${supply[0]}$${supply.slice(1)}>0,${c}${r + 1}/$${supply[0]}$${supply.slice(1)},"NM")`), { nf: pxFmt(t.price), b: true, ...(c === "D" ? { fill: KEY } : {}) });
       s.put(`${c}${r + 3}`, fx(`IFERROR(${c}${r + 2}/$C$5-1,"NM")`), { nf: NF.pct });
     }
   };
@@ -96,8 +100,8 @@ export function buildTokenDcf(t: TokenFin, name = "Token DCF"): Built {
   s.freeze = { rows: 4, cols: 1 };
   s.band(4, "Assumptions", "G");
   inputs(s, [
-    [5, "Token price (USD)", r2(t.price), NF.px], [6, "Circulating supply (mm tokens)", r1(t.circulating), NF.num], [7, "Maximum supply (mm tokens; 0 if uncapped)", r1(t.fullyDiluted), NF.num],
-    [8, t.holdersRevenue > 0 ? "Holders' cash flow, last year" : "Protocol revenue, last year (no holders' revenue reported)", r1(base), NF.num],
+    [5, "Token price (USD)", sig(t.price), pxFmt(t.price)], [6, "Circulating supply (mm tokens)", sig(t.circulating), NF.num], [7, "Maximum supply (mm tokens; 0 if uncapped)", sig(t.maxSupply === undefined ? t.fullyDiluted : t.maxSupply ?? 0), NF.num],
+    [8, t.holdersRevenue > 0 ? "Holders' cash flow, last year" : "Protocol revenue, last year (no holders' revenue reported)", sig(base), NF.num],
     [9, "Cash flow growth, year 1", 0.3, NF.pct], [10, "Cash flow growth, year 5", 0.08, NF.pct], [11, "Discount rate (crypto cost of capital)", 0.25, NF.pct],
     [12, "Terminal growth", 0.03, NF.pct], [13, "Net supply growth a year (unlocks and emissions)", t.fullyDiluted > t.circulating && t.circulating > 0 ? Math.round(Math.min(0.15, Math.pow(t.fullyDiluted / t.circulating, 1 / 5) - 1) * 1000) / 1000 : 0.02, NF.pct],
   ]);
@@ -119,11 +123,11 @@ export function buildTokenDcf(t: TokenFin, name = "Token DCF"): Built {
   inputs(s, [
     [24, "Sum of present values, years 1 to 5", fx("SUM(C21:G21)"), NF.num], [25, "Terminal value (growing perpetuity)", fx("G17*(1+C12)/(C11-C12)"), NF.num],
     [26, "Present value of terminal value", fx("C25*G20"), NF.num], [27, "Network value to tokenholders", fx("C24+C26"), NF.num, { b: true }],
-    [28, "Value per token (on year-5 supply)", fx("IF(G19>0,C27/G19,\"NM\")"), NF.px, { b: true, fill: KEY }], [29, "Upside / (downside) to the price", fx("IFERROR(C28/C5-1,\"NM\")"), NF.pct],
-    [30, "Terminal value as a share of value", fx("IF(C27>0,C26/C27,\"NM\")"), NF.pct], [31, "Value per token on today's supply (no dilution)", fx("IF(C6>0,C27/C6,\"NM\")"), NF.px],
+    [28, "Value per token (on year-5 supply)", fx("IF(G19>0,C27/G19,\"NM\")"), pxFmt(t.price), { b: true, fill: KEY }], [29, "Upside / (downside) to the price", fx("IFERROR(C28/C5-1,\"NM\")"), NF.pct],
+    [30, "Terminal value as a share of value", fx("IF(C27>0,C26/C27,\"NM\")"), NF.pct], [31, "Value per token on today's supply (no dilution)", fx("IF(C6>0,C27/C6,\"NM\")"), pxFmt(t.price)],
   ]);
   s.band(33, "Sensitivity: value per token (discount rate down, terminal growth across)", "G");
-  s.sens.push({ id: newId("sens"), at: "B34", output: "C28", rowInput: "C11", colInput: "C12", rowValues: [0.15, 0.2, 0.25, 0.3, 0.35], colValues: [0.01, 0.02, 0.03, 0.04, 0.05], nf: NF.px, title: "Value per token" });
+  s.sens.push({ id: newId("sens"), at: "B34", output: "C28", rowInput: "C11", colInput: "C12", rowValues: [0.15, 0.2, 0.25, 0.3, 0.35], colValues: [0.01, 0.02, 0.03, 0.04, 0.05], nf: pxFmt(t.price), title: "Value per token" });
   return {
     sheets: [s.sheet()],
     anchors: { perToken: `${name}!C28`, upside: `${name}!C29`, value: `${name}!C27`, terminalShare: `${name}!C30`, projection: `${name}!A15:G21`, sensitivity: `${name}!B34:G39` },
@@ -142,9 +146,9 @@ export function buildStakingYield(t: TokenFin, name = "Staking yield", opts: { i
     .widths({ A: 320, B: 20, C: 96, D: 92, E: 92, F: 92, G: 92 });
   s.band(4, "Assumptions", "G");
   inputs(s, [
-    [5, "Token price (USD)", r2(t.price), NF.px], [6, "Token supply (mm tokens)", r1(t.circulating), NF.num],
+    [5, "Token price (USD)", sig(t.price), pxFmt(t.price)], [6, "Token supply (mm tokens)", sig(t.circulating), NF.num],
     [7, "Issuance to stakers (% of supply a year)", opts.issuanceRate ?? 0.03, NF.pct], [8, "Share of supply staked", opts.stakingRatio ?? 0.3, NF.pct],
-    [9, "Fees and MEV paid to stakers a year", r1(opts.feesToStakers ?? (t.holdersRevenue || t.revenue * 0.5)), NF.num], [10, "Tokens burned (% of supply a year)", opts.burnRate ?? 0, NF.pct],
+    [9, "Fees and MEV paid to stakers a year", sig(opts.feesToStakers ?? (t.holdersRevenue || t.revenue * 0.5)), NF.num], [10, "Tokens burned (% of supply a year)", opts.burnRate ?? 0, NF.pct],
     [11, "Required real return for holding the token", 0.12, NF.pct], [12, "Long-run growth of fees to stakers", 0.03, NF.pct],
   ]);
   s.band(14, "Yields", "G");
@@ -156,7 +160,7 @@ export function buildStakingYield(t: TokenFin, name = "Staking yield", opts: { i
   ]);
   s.band(24, "Value from fees to stakers", "G");
   inputs(s, [
-    [25, "Value of the fee stream (fees / (required return - growth))", fx("IF(C11>C12,C9/(C11-C12),\"NM\")"), NF.num], [26, "Value per token on today's supply", fx("IFERROR(C25/C6,\"NM\")"), NF.px, { b: true }],
+    [25, "Value of the fee stream (fees / (required return - growth))", fx("IF(C11>C12,C9/(C11-C12),\"NM\")"), NF.num], [26, "Value per token on today's supply", fx("IFERROR(C25/C6,\"NM\")"), pxFmt(t.price), { b: true }],
     [27, "Upside / (downside) to the price", fx("IFERROR(C26/C5-1,\"NM\")"), NF.pct],
   ]);
   s.band(29, "Sensitivity: real staking yield (share staked down, issuance across)", "G");
@@ -179,8 +183,8 @@ export function buildCryptoComps(target: TokenFin, peers: TokenFin[], name = "Cr
   const row = (r: number, c: TokenFin, bold = false) => {
     const st: CellStyle = bold ? { b: true } : {};
     s.label(`A${r}`, c.name, st).put(`B${r}`, c.symbol, { ...st, color: BLACK })
-      .put(`C${r}`, r2(c.price), { nf: NF.px, ...st }).put(`D${r}`, r1(c.price * c.circulating), { nf: NF.num, ...st }).put(`E${r}`, r1(c.price * c.fullyDiluted), { nf: NF.num, ...st })
-      .put(`F${r}`, r1(c.fees), { nf: NF.num, ...st }).put(`G${r}`, r1(c.revenue), { nf: NF.num, ...st }).put(`H${r}`, r1(c.holdersRevenue), { nf: NF.num, ...st }).put(`I${r}`, r1(c.tvl), { nf: NF.num, ...st });
+      .put(`C${r}`, sig(c.price), { nf: pxFmt(c.price), ...st }).put(`D${r}`, sig(c.price * c.circulating), { nf: NF.num, ...st }).put(`E${r}`, sig(c.price * c.fullyDiluted), { nf: NF.num, ...st })
+      .put(`F${r}`, sig(c.fees), { nf: NF.num, ...st }).put(`G${r}`, sig(c.revenue), { nf: NF.num, ...st }).put(`H${r}`, sig(c.holdersRevenue), { nf: NF.num, ...st }).put(`I${r}`, sig(c.tvl), { nf: NF.num, ...st });
     const m = (col: string, num: string, den: string) => s.put(`${col}${r}`, fx(`IF(${den}${r}>0,${num}${r}/${den}${r},"NM")`), { nf: NF.mult, al: "right", ...st });
     m("J", "D", "F"); m("K", "E", "F"); m("L", "E", "G"); m("M", "D", "H"); m("N", "D", "I");
   };
@@ -211,7 +215,7 @@ export function buildCryptoComps(target: TokenFin, peers: TokenFin[], name = "Cr
     s.label(`A${r}`, label).put(`B${r}`, fx(metric), { nf: NF.num });
     s.put(`C${r}`, fx(`${col}${q1}`), { nf: NF.mult }).put(`D${r}`, fx(`${col}${med}`), { nf: NF.mult }).put(`E${r}`, fx(`${col}${q3}`), { nf: NF.mult });
     for (const [vc, mc] of [["F", "C"], ["G", "D"], ["H", "E"]]) s.put(`${vc}${r}`, fx(`IFERROR($B${r}*${mc}${r},"NM")`), { nf: NF.num });
-    for (const [pc, vc] of [["I", "F"], ["J", "G"], ["K", "H"]]) s.put(`${pc}${r}`, fx(`IFERROR(${vc}${r}/$B$${supplyRow},"NM")`), { nf: NF.px, b: pc === "J" });
+    for (const [pc, vc] of [["I", "F"], ["J", "G"], ["K", "H"]]) s.put(`${pc}${r}`, fx(`IFERROR(${vc}${r}/$B$${supplyRow},"NM")`), { nf: pxFmt(target.price), b: pc === "J" });
   };
   implied(b0 + 1, "FDV / revenue", `G${tr}`, "L", b0 + 3);
   implied(b0 + 2, "Market cap / holders' revenue", `H${tr}`, "M", b0 + 4);

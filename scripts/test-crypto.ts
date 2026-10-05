@@ -289,6 +289,8 @@ function studio() {
     check("multiples: market cap / fees", near(e.get(id, "C16"), 1000 / 300));
     const mid = multipleValue({ annualMetricUsd: T.revenue, multiple: 25, circulating: T.circulating, fullyDiluted: T.fullyDiluted });
     check("multiples: implied price agrees with the valuation math", near(e.get(id, "D26"), mid.perTokenFd!), [e.get(id, "D26"), mid.perTokenFd]);
+    const tiny = docOf(buildTokenMultiples({ ...T, price: 0.000012, circulating: 420_000_000, fullyDiluted: 420_000_000 }).sheets), et = new Engine(tiny.workbook), tid = sheetId(tiny, "Token multiples");
+    check("multiples: a sub-cent token keeps its market cap", near(et.get(tid, "C8"), 0.000012 * 420_000_000, 1e-9), et.get(tid, "C8"));
     check("multiples: no audit errors or typed-in numbers", errorsOf(e).length === 0 && warningsOf(e).length === 0, auditWorkbook(e).slice(0, 4));
     const zero = docOf(buildTokenMultiples({ ...T, fees: 0, revenue: 0, holdersRevenue: 0 }).sheets), ez = new Engine(zero.workbook);
     check("multiples: a token without fees shows NM, not errors", ez.get(sheetId(zero, "Token multiples"), "C16") === "NM" && errorsOf(ez).length === 0);
@@ -301,6 +303,8 @@ function studio() {
     check("token DCF: value per token agrees with the valuation math", near(e.get(id, "C28"), ref.perToken!, 1e-9), [e.get(id, "C28"), ref.perToken]);
     check("token DCF: network value and terminal share agree", near(e.get(id, "C27"), ref.value, 1e-9) && near(e.get(id, "C30"), ref.terminalShare!, 1e-9));
     check("token DCF: no audit errors or typed-in numbers", errorsOf(e).length === 0 && warningsOf(e).length === 0, auditWorkbook(e).slice(0, 4));
+    const unc = docOf(buildTokenDcf({ ...T, circulating: 120, fullyDiluted: 120, maxSupply: null }).sheets), eu = new Engine(unc.workbook), uid = sheetId(unc, "Token DCF");
+    check("token DCF: an uncapped token (no max supply) still dilutes", eu.get(uid, "C7") === 0 && (eu.get(uid, "G19") as number) > 120, [eu.get(uid, "C7"), eu.get(uid, "G19")]);
     for (const p of refreshSensitivities(doc, e)) applyPatch(doc, p, e);
     check("token DCF: the sensitivity centre equals the model", near(e.get(id, "E37"), e.get(id, "C28") as number, 1e-9), [e.get(id, "E37"), e.get(id, "C28")]);
   }
