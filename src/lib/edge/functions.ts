@@ -2,7 +2,9 @@
  * Edge's background functions on Inngest (served at /api/inngest): canvas runs, the hourly monitor
  * tick, the foundation-model check of every new ground change, reading uploaded documents, and the
  * relationship graph (the weekly refresh, on-demand builds, and training the deal model). Each step
- * counts toward the free tier's executions (see infra/jobs).
+ * counts toward the free tier's executions (see infra/jobs). Scheduled functions never open a premium
+ * scope, so they only ever use the free methods; the paid steps here (a premium reading, a GPU
+ * retraining) run only because a person asked, and re-check that person's plan first.
  */
 import { executeRun } from "./canvas/engine";
 import { newsroomDeals } from "./graph/deals";
@@ -19,6 +21,9 @@ import { tickMonitors } from "./monitors";
 import { applyRefinement, startRefine } from "./refine";
 import { finishIngest, startIngest } from "./docs/uploads";
 import { setDoc } from "./docs/store";
+import { premiumReadFor, runPremiumRead } from "./premium/reading";
+import { upgradeOn } from "./premium";
+import { canUseById } from "@/lib/billing/use";
 import "./runtime";
 
 const asSteps = (step: unknown) => step as Steps;
@@ -66,6 +71,10 @@ export const docIngest = inngest.createFunction(
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const docId = Number((event.data as { docId: number }).docId);
+    // A premium reading the owner chose for this document (LlamaParse, speaker labels), re-checked
+    // against their plan first; it falls back to the free reader below when it cannot run.
+    const premium = await s.run("premium-check", () => premiumReadFor(docId));
+    if (premium && (await runPremiumRead(docId, premium, s)) === "done") return { docId, premium };
     const first = await s.run("start", async () => {
       try { return await startIngest(docId); }
       catch (e) { await setDoc(docId, { status: "failed", error: String((e as Error).message ?? e).slice(0, 300) }); return { done: true as const }; }
@@ -117,7 +126,10 @@ export const graphTrain = inngest.createFunction(
   { id: "edge-graph-train", triggers: { event: "edge/graph.train" }, concurrency: 1, retries: 0 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
-    const started = await s.run("start", () => startTraining(String((event.data as { reason?: string }).reason ?? "")));
+    const data = event.data as { reason?: string; gpu?: boolean; by?: string };
+    // A GPU run only when a person asked (the route checked their plan) and it still holds: their plan, and the setup.
+    const gpu = await s.run("gpu-check", async () => data.gpu === true && !!data.by && upgradeOn("graph-gpu") && (await canUseById(data.by, "edge.graph-gpu")));
+    const started = await s.run("start", () => startTraining(String(data.reason ?? ""), { gpu }));
     if ("skipped" in started) return started;
     const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: "45m", if: doneFor(started.callId) });
     return s.run("finish", async () => {

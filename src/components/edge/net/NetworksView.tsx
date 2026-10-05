@@ -14,6 +14,7 @@ import { api, post, useApi } from "@/components/news/client";
 import { onTabKeys, tabProps } from "../tabs";
 import { fmtUsd, type CompanyView, type GEdge, type GNode, type MapData, type Missing, type Picks, type Prediction, type Status, type Sub, type Tree } from "./client";
 import { Findings } from "./Findings";
+import { GpuRetrain } from "./GpuRetrain";
 import { ForceGraph } from "./ForceGraph";
 import { OwnershipTree } from "./OwnershipTree";
 
@@ -88,6 +89,7 @@ export function NetworksView({ tickers, initial }: { tickers: string[]; initial?
         </div>
         {suggestions.map((t) => <button key={t} type="button" onClick={() => open(t)} className="num rounded-full border border-dashed border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg">{t}</button>)}
         <span className="ml-auto text-[11px] text-muted">{status.data ? `${status.data.size.companies.toLocaleString("en-US")} companies, ${status.data.size.links.toLocaleString("en-US")} links from SEC filings${status.data.model ? ` · deal model ${status.data.model.version}` : status.data.latest?.status === "training" ? " · the deal model is training" : ""}` : ""}</span>
+        {status.data?.gpu && status.data.model && status.data.latest?.status !== "training" && <GpuRetrain onStarted={status.reload} />}
       </div>
 
       {company.error && <p className="text-[12.5px] text-neg">{company.error}</p>}
