@@ -352,6 +352,9 @@ that ticker.
 
 The grid is built to feel like Excel:
 - a formula bar and name box, selection by click, shift-click or drag, and Excel keyboard navigation;
+- on a touch screen: tap a cell to select it and tap it again (or double-tap) to edit in a bar docked
+  above the keyboard, with formula keys and arrows that save and step to the next cell without the
+  keyboard closing; drag the dot at the selection's corner to cover a range;
 - type-to-edit and F2, clearing with Delete, and undo with Cmd/Ctrl+Z;
 - copy and paste as tab-separated text, to and from Excel. Pasting within Studio adjusts relative
   references.
@@ -406,8 +409,8 @@ Each template is fully formula-driven and filled from SEC XBRL company facts and
 - Slides are 16:9. Their tables, charts, figures and football fields are **links into the model**, so a
   changed assumption flows to every page.
 - Charts come in column, bar, stacked, line, pie, waterfall and football-field forms.
-- You can edit titles and text, drag elements to move or resize them, reorder slides and comment on
-  them.
+- You can edit titles and text, drag elements to move or resize them (with a mouse or a finger), reorder
+  slides and comment on them. On a phone you swipe between slides, with the thumbnails in a strip below.
 - **Tie-out** checks the deck against the model. It flags:
   - broken links and error values;
   - tables typed in by hand;
@@ -995,7 +998,8 @@ Graduation offers appear at the top of the queue.
   Components use design tokens only. `scripts/gen-themes.ts` regenerates `src/app/themes.css` from
   `src/lib/themes.ts`.
 - **The top bar and the sidebar.** Each person pins the features they use to the top bar, in their own
-  order, with names or icons only; the page they are on shows as a dashed tab when it is not pinned. The
+  order, with names or icons only (icons only on a tablet, so the bar fits); the page they are on shows as
+  a dashed tab when it is not pinned. The
   sidebar (the button at the left, or ⌘/Ctrl+\\) holds every feature, the workflows inside them
   (terminal functions, Newsroom views, Relationships tabs, settings) and the tools picked for their role,
   with search across all of it. It opens over the page or docks beside it. When a workflow's page is
@@ -1005,6 +1009,30 @@ Graduation offers appear at the top of the queue.
   dialogs (`src/components/ui/Dialog.tsx`) replace the browser's own: themed like everything else,
   animated, with keyboard support, search in long lists, and type-to-confirm for deletions that
   affect a whole team.
+- **On a phone, everything works.** Nothing is desktop-only; each screen is laid out again to fit.
+  - *Navigation.* The first four pinned features become a tab bar along the bottom edge, and **More**
+    opens the sidebar as a bottom sheet: the same search, features and workflows, at finger size, plus an
+    arrange view that shows which pins are tabs. The top bar slims to the page's name, alerts, style and
+    account. Pinning and arranging are one list for both, saved the same way.
+  - *Panels become sheets.* Side panels open as bottom sheets (`src/components/ui/Sheet.tsx`) that drag
+    down to close: the Studio agent (beside the sheet it writes, so you can watch), the terminal's
+    watchlist, what you pick on the Edge map, the Edge canvas block palette. Dialogs become bottom sheets.
+    Multi-pane screens become tabs: Private markets shows the list, a startup or the assistant one at a
+    time (a tablet keeps the list beside the other two).
+  - *Touch.* Controls are at least 40 to 44 px tall on a phone; small icon buttons get an invisible
+    44 px hit area (`.hit`); actions that appear on hover elsewhere are always shown on touch. Strips of
+    tabs and chips scroll sideways instead of wrapping into many lines. The Relationships pipeline is a
+    row of stages you swipe; a Newsroom story opens full screen and closes with a swipe to the right.
+  - *Text.* The desktop interface is deliberately dense; below 640 px every small text size steps up a
+    notch (body text at least 12 px), and text boxes are 16 px so iOS does not zoom into them.
+  - *Tables* scroll sideways inside their own box (`.table-scroll`), never the page, with the first column
+    pinned on a phone so each row keeps its name.
+  - *The keyboard and the notch.* `MobileViewport` publishes the height the on-screen keyboard covers as
+    `--kb`; the frame ends above it, bars and sheets ride on top of it, and the tab bar steps aside while
+    it is up. The page is drawn edge to edge (`viewport-fit=cover`) with the safe-area insets kept clear,
+    and the browser bar takes the style's background.
+  - *Smoothness.* Panes scroll with momentum and do not drag the page with them; every animation follows
+    the system's reduce-motion setting (`MotionPrefs`).
 
 ---
 
@@ -1422,3 +1450,4 @@ YouBank/
 | [docs/04-comps-engine-spec.md](docs/04-comps-engine-spec.md) | Comps engine spec |
 | [docs/01-tech-ma-personas.md](docs/01-tech-ma-personas.md) | The original persona study |
 | [docs/research/](docs/research/) | Market research behind the tool packs, plus the Studio competitive landscape and the analyst grunt-work study |
+| [docs/mobile/](docs/mobile/) | Before-and-after screenshots of the phone layouts |

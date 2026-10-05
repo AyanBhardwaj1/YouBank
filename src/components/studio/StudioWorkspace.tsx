@@ -414,18 +414,17 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <DeckView doc={doc} engine={engine} current={slideNow} setCurrent={setSlide} onEdit={edit} comments={doc.comments} readOnly={readOnly} flashSlide={st.agent.running ? st.focusSlide : null} />
             </div>
           )}
-          {/* Phones: the agent's handle, always in reach, showing what it is doing. */}
-          {phone && (
-            <button type="button" onClick={() => setAgentOpen(true)} aria-expanded={agentOpen}
-              className="flex min-h-12 shrink-0 items-center gap-2.5 border-t border-line bg-panel px-3 text-left active:bg-elevated">
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${st.agent.running ? "bg-accent text-accent-fg" : "bg-accent-soft text-accent"}`}>
-                {st.agent.running ? <span className="h-2 w-2 animate-pulse rounded-full bg-accent-fg" /> : <Icon name="Sparkles" className="h-4 w-4" />}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{st.agent.running ? agentDoing(st.agent.log) : "Ask the agent to build or change something"}</span>
-              {st.health && <span className={`shrink-0 ctl px-1.5 py-0.5 text-[11px] ${st.health.errors ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos"}`}>{st.health.errors ? `${st.health.errors} error${st.health.errors === 1 ? "" : "s"}` : "No errors"}</span>}
-              <Icon name="ChevronRight" className="h-4 w-4 shrink-0 -rotate-90 text-muted" />
-            </button>
-          )}
+          {/* Phones: the agent's handle, always in reach, showing what it is doing. Shown by CSS rather than
+              the phone check, so it is in place from the first paint and the sheet above it never jumps. */}
+          <button type="button" onClick={() => setAgentOpen(true)} aria-expanded={agentOpen}
+            className="flex min-h-12 shrink-0 items-center gap-2.5 border-t border-line bg-panel px-3 text-left active:bg-elevated md:hidden">
+            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${st.agent.running ? "bg-accent text-accent-fg" : "bg-accent-soft text-accent"}`}>
+              {st.agent.running ? <span className="h-2 w-2 animate-pulse rounded-full bg-accent-fg" /> : <Icon name="Sparkles" className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{st.agent.running ? agentDoing(st.agent.log) : "Ask the agent to build or change something"}</span>
+            {st.health && <span className={`shrink-0 ctl px-1.5 py-0.5 text-[11px] ${st.health.errors ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos"}`}>{st.health.errors ? `${st.health.errors} error${st.health.errors === 1 ? "" : "s"}` : "No errors"}</span>}
+            <Icon name="ChevronRight" className="h-4 w-4 shrink-0 -rotate-90 text-muted" />
+          </button>
         </div>
 
         {phone && (

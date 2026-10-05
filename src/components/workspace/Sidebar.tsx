@@ -40,14 +40,15 @@ export function Sidebar() {
       <AnimatePresence>
         {nav.open && (
           <motion.button key="scrim" type="button" aria-label="Close the sidebar" tabIndex={-1} onClick={() => nav.setOpen(false)}
-            className={`absolute inset-0 z-30 cursor-default bg-bg/45 backdrop-blur-[2px] ${docked ? "md:hidden" : ""}`}
+            className={`absolute inset-0 z-30 cursor-default bg-bg/45 backdrop-blur-[2px] max-md:hidden ${docked ? "md:hidden" : ""}`}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }} />
         )}
       </AnimatePresence>
       <AnimatePresence initial={false}>
         {nav.open && (
           <motion.aside key="sidebar" aria-label="Features and workflows"
-            className={`absolute inset-y-0 left-0 z-40 shrink-0 overflow-hidden border-r border-line bg-panel ${docked ? "md:relative md:z-auto" : "float"}`}
+            // Never on a phone, even for the moment before the page knows it is one: there it is the More sheet.
+            className={`absolute inset-y-0 left-0 z-40 shrink-0 overflow-hidden border-r border-line bg-panel max-md:hidden ${docked ? "md:relative md:z-auto" : "float"}`}
             initial={docked ? { width: 0 } : { x: -WIDTH - 12 }} animate={docked ? { width: WIDTH } : { x: 0 }} exit={docked ? { width: 0 } : { x: -WIDTH - 12 }}
             transition={spring} style={docked ? undefined : { width: WIDTH }}>
             <div className="flex h-full flex-col" style={{ width: WIDTH }}>
