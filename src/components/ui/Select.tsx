@@ -227,7 +227,7 @@ export function Select({ value, onChange, children, className, disabled, title, 
                       <li id={`${id}-o${i}`} role="option" aria-selected={selected} aria-disabled={it.disabled || undefined} data-active={i === active}
                         onMouseMove={() => { if (i !== active && !it.disabled) setActive(i); }}
                         onMouseDown={(e) => e.preventDefault()} onClick={() => choose(it)}
-                        className={`ctl flex select-none items-center gap-2 px-2 py-1.5 transition-colors duration-100 ${it.disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"} ${i === active ? "bg-elevated" : ""} ${selected ? "font-medium text-accent" : ""}`}>
+                        className={`ctl flex select-none items-center gap-2 px-2 py-1.5 transition-colors duration-100 max-md:min-h-11 max-md:text-[14px] ${it.disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"} ${i === active ? "bg-elevated" : ""} ${selected ? "font-medium text-accent" : ""}`}>
                         <Check aria-hidden className={`h-3.5 w-3.5 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
                         <span className="min-w-0 flex-1 truncate" title={it.label.length > 36 ? it.label : undefined}>{it.label}</span>
                       </li>

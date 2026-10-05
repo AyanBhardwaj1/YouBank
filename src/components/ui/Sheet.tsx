@@ -108,7 +108,8 @@ function SheetBody({ onClose, title, actions, children, footer, size, expandable
             </div>
           )}
         </div>
-        <div className={`scroll-touch min-h-0 flex-1 overflow-y-auto ${padded ? "px-4 py-3" : ""} ${footer ? "" : "pb-safe"}`}>{children}</div>
+        <div className={`scroll-touch min-h-0 flex-1 overflow-y-auto ${padded ? "px-4 pt-3" : ""}`}
+          style={{ paddingBottom: footer ? (padded ? 12 : 0) : `calc(var(--safe-b) + ${padded ? 12 : 0}px)` }}>{children}</div>
         {footer && <div className="shrink-0 border-t border-line bg-panel pb-safe">{footer}</div>}
       </motion.div>
     </div>

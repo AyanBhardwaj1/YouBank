@@ -70,7 +70,7 @@ export function AppNav({ email }: { email: string }) {
         className={`ctl hidden h-7 w-7 shrink-0 place-items-center transition-colors md:grid ${nav.open ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
         {nav.open ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
       </button>
-      <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11" aria-label="YouBank home">
+      <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11 max-md:min-w-8" aria-label="YouBank home">
         <LogoMark size={18} id="nav" />
         <span className={`font-semibold tracking-tight ${current && current.id !== "home" ? "max-md:hidden" : ""}`}><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
       </Link>

@@ -266,11 +266,11 @@ html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
 /* `background-attachment: fixed` repaints the whole page on every scroll frame on phones (and iOS ignores it). */
 @media (max-width: 1023.98px) { body { background-attachment: scroll; } }
 
-/* Scroll areas keep their momentum and do not hand the drag to the page when they reach the end. */
-.scroll-touch { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+/* Scroll areas keep their momentum and do not hand the drag to the page when they reach the end.
+   (Utilities rather than plain classes, so they take variants: `max-md:scroll-touch`.) */
+@utility scroll-touch { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 /* A strip that scrolls sideways without a scrollbar (tab rows, chips). */
-.no-scrollbar { scrollbar-width: none; }
-.no-scrollbar::-webkit-scrollbar { display: none; }
+@utility no-scrollbar { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
 
 @media (pointer: coarse) {
   /* No double-tap-to-zoom wait on controls: a tap acts at once. */
@@ -305,9 +305,9 @@ html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
    data-kb="open" on <html>, so bars pinned to the bottom can ride above it and the tab bar can step aside. */
 :root { --kb: 0px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px); }
 html[data-kb="open"] .hide-on-kb { display: none !important; }
-.pb-safe { padding-bottom: var(--safe-b); }
-.pt-safe { padding-top: var(--safe-t); }
-.px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+@utility pb-safe { padding-bottom: var(--safe-b); }
+@utility pt-safe { padding-top: var(--safe-t); }
+@utility px-safe { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 
 /* Wide tables scroll sideways inside their own box, never the page. On a phone the first column stays
    pinned while the figures scroll, so every row keeps its name in view; the pinned cells take the
