@@ -5,9 +5,10 @@ import { resolveAi, type AiConfig, type AiOverride, type Effort } from "./config
 import type { AiPrefs } from "./models";
 import { INFERENCE_TOOLS } from "./inference-tools";
 import { ALL_TOOLS, runTool, type Source, type ToolCtx, type ToolDef } from "./tools";
+import { CRYPTO_TOOLS } from "@/lib/crypto/ai-tools";
 
-/** Research tools plus the terminal's models (risk, credit, quality, forecasts, cost of capital, macro, screener). */
-const CHAT_TOOLS = [...ALL_TOOLS, ...INFERENCE_TOOLS];
+/** Research tools plus the terminal's models (risk, credit, quality, forecasts, cost of capital, macro, screener) and crypto data. */
+const CHAT_TOOLS = [...ALL_TOOLS, ...INFERENCE_TOOLS, ...CRYPTO_TOOLS];
 import { contextBlock, systemPrompt, type PromptContext } from "./prompts";
 import { aiBlocked, guardAi, takeRunSlot } from "./limits";
 import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";
