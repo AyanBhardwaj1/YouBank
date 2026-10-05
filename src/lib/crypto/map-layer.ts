@@ -61,7 +61,7 @@ export function addCryptoSitesLayer(map: MLMap, opts: { beforeId?: string; initi
   box.className = "maplibregl-ctrl maplibregl-ctrl-group";
   const button = document.createElement("button");
   button.type = "button";
-  button.title = "Bitcoin mining sites and crypto data centres, from company filings";
+  button.title = "Bitcoin mining sites and crypto data centres, from company filings through mid-2025 (approximate locations)";
   button.setAttribute("aria-label", "Show crypto mining sites");
   button.style.cssText = "width:auto;padding:0 8px;font:600 11px/29px var(--font-sans);white-space:nowrap";
   button.textContent = "₿ Mining sites";
