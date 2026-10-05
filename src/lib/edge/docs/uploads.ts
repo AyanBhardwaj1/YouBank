@@ -59,7 +59,7 @@ export async function createUpload(userId: string, input: { name: string; mime: 
   return { file, parts, partBytes: PART_BYTES };
 }
 
-async function ownFile(userId: string, fileId: number): Promise<FileRow> {
+export async function ownFile(userId: string, fileId: number): Promise<FileRow> {
   const [f] = await requireDb().select().from(schema.edgeFiles).where(eq(schema.edgeFiles.id, fileId));
   if (!f || f.ownerId !== userId) throw status("That file does not exist.", 404);
   return f;

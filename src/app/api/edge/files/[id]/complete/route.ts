@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
 import { ingest } from "@/lib/edge/docs/ingest";
-import { AUDIO, completeUpload } from "@/lib/edge/docs/uploads";
+import { AUDIO, completeUpload, ownFile } from "@/lib/edge/docs/uploads";
 import { requireFeature } from "@/lib/billing/entitlements";
 import { requireReady } from "@/lib/edge/premium";
 import { isPremiumRead, READ_FEATURE, requestPremiumRead } from "@/lib/edge/premium/reading";
@@ -24,12 +24,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const id = Number((await ctx.params).id);
     if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { premium?: { pdf?: string; audio?: string } } | null;
-    const wanted = [body?.premium?.pdf, body?.premium?.audio].filter(isPremiumRead);
-    for (const m of wanted) { await requireFeature(user, READ_FEATURE[m]); requireReady(READ_FEATURE[m]); }
+    // The choice is per kind of file: a recording gets the audio choice, anything else the document one.
+    // Only that one is checked, so a reader ticked for the other kind never blocks this upload.
+    const method = AUDIO.test((await ownFile(user.id, id)).mime) ? body?.premium?.audio : body?.premium?.pdf;
+    if (isPremiumRead(method)) { await requireFeature(user, READ_FEATURE[method]); requireReady(READ_FEATURE[method]); }
     const doc = await completeUpload(user.id, id);
     let note: string | undefined;
-    // The choice is per kind of file: a recording gets the audio choice, anything else the document one.
-    const method = AUDIO.test(doc.mime) ? body?.premium?.audio : body?.premium?.pdf;
     if (isPremiumRead(method) && doc.status !== "ready") {
       try { await requestPremiumRead(user, doc.id, method); } catch (e) { note = publicMessage(e); }
     }
