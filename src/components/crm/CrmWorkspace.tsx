@@ -200,10 +200,11 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
       <MailboxBar ctx={ctx} info={mailbox} autoSync={settings?.autopilot.autoSync ?? true} />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
-        <div className="flex flex-wrap gap-1.5">
+        {/* On a phone the tabs are one row that scrolls sideways, as a native segmented bar does. */}
+        <div role="tablist" aria-label="Relationships" className="no-scrollbar flex flex-wrap gap-1.5 max-md:-mx-4 max-md:w-[calc(100%+2rem)] max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4">
           {TABS.map((t) => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)}
-              className={`ctl flex items-center gap-1.5 px-3 py-1.5 text-[12px] transition ${tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+              className={`ctl flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-[12px] transition max-md:min-h-10 ${tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
               <Icon name={t.icon} className="h-3.5 w-3.5" /> {t.label}
               {t.id === "drafts" && (counts?.pendingDrafts || counts?.pendingActions) ? <span className="num ctl bg-accent/20 px-1 text-[10px]">{(counts.pendingDrafts ?? 0) + (counts.pendingActions ?? 0)}</span> : null}
             </button>
@@ -245,12 +246,13 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
       {tab === "drafts" && <div className="mt-5"><ReviewQueue ctx={ctx} drafts={drafts} canSend={canSend} autopilotOn={!!settings?.autopilot.enabled} /></div>}
 
       {tab === "pipeline" && (
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        // A board: stacked columns on a big screen, a sideways-swiping row of stages on a phone.
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3 max-md:-mx-4 max-md:flex max-md:snap-x max-md:snap-mandatory max-md:overflow-x-auto max-md:scroll-px-4 max-md:px-4 max-md:pb-2 no-scrollbar">
           {pipeline.map((stage) => {
             const inStage = deals.filter((d) => d.stage === stage);
             if (LOST_STAGES.includes(stage) && inStage.length === 0) return null;
             return (
-              <section key={stage} className="ctl border border-line bg-elevated/30 p-3">
+              <section key={stage} className="ctl border border-line bg-elevated/30 p-3 max-md:w-[84%] max-md:shrink-0 max-md:snap-start">
                 <header className="flex items-baseline justify-between">
                   <h3 className="text-[12.5px] font-semibold">{STAGE_LABEL[stage]}</h3>
                   <span className="num text-[11px] text-muted">{inStage.length}</span>
@@ -329,8 +331,8 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 
 function Shell({ counts, autopilot, onAutopilot, children }: { counts: Counts | null; autopilot: boolean | null; onAutopilot: () => void; children: React.ReactNode }) {
   return (
-    <div className="h-full overflow-auto">
-      <div className="mx-auto max-w-[1240px] px-5 py-6">
+    <div className="scroll-touch h-full overflow-auto">
+      <div className="mx-auto max-w-[1240px] px-5 py-6 max-md:px-4 max-md:py-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight">

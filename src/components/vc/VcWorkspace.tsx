@@ -36,6 +36,10 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const [formRes, setFormRes] = useState<{ total: number; filings: FormDFiling[] } | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Below the three-pane width only some panes fit: a phone shows one at a time (list, details or the
+  // assistant), a tablet keeps the list and swaps details for the assistant. Picking a startup shows it.
+  const [view, setView] = useState<"list" | "detail" | "ai">("list");
+  const pick = (s: Startup) => { setSelected(s); setView("detail"); };
 
   useEffect(() => { fetch("/api/ai/status").then((r) => r.json()).then(setAi).catch(() => null); }, []);
   const loadFacets = useCallback(async () => {
@@ -68,7 +72,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   };
 
   const searchFormD = async (name: string) => {
-    setFormQ(name); setTab("formd"); setFormLoading(true); setFormRes(null); setError(null);
+    setFormQ(name); setTab("formd"); setView("list"); setFormLoading(true); setFormRes(null); setError(null);
     try {
       const r = await (await fetch(`/api/vc/formd?q=${encodeURIComponent(name)}`)).json();
       if ("error" in r) throw new Error(r.error);
@@ -85,10 +89,22 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
     <button key={label} type="button" onClick={onClick} className={`rounded-full border px-2 py-0.5 text-[10.5px] ${active ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{label}{n !== undefined ? <span className="num ml-1 opacity-70">{n.toLocaleString()}</span> : null}</button>
   );
 
+  // On a tablet the list is always showing, so "list" means the details pane is the one beside it.
+  const paneTab = (v: typeof view, label: string, extra = "") => {
+    const on = view === v ? "bg-accent-soft font-medium text-accent" : v === "detail" && view === "list" ? "text-muted md:bg-accent-soft md:font-medium md:text-accent" : "text-muted";
+    return <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className={`min-h-10 min-w-0 flex-1 truncate ctl px-3 text-[13px] ${extra} ${on}`}>{label}</button>;
+  };
+
   return (
-    <div className="flex h-full min-h-0">
-      <aside className="flex w-[400px] shrink-0 flex-col border-r border-line bg-panel">
-        <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11px]">
+    <div className="flex h-full min-h-0 flex-col">
+      <div role="tablist" aria-label="Private markets panes" className="flex shrink-0 gap-1 border-b border-line bg-panel p-1.5 xl:hidden">
+        {paneTab("list", tab === "formd" ? "Private raises" : "Startups", "md:hidden")}
+        {paneTab("detail", selected ? selected.name : "Details")}
+        {paneTab("ai", "Ask AI")}
+      </div>
+    <div className="flex min-h-0 flex-1">
+      <aside className={`flex w-[400px] shrink-0 flex-col border-r border-line bg-panel max-xl:w-[320px] max-md:w-full max-md:border-r-0 ${view === "list" ? "" : "max-md:hidden"}`}>
+        <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11px] max-md:[&>*]:min-h-9">
           <button type="button" onClick={() => setTab("directory")} className={`rounded px-2 py-1 ${tab === "directory" ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>Startup directory</button>
           <button type="button" onClick={() => setTab("formd")} className={`rounded px-2 py-1 ${tab === "formd" ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>Private raises</button>
           <Link href="/app/terminal" className="ml-auto rounded px-2 py-1 text-muted hover:text-fg">Public comps →</Link>
@@ -128,7 +144,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
             <ul className="min-h-0 flex-1 overflow-auto">
               {result?.rows.map((s) => (
                 <li key={s.id}>
-                  <button type="button" onClick={() => setSelected(s)} className={`flex w-full items-start gap-2 border-b border-line/50 px-3 py-2 text-left hover:bg-elevated ${selected?.id === s.id ? "bg-elevated" : ""}`}>
+                  <button type="button" onClick={() => pick(s)} className={`flex w-full items-start gap-2 border-b border-line/50 px-3 py-2 text-left hover:bg-elevated ${selected?.id === s.id ? "bg-elevated" : ""}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {s.logo ? <img src={s.logo} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded bg-white/5 object-contain" /> : <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded text-[10px] font-semibold ${SOURCE_STYLE[s.source] ?? "bg-elevated"}`}>{s.name.slice(0, 1)}</span>}
                     <span className="min-w-0 flex-1">
@@ -182,7 +198,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
         )}
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col border-r border-line">
+      <section className={`flex min-w-0 flex-1 flex-col border-r border-line max-xl:border-r-0 ${view === "ai" ? "max-xl:hidden" : ""} ${view === "list" ? "max-md:hidden" : ""}`}>
         {selected ? (
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <div className="flex items-start gap-3">
@@ -235,9 +251,10 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
         )}
       </section>
 
-      <aside className="flex w-[420px] shrink-0 flex-col bg-panel">
+      <aside className={`w-[420px] shrink-0 flex-col bg-panel ${view === "ai" ? "flex max-xl:w-auto max-xl:min-w-0 max-xl:flex-1" : "hidden xl:flex"}`}>
         <AiScreen ticker="" ai={ai} openPanels={[]} subject={subject} prompts={prompts} />
       </aside>
+    </div>
     </div>
   );
 }

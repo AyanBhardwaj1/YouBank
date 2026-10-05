@@ -3,7 +3,8 @@
 /**
  * The top bar: the sidebar button, the features this person pinned (in their order, with or without
  * names), the page they are on when it is not pinned (one click pins it), then alerts, style and the
- * account menu. Everything else lives in the sidebar.
+ * account menu. Everything else lives in the sidebar. On a tablet the pinned features show as icons
+ * (names in their tooltips) so the bar fits.
  *
  * On a phone the bar slims down to the page's name, alerts, style and the account: the pinned features
  * move to the tab bar at the bottom (MobileTabBar) and the sidebar to its "More" sheet. Controls grow to
@@ -31,7 +32,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
       className={`relative ctl flex items-center gap-1.5 whitespace-nowrap px-2 py-1 transition-colors ${active ? "text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
       {active && <motion.span layoutId="nav-active" className="absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
       <Icon name={f.icon} className="relative h-3.5 w-3.5 shrink-0" />
-      {!iconsOnly && <span className="relative hidden sm:inline">{f.label}</span>}
+      {!iconsOnly && <span className="relative hidden lg:inline">{f.label}</span>}
     </Link>
   );
   if (!temporary) return <motion.div layout="position" transition={{ type: "spring", stiffness: 520, damping: 42 }}>{link}</motion.div>;
