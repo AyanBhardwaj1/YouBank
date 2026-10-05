@@ -8,7 +8,7 @@
  * what "unchanged since notarized" means. The model's contents never leave YouBank.
  */
 import { createHash } from "node:crypto";
-import { asc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
 import { requireDoc } from "@/lib/studio/db";
@@ -32,7 +32,8 @@ export function trailText(doc: { id: number; title: string; workbook: unknown; d
 export async function studioTrail(user: CurrentUser, docId: number): Promise<{ text: string; title: string; lastEventId: number; events: number; truncated: boolean }> {
   const doc = await requireDoc(user, docId, "view");
   const rows = await requireDb().select({ id: schema.studioEvents.id, actor: schema.studioEvents.actor, actorName: schema.studioEvents.actorName, label: schema.studioEvents.label, patches: schema.studioEvents.patches, createdAt: schema.studioEvents.createdAt })
-    .from(schema.studioEvents).where(eq(schema.studioEvents.docId, docId)).orderBy(asc(schema.studioEvents.id)).limit(TRAIL_LIMIT + 1);
-  const events = rows.slice(0, TRAIL_LIMIT).map((r) => ({ id: r.id, actor: r.actor, actorName: r.actorName, label: r.label, at: r.createdAt.toISOString(), patches: r.patches }));
+    .from(schema.studioEvents).where(eq(schema.studioEvents.docId, docId)).orderBy(desc(schema.studioEvents.id)).limit(TRAIL_LIMIT + 1);
+  // The latest TRAIL_LIMIT changes (the page says "latest 5,000"), oldest first.
+  const events = rows.slice(0, TRAIL_LIMIT).reverse().map((r) => ({ id: r.id, actor: r.actor, actorName: r.actorName, label: r.label, at: r.createdAt.toISOString(), patches: r.patches }));
   return { text: trailText({ id: doc.id, title: doc.title, workbook: doc.workbook, deck: doc.deck }, events), title: doc.title, lastEventId: events.at(-1)?.id ?? 0, events: events.length, truncated: rows.length > TRAIL_LIMIT };
 }
