@@ -256,6 +256,9 @@ body {
    Rules are scoped by what the device can do (pointer: coarse) or by width (below Tailwind's sm, 640px),
    never by user agent, so a narrow desktop window and a phone behave the same. */
 
+/* The marketing pages' sticky bar grows a second row (section links) on a phone; anchors land below it. */
+@media (max-width: 767.98px) { html { scroll-padding-top: 120px; } }
+
 /* iOS enlarges text it judges too small after rotation; type sizes here are deliberate. */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
@@ -299,6 +302,14 @@ html:has(.app-frame), html:has(.app-frame) body { overscroll-behavior: none; }
   .text-\[11\.5px\] { font-size: 12.5px; }
   .text-\[12px\] { font-size: 13px; }
   .text-\[12\.5px\] { font-size: 13.5px; }
+}
+
+/* A grid that only sets its columns from a breakpoint up (`lg:grid-cols-2`) is one implicit column on a
+   phone, and an implicit column grows to its widest content: one ticker tape or long table inside it and
+   the whole column, text and all, becomes thousands of pixels wide and runs off the screen. On a phone such
+   a grid gets one column that is exactly the screen's width instead. */
+@media (max-width: 639.98px) {
+  .grid:not([class^="grid-cols-"]):not([class*=" grid-cols-"]):not([class*="max-sm:grid-cols"]):not([class*="max-md:grid-cols"]) { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* The on-screen keyboard. MobileViewport sets --kb to the height it covers (0 when closed) and
