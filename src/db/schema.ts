@@ -366,7 +366,7 @@ export const crmDrafts = pgTable("crm_drafts", {
   contactId: integer("contact_id"),
   campaignLeadId: integer("campaign_lead_id"),
   /** Which step of a campaign, which nurture rule, which signal: whatever produced it. */
-  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[] }>().notNull().default({}),
+  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[]; meetingId?: number }>().notNull().default({}),
   /** Set when autopilot will send it: the time it goes, unless someone stops it first. */
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   /** Why autopilot handed it to a person instead of sending, in plain words. */
@@ -542,11 +542,14 @@ export const crmActions = pgTable("crm_actions", {
   dealId: integer("deal_id"),
   threadId: integer("thread_id"),
   draftId: integer("draft_id"),
+  /** The meeting a suggestion came from (a change a participant stated, a new person to add). */
+  meetingId: integer("meeting_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("crm_actions_user_dedupe_uidx").on(t.userId, t.dedupeKey),
   index("crm_actions_user_status_idx").on(t.userId, t.status),
+  index("crm_actions_meeting_idx").on(t.meetingId),
 ]);
 
 /** Something that happened to a contact's company, found in YouBank's own data (a Form D, for now). */
@@ -1327,3 +1330,71 @@ export const desktopFiles = pgTable("desktop_files", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("desktop_files_path_uidx").on(t.userId, t.deviceId, t.pathKey), index("desktop_files_user_sha_idx").on(t.userId, t.sha256)]);
+
+/* ---------------- The meeting copilot ---------------- */
+
+/**
+ * A meeting the copilot listened to: captured by the desktop app (microphone and system audio, after a
+ * consent prompt) or by a notetaker bot sent to the meeting link. `participants` is who was there and
+ * which contact each became; `notes` is what was produced after the meeting (summary, decisions, action
+ * items, per-person signals, follow-ups). Audio is never kept here: each chunk is transcribed and
+ * dropped. `purgedAt` marks a transcript removed under the person's retention setting.
+ */
+export const meetings = pgTable("meetings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  deviceId: integer("device_id"),
+  source: text("source").notNull().default("desktop"), // desktop | bot
+  platform: text("platform").notNull().default(""), // zoom | teams | meet | webex | slack | other
+  title: text("title").notNull().default(""),
+  status: text("status").notNull().default("live"), // joining | live | processing | ready | failed | cancelled
+  meetingUrl: text("meeting_url").notNull().default(""),
+  botId: text("bot_id"),
+  bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string }>().notNull().default({}),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
+  consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
+  live: jsonb("live").$type<{ on?: boolean; since?: string; minutes?: number; lastAt?: string; brief?: unknown }>().notNull().default({}),
+  notes: jsonb("notes").$type<Record<string, unknown>>(),
+  notesAt: ts("notes_at"),
+  transcriber: text("transcriber").notNull().default(""),
+  durationSec: integer("duration_sec").notNull().default(0),
+  error: text("error").notNull().default(""),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  endedAt: ts("ended_at"),
+  purgedAt: ts("purged_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("meetings_user_started_idx").on(t.userId, t.startedAt), uniqueIndex("meetings_bot_uidx").on(t.botId)]);
+
+export type MeetingParticipantJson = { name: string; email?: string; contactId?: number | null; how?: string; self?: boolean };
+
+/** One piece of a meeting's transcript: the segments of one audio chunk (or a bot's whole transcript), times relative to `startSec`. */
+export const meetingChunks = pgTable("meeting_chunks", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  startSec: doublePrecision("start_sec").notNull().default(0),
+  durationSec: doublePrecision("duration_sec").notNull().default(0),
+  segments: jsonb("segments").$type<{ start: number; end: number; text: string; speaker?: string }[]>().notNull().default([]),
+  engine: text("engine").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_chunks_seq_uidx").on(t.meetingId, t.seq)]);
+
+/** Which contacts and deals a meeting is about, and how each was linked (email, name, new, manual, bot). */
+export const meetingLinks = pgTable("meeting_links", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(), // contact | deal
+  refId: integer("ref_id").notNull(),
+  how: text("how").notNull().default("manual"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_links_uidx").on(t.meetingId, t.kind, t.refId), index("meeting_links_ref_idx").on(t.userId, t.kind, t.refId)]);
+
+/** Each person's copilot settings (see MeetingSettings in lib/meetings/model); normalized on every read. */
+export const meetingSettings = pgTable("meeting_settings", {
+  userId: text("user_id").primaryKey(),
+  settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
