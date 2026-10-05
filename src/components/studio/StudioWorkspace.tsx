@@ -15,6 +15,8 @@ import { EdgePushes } from "./EdgePushes";
 import { Grid, cellSel, selRange, type Sel } from "./Grid";
 import { useStudio, type LogItem } from "./useStudio";
 import { Select } from "@/components/ui/Select";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { PlanNotice } from "@/components/billing/PlanNotice";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 
 const TOOL: Record<string, string> = {
@@ -39,7 +41,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   const [slide, setSlide] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [showTypes, setShowTypes] = useState(false);
-  const [effort, setEffort] = useState<"fast" | "balanced" | "thorough">("balanced");
+  // "deep" is a premium build (maximum effort, more steps and a review pass); the server checks the plan.
+  const [effort, setEffort] = useState<"fast" | "balanced" | "thorough" | "deep">("balanced");
   const [prompt, setPrompt] = useState("");
   const [side, setSide] = useState<"agent" | "checks" | "history">("agent");
   const logEnd = useRef<HTMLDivElement | null>(null);
@@ -281,8 +284,9 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
                 />
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <div className="flex overflow-hidden ctl border border-line text-[10.5px]">
-                    {(["fast", "balanced", "thorough"] as const).map((e) => <button key={e} type="button" onClick={() => setEffort(e)} className={`px-2 py-0.5 capitalize ${effort === e ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{e}</button>)}
+                    {(["fast", "balanced", "thorough", "deep"] as const).map((e) => <button key={e} type="button" onClick={() => setEffort(e)} title={e === "deep" ? "Maximum reasoning, more steps, then a review pass that fixes what the audit finds. Premium." : undefined} className={`px-2 py-0.5 capitalize ${effort === e ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{e}</button>)}
                   </div>
+                  {effort === "deep" && <PremiumBadge feature="studio.deep-build" />}
                   <span className="text-[10.5px] text-muted">{selRange(sel)} on {sheet.name}</span>
                   {st.agent.running
                     ? <button type="button" onClick={st.stop} className="ml-auto ctl border border-neg/50 px-2.5 py-1 text-[11.5px] text-neg">Stop</button>
@@ -411,7 +415,7 @@ function RunLog({ log, running }: { log: LogItem[]; running: boolean }) {
         if (l.k === "tool") return <li key={i} className="flex items-center gap-1.5 text-[11.5px]">{l.done || !running ? <Icon name="Check" className="h-3 w-3 text-pos" /> : <span className="h-2 w-2 animate-pulse rounded-full bg-accent" />}<span>{TOOL[l.name] ?? l.name}</span></li>;
         if (l.k === "change") return <li key={i} className="num text-[10.5px] text-muted">↳ {l.label}</li>;
         if (l.k === "note") return <li key={i} className="text-[11px] italic text-muted">{l.text}</li>;
-        return <li key={i} className="text-[11.5px] text-neg">{l.text}</li>;
+        return <li key={i}><PlanNotice error={l.text} className="text-[11.5px]" /></li>;
       })}
       {running && <li className="flex items-center gap-1.5 text-[11.5px] text-muted"><span className="h-2 w-2 animate-pulse rounded-full bg-accent" />Working…</li>}
     </ol>

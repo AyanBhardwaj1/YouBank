@@ -222,7 +222,7 @@ export function useStudio(id: number) {
   }, [id, receive, refreshMeta]);
 
   /** Run the agent and watch it work: every patch it commits is applied the moment it is stored. */
-  const run = useCallback(async (instruction: string, opts: { effort?: "fast" | "balanced" | "thorough"; selection?: { sheet?: string; range?: string } } = {}) => {
+  const run = useCallback(async (instruction: string, opts: { effort?: "fast" | "balanced" | "thorough" | "deep"; selection?: { sheet?: string; range?: string } } = {}) => {
     if (agent.running) return;
     const ctl = new AbortController();
     abort.current = ctl;

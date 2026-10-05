@@ -6,6 +6,8 @@ import type { Command } from "@/lib/functions";
 import type { AiStatus, OpenPanel } from "../Terminal";
 import { Markdown, type Source } from "../Markdown";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { PlanNotice } from "@/components/billing/PlanNotice";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
 type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; error?: string; streaming?: boolean };
@@ -14,6 +16,8 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState(question ?? "");
   const [busy, setBusy] = useState(false);
+  // Deep research (premium): more steps at maximum effort, cross-checked. Per question, off by default.
+  const [deep, setDeep] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const { config } = useWorkspace();
   const base = prompts ?? config.suggestedPrompts(ticker);
@@ -32,7 +36,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
     try {
       const res = await fetch("/api/ai/chat", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), context: { ticker, panels: openPanels.map((p) => `${p.ticker} ${p.fn}`.trim()), subject } }),
+        body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), context: { ticker, panels: openPanels.map((p) => `${p.ticker} ${p.fn}`.trim()), subject }, ...(deep ? { deep: true } : {}) }),
       });
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}));
@@ -119,7 +123,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
                 </div>
               )}
               {m.role === "user" ? <span>{m.content}</span> : <Markdown text={m.content || (m.streaming ? "…" : "")} sources={m.sources ?? []} />}
-              {m.error && <div className="mt-1 text-[11px] text-neg">{m.error}</div>}
+              {m.error && <PlanNotice error={m.error} className="mt-1 text-[11px]" />}
               {m.sources && m.sources.length > 0 && (
                 <div className="mt-2 border-t border-line pt-1.5 text-[10.5px] text-muted">
                   <div className="mb-0.5 uppercase tracking-wider">Sources</div>
@@ -142,7 +146,12 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
           <button type="submit" disabled={!online || busy || !draft.trim()}
             className="rounded bg-accent px-2.5 py-1 text-[11px] font-semibold text-bg disabled:opacity-40">{busy ? "…" : "Send"}</button>
         </div>
-        <div className="mt-1 px-1 text-[10px] text-muted">Enter to send · Shift+Enter for a new line · answers cite SEC sources</div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[10px] text-muted">
+          <span>Enter to send · Shift+Enter for a new line · answers cite SEC sources</span>
+          <label className="ml-auto inline-flex items-center gap-1.5" title="Plans first, uses up to 30 tool steps at maximum reasoning, and checks each key figure in a second source. Slower and uses more of your AI allowance.">
+            <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="accent-[var(--accent)]" />Deep research <PremiumBadge feature="ai.deep-research" />
+          </label>
+        </div>
       </form>
     </div>
   );
