@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { LIVE_STATUSES, PLANS } from "@/lib/billing/plans";
 import { billingRoute } from "@/lib/billing/route";
 import {
-  BILLING_OFF, BillingError, billingEnabled, checkoutKey, checkoutRequest, checkoutTax, checkoutTerms, ensureCustomer, expireSessions,
-  MAX_SEATS, openSessions, planOpenSessions, planPage, portalSession, priceId, sessionExpiry, stripeCall, subscriptionOf,
+  BILLING_OFF, BillingError, billingEnabled, CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, checkoutTax, checkoutTerms, createCheckout, ensureCustomer,
+  expireSessions, MAX_SEATS, openSessions, planOpenSessions, planPage, portalSession, priceId, sessionExpiry, subscriptionOf,
 } from "@/lib/billing/stripe";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     await expireSessions(expire);
     if (reuse?.url) return NextResponse.json({ url: reuse.url, reused: true });
     const meta = { userId: user.id, plan, interval, seats: String(seats) };
-    const session = await stripeCall("checkout", (s) => s.checkout.sessions.create({
+    const url = await createCheckout("checkout", {
       mode: "subscription",
       customer,
       line_items: [{ price, quantity: seats, ...(PLANS[plan].minSeats > 1 ? { adjustable_quantity: { enabled: true, minimum: PLANS[plan].minSeats, maximum: MAX_SEATS } } : {}) }],
@@ -42,13 +42,12 @@ export async function POST(req: Request) {
       metadata: meta,
       subscription_data: { metadata: { userId: user.id, plan } },
       allow_promotion_codes: true,
-      expires_at: sessionExpiry(),
+      expires_at: sessionExpiry(CHECKOUT_WINDOW_MS),
       ...checkoutTerms(),
       ...checkoutTax(),
       success_url: `${back}&checkout=done&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${back}&checkout=canceled`,
-    }, { idempotencyKey: checkoutKey(user.id, plan, interval, seats) }));
-    if (!session.url) throw new BillingError("Stripe did not return a checkout page. Try again in a moment.", 502);
-    return NextResponse.json({ url: session.url });
+    }, checkoutKey(user.id, plan, interval, seats));
+    return NextResponse.json({ url });
   });
 }

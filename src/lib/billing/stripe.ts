@@ -336,7 +336,8 @@ export const checkoutKey = (userId: string, plan: PlanId, interval: BillingInter
   `yb-checkout-${userId}-${plan}-${interval}-${seats}-${Math.floor(now / CHECKOUT_WINDOW_MS)}`;
 
 /** The same for a credit pack, over one minute (a double click), so a second pack can be bought right after the first. */
-export const packCheckoutKey = (userId: string, pack: PackId, now = Date.now()) => `yb-pack-${userId}-${pack}-${Math.floor(now / 60_000)}`;
+export const PACK_WINDOW_MS = 60_000;
+export const packCheckoutKey = (userId: string, pack: PackId, now = Date.now()) => `yb-pack-${userId}-${pack}-${Math.floor(now / PACK_WINDOW_MS)}`;
 
 type OpenSession = Pick<Stripe.Checkout.Session, "id" | "url" | "mode" | "metadata" | "status">;
 
@@ -365,8 +366,26 @@ export async function expireSessions(ids: string[]): Promise<void> {
   await Promise.all(ids.map((id) => stripe().checkout.sessions.expire(id).catch(() => undefined)));
 }
 
-/** Checkout Sessions expire after 30 minutes (Stripe's minimum), so an abandoned one is not left open for a day. */
-export const sessionExpiry = (now = Date.now()) => Math.floor(now / 1000) + 30 * 60 + 60;
+/**
+ * When a Checkout Session expires: about half an hour (Stripe's minimum is 30 minutes), so an abandoned one
+ * is not left open for a day. Fixed per idempotency window, because a retried create must send exactly the
+ * same parameters as the first or Stripe refuses it. Pure.
+ */
+export const sessionExpiry = (windowMs = CHECKOUT_WINDOW_MS, now = Date.now()) => Math.floor(((Math.floor(now / windowMs) + 1) * windowMs) / 1000) + 31 * 60;
+
+/**
+ * Create a Checkout Session under an idempotency key. The same key within its window returns the session
+ * made first: still open, it is the page to send the person to; already paid, the purchase went through
+ * (the plan or credits show once Stripe confirms); expired (they chose something else meanwhile), a new
+ * one is made under a fresh key.
+ */
+export async function createCheckout(where: string, params: Stripe.Checkout.SessionCreateParams, key: string): Promise<string> {
+  let session = await stripeCall(where, (s) => s.checkout.sessions.create(params, { idempotencyKey: key }));
+  if (session.status === "expired") session = await stripeCall(where, (s) => s.checkout.sessions.create(params, { idempotencyKey: `${key}-${Date.now()}` }));
+  if (session.status === "complete") throw new BillingError("That payment has already gone through. It shows here as soon as Stripe confirms it; reload this page in a moment.", 409);
+  if (!session.url) throw new BillingError("Stripe did not return a checkout page. Try again in a moment.", 502);
+  return session.url;
+}
 
 /* ---------------- Webhook ---------------- */
 

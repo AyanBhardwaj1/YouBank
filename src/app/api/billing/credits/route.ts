@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { billingRoute } from "@/lib/billing/route";
 import {
-  BILLING_OFF, BillingError, billingEnabled, checkoutTax, checkoutTerms, ensureCustomer, openSessions, packCheckoutKey, packPriceId,
-  packRequest, planOpenSessions, planPage, sessionExpiry, stripeCall,
+  BILLING_OFF, BillingError, billingEnabled, checkoutTax, checkoutTerms, createCheckout, ensureCustomer, openSessions, packCheckoutKey, packPriceId,
+  packRequest, PACK_WINDOW_MS, planOpenSessions, planPage, sessionExpiry,
 } from "@/lib/billing/stripe";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const back = planPage();
     const meta = { userId: user.id, kind: "credits", pack: pack.id };
     const price = packPriceId(pack.id);
-    const session = await stripeCall("checkout:pack", (s) => s.checkout.sessions.create({
+    const url = await createCheckout("checkout:pack", {
       mode: "payment",
       customer,
       line_items: [price
@@ -33,13 +33,12 @@ export async function POST(req: Request) {
       metadata: meta,
       payment_intent_data: { metadata: meta, description: `YouBank ${pack.name}` },
       allow_promotion_codes: false,
-      expires_at: sessionExpiry(),
+      expires_at: sessionExpiry(PACK_WINDOW_MS),
       ...checkoutTerms(),
       ...checkoutTax(),
       success_url: `${back}&checkout=done&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${back}&checkout=canceled`,
-    }, { idempotencyKey: packCheckoutKey(user.id, pack.id) }));
-    if (!session.url) throw new BillingError("Stripe did not return a checkout page. Try again in a moment.", 502);
-    return NextResponse.json({ url: session.url });
+    }, packCheckoutKey(user.id, pack.id));
+    return NextResponse.json({ url });
   });
 }
