@@ -3,7 +3,7 @@
 --
 -- Three new tables. No existing table is altered.
 --
--- Apply with:  DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0016_desktop.sql
+-- Apply with:  DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0017_desktop.sql
 
 CREATE TABLE IF NOT EXISTS "desktop_pairings" (
   "id"          serial PRIMARY KEY NOT NULL,

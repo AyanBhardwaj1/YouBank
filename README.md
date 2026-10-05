@@ -1121,7 +1121,7 @@ All tables are in `src/db/schema.ts`.
   - `0008_office`
   - `0009_ai_usage`
   - `0010_contact_knowledge`
-  - `0016_desktop`
+  - `0017_desktop`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1261,7 +1261,7 @@ bash scripts/preflight.sh                                         # everything t
 7. **Verify.**
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
-8. **The desktop app.** Apply `drizzle/0016_desktop.sql`, then push a tag `desktop-v<version>`: the
+8. **The desktop app.** Apply `drizzle/0017_desktop.sql`, then push a tag `desktop-v<version>`: the
    `Desktop` workflow builds the installers into a draft GitHub Release; publish it and `/download` offers
    it. Signing and update keys are optional secrets, listed in `desktop/README.md`.
 

@@ -259,7 +259,7 @@ All in the main Next.js app (see the root README):
 | `GET /api/desktop/update` | Redirects the updater to the newest desktop release's `latest.json` |
 
 Desktop tokens (`ybd_…`) only work on these routes, and Office add-in tokens do not work on them. The
-tables are in `drizzle/0016_desktop.sql`.
+tables are in `drizzle/0017_desktop.sql`.
 
 ## Checks
 
