@@ -34,7 +34,7 @@ export const FEATURES: NavFeature[] = [
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },
   {
     id: "edge", href: "/app/edge", label: "Edge", icon: "Radar", blurb: "Alternative data: what satellites, networks and documents show", beta: true,
-    links: [tab("/app/edge", "view", "feed", "Feed", true), tab("/app/edge", "view", "canvases", "Canvases"), tab("/app/edge", "view", "documents", "Documents"), tab("/app/edge", "view", "networks", "Networks"), tab("/app/edge", "view", "scenarios", "Scenarios"), tab("/app/edge", "view", "map", "Map"), tab("/app/edge", "view", "whatif", "Deal what-if")],
+    links: [tab("/app/edge", "view", "feed", "Feed", true), tab("/app/edge", "view", "canvases", "Canvases"), tab("/app/edge", "view", "documents", "Documents"), tab("/app/edge", "view", "networks", "Networks"), tab("/app/edge", "view", "scenarios", "Scenarios"), tab("/app/edge", "view", "map", "Map"), tab("/app/edge", "view", "whatif", "Deal what-if"), tab("/app/edge", "view", "track", "Track record")],
   },
   {
     id: "vc", href: "/app/vc", label: "Private markets", icon: "Rocket", blurb: "Startups and private raises", roles: ["vc", "pe"],

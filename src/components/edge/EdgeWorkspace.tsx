@@ -26,9 +26,10 @@ const NetworksView = dynamic(() => import("./net/NetworksView").then((m) => m.Ne
 const ScenariosView = dynamic(() => import("./scen/ScenariosView").then((m) => m.ScenariosView), { loading: ViewLoading });
 const MapView = dynamic(() => import("./MapView").then((m) => m.MapView), { loading: ViewLoading });
 const WhatIf = dynamic(() => import("./WhatIf").then((m) => m.WhatIf), { loading: ViewLoading });
+const TrackRecord = dynamic(() => import("./next/TrackRecord").then((m) => m.TrackRecord), { loading: ViewLoading });
 
-export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }];
+export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif" | "track";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }, { id: "track", label: "Track record" }];
 
 export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null, initialDeal = null, initialState, initialFeed, seededAt }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null; initialDeal?: { parties: string[]; place: string } | null; initialState?: EdgeState; initialFeed?: FeedData; seededAt?: string }) {
   const [view, setViewState] = useState<EdgeView>(initialView);
@@ -119,6 +120,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
               {view === "scenarios" && <ScenariosView tickers={watchedTickers} />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
+              {view === "track" && <TrackRecord />}
             </main>
             {view === "feed" && (
               <div className="order-first space-y-3 xl:order-none">

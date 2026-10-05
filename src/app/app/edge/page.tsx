@@ -11,10 +11,10 @@ import type { EdgeState, FeedData } from "@/components/edge/client";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
 
-const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif"]);
+const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "track"]);
 
 /**
- * Edge: ?view=feed|canvases|documents|networks|scenarios|map|whatif. Documents also opens a saved answer
+ * Edge: ?view=feed|canvases|documents|networks|scenarios|map|whatif|track. Documents also opens a saved answer
  * (&answer=ID) or a company's change radar (&radar=TICKER&form=10-K|10-Q); Networks opens a company
  * (&company=TICKER); the what-if starts drawn for a deal (&parties=ET,TRGP&place=permian). Before the
  * beta is on, the page explains Edge and offers the switch.
