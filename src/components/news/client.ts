@@ -12,7 +12,8 @@ import type { FeedView } from "@/lib/news/views";
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
   const j = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+  // The status rides along, so a screen can tell a plan refusal (402) from a failure.
+  if (!r.ok) throw Object.assign(new Error((j as { error?: string }).error ?? `HTTP ${r.status}`), { status: r.status });
   return j;
 }
 export const post = <T,>(url: string, body: unknown) => api<T>(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

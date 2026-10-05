@@ -25,4 +25,6 @@ export type PremiumFeature = {
   metered: boolean;
   /** Rough cost to us per use in US dollars, for the pricing model; 0 when not metered. */
   costPerUseUsd?: number;
+  /** What one use is, for reading `costPerUseUsd` (e.g. "an hour-long call at $0.006 a minute"). */
+  perUse?: string;
 };
