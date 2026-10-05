@@ -15,6 +15,15 @@ import { rateLimit } from "@/lib/locks";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** At most about 10 km a side: the ML analyses cost by area, and a wider finding's box is not a site. */
+const siteSized = (b: Bbox) => b.every(Number.isFinite) && b[2] > b[0] && b[3] > b[1] && b[2] - b[0] <= 0.12 && b[3] - b[1] <= 0.09;
+
+/** An upstream failure (Planetary Computer, the imagery services) said plainly; errors with their own status pass as they are. */
+const PC_DOWN = "Microsoft Planetary Computer (the satellite and land-use imagery) did not answer. Try again in a few minutes.";
+const unreachable = (e: unknown, message = PC_DOWN) => (typeof (e as { status?: unknown } | null)?.status === "number"
+  ? e
+  : Object.assign(new Error(message), { status: 502, cause: e }));
+
 /** Which plan feature each analysis needs; "heat" (a finding's own change, in 3D) is free. */
 const FEATURE = { landuse: "maps.scene", cube: "maps.scene", "ai-change": "maps.ai-change", footprints: "maps.footprints" } as const;
 type Kind = keyof typeof FEATURE;
@@ -52,13 +61,18 @@ export async function POST(req: Request) {
     await requireEdge(user.id);
     const body = (await req.json().catch(() => ({}))) as { kind?: string; asset?: number; detection?: number };
     const kind = body.kind as Kind;
-    if (!(kind in FEATURE)) return NextResponse.json({ error: "Pick an analysis." }, { status: 400 });
+    if (typeof kind !== "string" || !Object.hasOwn(FEATURE, kind)) return NextResponse.json({ error: "Pick an analysis." }, { status: 400 });
     await requireFeature(user, FEATURE[kind]);
     const place = await placeFrom(body as Record<string, unknown>, user.id);
-    const bbox: Bbox = place.bbox ?? boxAround(place.lon, place.lat, 2.5);
+    // A finding's own box when it is site-sized; otherwise (none, or a wide one) 2.5 km around the place.
+    const bbox: Bbox = place.bbox && siteSized(place.bbox) ? place.bbox : boxAround(place.lon, place.lat, 2.5);
     if (kind === "landuse" || kind === "cube") {
       await rateLimit(`edge-scene:${user.id}`, 40, 3_600_000, "Many scene analyses this hour; try again in a few minutes.");
-      return NextResponse.json({ result: kind === "landuse" ? await landUse(bbox) : await changeCube(bbox) });
+      try {
+        return NextResponse.json({ result: kind === "landuse" ? await landUse(bbox) : await changeCube(bbox) });
+      } catch (e) {
+        throw unreachable(e);
+      }
     }
     await rateLimit(`edge-scene-ml:${user.id}`, 12, 3_600_000, "Many AI analyses this hour; try again later.");
     try {
@@ -69,7 +83,7 @@ export async function POST(req: Request) {
       return NextResponse.json(await startJob("footprints", twin.site?.photo ? twin.bbox : bbox, user.id, image));
     } catch (e) {
       if (e instanceof MlUnavailable) return NextResponse.json({ error: `The AI analyses are not available right now: ${e.message}` }, { status: 503 });
-      throw e;
+      throw unreachable(e, "The aerial imagery or the AI service did not answer. Try again in a few minutes.");
     }
   });
 }
