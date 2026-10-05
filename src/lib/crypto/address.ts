@@ -91,8 +91,7 @@ export function parseAddress(raw: string): Parsed {
   return { kind: null, error: "Not an address YouBank reads: use an Ethereum or L2 address (0x…), an ENS name, a Bitcoin address or a Solana address" };
 }
 
-/** "0x1234…abcd" for display. */
-export const shortAddress = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+export { shortAddress } from "./chains";
 
 /** Hex of UTF-8 text (for calldata). */
 export const textHex = (s: string) => toHex(new TextEncoder().encode(s));

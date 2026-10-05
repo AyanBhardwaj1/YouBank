@@ -105,3 +105,6 @@ export const BASE_PARAMS = {
 
 export const txUrl = (chain: ChainKey, hash: string) => (chain === "bitcoin" ? `${CHAINS.bitcoin.explorer}/tx/${hash}` : `${CHAINS[chain].explorer}/tx/${hash}`);
 export const addressUrl = (chain: ChainKey, address: string) => (chain === "solana" ? `${CHAINS.solana.explorer}/account/${address}` : `${CHAINS[chain].explorer}/address/${address}`);
+
+/** "0x1234…abcd" for display. */
+export const shortAddress = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);

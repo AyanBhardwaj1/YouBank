@@ -20,8 +20,7 @@ import type { Cashflow, ChainTvl, Pool, Protocol, RwaKind, RwaRow, Stablecoin } 
 import type { GlobalStats, TokenRow } from "@/lib/crypto/market";
 import type { TokenView } from "@/lib/crypto/token";
 import type { WalletView } from "@/lib/crypto/wallet";
-import { addressUrl, txUrl, type ChainKey } from "@/lib/crypto/chains";
-import { shortAddress } from "@/lib/crypto/address";
+import { addressUrl, shortAddress, txUrl, type ChainKey } from "@/lib/crypto/chains";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { AiRead, AskAi, BarList, DataTable, fdate, fp, Frame, fsp, fx, Heat, Hint, Pill, Section, SeriesChart, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
