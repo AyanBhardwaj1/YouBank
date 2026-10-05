@@ -4,7 +4,7 @@ import { requireFeature } from "@/lib/billing/entitlements";
 import { requireEdge } from "@/lib/edge/access";
 import { placeFrom } from "@/lib/edge/place";
 import { MAX_BUDGET, pointCloud } from "@/lib/edge/sources/lidar";
-import { rateLimit } from "@/lib/locks";
+import { lease, rateLimit, tooMany } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,11 +22,15 @@ export async function GET(req: Request) {
     const q = new URL(req.url).searchParams;
     const place = await placeFrom(q, user.id);
     const budget = Math.max(20_000, Math.min(MAX_BUDGET, Number(q.get("budget")) || 250_000));
-    const pass = Math.max(0, Math.min(8, Math.floor(Number(q.get("pass")) || 0)));
+    // pointCloud clamps the pass to the passes there are; this only keeps the number sane.
+    const pass = Math.max(0, Math.min(63, Math.floor(Number(q.get("pass")) || 0)));
     const km = Math.max(0.4, Math.min(1.6, Number(q.get("km")) || 1.2));
     const survey = q.get("survey") ?? undefined;
     await rateLimit(`edge-lidar:${user.id}`, 240, 3_600_000, "Many point cloud requests this hour; try again in a few minutes.");
-    const cloud = await pointCloud({ lon: place.lon, lat: place.lat, km, budget, pass, survey });
+    // One pass at a time per person (the browser asks for passes in turn), so a burst cannot pile decodes onto an instance.
+    const release = await lease(`edge-lidar:${user.id}`, 70_000);
+    if (!release) throw tooMany("A point cloud is already loading; wait for it to finish.");
+    const cloud = await pointCloud({ lon: place.lon, lat: place.lat, km, budget, pass, survey }).finally(() => release());
     if (!cloud) return NextResponse.json({ error: "No USGS lidar survey covers this place yet (3DEP is the United States only)." }, { status: 404 });
     return new Response(cloud.bytes as unknown as BodyInit, { headers: { "content-type": "application/octet-stream", "cache-control": "private, max-age=86400" } });
   });

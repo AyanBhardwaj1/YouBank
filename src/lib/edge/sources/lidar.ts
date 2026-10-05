@@ -164,6 +164,49 @@ async function fetchNode(name: string, key: string): Promise<Uint8Array> {
 export type CloudRequest = { lon: number; lat: number; km: number; budget: number; pass: number; survey?: string };
 
 /**
+ * Decoding is the memory-hungry step (a node's points as doubles before they are cut to the box), so an
+ * instance runs a few point cloud passes at a time and queues the rest, however many requests arrive.
+ */
+const MAX_RUNNING = 2;
+let running = 0;
+const queued: (() => void)[] = [];
+async function decodeSlot(): Promise<() => void> {
+  if (running < MAX_RUNNING) running++;
+  else await new Promise<void>((go) => queued.push(go));
+  let freed = false;
+  return () => {
+    if (freed) return;
+    freed = true;
+    const next = queued.shift();
+    if (next) next(); else running--;
+  };
+}
+
+type Kept = { xyz: Float32Array; cls: Uint8Array; inten: Uint8Array; n: number; zSum: number; ground: number[]; classes: Record<string, number> };
+
+/** One decoded node cut to the box, noise dropped, as true metres from the centre: only what is kept stays in memory. */
+function keep(d: Points, box: Box2, cx: number, cy: number, k: number): Kept {
+  const xyz = new Float32Array(d.n * 3), cls = new Uint8Array(d.n), inten = new Uint8Array(d.n);
+  const classes: Record<string, number> = {};
+  const ground: number[] = [];
+  let n = 0, zSum = 0;
+  for (let i = 0; i < d.n; i++) {
+    const c = d.cls[i];
+    if (NOISE_CLASSES.has(c)) continue;
+    if (d.x[i] < box[0] || d.x[i] > box[2] || d.y[i] < box[1] || d.y[i] > box[3]) continue;
+    const ex = (d.x[i] - cx) * k, ny = (d.y[i] - cy) * k;
+    xyz[n * 3] = ex; xyz[n * 3 + 1] = ny; xyz[n * 3 + 2] = d.z[i];
+    cls[n] = c;
+    inten[n] = Math.min(255, d.intensity[i] >> 4);
+    classes[c] = (classes[c] ?? 0) + 1;
+    if (c === 2 && ex * ex + ny * ny < 3600) ground.push(d.z[i]);
+    zSum += d.z[i];
+    n++;
+  }
+  return { xyz: xyz.slice(0, n * 3), cls: cls.slice(0, n), inten: inten.slice(0, n), n, zSum, ground, classes };
+}
+
+/**
  * One pass of a site's point cloud: the survey (newest that has points here), the nodes for the box
  * under the budget, this pass's share of them decoded, cut to the box, noise dropped, and written as
  * int16 centimetre-ish offsets from the site's centre. Null when no survey covers the place.
@@ -173,6 +216,8 @@ export async function pointCloud(r: CloudRequest): Promise<{ bytes: Uint8Array; 
   const box = boxToMercator(bbox);
   const budget = Math.max(20_000, Math.min(MAX_BUDGET, Math.round(r.budget)));
   const candidates = r.survey && validName(r.survey) ? [{ name: r.survey, year: surveyYear(r.survey) }] : (await surveysAt(r.lon, r.lat)).slice(0, 4);
+  const [cx, cy] = toMercator(r.lon, r.lat);
+  const k = Math.cos((r.lat * Math.PI) / 180); // Mercator metres to true metres at this latitude
   for (const s of candidates) {
     const meta = await eptMeta(s.name).catch(() => null);
     if (!meta || meta.dataType !== "laszip" || meta.srs !== "3857") continue;
@@ -180,32 +225,27 @@ export async function pointCloud(r: CloudRequest): Promise<{ bytes: Uint8Array; 
     if (!sel || sel.expected < 500) continue;
     const groups = passes(sel.nodes, PER_PASS);
     const pass = Math.max(0, Math.min(groups.length - 1, r.pass));
-    const decoded = await pool(groups[pass], 6, async (n) => decodeLaz(await fetchNode(s.name, n.key)).catch(() => null));
-    const [cx, cy] = toMercator(r.lon, r.lat);
-    const k = Math.cos((r.lat * Math.PI) / 180); // Mercator metres to true metres at this latitude
-    let total = 0;
-    for (const d of decoded) if (d) total += d.n;
-    const xyz = new Float32Array(total * 3), cls = new Uint8Array(total), inten = new Uint8Array(total);
+    const free = await decodeSlot();
+    let kept: (Kept | null)[];
+    try {
+      kept = await pool(groups[pass], 4, async (node) => { try { return keep(await decodeLaz(await fetchNode(s.name, node.key)), box, cx, cy, k); } catch { return null; } });
+    } finally {
+      free();
+    }
+    let n = 0, zSum = 0;
+    for (const d of kept) if (d) { n += d.n; zSum += d.zSum; }
+    if (!n) continue;
+    const xyz = new Float32Array(n * 3), cls = new Uint8Array(n), inten = new Uint8Array(n);
     const classes: Record<string, number> = {};
     const ground: number[] = [];
-    let n = 0, zSum = 0;
-    for (const d of decoded) {
+    let at = 0;
+    for (const d of kept) {
       if (!d) continue;
-      for (let i = 0; i < d.n; i++) {
-        const c = d.cls[i];
-        if (NOISE_CLASSES.has(c)) continue;
-        if (d.x[i] < box[0] || d.x[i] > box[2] || d.y[i] < box[1] || d.y[i] > box[3]) continue;
-        const ex = (d.x[i] - cx) * k, ny = (d.y[i] - cy) * k;
-        xyz[n * 3] = ex; xyz[n * 3 + 1] = ny; xyz[n * 3 + 2] = d.z[i];
-        cls[n] = c;
-        inten[n] = Math.min(255, d.intensity[i] >> 4);
-        classes[c] = (classes[c] ?? 0) + 1;
-        if (c === 2 && ex * ex + ny * ny < 3600) ground.push(d.z[i]);
-        zSum += d.z[i];
-        n++;
-      }
+      xyz.set(d.xyz, at * 3); cls.set(d.cls, at); inten.set(d.inten, at);
+      at += d.n;
+      for (const [c, v] of Object.entries(d.classes)) classes[c] = (classes[c] ?? 0) + v;
+      for (const g of d.ground) ground.push(g);
     }
-    if (!n) continue;
     // Heights are sent relative to the cloud's mean, so int16 offsets reach a kilometre and a half either way.
     const z0 = Math.round(zSum / n);
     for (let i = 0; i < n; i++) xyz[i * 3 + 2] -= z0;
