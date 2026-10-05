@@ -2,7 +2,8 @@
  * Cross-encoder reranking for Documents: a model that reads the question and each candidate passage
  * together and scores how well the passage answers it, run over about a hundred fused search candidates
  * before the small model makes its selection. Voyage rerank-3 when VOYAGE_API_KEY is set, else Cohere
- * Rerank 4 with COHERE_API_KEY (both paid; see premium.ts), else the free reranker on Edge's ML service.
+ * Rerank 4 with COHERE_API_KEY (both paid, and only for a question asked by someone whose plan includes
+ * premium reranking; see premium.ts), else the free reranker on Edge's ML service.
  * Each has a few seconds: on any failure or timeout the search order stands, nothing is shown to the
  * person, and the answer's method says no reranker was used.
  */
@@ -11,7 +12,7 @@ import { aiUser, recordUsage } from "@/lib/ai/usage";
 import { logError } from "@/lib/errors";
 import { mlReady, mlRun, type MlTask } from "../infra/ml";
 import { addUsage } from "../infra/usage";
-import { upgradeOn } from "../premium";
+import { paidOn } from "../premium";
 
 export type RerankDoc = { id: number; text: string };
 export type RerankProvider = "voyage" | "cohere" | "ml";
@@ -36,10 +37,13 @@ const DOC_CHARS = 2000;
  */
 export const ML_PASSAGES = 40, ML_CHARS = 1000, ML_TIMEOUT_MS = 8_000;
 
-/** Which reranker answers: a paid key first (Voyage, then Cohere), else the free one on the ML service, else none. */
+/**
+ * Which reranker answers: a paid key first (Voyage, then Cohere) when this question runs in a premium
+ * scope that includes reranking, else the free one on the ML service, else none.
+ */
 export function rerankProvider(): RerankProvider | null {
-  if (upgradeOn("rerank-voyage")) return "voyage";
-  if (upgradeOn("rerank-cohere")) return "cohere";
+  if (paidOn("rerank-voyage")) return "voyage";
+  if (paidOn("rerank-cohere")) return "cohere";
   return mlReady() ? "ml" : null;
 }
 

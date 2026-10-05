@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
-import { askDocuments, type AskInput } from "@/lib/edge/docs/answer";
+import { entitlements } from "@/lib/billing/entitlements";
+import { allowedOf, withFeatures } from "@/lib/billing/use";
+import { askDocuments, askWants, type AskInput } from "@/lib/edge/docs/answer";
+import { requireReady } from "@/lib/edge/premium";
 import { describeFailure } from "@/lib/errors";
 import { rateLimit } from "@/lib/locks";
 
@@ -12,8 +15,13 @@ const SOURCES = ["sec", "uploads", "audio", "workspace", "newsroom", "web"];
 
 /**
  * Ask the documents: { question, mode: strict|balanced, form, scope: { tickers, sources, forms, months,
- * docIds } }. The answer streams as lines of JSON: { progress } while sources are read and passages
- * found, then { answer } (or { error }).
+ * docIds }, premium?: { model, citations } }. The answer streams as lines of JSON: { progress } while
+ * sources are read and passages found, then { answer } (or { error }).
+ *
+ * Asking is the explicit act premium upgrades wait for: the plan is checked here, before anything is
+ * spent (a premium option the plan lacks is a 402 with a plain message, before the stream starts), and
+ * the answer runs in a premium scope holding what the person may use: premium reranking whenever the
+ * plan includes it, the stronger model and exact-span citations only when ticked.
  */
 export async function POST(req: Request) {
   return guarded(async (user) => {
@@ -32,12 +40,17 @@ export async function POST(req: Request) {
         docIds: (scope.docIds ?? []).map(Number).filter(Number.isInteger).slice(0, 200),
       },
     };
+    const premium = { model: body.premium?.model === true, citations: body.premium?.citations === true };
+    const want = askWants(premium);
+    const allowed = allowedOf(await entitlements(user), want);
+    for (const id of want.require) requireReady(id);
+    clean.premium = premium;
     const enc = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         const send = (e: unknown) => { try { controller.enqueue(enc.encode(`${JSON.stringify(e)}\n`)); } catch { /* the reader left */ } };
         try {
-          const answer = await askDocuments(user.id, clean, { deadline: Date.now() + 270_000, progress: async (m) => send({ progress: m }) });
+          const answer = await withFeatures(allowed, () => askDocuments(user.id, clean, { deadline: Date.now() + 270_000, progress: async (m) => send({ progress: m }) }));
           send({ answer });
         } catch (e) {
           send({ error: describeFailure(e, 500, "edge-ask").message });

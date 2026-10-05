@@ -23,6 +23,8 @@ export const PRICES: Record<string, Price> = {
   "claude-opus-5": P(5, 0.5, 6.25, 25),
   "claude-opus-5-5": P(4, 0.2, 5, 20),
   "claude-sonnet-5": P(2, 0.2, 2.5, 10),
+  "claude-sonnet-5-5": P(2, 0.2, 2.5, 10),
+  "claude-haiku-4-5": P(1, 0.1, 1.25, 5),
   "claude-haiku-4-5-20251001": P(1, 0.1, 1.25, 5),
 };
 
