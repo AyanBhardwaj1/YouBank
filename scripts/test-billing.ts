@@ -8,8 +8,9 @@
  */
 import Stripe from "stripe";
 import { blockedAt, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
-import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, PAYING_SEATS, UNITS, USAGE } from "@/lib/billing/costs";
-import { intervalsFor, PLAN_ORDER, PLANS, type PlanId } from "@/lib/billing/plans";
+import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
+import { FEATURES } from "@/lib/billing/features";
+import { intervalsFor, PLAN_ORDER, PLANS, yearlySavingPct, type PlanId } from "@/lib/billing/plans";
 import { checkoutRequest, planForPrice, priceEnv, rowFromSubscription, shouldApply } from "@/lib/billing/stripe";
 
 let pass = 0, fail = 0;
@@ -45,6 +46,8 @@ async function main() {
   check("prices rise with the plan", PAID.every((p, i) => i === 0 || (PLANS[p].yearlyMonthlyUsd ?? 0) > (PLANS[PAID[i - 1]].yearlyMonthlyUsd ?? 0)));
   check("Free and Campus cannot be bought", !PLANS.free.selfServe && !PLANS.campus.selfServe && intervalsFor("free").length === 0);
   check("team plans need at least three seats", PLANS.team.minSeats >= 3 && PLANS.enterprise.minSeats >= 3);
+  check("the owner's price points: Pro $49-59, Deal Team about $149, Enterprise about $299", (PLANS.pro.monthlyUsd ?? 0) >= 49 && (PLANS.pro.monthlyUsd ?? 0) <= 59 && PLANS.team.monthlyUsd === 149 && PLANS.enterprise.yearlyMonthlyUsd === 299);
+  check("the yearly saving the toggle advertises is real", yearlySavingPct() > 0 && yearlySavingPct() < 30, yearlySavingPct());
 
   console.log("margins");
   for (const p of PAID) {
@@ -55,17 +58,32 @@ async function main() {
     if (yearly) check(`${PLANS[p].name}: typical use keeps ${pct(MARGIN_TARGET.yearly)} of the yearly price`, yearly.margin >= MARGIN_TARGET.yearly, pct(yearly.margin));
     for (const i of intervalsFor(p)) {
       const heavy = margin(p, "heavy", i)!;
-      check(`${PLANS[p].name} (${i}): someone using the whole AI allowance still leaves a margin`, heavy.margin > 0.1, pct(heavy.margin));
+      check(`${PLANS[p].name} (${i}): someone using the whole AI allowance still leaves a margin (never negative, at least 25%)`, heavy.margin >= 0.25, pct(heavy.margin));
     }
     check(`${PLANS[p].name}: the heavy persona really reaches the allowance`, costToServe(p, "heavy").aiUncapped >= PLANS[p].ai.monthlyUsd);
     check(`${PLANS[p].name}: typical use fits inside the allowance`, costToServe(p, "typical").aiUncapped <= PLANS[p].ai.monthlyUsd, costToServe(p, "typical").aiUncapped);
   }
   check("light use costs less than typical, typical less than heavy", PLAN_ORDER.every((p) => costToServe(p, "light").total <= costToServe(p, "typical").total && costToServe(p, "typical").total <= costToServe(p, "heavy").total));
-  check("a Free person costs at most $10 a month, whatever they do", costToServe("free", "heavy").total <= 10, costToServe("free", "heavy").total);
-  check("a Campus person costs at most $20 a month, whatever they do", costToServe("campus", "heavy").total <= 20, costToServe("campus", "heavy").total);
+  check("a Free person costs at most $6 a month, whatever they do", costToServe("free", "heavy").total <= 6, costToServe("free", "heavy").total);
+  check("a typical Free person costs under $2.50 a month", costToServe("free", "typical").total <= 2.5, costToServe("free", "typical").total);
+  check("Free still answers about a dozen questions a month", answersFor(PLANS.free.ai.monthlyUsd) >= 10, answersFor(PLANS.free.ai.monthlyUsd));
+  check("a Campus person costs at most $14 a month, whatever they do", costToServe("campus", "heavy").total <= 14, costToServe("campus", "heavy").total);
   check("every persona names only known cost units", PLAN_ORDER.every((p) => LEVELS.every((l) => Object.keys(USAGE[p][l]).every((k) => k in UNITS))));
   check("every unit cost is a non-negative number with a source", Object.values(UNITS).every((u) => Number.isFinite(u.usd) && u.usd >= 0 && u.source.length > 0));
   check("a default-model answer costs between 5 and 100 cents", UNITS["ai.answer"].usd > 0.05 && UNITS["ai.answer"].usd < 1, UNITS["ai.answer"].usd);
+
+  console.log("premium features flow into the cost model");
+  check("every metered premium feature states its cost per use", FEATURES.every((f) => !f.metered || (typeof f.costPerUseUsd === "number" && f.costPerUseUsd > 0)), FEATURES.filter((f) => f.metered && !f.costPerUseUsd).map((f) => f.id));
+  {
+    const before = { pro: costToServe("pro", "typical").premium, free: costToServe("free", "typical").premium, ent: costToServe("enterprise", "heavy").premium };
+    // Registered the way another area's file would: pushed into the shared list, nothing else edited.
+    FEATURES.push({ id: "test.copilot", area: "ai", name: "Meeting copilot (test)", description: "test", minPlan: "pro", metered: true, costPerUseUsd: 0.5 });
+    const after = { pro: costToServe("pro", "typical").premium, free: costToServe("free", "typical").premium, ent: costToServe("enterprise", "heavy").premium };
+    FEATURES.pop();
+    check("a newly registered metered feature is costed at typical use with no edit to costs.ts", Math.abs(after.pro - before.pro - 0.5 * PREMIUM_USES.typical) < 1e-9, { before, after });
+    check("it is costed on every plan that unlocks it, at the heavy rate too", Math.abs(after.ent - before.ent - 0.5 * PREMIUM_USES.heavy) < 1e-9);
+    check("plans below its minimum never pay for it", after.free === before.free && !meteredFeatures("free").some((f) => f.id === "test.copilot"));
+  }
 
   console.log("AI caps by plan");
   const saved = { d: process.env.AI_USER_DAILY_USD, m: process.env.AI_USER_MONTHLY_USD };

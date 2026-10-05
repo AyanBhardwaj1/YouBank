@@ -16,7 +16,7 @@ import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
 import { FEATURES, type FeatureArea } from "@/lib/billing/features";
-import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, type BillingInterval, type PlanId } from "@/lib/billing/plans";
+import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
 type Status = ClientEntitlements & {
@@ -177,7 +177,7 @@ export function PlanSettings() {
         <div className="flex gap-1" role="group" aria-label="Billing period">
           {(["monthly", "yearly"] as const).map((i) => (
             <button key={i} type="button" onClick={() => setPeriod(i)} aria-pressed={period === i} className={`ctl px-3 py-1 text-[12px] ${period === i ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
-              {i === "monthly" ? "Monthly" : "Yearly, about 17% less"}
+              {i === "monthly" ? "Monthly" : `Yearly, save up to ${yearlySavingPct()}%`}
             </button>
           ))}
         </div>

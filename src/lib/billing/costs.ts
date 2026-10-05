@@ -26,7 +26,7 @@ import { PLANS, PLAN_ORDER, planAtLeast, type PlanId } from "./plans";
 export const CHECKED = "2026-10-05";
 
 /** The margin we aim for at typical use: on the monthly price, and (a little lower) on the yearly one. */
-export const MARGIN_TARGET = { monthly: 0.75, yearly: 0.7 } as const;
+export const MARGIN_TARGET = { monthly: 0.7, yearly: 0.65 } as const;
 
 /** Paying seats the fixed bills are spread over. At launch scale; fewer seats raise each one's share (docs/pricing.md). */
 export const PAYING_SEATS = 200;
@@ -114,8 +114,14 @@ export const FIXED: { label: string; usdMonth: number; source: string }[] = [
 
 export const fixedMonthlyUsd = () => FIXED.reduce((s, f) => s + f.usdMonth, 0);
 
-/** Stripe: card processing on every invoice, plus Stripe Billing on subscription revenue. */
-export const STRIPE_FEES = { percent: 0.029, fixedUsd: 0.3, billingPercent: 0.007, source: "Stripe standard US pricing: 2.9% + $0.30 per card charge; Billing 0.7% of billing volume", checked: CHECKED };
+/**
+ * Stripe: card processing on every charge, Stripe Billing on subscription revenue, and Stripe Tax on every
+ * transaction (counted always, so turning tax on never breaks a margin).
+ */
+export const STRIPE_FEES = {
+  percent: 0.029, fixedUsd: 0.3, billingPercent: 0.007, taxPercent: 0.005,
+  source: "Stripe standard US pricing: 2.9% + $0.30 per card charge; Billing 0.7% of billing volume; Stripe Tax 0.5% per transaction", checked: CHECKED,
+};
 
 export type Usage = Partial<Record<UnitId, number>>;
 
@@ -135,23 +141,23 @@ export const PREMIUM_USES: Record<Level, number> = { light: 0, typical: 4, heavy
  */
 export const USAGE: Record<PlanId, Record<Level, Usage>> = {
   free: {
-    light: { "ai.answer": 4, "edge.answer": 2 },
-    typical: { "ai.answer": 12, "ai.run": 1, "edge.answer": 5 },
+    light: { "ai.answer": 3, "edge.answer": 2 },
+    typical: { "ai.answer": 6, "edge.answer": 4 },
     heavy: { "ai.answer": 200, "ai.run": 20 },
   },
   campus: {
-    light: { "ai.answer": 10, "ai.run": 1, "edge.answer": 5 },
-    typical: { "ai.answer": 25, "ai.run": 3, "ai.studio": 1, "edge.answer": 15, "edge.ingest": 2 },
+    light: { "ai.answer": 8, "ai.run": 1, "edge.answer": 5 },
+    typical: { "ai.answer": 20, "ai.run": 2, "edge.answer": 10, "edge.ingest": 2 },
     heavy: { "ai.answer": 300, "ai.run": 30, "ai.studio": 6 },
   },
   pro: {
-    light: { "ai.answer": 15, "ai.run": 2, "edge.answer": 5, "mail.mailbox": 1, "mail.triage": 150, "mail.draft": 20 },
-    typical: { "ai.answer": 40, "ai.run": 5, "ai.studio": 1, "edge.answer": 15, "edge.ingest": 3, "mail.mailbox": 1, "mail.triage": 300, "mail.draft": 50 },
+    light: { "ai.answer": 10, "ai.run": 1, "edge.answer": 5, "mail.mailbox": 1, "mail.triage": 150, "mail.draft": 20 },
+    typical: { "ai.answer": 18, "ai.run": 3, "ai.studio": 0.5, "edge.answer": 10, "edge.ingest": 3, "mail.mailbox": 1, "mail.triage": 300, "mail.draft": 40 },
     heavy: { "ai.answer": 300, "ai.run": 40, "ai.studio": 8, "ai.deep": 10, "edge.answer": 100, "edge.ingest": 20, "mail.mailbox": 1, "mail.triage": 1_000, "mail.draft": 250 },
   },
   team: {
-    light: { "ai.answer": 20, "ai.run": 3, "edge.answer": 10, "mail.mailbox": 1, "mail.triage": 300, "mail.draft": 60 },
-    typical: { "ai.answer": 60, "ai.run": 10, "ai.studio": 2, "ai.deep": 1, "edge.answer": 25, "edge.ingest": 5, "edge.ground_check": 10, "mail.mailbox": 1, "mail.triage": 600, "mail.draft": 150 },
+    light: { "ai.answer": 15, "ai.run": 2, "edge.answer": 10, "mail.mailbox": 1, "mail.triage": 300, "mail.draft": 60 },
+    typical: { "ai.answer": 45, "ai.run": 8, "ai.studio": 1.5, "ai.deep": 1, "edge.answer": 25, "edge.ingest": 5, "edge.ground_check": 10, "mail.mailbox": 1, "mail.triage": 600, "mail.draft": 150 },
     heavy: { "ai.answer": 500, "ai.run": 80, "ai.studio": 15, "ai.deep": 25, "edge.answer": 200, "edge.ingest": 40, "edge.ground_check": 60, "mail.mailbox": 2, "mail.triage": 2_000, "mail.draft": 600 },
   },
   enterprise: {
@@ -203,7 +209,7 @@ export function seatPrice(plan: PlanId, interval: Interval): number | null {
 export function feesPerSeatMonth(price: number, interval: Interval, seats: number): number {
   if (price <= 0) return 0;
   const charges = interval === "yearly" ? 1 / 12 : 1;
-  return price * (STRIPE_FEES.percent + STRIPE_FEES.billingPercent) + (STRIPE_FEES.fixedUsd * charges) / Math.max(1, seats);
+  return price * (STRIPE_FEES.percent + STRIPE_FEES.billingPercent + STRIPE_FEES.taxPercent) + (STRIPE_FEES.fixedUsd * charges) / Math.max(1, seats);
 }
 
 export type MarginRow = { plan: PlanId; level: Level; interval: Interval; price: number; fees: number; cost: CostBreakdown; margin: number };

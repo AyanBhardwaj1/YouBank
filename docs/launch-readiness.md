@@ -251,8 +251,8 @@ New environment variables (all optional, with safe defaults):
 
 | Variable | Default | What it does |
 |---|---|---|
-| `AI_USER_DAILY_USD` | the plan's (Free $1.50 to Enterprise $60) | Each person's AI spend per UTC day; when set, replaces every plan's amount. |
-| `AI_USER_MONTHLY_USD` | the plan's (Free $5 to Enterprise $300) | Each person's AI spend per calendar month (UTC); when set, replaces every plan's amount. |
+| `AI_USER_DAILY_USD` | the plan's (Free $0.75 to Enterprise $30) | Each person's AI spend per UTC day; when set, replaces every plan's amount. |
+| `AI_USER_MONTHLY_USD` | the plan's (Free $3 to Enterprise $130) | Each person's AI spend per allowance month (the billing anniversary for subscribers, the 1st otherwise); when set, replaces every plan's amount. |
 | `AI_GLOBAL_DAILY_USD` | `200` | Everyone's AI spend per UTC day, background work included. |
 | `AI_DISABLED` | off | `1` turns off every model call; the app keeps working without AI. |
 | `AI_ALLOWED_MODELS` | all | Comma-separated model ids people may pick. |
