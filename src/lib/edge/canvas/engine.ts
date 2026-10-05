@@ -11,7 +11,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { runAsUser } from "@/lib/ai/context";
 import type { CurrentUser } from "@/lib/auth/user";
-import { logError, publicMessage } from "@/lib/errors";
+import { failureMessage, logError } from "@/lib/errors";
 import { rateLimit } from "@/lib/locks";
 import { touch } from "@/lib/realtime/feed";
 import { type MlDone, doneFor, mlStatus, noteMlCost } from "../infra/ml";
@@ -205,8 +205,8 @@ async function startNode(runId: number, nodeId: string): Promise<NodeState> {
     await saveResult(runId, nodeId, res, run.canvasId);
     return { status: "done" };
   } catch (e) {
-    logError(e, { where: `edge-node:${node.type}` });
-    await setStep(runId, nodeId, { status: "failed", error: publicMessage(e).slice(0, 300), finishedAt: new Date() }, run.canvasId);
+    // The step's error carries the log reference, so "our side" failures can be found from the page.
+    await setStep(runId, nodeId, { status: "failed", error: failureMessage(e, `edge-node:${node.type}`).slice(0, 300), finishedAt: new Date() }, run.canvasId);
     return { status: "failed" };
   }
 }
@@ -224,8 +224,7 @@ async function finishNode(runId: number, nodeId: string, state: unknown, done: (
     await saveResult(runId, nodeId, res, run.canvasId, mlCost);
     return { status: "done" };
   } catch (e) {
-    logError(e, { where: `edge-node-finish:${node.type}` });
-    await setStep(runId, nodeId, { status: "failed", error: publicMessage(e).slice(0, 300), finishedAt: new Date() }, run.canvasId);
+    await setStep(runId, nodeId, { status: "failed", error: failureMessage(e, `edge-node-finish:${node.type}`).slice(0, 300), finishedAt: new Date() }, run.canvasId);
     return { status: "failed" };
   } finally {
     await flushUsage().catch(() => undefined);

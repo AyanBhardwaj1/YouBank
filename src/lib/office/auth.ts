@@ -93,14 +93,18 @@ export async function revokeDevice(userId: string, id: number) {
 
 /** The person behind a request: the add-in's device token when it sends one, otherwise the browser session. */
 export async function requestUser(req: Request): Promise<CurrentUser | null> {
-  if (/^Bearer\s+ybo_/.test(req.headers.get("authorization") ?? "")) return officeUser(req).catch(() => null);
+  // A database failure must throw (a 500), not read as "no such device": the add-in answers a 401 by
+  // forgetting its token, so a passing outage would otherwise unpair every connected workbook.
+  if (/^Bearer\s+ybo_/.test(req.headers.get("authorization") ?? "")) return officeUser(req);
   return currentUser();
 }
 
 /** guarded() for routes that Excel and PowerPoint call as well as the browser. Errors carry their status. */
 export async function guardedFor(req: Request, fn: (user: CurrentUser) => Promise<Response>): Promise<Response> {
-  const user = await requestUser(req);
-  if (!user) return Response.json({ error: "Sign in required. In Excel or PowerPoint, connect the add-in to YouBank again." }, { status: 401 });
-  try { return await runAsUser(user.id, () => fn(user), { admin: isAdmin(user) }); }
-  catch (e) { return errorResponse(e); }
+  try {
+    // Inside the try: the session lookup itself can fail (auth or the database not answering).
+    const user = await requestUser(req);
+    if (!user) return Response.json({ error: "Sign in required. In Excel or PowerPoint, connect the add-in to YouBank again." }, { status: 401 });
+    return await runAsUser(user.id, () => fn(user), { admin: isAdmin(user) });
+  } catch (e) { return errorResponse(e); }
 }

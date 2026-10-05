@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { autopilotUsers, tick } from "@/lib/crm/autopilot";
 import { secretsMatch } from "@/lib/crm/crypto";
 import { runAsUser } from "@/lib/ai/usage";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, handled } from "@/lib/errors";
 import { pool, poolSize } from "@/lib/pool";
 
 export const dynamic = "force-dynamic";
@@ -22,9 +22,12 @@ async function handle(req: Request) {
   const ok = [process.env.AUTOPILOT_SECRET, process.env.CRON_SECRET].some((s) => s && secretsMatch(auth, `Bearer ${s}`));
   if (!ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
+  return handled(() => beat(new URL(req.url).origin));
+}
+
+async function beat(origin: string) {
   const started = Date.now();
   const deadline = started + 270_000;
-  const origin = new URL(req.url).origin;
   const results = await pool(await autopilotUsers(), poolSize(process.env.AUTOPILOT_POOL, 6), async (userId): Promise<Record<string, unknown>> => {
     const r = await runAsUser(userId, () => tick(userId, origin, Math.min(deadline, Date.now() + 120_000))).catch((e) => ({ error: describeFailure(e, 500, "autopilot").message }));
     return {
