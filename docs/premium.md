@@ -8,12 +8,12 @@ contract every premium feature follows.
 | Piece | Where | What it does |
 |---|---|---|
 | Plans | `src/lib/billing/plans.ts` | The plans in order (free, campus, pro, team, enterprise), their list prices, minimum seats and AI allowances; why they are what they are is in `docs/pricing.md` |
-| Billing | `src/lib/billing/stripe.ts`, `/api/billing/{checkout,confirm,portal,webhook,status}` | Stripe Checkout, the billing portal and the webhook that writes `subscriptions`; Settings, under Plan |
+| Billing | `src/lib/billing/stripe.ts`, `/api/billing/{checkout,credits,confirm,portal,invoices,seats,webhook,status}` | Stripe Checkout (plans and credit packs), the billing portal, seats and the webhook that writes `subscriptions` and credit grants; Settings, under Plan |
 | Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`); each feature names the least plan that includes it |
-| Entitlements | `src/lib/billing/entitlements.ts` | `entitlements(user)`, `canUse(user, id)` and `requireFeature(user, id)` on the server |
+| Entitlements | `src/lib/billing/entitlements.ts` | `entitlements(user)`, `canUse(user, id)` and `requireFeature(user, id)` on the server; a seat on someone's Deal Team or Enterprise subscription counts |
 | Plan API | `GET /api/billing/plan` | The signed-in person's plan and unlocked feature ids |
 | UI | `src/components/billing/Premium.tsx`, `src/lib/client/plan.ts` | `PremiumBadge`, `PremiumGate`, `usePlan()`, `useFeature(id)` |
-| Storage | `subscriptions` table, `drizzle/0015_plans.sql` | One row per person with a paid or granted plan; no row means Free (Campus for .edu) |
+| Storage | `subscriptions` (`drizzle/0015_plans.sql`), `ai_credit_grants`, `ai_credit_draws`, `seat_assignments` (`drizzle/0022_credits.sql`) | One row per person with a paid plan or a billing account; no row means Free (Campus for .edu) |
 
 ## Rules
 
@@ -30,8 +30,12 @@ contract every premium feature follows.
 
 ## Adding a feature
 
-1. Add an entry to your area's file in `src/lib/billing/features/` with a stable `area.name` id. If it
-   costs money per use, set `metered: true` and `costPerUseUsd`: the pricing model counts it, and
-   `scripts/test-billing.ts` fails if it pushes a plan below its margin target.
+1. Add an entry to your area's file in `src/lib/billing/features/` with a stable `area.name` id. A new
+   area (the calendar, the meeting copilot) can use an existing file (`premium.ts` for AI features) or add
+   its own file and spread its list into `FEATURES` in `features/index.ts`. If it costs money per use,
+   set `metered: true` and `costPerUseUsd`: `costToServe()` counts 4 uses a month at typical use and 20 at
+   heavy on every plan that unlocks it, with no edit to `costs.ts`, and `scripts/test-billing.ts` fails if
+   the cost is missing or pushes a plan below its margin target. The pricing page's comparison table and
+   the Plan tab list the feature by themselves.
 2. Call `requireFeature(user, "<id>")` in the route that starts it, before any paid call.
 3. Wrap the control in `PremiumGate`, or put a `PremiumBadge` beside it.

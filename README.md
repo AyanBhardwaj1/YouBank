@@ -20,7 +20,7 @@ parts:
   and it all exports to Excel and PowerPoint. With the add-in it runs inside Excel and PowerPoint too:
   the agent writes into your own workbook live, and decks refresh from the model.
 
-Production: **https://youbank-nu.vercel.app** · Free while in beta.
+Production: **https://youbank-nu.vercel.app** until the custom domain is set (`NEXT_PUBLIC_SITE_URL`; see [docs/launch-billing.md](docs/launch-billing.md)) · Free while in beta.
 
 ## Contents
 
@@ -321,8 +321,10 @@ names the model behind each number and gives a range.
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
 cost are recorded and shown in Settings. See [docs/research/ai-inference.md](docs/research/ai-inference.md).
 
-**Allowances.** Each person's model spend is capped per UTC day and per calendar month by their plan's AI
-allowance, from Free ($1.50 a day, $5 a month) to Enterprise ($60 a day, $300 a month per seat).
+**Allowances.** Each person's model spend is capped per UTC day and per allowance month by their plan's AI
+allowance, from Free ($0.75 a day, $3 a month) to Enterprise ($30 a day, $130 a month per seat). The
+allowance month starts on the billing anniversary for subscribers and on the 1st otherwise; AI credit
+packs top it up.
 Administrators have no cap. Settings, under Plan, shows what has been used. At the cap, AI pauses and
 everything else keeps working. Prices and allowances: [Plans and billing](#plans-and-billing).
 
@@ -1361,8 +1363,8 @@ Three earlier research reports are behind the adaptive engine, the website and t
   anytime-valid demotion.
 - **Pricing started in the $30–$300 per seat per month band.** The cost model in
   [docs/pricing.md](docs/pricing.md) moved it: model time is most of what YouBank costs, so the prices
-  below keep at least 75% of the list price at typical use and stay positive even for someone who uses the
-  whole AI allowance. See [Plans and billing](#plans-and-billing).
+  below keep at least 70% of the monthly price (65% of the yearly one) at typical use and stay positive even
+  for someone who uses the whole AI allowance. See [Plans and billing](#plans-and-billing).
 
 ---
 
@@ -1370,11 +1372,11 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 | Plan | Price | AI allowance per seat | For |
 |---|---|---|---|
-| Free | $0 | $1.50 a day, $5 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
-| Campus | Free with a .edu address | $3 a day, $15 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
-| Pro | $119 a month, or $99 a month billed yearly | $12 a day, $60 a month | Individuals: a full AI allowance, the relationships agent and one mailbox |
-| Deal Team | $229 per seat a month, or $189 billed yearly; three seats minimum | $25 a day, $130 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces |
-| Enterprise | $449 per seat a month, billed yearly; five seats minimum | $60 a day, $300 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Campus | Free with a .edu address | $2 a day, $10 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
+| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox |
+| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces, assignable seats |
+| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
 
 - **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
   dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
@@ -1384,14 +1386,31 @@ Three earlier research reports are behind the adaptive engine, the website and t
   each naming the least plan that includes it.
   - Settings, under Plan, groups them by area and shows which are unlocked.
   - The contract every premium feature follows is in [docs/premium.md](docs/premium.md).
+- **AI credit packs.** $10, $25 and $50 packs add $6, $15 and $32 of AI use, used only after the month's
+  allowance, oldest pack first; they never expire. Bought with a one-time Checkout on any plan.
+- **Allowance months** start on the billing anniversary for subscribers (and their seat holders) and on
+  the 1st (UTC) otherwise.
+- **Team seats.** The buyer of Deal Team or Enterprise holds one seat and gives the others to members of
+  a team they own or administer (Settings, under Plan). A seat count changed in the portal reaches
+  YouBank through the webhook, which takes back the newest seats beyond it.
 - **Billing is Stripe.**
   - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
-    who already pays is sent to the portal instead.
-  - `POST /api/billing/portal` opens Stripe's billing portal.
+    who already pays is sent to the portal; an open checkout for the same purchase is reused, others are
+    expired, and the create call carries an idempotency key, so nobody ends up with two subscriptions.
+  - `POST /api/billing/credits` starts a one-time Checkout for a credit pack.
+  - `POST /api/billing/portal` opens Stripe's billing portal (plan switches, seats, cancellation at period
+    end, card, invoices); `GET /api/billing/invoices` lists Stripe-hosted invoices and receipts.
+  - `GET|POST|DELETE /api/billing/seats` lists, gives and takes back seats.
   - `POST /api/billing/webhook` checks Stripe's signature, then rewrites the person's `subscriptions` row
-    from the subscription as Stripe holds it now. Retried and out-of-order events change nothing extra.
-  - `POST /api/billing/confirm` stores the subscription as soon as someone is back from Checkout.
+    from the subscription as Stripe holds it now, grants packs once per payment intent, and takes back
+    refunded credits. Retried and out-of-order events change nothing extra.
+  - `POST /api/billing/confirm` stores what was bought as soon as someone is back from Checkout.
+  - `scripts/stripe-setup.ts` creates the products, prices, webhook endpoint and portal configuration
+    (`--live`, `--webhook`, `--tax`, `--dry-run`) and prints every variable to set.
   - Without `STRIPE_SECRET_KEY`, the plan page shows the prices and says billing isn't switched on yet.
+- **Public pages.** `/pricing` (from `PLANS` and the packs), and draft `/terms`, `/privacy` and `/refunds`
+  marked for review by counsel.
+- **Launch day:** [docs/launch-billing.md](docs/launch-billing.md) is the step-by-step checklist.
 - **Nothing is billed during the beta** until the Stripe keys are set.
 
 ---
