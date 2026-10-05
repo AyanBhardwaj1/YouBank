@@ -33,7 +33,7 @@ export function installerOf(a: { name: string; browser_download_url: string; siz
 
 /** The newest published desktop release in a list from GitHub's API. Pure. */
 export function pickRelease(list: GhRelease[]): DesktopRelease | null {
-  const r = list.filter((x) => !x.draft && x.tag_name.startsWith("desktop-v")).sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
+  const r = list.filter((x) => !x.draft && !x.prerelease && x.tag_name.startsWith("desktop-v")).sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0];
   if (!r) return null;
   return {
     version: r.tag_name.replace(/^desktop-v/, ""), tag: r.tag_name, url: r.html_url, publishedAt: r.published_at ?? "",
