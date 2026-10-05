@@ -62,11 +62,11 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">
         {error && <div className="p-3 text-[11px] text-neg">{error}</div>}
         {!res && !error && <div className="flex flex-col gap-2 p-3">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="shimmer h-5 ctl" style={{ animationDelay: `${i * 60}ms` }} />)}</div>}
         {res && (
-          <div className="table-scroll"><table className="w-full whitespace-nowrap text-[11.5px]">
+          <table className="w-full whitespace-nowrap text-[11.5px]">
             <thead className="sticky top-0 z-10 bg-panel text-[10px] uppercase tracking-wider text-muted">
               <tr className="border-b border-line-strong">
                 <th className="py-1.5 pl-3 text-left font-normal">Disclosed</th>
@@ -88,7 +88,7 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
               ))}
               {res.rows.length === 0 && <tr><td colSpan={5} className="p-3 text-[11px] text-muted">No matching disclosure. Widen the date range or change the keywords.</td></tr>}
             </tbody>
-          </table></div>
+          </table>
         )}
       </div>
       <div className="border-t border-line px-3 py-1 text-[10px] text-muted">

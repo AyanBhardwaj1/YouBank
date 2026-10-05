@@ -38,11 +38,11 @@ export function InsScreen({ ticker }: { ticker: string }) {
         <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={onlyOpenMarket} onChange={(e) => setOnlyOpenMarket(e.target.checked)} /> open-market only (P/S)</label>
         <span className="ml-auto text-muted">Non-derivative transactions, SEC Form 4</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">
         {!rows && !error && <div className="p-3 text-[11px] text-muted">Reading Form 4 filings…</div>}
         {error && <div className="p-3 text-[11px] text-neg">{error}</div>}
         {rows && rows.length === 0 && <div className="p-3 text-[11px] text-muted">No recent Form 4 filings.</div>}
-        <div className="table-scroll"><table className="w-full whitespace-nowrap text-[11px]">
+        <table className="w-full whitespace-nowrap text-[11px]">
           <thead className="sticky top-0 z-10 bg-panel text-[10px] uppercase tracking-wider text-muted">
             <tr className="border-b border-line-strong"><th className="py-1.5 pl-3 text-left font-normal">Date</th><th className="py-1.5 text-left font-normal">Insider</th><th className="py-1.5 text-left font-normal">Role</th><th className="py-1.5 text-left font-normal">Type</th><th className="py-1.5 pr-2 text-right font-normal">Shares</th><th className="py-1.5 pr-2 text-right font-normal">Price</th><th className="py-1.5 pr-2 text-right font-normal">Value</th><th className="py-1.5 pr-3 text-right font-normal">Owned after</th></tr>
           </thead>
@@ -60,7 +60,7 @@ export function InsScreen({ ticker }: { ticker: string }) {
               </tr>
             ))}
           </tbody>
-        </table></div>
+        </table>
         {stats.byOwner.length > 0 && (
           <div className="border-t border-line p-3">
             <HBar title="Net open-market value by insider" data={stats.byOwner.map(([o, v]) => ({ key: o, label: o.split(" ").slice(-1)[0].slice(0, 10), value: Math.abs(v), note: v >= 0 ? "net buyer" : "net seller", emphasis: v >= 0 }))} format={(v) => (v === null ? "n/a" : money(v))} />
