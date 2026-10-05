@@ -4,13 +4,20 @@
  * The signed-in frame: the top bar, the sidebar and the page. Holds how this person arranges the top
  * bar (which features are pinned, in what order, with or without labels) and the sidebar (open, and
  * docked beside the page or over it), and saves changes to their profile. Cmd/Ctrl+\ toggles the sidebar.
+ *
+ * On a phone the same pieces rearrange: the top bar slims to the page's name and the account controls,
+ * the pinned features become a tab bar along the bottom, and the sidebar opens as a "More" sheet.
+ * The frame clips rather than hides its overflow, so a scrollIntoView inside a page can never scroll
+ * the frame itself and push the top bar off screen.
  */
 import { useEffect, useMemo, useState } from "react";
 import { featuresFor, type NavPrefs } from "@/lib/nav";
 import { AppNav } from "./AppNav";
 import { NavCtx, type Nav } from "./NavContext";
 import { Sidebar } from "./Sidebar";
+import { MobileTabBar } from "./MobileTabBar";
 import { useWorkspace } from "./WorkspaceProvider";
+import { usePhone } from "@/components/ui/useMedia";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -22,8 +29,13 @@ export function AppShell({ email, edge = false, initialNav, children }: { email:
   const [prefs, setPrefs] = useState(initialNav);
   const [open, setOpenState] = useState(initialNav.dock);
   const [customizing, setCustomizing] = useState(false);
+  // On a phone the sidebar is the "More" sheet: it has its own open state, starts closed whatever the
+  // desktop "keep open" setting says, and opening it never changes how the desktop frame is arranged.
+  const phone = usePhone();
+  const [sheet, setSheet] = useState(false);
+  const isOpen = phone ? sheet : open;
 
-  const setOpen = (o: boolean) => { setOpenState(o); if (!o) setCustomizing(false); };
+  const setOpen = (o: boolean) => { if (phone) setSheet(o); else setOpenState(o); if (!o) setCustomizing(false); };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,24 +47,25 @@ export function AppShell({ email, edge = false, initialNav, children }: { email:
   }, [open, prefs.dock]);
 
   const value: Nav = {
-    prefs, features, open, setOpen, customizing,
+    prefs, features, open: isOpen, setOpen, customizing, phone,
     update: (p, opts) => {
       const next = { ...prefs, ...p };
       setPrefs(next);
       if (opts?.persist !== false) persist(next);
     },
     save: () => persist(prefs),
-    customize: (on = true) => { setCustomizing(on); if (on) setOpenState(true); },
+    customize: (on = true) => { setCustomizing(on); if (on) { if (phone) setSheet(true); else setOpenState(true); } },
   };
 
   return (
     <NavCtx.Provider value={value}>
-      <div className="flex h-dvh flex-col overflow-hidden text-fg">
+      <div className="app-frame flex h-dvh flex-col overflow-clip text-fg">
         <AppNav email={email} />
         <div className="relative flex min-h-0 flex-1">
           <Sidebar />
-          <div className="min-h-0 min-w-0 flex-1">{children}</div>
+          <div className="min-h-0 min-w-0 flex-1 px-safe">{children}</div>
         </div>
+        <MobileTabBar />
       </div>
     </NavCtx.Provider>
   );
