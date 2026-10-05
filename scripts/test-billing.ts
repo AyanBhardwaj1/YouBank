@@ -14,6 +14,8 @@ import Stripe from "stripe";
 import { blockedAt, dailyCapWith, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
 import { effectiveEnd } from "@/lib/billing/credits";
 import { assignableSeats, assignError, seatPlan, seatsToTrim } from "@/lib/billing/seats";
+import { amountCents, envLines, packPrices, planPrices, portalConfig, webhookEvents, webhookUrl } from "@/lib/billing/setup";
+import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPackId, PACK_MARGIN_TARGET, packFees, packMargin, remainingByGrant, settledUse, splitSpend } from "@/lib/billing/packs";
 import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
@@ -282,6 +284,28 @@ async function main() {
   check("the wrong secret is rejected", !wrongSecret);
   const stale = await stripe.webhooks.generateTestHeaderStringAsync({ payload, secret, timestamp: Math.floor(Date.now() / 1000) - 3600 });
   check("an hour-old signature is rejected (replay window)", !(await stripe.webhooks.constructEventAsync(payload, stale, secret).then(() => true, () => false)));
+
+  console.log("domain and Stripe setup");
+  {
+    check("NEXT_PUBLIC_SITE_URL wins, then YOUBANK_URL, then Vercel's production domain", resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://youbank.com/", YOUBANK_URL: "https://a.vercel.app" }) === "https://youbank.com" && resolveSiteUrl({ YOUBANK_URL: "https://a.example.com" }) === "https://a.example.com" && resolveSiteUrl({ VERCEL_PROJECT_PRODUCTION_URL: "youbank.com" }) === "https://youbank.com");
+    check("with nothing set it is the original address", resolveSiteUrl({}) === DEFAULT_SITE_URL);
+    check("addresses are cleaned: scheme added, path and slash dropped, junk refused", normaliseSiteUrl("youbank.com/app/") === "https://youbank.com" && normaliseSiteUrl("http://localhost:3000") === "http://localhost:3000" && normaliseSiteUrl("not a url") === null && normaliseSiteUrl("") === null);
+    check("the webhook lives at <domain>/api/billing/webhook", webhookUrl("https://youbank.com/") === "https://youbank.com/api/billing/webhook");
+    check("the webhook listens for exactly the events handled", webhookEvents().join() === [...WEBHOOK_EVENTS].join() && new Set(webhookEvents()).size === webhookEvents().length);
+    check("Stripe amounts: monthly is the list price, yearly twelve months of the yearly rate", amountCents("pro", "monthly") === 5900 && amountCents("pro", "yearly") === 58800 && amountCents("enterprise", "yearly") === 299 * 1200);
+    check("every plan sold online and every pack gets a price", planPrices().length === PAID.reduce((n, p) => n + intervalsFor(p).length, 0) && packPrices().map((p) => p.cents).join() === "1000,2500,5000");
+    const priceIds = Object.fromEntries(planPrices().map((p) => [p.env, `price_${p.lookup}`]));
+    const cfg = portalConfig("https://youbank.com", priceIds);
+    const prods = cfg.features.subscription_update?.products || [];
+    check("the portal lets people switch between every plan and interval", prods.map((p) => p.product).join() === "youbank_pro,youbank_team,youbank_enterprise" && prods.flatMap((p) => p.prices).length === planPrices().length);
+    check("seat quantities change within each plan's limits; Pro stays one seat", prods.find((p) => p.product === "youbank_team")?.adjustable_quantity?.minimum === PLANS.team.minSeats && prods.find((p) => p.product === "youbank_enterprise")?.adjustable_quantity?.minimum === PLANS.enterprise.minSeats && prods.find((p) => p.product === "youbank_pro")?.adjustable_quantity?.enabled === false);
+    check("cancellation is at period end, with a reason", cfg.features.subscription_cancel?.mode === "at_period_end" && cfg.features.subscription_cancel?.cancellation_reason?.enabled === true);
+    check("downgrades wait for the period's end", (cfg.features.subscription_update?.schedule_at_period_end?.conditions ?? []).length === 2);
+    check("invoices, card and tax id are in the portal", cfg.features.invoice_history?.enabled === true && cfg.features.payment_method_update?.enabled === true && (cfg.features.customer_update?.allowed_updates as string[] | undefined)?.includes("tax_id") === true);
+    check("the portal links the terms and privacy pages and returns to the Plan tab", cfg.business_profile?.terms_of_service_url === "https://youbank.com/terms" && cfg.business_profile?.privacy_policy_url === "https://youbank.com/privacy" && cfg.default_return_url === "https://youbank.com/app/settings?tab=plan");
+    const lines = envLines({ site: "https://youbank.com", keyPrefix: "sk_live_", webhookSecret: "whsec_1", prices: priceIds, portal: "bpc_1", tax: true }).join("\n");
+    check("setup prints every variable billing reads", ["NEXT_PUBLIC_SITE_URL=https://youbank.com", "STRIPE_SECRET_KEY=", "STRIPE_WEBHOOK_SECRET=whsec_1", "STRIPE_PORTAL_CONFIGURATION=bpc_1", "STRIPE_AUTOMATIC_TAX=1", "STRIPE_TERMS_CONSENT=", ...planPrices().map((p) => `${p.env}=`)].every((l) => lines.includes(l)));
+  }
 
   console.log("environment warnings");
   {

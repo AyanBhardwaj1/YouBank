@@ -5,6 +5,7 @@ import { afterTriage, sendDue } from "@/lib/crm/autopilot";
 import { claimLock, releaseLock } from "@/lib/crm/settings";
 import { syncAccount } from "@/lib/crm/sync";
 import { rateLimit } from "@/lib/locks";
+import { siteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "The agent is reading your mailbox right now. Try again in a minute." }, { status: 409 });
     }
     try {
-      const origin = new URL(req.url).origin;
+      const origin = siteUrl();
       const deadline = Date.now() + 250_000;
       let drafted = 0, scheduled = 0;
       const result = await syncAccount(user.id, account, origin, {

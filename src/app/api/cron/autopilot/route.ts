@@ -4,6 +4,7 @@ import { secretsMatch } from "@/lib/crm/crypto";
 import { runAsUser } from "@/lib/ai/usage";
 import { describeFailure } from "@/lib/errors";
 import { pool, poolSize } from "@/lib/pool";
+import { siteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -24,7 +25,8 @@ async function handle(req: Request) {
 
   const started = Date.now();
   const deadline = started + 270_000;
-  const origin = new URL(req.url).origin;
+  // Links in the mail it sends use the site's own address, whichever host the heartbeat called.
+  const origin = siteUrl();
   const results = await pool(await autopilotUsers(), poolSize(process.env.AUTOPILOT_POOL, 6), async (userId): Promise<Record<string, unknown>> => {
     const r = await runAsUser(userId, () => tick(userId, origin, Math.min(deadline, Date.now() + 120_000))).catch((e) => ({ error: describeFailure(e, 500, "autopilot").message }));
     return {

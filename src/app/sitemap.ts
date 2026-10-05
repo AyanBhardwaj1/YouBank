@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
 import { ROLE_IDS } from "@/lib/roles";
+import { siteUrl } from "@/lib/site";
 
-const BASE = "https://youbank-nu.vercel.app";
-
+/** Public pages only, on the site's own address (NEXT_PUBLIC_SITE_URL; src/lib/site.ts). */
 export default function sitemap(): MetadataRoute.Sitemap {
+  const BASE = siteUrl();
   const now = new Date();
   return [
     { url: BASE, lastModified: now, changeFrequency: "weekly", priority: 1 },

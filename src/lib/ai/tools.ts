@@ -15,6 +15,7 @@ import { resolveTicker } from "../edgar/tickers";
 import { insiderTransactions } from "../edgar/insiders";
 import { evaluateScript } from "../calc";
 import { logError } from "@/lib/errors";
+import { siteLink } from "@/lib/site";
 
 export type Source = { id: string; label: string; url: string };
 export type ToolCtx = { addSource: (label: string, url: string) => string };
@@ -153,7 +154,7 @@ export const startupsTool = def({
   schema: z.object({ query: z.string().optional().describe("Keywords matched against name, description, founders"), source: z.enum(["yc", "a16z", "thiel", "hn", "formd", "web", "user"]).optional(), country: z.string().optional(), program: z.string().optional(), limit: z.number().int().min(1).max(50).optional() }),
   run: async ({ query, source, country, program, limit }, ctx) => {
     const r = await searchStartups({ q: query, source, country, program, pageSize: limit ?? 20 });
-    const src = ctx.addSource("YouBank startup directory (YC API, a16z portfolio, Show HN, SEC Form D, Wikipedia, web discovery)", "https://youbank-nu.vercel.app/app/vc");
+    const src = ctx.addSource("YouBank startup directory (YC API, a16z portfolio, Show HN, SEC Form D, Wikipedia, web discovery)", siteLink("/app/vc"));
     return JSON.stringify({ source: src, total: r.total, rows: r.rows.map((x) => ({ name: x.name, program: x.program, one_liner: x.oneLiner, website: x.website, founders: x.founders, location: x.location, country: x.country, stage: x.fundingStage, investors: x.investors, raised: x.raised, date: x.sourceDate, url: x.url })) });
   },
 });

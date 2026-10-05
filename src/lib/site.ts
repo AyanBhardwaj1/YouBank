@@ -26,7 +26,7 @@ export function normaliseSiteUrl(raw: string | undefined | null): string | null 
 }
 
 /** The address from a set of variables, in order of precedence. Pure, for tests and scripts. */
-export function resolveSiteUrl(env: { NEXT_PUBLIC_SITE_URL?: string; YOUBANK_URL?: string; VERCEL_PROJECT_PRODUCTION_URL?: string }): string {
+export function resolveSiteUrl(env: Record<string, string | undefined>): string {
   return normaliseSiteUrl(env.NEXT_PUBLIC_SITE_URL) ?? normaliseSiteUrl(env.YOUBANK_URL) ?? normaliseSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL) ?? DEFAULT_SITE_URL;
 }
 
