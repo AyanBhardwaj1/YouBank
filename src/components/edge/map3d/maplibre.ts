@@ -133,3 +133,18 @@ export function setGlobe(m: MLMap, on: boolean) {
   const now = m.getProjection()?.type === "globe";
   if (now !== on) m.setProjection({ type: on ? "globe" : "mercator" });
 }
+
+/**
+ * Credits for what is drawn without a MapLibre source of its own to carry them (deck.gl's models, point
+ * clouds and analyses, and the image sources, which take no attribution): an empty source that carries
+ * them, kept in use by an empty layer, so they join the map's own attribution while they apply.
+ */
+export function syncCredits(m: MLMap, text: string) {
+  const src = m.getSource("credits") as (GeoJSONSource & { attribution?: string }) | undefined;
+  if ((src?.attribution ?? "") === text) return;
+  if (m.getLayer("credits")) m.removeLayer("credits");
+  if (src) m.removeSource("credits");
+  if (!text) return;
+  m.addSource("credits", { type: "geojson", data: { type: "FeatureCollection", features: [] }, attribution: text });
+  m.addLayer({ id: "credits", type: "circle", source: "credits" });
+}

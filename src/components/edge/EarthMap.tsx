@@ -28,7 +28,7 @@ import { tilt as tween } from "./tilt";
 import { partyOf, type AssetCollection, type AssetFeature, type Bbox, type Imagery } from "./client";
 import { Controls } from "./map3d/Controls";
 import { animates, buildLayers, layerDef, MAP_LAYERS, type LayerContext } from "./map3d/layers";
-import { applySun, below, corners, OUR_LAYERS, setGlobe as setProjection, settleOnGround, skySpec, syncAreas, syncBuildings, syncDrape, syncPlanet } from "./map3d/maplibre";
+import { applySun, below, corners, OUR_LAYERS, setGlobe as setProjection, settleOnGround, skySpec, syncAreas, syncBuildings, syncCredits, syncDrape, syncPlanet } from "./map3d/maplibre";
 import { createOverlay, hasWebGL2, lighting, loadDeck, type Loaded, type Overlay } from "./map3d/overlay";
 import type { Map3DScene } from "./map3d/scene";
 
@@ -108,6 +108,21 @@ function deviceLite(): boolean {
   const small = window.matchMedia?.("(max-width: 640px)").matches ?? false;
   const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
   return small || (mem !== undefined && mem <= 4);
+}
+
+/** Credits for the imagery, lidar and analyses on the map now (the basemap and terrain sources credit themselves). */
+function creditsFor(p: EarthMapProps): string {
+  const s = p.scene3d ?? {};
+  const out: string[] = [];
+  if (p.site?.photo) out.push("Aerial photo: USDA NAIP");
+  if (p.site?.lidar || s.twin?.lidar || s.cloud?.passes.length) out.push("Lidar: USGS 3DEP");
+  if (s.twin) out.push("Twin: © OpenStreetMap contributors, AWS Terrain Tiles");
+  const kind = s.analysis?.kind;
+  if (kind === "landuse") out.push("Land use: © Impact Observatory, Microsoft and Esri (CC BY 4.0)");
+  if (kind === "ai-change") out.push("AlphaEarth Foundations embeddings: Google DeepMind (CC BY 4.0)");
+  if (kind === "heat" || kind === "cube" || p.drape) out.push("Contains modified Copernicus Sentinel data");
+  if (s.flares?.length || s.twin?.flames.length) out.push("Flares: NASA FIRMS (VIIRS)");
+  return out.join(" · ");
 }
 
 function colourAssets(assets: AssetCollection | null | undefined, parties: MapParty[] | undefined, highlight: EarthMapProps["highlight"], muted: string) {
@@ -344,6 +359,8 @@ function MapCanvas(props: EarthMapProps) {
   // Keyed on the image and box, not the object: each feed poll brings a new object for the same overlay, which would redraw it.
   const overlayUrl = props.overlay?.url ?? null, overlayBox = props.overlay?.bbox.join(",") ?? null;
   useEffect(() => { const m = map.current; if (m && loaded) syncOverlay(m, latest.current.overlay); }, [overlayUrl, overlayBox, loaded]);
+  const credits = creditsFor(props);
+  useEffect(() => { const m = map.current; if (m && loaded) syncCredits(m, credits); }, [credits, loaded]);
   const drapeUrl = props.drape?.url ?? null;
   useEffect(() => { const m = map.current; if (m && loaded) syncDrape(m, latest.current.drape); }, [drapeUrl, loaded]);
   const planetKey = props.planet ? `${props.planet.type}/${props.planet.id}` : null;
