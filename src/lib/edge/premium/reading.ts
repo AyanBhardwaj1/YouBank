@@ -131,6 +131,16 @@ async function readRange(f: FileRow, start: number, end: number): Promise<Uint8A
   return out;
 }
 
+/**
+ * A provider's refusal as an error fit for the person: the status only. Its body (which can name the
+ * account, the key or the setup) goes to the log.
+ */
+async function refused(provider: string, res: Response): Promise<Error> {
+  const body = (await res.text().catch(() => "")).slice(0, 500);
+  logError(new Error(`${provider} answered ${res.status}: ${body}`), { status: res.status, where: `edge-${provider.toLowerCase()}` });
+  return new Error(`${provider} refused the request (HTTP ${res.status})`);
+}
+
 /** A step's failure, already logged, with a message fit for the person. */
 class StepFailed extends Error {}
 
@@ -173,7 +183,7 @@ async function llamaRead(docId: number, s: Steps): Promise<boolean> {
     await setDoc(docId, { status: "parsing", error: "" });
     const { url, init } = llamaUpload(await readParts(f.r2Key, f.parts), f.name, f.mime, key, tier);
     const res = await fetch(url, { ...init, cache: "no-store", signal: AbortSignal.timeout(120_000) });
-    if (!res.ok) throw new Error(`LlamaParse answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) throw await refused("LlamaParse", res);
     return { id: parseLlamaJob(await res.json()).id };
   });
   for (let k = 0; k < 90; k++) {
@@ -182,7 +192,7 @@ async function llamaRead(docId: number, s: Steps): Promise<boolean> {
       // The job is already paid for, so a check that fails is tried again on the next poll.
       const res = await fetch(`${llamaBase()}/api/v2/parse/${encodeURIComponent(job.id)}?expand=markdown`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(60_000) }).catch(() => null);
       if (!res || res.status >= 500 || res.status === 429) return { state: "wait" };
-      if (!res.ok) throw new Error(`LlamaParse answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (!res.ok) throw await refused("LlamaParse", res);
       const j = parseLlamaJob(await res.json());
       if (j.status === "FAILED" || j.status === "CANCELLED") return { state: "failed", error: j.error || j.status.toLowerCase() };
       if (j.status !== "COMPLETED") return { state: "wait" };

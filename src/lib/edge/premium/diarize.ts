@@ -43,6 +43,11 @@ export async function diarizePiece(bytes: Uint8Array, name: string, mime: string
   const res = await client.audio.transcriptions.create({
     file: await toFile(bytes, name, { type: mime || "audio/mpeg" }), model,
     response_format: "diarized_json", chunking_strategy: "auto",
+  }).catch((e) => {
+    // OpenAI's own message (quota, billing, the key) stays in the log; the person gets the status only.
+    if (!(e instanceof OpenAI.APIError)) throw e;
+    logError(e, { status: e.status ?? 502, where: "edge-diarize" });
+    throw new Error(`OpenAI refused the transcription${e.status ? ` (HTTP ${e.status})` : ""}`);
   });
   const r = parseDiarized(res);
   recordUsage({ feature: "edge.transcribe-diarize", provider: "openai", model, usage: { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0 }, extraCostUsd: (r.duration / 60) * USD_PER_MINUTE });

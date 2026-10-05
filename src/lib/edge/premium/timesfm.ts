@@ -14,6 +14,7 @@
  */
 import { createSign } from "node:crypto";
 import { recordUsage } from "@/lib/ai/usage";
+import { logError } from "@/lib/errors";
 import { FACTOR_LABEL, FACTORS, type Factor, type FactorRow } from "../scen/data";
 
 export type ForecastPoint = { date: string; p10: number; p50: number; p90: number };
@@ -168,9 +169,16 @@ export async function forecastDriver(rows: FactorRow[], f: Factor, horizon: numb
   const h = HORIZONS.includes(horizon) ? horizon : 26;
   const base = { factor: f, label: FACTOR_LABEL[f], unit: unitOf(f), horizonWeeks: h, asOf: last.date, history };
   if (useTimesfm) {
-    const j = await bigQuery(forecastSql(weeks.slice(-520), h));
-    const points = parseForecastRows(f, j, last.value);
-    if (!points.length) throw new Error("BigQuery returned no forecast");
+    // BigQuery's and Google's own messages (project names, permissions, settings) stay in the log; the
+    // person gets a plain message with its reference.
+    const points = await bigQuery(forecastSql(weeks.slice(-520), h)).then((j) => parseForecastRows(f, j, last.value)).then((p) => {
+      if (!p.length) throw new Error("BigQuery returned no forecast");
+      return p;
+    }).catch((e) => {
+      if ((e as { status?: number }).status === 504) throw e;
+      const ref = logError(e, { status: 502, where: "edge-timesfm" });
+      throw Object.assign(new Error(`TimesFM could not forecast just now (ref ${ref}). Try again later, or use the standard forecast.`), { status: 502 });
+    });
     return { ...base, method: "timesfm", model: timesfmModel(), points, note: `${timesfmModel()} through BigQuery AI.FORECAST on ${Math.min(520, weeks.length)} weeks of history; 10-90% prediction interval.` };
   }
   return { ...base, method: "drift", model: "drift and volatility", points: driftForecast(f, weeks, h), note: "The average weekly move and its volatility over the last five years, widening with the square root of time; 10-90% band. A baseline, not a view." };
