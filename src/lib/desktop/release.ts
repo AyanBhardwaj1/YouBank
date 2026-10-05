@@ -12,7 +12,11 @@ export const RELEASES_URL = `https://github.com/${DESKTOP_REPO}/releases`;
 
 export type InstallerKind = "msi" | "exe" | "dmg" | "appimage" | "deb" | "rpm";
 export type Installer = { kind: InstallerKind; name: string; url: string; bytes: number; arch: "x64" | "arm64" | "universal" };
-export type DesktopRelease = { version: string; tag: string; url: string; publishedAt: string; notes: string; installers: Installer[] };
+export type DesktopRelease = {
+  version: string; tag: string; url: string; publishedAt: string; notes: string; installers: Installer[];
+  /** The signed updater manifest (latest.json) the app's updater reads, when the release has one. */
+  updaterJson: string | null;
+};
 
 type GhAsset = { name: string; browser_download_url: string; size: number };
 type GhRelease = { tag_name: string; html_url: string; draft: boolean; prerelease: boolean; published_at: string | null; body: string | null; assets: GhAsset[] };
@@ -34,6 +38,7 @@ export function pickRelease(list: GhRelease[]): DesktopRelease | null {
   return {
     version: r.tag_name.replace(/^desktop-v/, ""), tag: r.tag_name, url: r.html_url, publishedAt: r.published_at ?? "",
     notes: (r.body ?? "").slice(0, 4000), installers: r.assets.map(installerOf).filter((x): x is Installer => !!x),
+    updaterJson: r.assets.find((a) => a.name === "latest.json")?.browser_download_url ?? null,
   };
 }
 
