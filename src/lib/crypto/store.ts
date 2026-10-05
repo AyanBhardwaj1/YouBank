@@ -6,7 +6,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { parseAddress } from "./address";
-import { isChainKey, type ChainKey } from "./chains";
+import { CHAINS, isChainKey, type ChainKey } from "./chains";
 import { checkNotaryTx, isSha256Hex, isTxHash, type TxFacts } from "./notary";
 import { evmClient, isEvmKey } from "./rpc";
 
@@ -60,6 +60,10 @@ export async function readTx(chain: ChainKey, hash: `0x${string}`): Promise<TxFa
   const client = evmClient(chain);
   const tx = await client.getTransaction({ hash }).catch(() => null);
   if (!tx) return null;
+  // The chain is implied by which node answered; a misconfigured *_RPC_URL pointing at another chain
+  // must not confirm a notarization there, so check the transaction's own EIP-155 chain id too.
+  const expected = CHAINS[chain].chainId;
+  if (typeof tx.chainId === "number" && expected && tx.chainId !== expected) return null;
   const receipt = await client.getTransactionReceipt({ hash }).catch(() => null);
   return { from: tx.from, to: tx.to ?? null, value: tx.value, input: tx.input, status: receipt ? receipt.status : "pending", blockNumber: receipt?.blockNumber ?? null };
 }

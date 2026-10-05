@@ -6,7 +6,7 @@
  * Offline: no network needed.   pnpm exec tsx scripts/test-crypto.ts
  */
 import { base58Decode, isBase58Btc, isBech32Btc, isSolana, parseAddress } from "@/lib/crypto/address";
-import { CHAINS, EVM_CHAINS, shortAddress, txUrl } from "@/lib/crypto/chains";
+import { CHAINS, EVM_CHAINS, isChainKey, shortAddress, txUrl } from "@/lib/crypto/chains";
 import { canonicalJson, checkNotaryTx, notaryCalldata, NOTARY_PREFIX, parseNotaryCalldata, sha256Hex } from "@/lib/crypto/notary";
 import { parseChart, parseCoin, parseGlobal, parseMarkets } from "@/lib/crypto/market";
 import { mergeCashflows, parsePools, parseProtocols, parseStablecoins, rwaKind } from "@/lib/crypto/defi";
@@ -85,6 +85,7 @@ async function notary() {
   check("verify: carrying value", !checkNotaryTx({ ...good, value: BigInt(1) }, SHA).ok);
   check("verify: a different file", !checkNotaryTx(good, "0".repeat(64)).ok);
   check("verify: from someone else", !checkNotaryTx(good, SHA, "0x0000000000000000000000000000000000000001").ok);
+  check("chains: only real chain keys, never inherited names", isChainKey("base") && !isChainKey("toString") && !isChainKey("constructor") && !isChainKey("__proto__"));
   check("canonical JSON ignores key order", canonicalJson({ b: 1, a: { d: [1, { y: 2, x: 1 }], c: null } }) === canonicalJson({ a: { c: null, d: [1, { x: 1, y: 2 }] }, b: 1 }) && canonicalJson({ a: undefined, b: 1 }) === '{"b":1}');
   const doc = { id: 7, title: "Model", workbook: { order: ["s"], sheets: { s: { id: "s", name: "A", cells: { A1: { v: 1 } } } } }, deck: { order: [] } };
   const ev = [{ id: 1, actor: "u", actorName: "Ann", label: "Edit", at: "2026-10-01T00:00:00.000Z", patches: [{ op: "x", b: 1, a: 2 }] }];
@@ -268,7 +269,7 @@ async function notary() {
   check("terminal: TOKEN keeps its argument", (() => { const r = parseCommand("TOKEN eth", "SNOW"); return r.ok && r.command.fn === "TOKEN" && r.command.arg === "eth" && r.command.ticker === ""; })());
   check("terminal: WALLET keeps the address's case", (() => { const r = parseCommand("WALLET 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", ""); return r.ok && r.command.arg === "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"; })());
   check("terminal: crypto codes need no ticker", (() => { const r = parseCommand("DEFI", "SNOW"); return r.ok && r.command.ticker === ""; })());
-  check("terminal: data functions and Pro screens", ["crypto", "token", "defi", "stables", "yields", "btc", "raises", "unlocks", "treasuries", "rwa"].every(isCryptoFn) && !isCryptoFn("price") && PRO_FNS.has("token") && !PRO_FNS.has("treasuries"));
+  check("terminal: data functions and Pro screens", ["crypto", "token", "defi", "stables", "yields", "btc", "raises", "unlocks", "treasuries", "rwa"].every(isCryptoFn) && !isCryptoFn("price") && !isCryptoFn("constructor") && PRO_FNS.has("token") && !PRO_FNS.has("treasuries"));
 }
 
 /* ---------------- Studio templates ---------------- */

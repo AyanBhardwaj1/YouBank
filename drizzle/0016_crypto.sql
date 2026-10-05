@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS "crypto_notarizations" (
   "confirmed_at"     timestamp with time zone,
   "created_at"       timestamp with time zone NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "crypto_notarizations_tx_uq" ON "crypto_notarizations" ("chain", "tx_hash");
+-- Unique per person: transaction hashes are public, so a global unique index would let anyone
+-- claim another person's transaction first and lock them out of recording it.
+CREATE UNIQUE INDEX IF NOT EXISTS "crypto_notarizations_user_tx_uq" ON "crypto_notarizations" ("user_id", "chain", "tx_hash");
 CREATE INDEX IF NOT EXISTS "crypto_notarizations_user_idx" ON "crypto_notarizations" ("user_id", "created_at");
 CREATE INDEX IF NOT EXISTS "crypto_notarizations_sha_idx" ON "crypto_notarizations" ("sha256");

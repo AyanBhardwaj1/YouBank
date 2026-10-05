@@ -1319,4 +1319,4 @@ export const cryptoNotarizations = pgTable("crypto_notarizations", {
   blockNumber: bigint("block_number", { mode: "number" }),
   confirmedAt: ts("confirmed_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
-}, (t) => [uniqueIndex("crypto_notarizations_tx_uq").on(t.chain, t.txHash), index("crypto_notarizations_user_idx").on(t.userId, t.createdAt), index("crypto_notarizations_sha_idx").on(t.sha256)]);
+}, (t) => [uniqueIndex("crypto_notarizations_user_tx_uq").on(t.userId, t.chain, t.txHash), index("crypto_notarizations_user_idx").on(t.userId, t.createdAt), index("crypto_notarizations_sha_idx").on(t.sha256)]);

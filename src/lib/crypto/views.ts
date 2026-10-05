@@ -95,7 +95,7 @@ export async function rwaView() {
 
 /** Terminal data functions served by this module, and how long a browser may reuse each (seconds). */
 export const CRYPTO_TTL: Record<string, number> = { crypto: 120, token: 300, defi: 900, stables: 900, yields: 900, btc: 60, raises: 1800, unlocks: 1800, treasuries: 3600, rwa: 1800 };
-export const isCryptoFn = (fn: string) => fn in CRYPTO_TTL;
+export const isCryptoFn = (fn: string) => Object.prototype.hasOwnProperty.call(CRYPTO_TTL, fn);
 
 /** What each screen shows, for the "AI read" prompt. */
 export const CRYPTO_EXPLAIN: Record<string, string> = {

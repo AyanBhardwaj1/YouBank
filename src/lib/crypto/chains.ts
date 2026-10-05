@@ -89,7 +89,8 @@ export const CHAINS: Record<ChainKey, Chain> = {
 
 export const CHAIN_KEYS = Object.keys(CHAINS) as ChainKey[];
 export const EVM_CHAINS = CHAIN_KEYS.filter((k) => CHAINS[k].kind === "evm");
-export const isChainKey = (v: unknown): v is ChainKey => typeof v === "string" && v in CHAINS;
+// Own keys only: `"toString" in CHAINS` is true, and a request body must not be able to name one.
+export const isChainKey = (v: unknown): v is ChainKey => typeof v === "string" && Object.prototype.hasOwnProperty.call(CHAINS, v);
 
 /** User-signed actions (notarizing) default to Base: cents in fees, Ethereum's security model. */
 export const NOTARY_CHAIN: ChainKey = "base";

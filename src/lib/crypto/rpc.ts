@@ -38,4 +38,4 @@ export function evmClient(key: EvmKey): PublicClient {
   return c;
 }
 
-export const isEvmKey = (k: ChainKey): k is EvmKey => k in EVM;
+export const isEvmKey = (k: ChainKey): k is EvmKey => Object.prototype.hasOwnProperty.call(EVM, k);
