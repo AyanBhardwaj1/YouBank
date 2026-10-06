@@ -1,0 +1,67 @@
+/**
+ * Who may use what. Server only.
+ *
+ * A person's plan comes from their `subscriptions` row (written by billing); without one it is Campus for
+ * a .edu address and Free otherwise. Administrators (ADMIN_EMAILS) are treated as Enterprise. A
+ * subscription that has lapsed (canceled, unpaid) falls back to the free plan.
+ *
+ * Routes that start a premium feature call `requireFeature` before doing any paid work; the error it
+ * throws carries status 402 and a plain message, so `guarded()` shows it to the person as written.
+ */
+import { cache } from "react";
+import { eq } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { isAdmin } from "@/lib/auth/admin";
+import type { CurrentUser } from "@/lib/auth/user";
+import { featureById, FEATURES } from "./features";
+import { isPlanId, planAtLeast, PLANS, type PlanId } from "./plans";
+
+export type Entitlements = {
+  plan: PlanId;
+  admin: boolean;
+  status: string;
+  /** Ids of the premium features this person may use. */
+  features: string[];
+};
+
+const LIVE = new Set(["active", "trialing", "past_due"]);
+
+const isCampusEmail = (email: string) => /\.edu$/i.test(email.trim().split("@")[1] ?? "");
+
+/** This person's plan and what it unlocks; one lookup per request. */
+export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> => {
+  const admin = isAdmin(user);
+  let plan: PlanId = isCampusEmail(user.email) ? "campus" : "free";
+  let status = "none";
+  if (db) {
+    const [row] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, user.id)).catch(() => []);
+    if (row) {
+      status = row.status;
+      if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) plan = row.plan;
+    }
+  }
+  if (admin) plan = "enterprise";
+  const features = FEATURES.filter((f) => admin || planAtLeast(plan, f.minPlan)).map((f) => f.id);
+  return { plan, admin, status, features };
+});
+
+export async function canUse(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<boolean> {
+  return (await entitlements(user)).features.includes(featureId);
+}
+
+export class PremiumRequiredError extends Error {
+  /** Read by `guarded()`: below 500, so the message reaches the person as written. */
+  readonly status = 402;
+  constructor(readonly featureId: string, readonly minPlan: PlanId) {
+    const f = featureById(featureId);
+    super(`${f?.name ?? "This feature"} is part of the ${PLANS[minPlan].name} plan. Upgrade in Settings, under Plan, to use it.`);
+    this.name = "PremiumRequiredError";
+  }
+}
+
+/** Throw unless this person may use the feature. Call before any paid work starts. */
+export async function requireFeature(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<void> {
+  const f = featureById(featureId);
+  if (!f) throw new Error(`Unknown premium feature: ${featureId}`);
+  if (!(await canUse(user, featureId))) throw new PremiumRequiredError(featureId, f.minPlan);
+}
