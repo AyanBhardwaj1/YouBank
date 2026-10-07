@@ -106,8 +106,10 @@ async function main() {
   const site = normaliseSiteUrl(siteRaw) ?? resolveSiteUrl(process.env);
   if (!dry) {
     if (!key) { console.error("Set STRIPE_SECRET_KEY (a test key, sk_test_..., unless you mean to set up live billing with --live)."); process.exit(1); }
-    if (key.startsWith("sk_live_") && !live) { console.error("That is a live key. Run again with --live to set up real billing."); process.exit(1); }
-    if (live && !key.startsWith("sk_live_")) { console.error("--live needs a live key (sk_live_...). Copy it from the Stripe dashboard once the account is activated."); process.exit(1); }
+    // Restricted keys (rk_live_) are live too: they need --live like a secret key does.
+    const liveKey = /^(sk|rk)_live_/.test(key);
+    if (liveKey && !live) { console.error("That is a live key. Run again with --live to set up real billing."); process.exit(1); }
+    if (live && !liveKey) { console.error("--live needs a live key (sk_live_... or rk_live_...). Copy it from the Stripe dashboard once the account is activated."); process.exit(1); }
     if (live && (site === DEFAULT_SITE_URL || !normaliseSiteUrl(siteRaw))) { console.error(`Set NEXT_PUBLIC_SITE_URL (or pass --domain https://<your domain>) for a live run; it would otherwise use ${site}.`); process.exit(1); }
   }
   const hook = flag("webhook") ? value("webhook") ?? webhookUrl(site) : null;
