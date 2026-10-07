@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/client/errors";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
@@ -29,7 +30,7 @@ export function ApproveDesktop({ initialCode, onApproved }: { initialCode: strin
       setState({ ok: here ? `Connected ${what}. You can carry on; alerts and quick ask are ready.` : `Connected ${what}. Go back to the app: it finishes connecting within a few seconds.` });
       setCode("");
       onApproved?.();
-    } catch (e) { setState({ error: e instanceof Error ? e.message : String(e) }); }
+    } catch (e) { setState({ error: errorMessage(e) }); }
   };
   return (
     <>

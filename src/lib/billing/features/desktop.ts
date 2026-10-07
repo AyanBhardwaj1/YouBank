@@ -28,6 +28,7 @@ export const DESKTOP_FEATURES: PremiumFeature[] = [
     description: `Index more than ${DESKTOP_FREE_FILES} PDFs, Word and Excel files from folders on your computer, so research, Edge and Studio can cite them.`,
     minPlan: "pro",
     metered: true,
+    inAiAllowance: true,
     costPerUseUsd: 0.03,
   },
   {
@@ -37,6 +38,7 @@ export const DESKTOP_FEATURES: PremiumFeature[] = [
     description: "Let the desktop app write your Edge brief and check your watched sites on a schedule you set, while it sits in the tray. Off until you switch each task on.",
     minPlan: "pro",
     metered: true,
+    inAiAllowance: true,
     costPerUseUsd: 0.05,
   },
   {
@@ -46,6 +48,7 @@ export const DESKTOP_FEATURES: PremiumFeature[] = [
     description: "Ask the agent to change an Excel model or PowerPoint deck on your computer. It works on the linked Studio copy and writes the result back to your file, keeping a backup.",
     minPlan: "pro",
     metered: true,
+    inAiAllowance: true,
     costPerUseUsd: 0.5,
   },
 ];
