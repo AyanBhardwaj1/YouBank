@@ -14,6 +14,8 @@ import {
   type Anchors, type CompRow, type Fin, type TemplateId,
 } from "./templates";
 import { emptyDeck, type Deck, type SheetData, type StudioDocData, type Workbook } from "./types";
+import { buildCryptoComps, buildStakingYield, buildTokenDcf, buildTokenMultiples, isCryptoTemplate } from "./crypto-templates";
+import { cryptoPeersFor, tokenFinFor } from "@/lib/crypto/studio-data";
 
 export async function finFor(ticker?: string | null): Promise<Fin> {
   if (!ticker) return ILLUSTRATIVE;
@@ -58,6 +60,18 @@ export type Built = { sheets: SheetData[]; names: Record<string, string>; deck: 
 export async function buildTemplate(template: TemplateId, opts: { ticker?: string | null; peers?: string[]; acquirer?: string | null }, existing?: StudioDocData): Promise<Built> {
   const doc: StudioDocData = existing ?? { title: "", workbook: { order: [], sheets: {} }, deck: emptyDeck(), comments: [] };
   const name = (base: string) => uniqueSheetName(doc, base);
+  // Crypto templates take a token, not a company: they never touch SEC data.
+  if (isCryptoTemplate(template)) {
+    const t = await tokenFinFor(opts.ticker);
+    const label = t.illustrative ? "Illustrative token" : `${t.name} (${t.symbol})`;
+    const b = template === "token_multiples" ? buildTokenMultiples(t, name("Token multiples"))
+      : template === "token_dcf" ? buildTokenDcf(t, name("Token DCF"))
+      : template === "staking_yield" ? buildStakingYield(t, name("Staking yield"))
+      : buildCryptoComps(t, await cryptoPeersFor(t, opts.peers), name("Crypto comps"));
+    const prefix = { token_multiples: "TOKMULT", token_dcf: "TOKDCF", staking_yield: "STAKE", crypto_comps: "CCOMPS" }[template];
+    const what = { token_multiples: "token multiples", token_dcf: "token DCF", staking_yield: "staking yield", crypto_comps: "crypto comps" }[template];
+    return { sheets: b.sheets, names: namesFrom(prefix, b.anchors), deck: null, notes: b.notes, title: `${label}: ${what}`, fin: ILLUSTRATIVE };
+  }
   const fin = await finFor(opts.ticker);
   const label = fin.illustrative ? "Illustrative" : `${fin.name} (${fin.ticker})`;
   const notes: string[] = [];

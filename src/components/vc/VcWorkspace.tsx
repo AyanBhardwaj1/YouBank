@@ -17,8 +17,8 @@ type Startup = {
 };
 type Facets = { sources: { source: string; n: number }[]; countries: { country: string; n: number }[]; programs: { program: string; n: number }[]; industries: { industry: string; n: number }[]; total: number; lastSync: string | null };
 
-const SOURCE_LABEL: Record<string, string> = { yc: "YC", a16z: "a16z", thiel: "Thiel", hn: "Show HN", formd: "Form D", web: "Web", user: "Added" };
-const SOURCE_STYLE: Record<string, string> = { yc: "bg-accent-soft text-accent", a16z: "bg-info/15 text-info", thiel: "bg-pos/15 text-pos", hn: "bg-elevated text-fg/80", formd: "bg-neg/10 text-neg", web: "bg-raised text-muted", user: "bg-raised text-muted" };
+const SOURCE_LABEL: Record<string, string> = { yc: "YC", a16z: "a16z", thiel: "Thiel", hn: "Show HN", formd: "Form D", web: "Web", user: "Added", defillama: "Crypto" };
+const SOURCE_STYLE: Record<string, string> = { yc: "bg-accent-soft text-accent", a16z: "bg-info/15 text-info", thiel: "bg-pos/15 text-pos", hn: "bg-elevated text-fg/80", formd: "bg-neg/10 text-neg", web: "bg-raised text-muted", user: "bg-raised text-muted", defillama: "bg-chart-emphasis/15 text-chart-emphasis" };
 
 export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const { profile } = useWorkspace();

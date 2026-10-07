@@ -5,7 +5,7 @@ import { memo } from "@/lib/memo";
 export type StartupRow = typeof schema.startups.$inferSelect;
 export type NewStartup = Omit<typeof schema.startups.$inferInsert, "id" | "syncedAt">;
 
-export const SOURCES = { yc: "Y Combinator", a16z: "a16z portfolio", thiel: "Thiel Fellowship", hn: "Show HN", formd: "SEC Form D", web: "Web discovery", user: "Added by users" } as const;
+export const SOURCES = { yc: "Y Combinator", a16z: "a16z portfolio", thiel: "Thiel Fellowship", hn: "Show HN", formd: "SEC Form D", web: "Web discovery", user: "Added by users", defillama: "Crypto rounds (DefiLlama)" } as const;
 export type SourceId = keyof typeof SOURCES;
 
 export const slugify = (s: string) => s.toLowerCase().replace(/https?:\/\/(www\.)?/, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);

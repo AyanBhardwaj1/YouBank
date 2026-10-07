@@ -30,6 +30,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Tools](#tools)
    - [Company and filing data](#company-and-filing-data)
    - [Private markets](#private-markets)
+   - [Crypto](#crypto)
    - [Newsroom](#newsroom)
    - [AI assistant](#ai-assistant)
    - [Studio: live models and decks](#studio-live-models-and-decks)
@@ -135,6 +136,18 @@ functions take a ticker (`SNOW WACC`); market functions do not (`ECO`); a few ta
 | `EQS` | A screener over every SEC filer, in plain English | A small model turns words into filters you can edit |
 | `PORT` | Portfolio risk: risk shares, correlations, a year of outcomes | Covariance attribution, bootstrap |
 
+**Crypto** (no ticker needed; free public data, see [Crypto](#crypto))
+
+| Function | What it shows | Models |
+|---|---|---|
+| `CRYP` | The largest tokens, total market cap, bitcoin dominance, DeFi value locked, stablecoin supply | |
+| `TOKEN <token>` | One token: price, supply and float, volatility, drawdown, its protocol's fees, revenue and holders' revenue, valuation multiples, the next unlock | Beta and correlation to bitcoin |
+| `DEFI` / `STBL` / `YLD` | Value locked by chain, category and protocol with fees and revenue; stablecoin supply and net flows; the largest yield pools | |
+| `BTCN` | Bitcoin fees, mempool, hashrate, the next difficulty adjustment, pools | Hashprice, breakeven power price |
+| `RAISE` / `UNLK` / `TRSY` | Crypto venture rounds and lead investors; token unlocks in the next 60 days; companies' crypto at fair value from SEC filings | |
+| `RWA` | Tokenized treasuries, private credit, commodities and real estate | |
+| `WALLET <address>` | Read-only balances and risk of any address (0x…, name.eth, Bitcoin, Solana) | Historical-simulation VaR |
+
 **Workspace:** `LEARN` (your mastery of each function, what to learn next, quick quizzes), `PG` (peer
 groups), `TOOLS` and `TOOL <id>`.
 
@@ -227,11 +240,69 @@ How to add tools: [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.m
 - SEC Form D
 - AI web discovery
 
-It also lists Form D raises with amounts and officers.
+It also lists Form D raises with amounts and officers, and crypto projects from DefiLlama's raises
+database (one entry per project, with every disclosed round, its investors and the total raised).
 
 A nightly job (`/api/cron/sync`, 06:00 UTC) refreshes the directory:
 - Show HN and Form D, for the last three days;
-- the YC, a16z and Thiel lists.
+- the YC, a16z and Thiel lists;
+- crypto rounds from DefiLlama's free API.
+
+### Crypto
+
+`/app/crypto` (and the terminal's crypto functions) covers crypto research, crypto deals, a read-only
+portfolio and on-chain records. **Nothing in YouBank holds a key, trades, swaps or moves funds.** The
+only thing ever sent to a chain is a transaction the person signs in their own wallet (notarizing), and
+the server only reads it back.
+
+**Research (free).** Every figure cites its source under "Models and sources".
+- Tokens: prices, market cap, FDV, float, supply and a year of history from **CoinGecko**'s public API
+  (cached minutes; an optional free demo key raises its limits).
+- DeFi: value locked by chain, category and protocol, fees, revenue and holders' revenue, stablecoin
+  supply and flows, and pool yields from **DefiLlama**. A token's page joins the two: market cap and
+  FDV over annualised fees, revenue and holders' revenue.
+- Bitcoin: fees, mempool, hashrate, difficulty, pools and mining economics (hashprice, the power price
+  at which a machine breaks even) from **mempool.space**.
+- Tokenized real-world assets: DefiLlama's RWA categories sorted into treasuries (BUIDL, Ondo,
+  Franklin…), private credit (Maple, Centrifuge…), commodities and real estate.
+
+**Deal intelligence (free).**
+- Crypto venture rounds with lead investors, and token unlocks with their share of circulating supply
+  (DefiLlama).
+- Public companies' crypto treasuries: crypto assets at fair value from **SEC XBRL** frames
+  (`CryptoAssetFairValue`, current and noncurrent, under ASU 2023-08), newest quarter per company.
+- Whale and wallet tracking: a watchlist of any public addresses with balances and recent activity.
+
+**Portfolio.** Connect a wallet (EIP-6963 for MetaMask, Coinbase Wallet and others; the Wallet
+Standard for Phantom and other Solana wallets) or paste addresses: Ethereum, Base, Arbitrum,
+Optimism and Polygon (native coins and major tokens, read from public nodes in one multicall per
+chain), ENS names, Bitcoin and Solana. Holdings are priced and shown with profit and loss against what
+you say you paid, concentration (Herfindahl), stablecoin share, chain exposure, one-year volatility and
+one-day 95% value at risk at today's weights (historical simulation; crypto annualises over 365 days).
+
+**Notarizing on chain.** A deal document, or a Studio model's audit trail (every change, who made it and
+when, and a hash of the patches), is hashed with SHA-256 in the browser; the file never leaves the
+machine. The person's own wallet then sends a zero-value transaction to their own address on **Base**
+with the hash as readable calldata (`YouBank notary v1 sha256:<hash>`), costing a fraction of a cent.
+The server reads the transaction back from a Base node and marks it confirmed only if it is from that
+address, to itself, carries no value and records that hash. Anyone can check a file against any
+transaction, and a notarized Studio model can be checked for changes since.
+
+**Mining map.** Bitcoin mining sites and crypto data centres of the listed miners (Riot, MARA, Core
+Scientific, Cipher, IREN, Bitdeer, Hut 8, CleanSpark and others), from their filings through mid-2025,
+with stated capacity, an estimate of annual power use (85% load) and EIA's estimate that crypto mining
+used 0.6% to 2.3% of U.S. electricity in 2023. Locations are to the town. Sites being converted to AI
+and HPC are marked. It is a tab on `/app/crypto` and a layer (with its own button) on the Edge map;
+the layer is self-contained in `src/lib/crypto/map-layer.ts`, served as GeoJSON by `/api/crypto/sites`.
+
+**Premium** (registered in `src/lib/billing/features/crypto.ts`; each runs only on a click and the server
+checks the plan first):
+
+| Feature | Plan | What it does | Cost to us per use |
+|---|---|---|---|
+| Deep wallet analytics | Pro | Every token a wallet holds and its recent transfers and counterparties, from Alchemy (EVM) and Helius (Solana) | about $0.01 |
+| Pro crypto data | Pro | CoinGecko Pro and DefiLlama Pro on TOKEN, RAISE and UNLK | about $0.001 |
+| Dune queries | Deal Team | The latest results of any saved Dune query, sortable and exportable as CSV | about $0.05 |
 
 ### Newsroom
 
@@ -269,6 +340,9 @@ stories:
   - Media and telecom, real estate: FCC, HUD and FHFA rules in motion; networking and housing research.
   Built from public sources, cached a day and refreshed by the Newsroom pass; a source that does not
   answer keeps its last good lane.
+- **Crypto.** CoinDesk, The Block, Decrypt and Blockworks headlines; DefiLlama rounds of $5M and up and
+  token unlocks that add 1% or more to circulating supply; and 8-Ks about bitcoin or digital-asset
+  treasuries from EDGAR full-text search. All tagged with the crypto lens, so `NI CRYPTO` finds them.
 - **Research briefs.** Twice a day, a small model with web search looks for each active desk's stories
   that have no feed (Reuters, AP); a story is kept only if its page was retrieved and is recent.
 
@@ -302,7 +376,7 @@ close and implied multiples from SEC figures, and advisor league tables.
 You can switch the model and the reasoning depth (low, medium, high or xhigh) per run. The assistant streams
 its output, calls function tools, shows reasoning summaries, searches the web and returns structured output.
 
-**Twenty-one tools:**
+**Thirty-two tools:**
 
 | Tool | Tool | Tool |
 |---|---|---|
@@ -313,9 +387,15 @@ its output, calls function tools, shows reasoning summaries, searches the web an
 | `get_insider_transactions` | `calc` (exact arithmetic) | `get_price_risk` |
 | `get_credit_risk` | `get_earnings_quality` | `get_revenue_forecast` |
 | `get_cost_of_capital` | `get_macro_outlook` | `screen_companies` |
+| `get_crypto_market` | `get_token` | `get_defi_overview` |
+| `get_stablecoins` | `get_crypto_raises` | `get_token_unlocks` |
+| `get_crypto_treasuries` | `get_bitcoin_network` | `get_rwa_tokenization` |
+| `get_wallet_portfolio` | `token_valuation` | |
 
-The last seven are the terminal's models, so an answer about risk, credit, a forecast or the economy
-names the model behind each number and gives a range.
+The seven after `calc` are the terminal's models, so an answer about risk, credit, a forecast or the economy
+names the model behind each number and gives a range. The crypto tools read free public data
+(CoinGecko, DefiLlama, mempool.space, SEC XBRL, public nodes) and return source ids for every figure;
+`token_valuation` does fee-multiple, discounted token cash flow and staking-yield arithmetic exactly.
 
 **Cost.** Classification, extraction and summaries route to a small model (GPT-5.6 Luna or Claude Haiku
 4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
@@ -416,6 +496,14 @@ Each template is fully formula-driven and filled from SEC XBRL company facts and
 | LBO | Sources and uses; a debt schedule with a cash sweep and interest on average balances; IRR and MOIC; an entry × exit IRR data table. It uses adjusted EBITDA, with a take-private entry at a 25% premium, for listed companies |
 | Merger model | Accretion/dilution, breakeven synergies, and a live premium × stock-mix grid |
 | Cap table | A priced round, with the option-pool top-up solved in closed form |
+| Token multiples | A token's market cap and FDV over its annualised fees, revenue and holders' revenue, with the implied price from low, mid and high peer multiples |
+| Token DCF | Cash flow to tokenholders over 5 years with fading growth, a terminal value, and value per token on the supply expected after unlocks; a discount rate × terminal growth data table |
+| Staking yield | Nominal and real staking yield, the dilution of a holder who does not stake, and the value of fees to stakers; a staking ratio × issuance data table |
+| Crypto comps | Peer tokens (named, or the top fee earners in the token's category) on market cap and FDV over fees, revenue, holders' revenue and value locked, with quartiles and the implied price |
+
+The crypto templates take a token symbol or CoinGecko id in the ticker box and are filled from CoinGecko
+and DefiLlama (USD millions, supplies in millions of tokens); left blank, they open with illustrative
+inputs.
 
 #### The deck
 
@@ -1130,6 +1218,7 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
 **Migrations.**
@@ -1146,6 +1235,7 @@ All tables are in `src/db/schema.ts`.
   - `0008_office`
   - `0009_ai_usage`
   - `0010_contact_knowledge`
+  - `0016_crypto`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1224,6 +1314,13 @@ bash scripts/preflight.sh                                         # everything t
 | `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
+| `ETH_RPC_URL`, `BASE_RPC_URL`, `ARBITRUM_RPC_URL`, `OPTIMISM_RPC_URL`, `POLYGON_RPC_URL`, `SOLANA_RPC_URL` | no | Crypto: node endpoints for balances and notarization checks; public endpoints by default |
+| `MEMPOOL_API_URL` | no | Crypto: a self-hosted mempool.space API; `https://mempool.space/api` by default |
+| `COINGECKO_DEMO_KEY` | no | Crypto: CoinGecko's free demo key, which raises the keyless limits |
+| `ETHERSCAN_API_KEY` | no | Crypto: a free Etherscan key for recent wallet activity on Ethereum and Base |
+| `COINGECKO_PRO_KEY`, `DEFILLAMA_API_KEY` | for Pro crypto data | Paid feeds, used only when an entitled person clicks "Pro data" |
+| `ALCHEMY_API_KEY`, `HELIUS_API_KEY` | for deep wallet analytics | Paid indexers (EVM, Solana), used only on a click |
+| `DUNE_API_KEY` | for Dune queries | Reads saved queries' latest results, only on a click |
 | `OVERPASS_URL` | no | The OpenStreetMap Overpass endpoint the 3D digital twin reads; default the public overpass-api.de |
 | `USGS_LIDAR_INDEX_URL` | no | The index of USGS lidar surveys for point clouds; default Hobu's `resources.geojson` on GitHub |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
@@ -1328,6 +1425,7 @@ bash scripts/preflight.sh                                         # everything t
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
+| Crypto (122 tests) | `pnpm exec tsx scripts/test-crypto.ts` | Address checksums (EIP-55, Base58Check, Bech32 and Bech32m, Solana keys); notarization calldata, verification and canonical JSON; every API parser against fixtures (CoinGecko, DefiLlama, mempool.space, SEC frames, Etherscan, Alchemy, Dune); portfolio risk; valuation math; mining economics; the site data and popup escaping; Newsroom and directory converters; the four crypto Studio templates against the valuation math, the audit and their data tables |
 | Billing (65 tests) | `pnpm exec tsx scripts/test-billing.ts` (`--table` prints the cost model) | Every paid plan's margin at typical use against the target, the worst case at the full AI allowance, Free and Campus cost ceilings; AI caps by plan and their overrides; the monthly-allowance message; checkout requests; the row a Stripe subscription writes and stale cancellations; webhook signatures, tampering and replay |
 | Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
 | 3D maps (71 tests) | `pnpm exec tsx scripts/test-maps.ts` | The sun's position and light; procedural tank, stack, flame and tube meshes and the glTF writer; lidar octree selection under a budget and the point cloud wire format; terrain tiles; OpenStreetMap parsing; the digital twin's merging and flame placement; change, land-use and footprint cells; the layer registry; the maps plan features |
@@ -1373,6 +1471,13 @@ production.
 - Uploaded printouts and data-room files are read as content: the reviewer's marks are the only requests,
   and printed text is never followed as an instruction.
 
+**Crypto.**
+- YouBank never asks for, stores or uses a private key or seed phrase, and has no custody, trading or
+  transfer feature. Connecting a wallet shares its address only.
+- The one transaction it ever asks a wallet for is a notarization: zero value, to the person's own
+  address, on Base, shown by their wallet for them to approve. The server verifies it by reading the
+  chain; it signs nothing.
+- Paid crypto APIs are called only when an entitled person clicks, never from a page load or a cron.
 **Errors.**
 - Nobody sees a raw error. A failure meant for people ("This draft was already sent", a permission or a
   limit) is shown as written; anything that looks internal (SQL, a URL or a key, a stack trace, an HTML
@@ -1546,7 +1651,9 @@ YouBank/
     studio/                Studio home, workspace, grid, deck view, slide charts, state hook
     office/                the add-in's task pane, and the connect and install pages
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
-    terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS)
+    terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS,
+                           and the crypto screens CRYP TOKEN DEFI STBL YLD BTCN RAISE UNLK TRSY RWA WALLET)
+    crypto/                the Crypto page, wallet connection, portfolio, notarizing, the mining map, Dune
     workflows/             tool gallery, runner, form, output blocks
     theme/  charts/  motion/  ui/
   src/db/schema.ts         every table
@@ -1559,6 +1666,9 @@ YouBank/
                            manifest, its API client
     ai/                    models, config, agent (OpenAI Responses and Anthropic), data tools, prompts
     edgar/  fmp/  vc/      SEC EDGAR and XBRL, prices, startup directory and Form D
+    crypto/                crypto data (CoinGecko, DefiLlama, mempool.space, public nodes, SEC frames),
+                           addresses, portfolio risk, valuation, notarization, mining sites and the map
+                           layer, Newsroom signals, assistant tools
     workflows/             tool contract, prompt builder, registry, a pack per role
     teams/  collab/  auth/ teams and roles, live collaboration, sign-in
     themes.ts calc.ts roles.ts metrics.ts company.ts

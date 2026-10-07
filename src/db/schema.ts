@@ -1318,3 +1318,51 @@ export const seatAssignments = pgTable("seat_assignments", {
   name: text("name").notNull().default(""),
   assignedAt: ts("assigned_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("seat_assignments_user_uidx").on(t.userId), index("seat_assignments_owner_idx").on(t.ownerUserId, t.assignedAt)]);
+
+/* ---------------- Crypto: watched addresses, cost basis, notarizations ---------------- */
+
+/**
+ * Public blockchain addresses a person reads: their own wallets (connected or pasted) and wallets they
+ * watch (a fund, a treasury, a whale). Addresses only; YouBank never stores or asks for a key.
+ */
+export const cryptoAddresses = pgTable("crypto_addresses", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  address: text("address").notNull(), // checksummed 0x…, a bc1…/1…/3… address, a Solana key, or an ENS name
+  kind: text("kind").notNull(), // evm | bitcoin | solana | ens
+  label: text("label").notNull().default(""),
+  role: text("role").notNull().default("own"), // own | watch
+  source: text("source").notNull().default("pasted"), // pasted | connected
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("crypto_addresses_user_addr_uq").on(t.userId, t.address)]);
+
+/** What a person says they paid for an asset in total (USD), for profit and loss. Keyed by CoinGecko id. */
+export const cryptoCostBasis = pgTable("crypto_cost_basis", {
+  userId: text("user_id").notNull(),
+  asset: text("asset").notNull(),
+  costUsd: doublePrecision("cost_usd").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.asset] })]);
+
+/**
+ * Documents and Studio audit trails notarized on chain: the SHA-256 of the content, recorded by the
+ * person's own wallet in a zero-value transaction to itself (Base by default). Confirmed only after
+ * the server has read the transaction back and checked its calldata.
+ */
+export const cryptoNotarizations = pgTable("crypto_notarizations", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sha256: text("sha256").notNull(),
+  subject: text("subject").notNull().default(""), // file name or "Studio: <title>"
+  kind: text("kind").notNull().default("document"), // document | studio
+  studioDocId: integer("studio_doc_id"),
+  studioEventId: bigint("studio_event_id", { mode: "number" }),
+  chain: text("chain").notNull().default("base"),
+  txHash: text("tx_hash").notNull(),
+  fromAddress: text("from_address").notNull(),
+  status: text("status").notNull().default("pending"), // pending | confirmed | failed
+  reason: text("reason").notNull().default(""),
+  blockNumber: bigint("block_number", { mode: "number" }),
+  confirmedAt: ts("confirmed_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("crypto_notarizations_user_tx_uq").on(t.userId, t.chain, t.txHash), index("crypto_notarizations_user_idx").on(t.userId, t.createdAt), index("crypto_notarizations_sha_idx").on(t.sha256)]);
