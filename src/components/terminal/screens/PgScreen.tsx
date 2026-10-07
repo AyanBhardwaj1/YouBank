@@ -5,6 +5,7 @@ import type { Command } from "@/lib/functions";
 import { PEER_GROUPS, type PeerGroup } from "@/lib/static-data";
 import { createPeerGroup, deletePeerGroup, useDbPeerGroups, type DbPeerGroup } from "@/lib/client/persistence";
 import { confirmDialog } from "@/components/ui/Dialog";
+import { errorMessage } from "@/lib/client/errors";
 
 export function PgScreen({ onRun }: { onRun: (c: Command) => void }) {
   const { groups: dbGroups, error } = useDbPeerGroups();
@@ -21,7 +22,7 @@ export function PgScreen({ onRun }: { onRun: (c: Command) => void }) {
     try {
       await createPeerGroup({ name: name.trim(), members: list.map((t) => ({ ticker: t, tier: "core", rationale: "Added manually" })) });
       setName(""); setTickers(""); setMsg("Saved");
-    } catch (err) { setMsg(err instanceof Error ? err.message : String(err)); }
+    } catch (err) { setMsg(errorMessage(err)); }
     finally { setBusy(false); }
   };
 

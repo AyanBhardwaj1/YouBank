@@ -1269,6 +1269,155 @@ export const subscriptions = pgTable("subscriptions", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   currentPeriodEnd: ts("current_period_end"),
+  /** drizzle/0022_credits.sql: the billing dates allowances reset on, and a cancellation at period end. */
+  currentPeriodStart: ts("current_period_start"),
+  billingAnchor: ts("billing_anchor"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  cancelAt: ts("cancel_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId)]);
+}, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId), index("subscriptions_stripe_subscription_idx").on(t.stripeSubscriptionId)]);
+
+/**
+ * AI credit packs bought (or granted). `usd` is AI use at list price; the unique payment intent makes the
+ * Stripe webhook idempotent. drizzle/0022_credits.sql.
+ */
+export const aiCreditGrants = pgTable("ai_credit_grants", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  pack: text("pack").notNull(),
+  usd: doublePrecision("usd").notNull(),
+  refundedUsd: doublePrecision("refunded_usd").notNull().default(0),
+  paidCents: integer("paid_cents").notNull().default(0),
+  currency: text("currency").notNull().default("usd"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  note: text("note").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("ai_credit_grants_payment_intent_uidx").on(t.stripePaymentIntentId), index("ai_credit_grants_user_idx").on(t.userId, t.createdAt)]);
+
+/** Credits used per allowance period (spend beyond the plan's allowance), settled from the ledger when the period ends. */
+export const aiCreditDraws = pgTable("ai_credit_draws", {
+  userId: text("user_id").notNull(),
+  periodStart: ts("period_start").notNull(),
+  periodEnd: ts("period_end").notNull(),
+  capUsd: doublePrecision("cap_usd").notNull(),
+  availableUsd: doublePrecision("available_usd").notNull(),
+  usedUsd: doublePrecision("used_usd").notNull().default(0),
+  settled: boolean("settled").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.periodStart] })]);
+
+/** Deal Team and Enterprise seats the subscription's owner has given to members of their teams. */
+export const seatAssignments = pgTable("seat_assignments", {
+  id: serial("id").primaryKey(),
+  ownerUserId: text("owner_user_id").notNull(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  email: text("email").notNull().default(""),
+  name: text("name").notNull().default(""),
+  assignedAt: ts("assigned_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("seat_assignments_user_uidx").on(t.userId), index("seat_assignments_owner_idx").on(t.ownerUserId, t.assignedAt)]);
+
+/* ---------------- Crypto: watched addresses, cost basis, notarizations ---------------- */
+
+/**
+ * Public blockchain addresses a person reads: their own wallets (connected or pasted) and wallets they
+ * watch (a fund, a treasury, a whale). Addresses only; YouBank never stores or asks for a key.
+ */
+export const cryptoAddresses = pgTable("crypto_addresses", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  address: text("address").notNull(), // checksummed 0x…, a bc1…/1…/3… address, a Solana key, or an ENS name
+  kind: text("kind").notNull(), // evm | bitcoin | solana | ens
+  label: text("label").notNull().default(""),
+  role: text("role").notNull().default("own"), // own | watch
+  source: text("source").notNull().default("pasted"), // pasted | connected
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("crypto_addresses_user_addr_uq").on(t.userId, t.address)]);
+
+/** What a person says they paid for an asset in total (USD), for profit and loss. Keyed by CoinGecko id. */
+export const cryptoCostBasis = pgTable("crypto_cost_basis", {
+  userId: text("user_id").notNull(),
+  asset: text("asset").notNull(),
+  costUsd: doublePrecision("cost_usd").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.asset] })]);
+
+/**
+ * Documents and Studio audit trails notarized on chain: the SHA-256 of the content, recorded by the
+ * person's own wallet in a zero-value transaction to itself (Base by default). Confirmed only after
+ * the server has read the transaction back and checked its calldata.
+ */
+export const cryptoNotarizations = pgTable("crypto_notarizations", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sha256: text("sha256").notNull(),
+  subject: text("subject").notNull().default(""), // file name or "Studio: <title>"
+  kind: text("kind").notNull().default("document"), // document | studio
+  studioDocId: integer("studio_doc_id"),
+  studioEventId: bigint("studio_event_id", { mode: "number" }),
+  chain: text("chain").notNull().default("base"),
+  txHash: text("tx_hash").notNull(),
+  fromAddress: text("from_address").notNull(),
+  status: text("status").notNull().default("pending"), // pending | confirmed | failed
+  reason: text("reason").notNull().default(""),
+  blockNumber: bigint("block_number", { mode: "number" }),
+  confirmedAt: ts("confirmed_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("crypto_notarizations_user_tx_uq").on(t.userId, t.chain, t.txHash), index("crypto_notarizations_user_idx").on(t.userId, t.createdAt), index("crypto_notarizations_sha_idx").on(t.sha256)]);
+
+/* ---------------- The desktop app ---------------- */
+
+/**
+ * A desktop app asking to connect, the same device-code flow as the Office add-in: the app shows the
+ * code, the signed-in person approves it, and the app (holding the poll secret) collects its token once.
+ */
+export const desktopPairings = pgTable("desktop_pairings", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  pollHash: text("poll_hash").notNull(),
+  platform: text("platform").notNull().default(""), // windows | macos | linux
+  name: text("name").notNull().default(""),
+  userId: text("user_id"),
+  token: text("token"),
+  approvedAt: ts("approved_at"),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("desktop_pairings_code_uidx").on(t.code), uniqueIndex("desktop_pairings_poll_uidx").on(t.pollHash)]);
+
+/**
+ * A connected desktop app. Only the token's hash is stored; revoking cuts it off at once. `settings`
+ * holds which scheduled tasks the person turned on for this computer: the server refuses a scheduled
+ * task that spends AI money unless it is switched on here, whatever the app sends.
+ */
+export const desktopDevices = pgTable("desktop_devices", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  name: text("name").notNull().default(""),
+  platform: text("platform").notNull().default(""),
+  appVersion: text("app_version").notNull().default(""),
+  settings: jsonb("settings").$type<{ tasks?: Record<string, boolean> }>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastUsedAt: ts("last_used_at"),
+  revokedAt: ts("revoked_at"),
+}, (t) => [uniqueIndex("desktop_devices_token_uidx").on(t.tokenHash), index("desktop_devices_user_idx").on(t.userId)]);
+
+/**
+ * Local files a desktop app indexed into Edge documents. The path never leaves the computer: `pathKey`
+ * is a hash of it, so the server can tell "this file changed" from "a new file" without knowing where
+ * it lives. `sha256` is the content hash; an unchanged file is never uploaded twice.
+ */
+export const desktopFiles = pgTable("desktop_files", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  deviceId: integer("device_id").notNull(),
+  pathKey: text("path_key").notNull(),
+  name: text("name").notNull().default(""),
+  sha256: text("sha256").notNull(),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  docId: integer("doc_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("desktop_files_path_uidx").on(t.userId, t.deviceId, t.pathKey), index("desktop_files_user_sha_idx").on(t.userId, t.sha256)]);

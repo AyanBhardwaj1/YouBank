@@ -8,6 +8,7 @@ import { MobileViewport } from "@/components/ui/MobileViewport";
 import { MotionPrefs } from "@/components/motion/MotionPrefs";
 import { THEME_COOKIE, themeById } from "@/lib/themes";
 import { currentUser } from "@/lib/auth/user";
+import { siteUrl } from "@/lib/site";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -16,13 +17,13 @@ const display = Instrument_Serif({ variable: "--font-display-serif", subsets: ["
 export const metadata: Metadata = {
   title: { default: "YouBank · The AI deal desk that learns how you work", template: "%s · YouBank" },
   description: "Cited analysis from SEC filings, and an email agent that tracks every thread, asks you what it cannot answer, remembers, and earns the right to send on its own. For boutique advisors, emerging managers, founders and students.",
-  metadataBase: new URL("https://youbank-nu.vercel.app"),
+  metadataBase: new URL(siteUrl()),
   applicationName: "YouBank",
   openGraph: {
     title: "YouBank · The AI deal desk that learns how you work",
     description: "Cited analysis from SEC filings, and an email agent that earns autonomy from your own decisions.",
     type: "website",
-    url: "https://youbank-nu.vercel.app",
+    url: siteUrl(),
     images: [{ url: "/brand/og.png", width: 1200, height: 630, alt: "YouBank" }],
   },
   twitter: { card: "summary_large_image", title: "YouBank", description: "The AI deal desk that learns how you work.", images: ["/brand/og.png"] },

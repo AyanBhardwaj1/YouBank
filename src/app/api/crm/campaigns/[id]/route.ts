@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { considerDraft } from "@/lib/crm/autopilot";
 import { rateLimit } from "@/lib/locks";
+import { requireFeature } from "@/lib/billing/entitlements";
+import { CAMPAIGNS } from "@/lib/crm/plan";
 import {
   addLeads, deleteCampaign, getCampaign, parseLeadList, prepareCampaign, qualifyCampaign, updateCampaign, type LeadInput,
 } from "@/lib/crm/campaigns";
@@ -24,6 +26,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const id = parseId((await ctx.params).id);
     if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    // Launching (or resuming) a campaign is premium; pausing, editing and archiving stay open.
+    if (body?.status === "active") await requireFeature(user, CAMPAIGNS);
     return NextResponse.json(await updateCampaign(user.id, id, body ?? {}));
   });
 }
@@ -55,6 +59,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       const r = await addLeads(user.id, id, leads);
       return NextResponse.json({ ...r, skipped: r.skipped + unreadable });
     }
+    // Qualifying and drafting call the model: premium, like the campaign itself.
+    if (body?.action === "qualify" || body?.action === "prepare") await requireFeature(user, CAMPAIGNS);
     if (body?.action === "qualify" || body?.action === "prepare") await rateLimit(`crm-draft:${user.id}`, 20, 3_600_000, "Drafting has run many times this hour. Try again later.");
     if (body?.action === "qualify") return NextResponse.json(await qualifyCampaign(user.id, id, Date.now() + 250_000));
     if (body?.action === "prepare") {

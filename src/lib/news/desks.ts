@@ -9,11 +9,12 @@
  * regulators, SEC filings and open research sites.
  */
 import type { Profile } from "@/lib/roles";
+import { CRYPTO_FEEDS } from "@/lib/crypto/news-feeds";
 
 export type SectorKey = "tech" | "healthcare" | "energy" | "financials" | "consumer" | "industrials" | "media" | "realestate";
 export type Lens =
   | "ma" | "ecm" | "dcm" | "levfin" | "rx" | "sponsors" | "pe" | "privcredit" | "infra" | "vc" | "radar"
-  | "markets" | "event" | "credit" | "corpfin" | "consulting" | "accounting" | "careers" | "macro" | "policy";
+  | "markets" | "event" | "credit" | "corpfin" | "consulting" | "accounting" | "careers" | "macro" | "policy" | "crypto";
 export type Tag = SectorKey | Lens;
 
 export const SECTOR_LABEL: Record<SectorKey, string> = {
@@ -24,7 +25,7 @@ export const LENS_LABEL: Record<Lens, string> = {
   ma: "M&A", ecm: "Equity capital markets", dcm: "Debt capital markets", levfin: "Leveraged finance", rx: "Restructuring", sponsors: "Sponsors",
   pe: "Private equity", privcredit: "Private credit", infra: "Infrastructure", vc: "Venture", radar: "Tech radar", markets: "Markets",
   event: "Event-driven", credit: "Credit", corpfin: "Corporate finance", consulting: "Strategy", accounting: "Accounting & reporting",
-  careers: "Careers", macro: "Economy", policy: "Policy & regulation",
+  careers: "Careers", macro: "Economy", policy: "Policy & regulation", crypto: "Crypto & digital assets",
 };
 /** The profile's sector names (roles.ts) to sector keys. */
 export const SECTOR_OF: Record<string, SectorKey> = {
@@ -139,6 +140,8 @@ export const FEEDS: Feed[] = [
   { id: "prn-tech", name: "PR Newswire", url: "https://www.prnewswire.com/rss/technology-latest-news/technology-latest-news-list.rss", tags: ["tech", "vc"], tier: 3, kind: "release", everyMin: 30 },
   { id: "gnw-ma", name: "GlobeNewswire", url: "https://www.globenewswire.com/RssFeed/subjectcode/27-Mergers%20and%20Acquisitions/feedTitle/GlobeNewswire%20-%20Mergers%20and%20Acquisitions", tags: ["ma"], tier: 3, kind: "release", everyMin: 15 },
   { id: "bw-home", name: "Business Wire", url: "https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==", tags: ["markets", "ma"], tier: 3, kind: "release", everyMin: 15 },
+  // Crypto publishers (src/lib/crypto/news-feeds.ts)
+  ...CRYPTO_FEEDS,
 ];
 
 /** Domains whose articles sit behind a paywall or metering: headlines and links only, never fetched for text. */

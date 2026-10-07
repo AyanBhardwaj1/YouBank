@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { PremiumBadge } from "@/components/billing/Premium";
 import { DEFAULT_STEPS, LEAD_STATUS_LABEL, type CampaignStep, type LeadStatus } from "@/lib/crm/model";
 import { Empty, Field, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
@@ -61,7 +62,7 @@ export function CampaignsPanel({ ctx, onDrafted }: { ctx: PanelCtx; onDrafted: (
         <p className="max-w-[78ch] text-[11.5px] text-muted">
           Build a list from YouBank&apos;s startup directory or paste your own, have the agent qualify it against your ideal profile, then work through a short sequence. Each email is written for that lead from what YouBank knows about their company, and waits for you to review and send. A reply or an opt-out stops the sequence for that person.
         </p>
-        <button type="button" onClick={() => setCreating(creating ? null : NEW_CAMPAIGN)} className={btn.ghost}><Icon name="Plus" className="mr-1 inline h-3.5 w-3.5" />New campaign</button>
+        <span className="flex items-center gap-1.5"><button type="button" onClick={() => setCreating(creating ? null : NEW_CAMPAIGN)} className={btn.ghost}><Icon name="Plus" className="mr-1 inline h-3.5 w-3.5" />New campaign</button><PremiumBadge feature="relationships.campaigns" /></span>
       </div>
 
       {creating && (

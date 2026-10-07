@@ -21,9 +21,11 @@ import { federalRegisterUrl, fetchFederalRegister } from "./sources/gov";
 import { fetchRadar } from "./sources/radar";
 import { warmRadars } from "./radar";
 import { fetchRss } from "./sources/rss";
+import { fetchCryptoSignals } from "@/lib/crypto/news";
 import { researchDesk } from "./sources/research";
 import { assignItems, clusterCandidates, clustersToEnrich, createCluster, feedStates, insertItems, itemsOf, mergeDuplicates, prune, recentClusters, refreshCluster, saveFeedState, setEmbeddings, unclusteredItems } from "./store";
 import type { FetchResult } from "./types";
+import { failureMessage } from "@/lib/errors";
 
 type Source = { url: string; kind: string; everyMin: number; priority: number; run: (state: { etag?: string; lastModified?: string }) => Promise<FetchResult> };
 
@@ -36,6 +38,8 @@ export function sources(): Source[] {
     { url: federalRegisterUrl(), kind: "gov", everyMin: 180, priority: 2, run: () => fetchFederalRegister() },
     { url: "gdelt:rotation", kind: "gdelt", everyMin: 15, priority: 2, run: () => fetchGdelt() },
     { url: "radar:weekly", kind: "radar", everyMin: 360, priority: 3, run: () => fetchRadar() },
+    // Crypto rounds, unlocks and SEC filings on crypto holdings (src/lib/crypto/news.ts), free sources only.
+    { url: "crypto:signals", kind: "crypto", everyMin: 180, priority: 3, run: () => fetchCryptoSignals() },
   ];
 }
 
@@ -162,7 +166,7 @@ async function briefs(users: string[], origin: string, deadline: number, report:
         if (ch === "email") delivered.email = await emailSelf(u, origin, briefEmail(brief, mine.map((m) => ({ id: m.id, headline: m.headline, reasons: m.reasons })), origin, dateLabel)).then(() => new Date().toISOString());
         if (ch === "push") delivered.push = String(await pushToUser(u, { title: row.title, body: row.body.slice(0, 180), url: row.url, tag: row.key }));
         if (ch === "slack" && ctx.prefs.slack) { const s = briefSlack(brief, origin); await slackPost(ctx.prefs.slack, s.text, s.blocks); delivered.slack = new Date().toISOString(); }
-      } catch (e) { delivered[ch] = `error: ${e instanceof Error ? e.message.slice(0, 120) : "failed"}`; }
+      } catch (e) { delivered[ch] = `error: ${failureMessage(e, `news-brief-${ch}`).slice(0, 160)}`; }
     }
     if (Object.keys(delivered).length) await requireDb().update(schema.newsNotifications).set({ delivered }).where(eq(schema.newsNotifications.id, row.id));
     report.delivered++;

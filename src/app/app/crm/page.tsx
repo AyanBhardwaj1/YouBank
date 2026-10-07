@@ -4,11 +4,11 @@ import { crmCounts } from "@/lib/crm/db";
 import { CrmWorkspace } from "@/components/crm/CrmWorkspace";
 import { aiStatus } from "@/lib/ai/config";
 import { loadUserContext } from "@/lib/ai/persona";
+// Drizzle keeps Postgres's "relation does not exist" on the error's cause, so the check lives in lib/errors.
+import { isMissingTable } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Relationships" };
-
-const isMissingTable = (e: unknown) => /relation .* does not exist|undefined_table/i.test(e instanceof Error ? e.message : String(e));
 
 /** `connected` and `error` come back on the OAuth redirect; passing them as props avoids a hydration mismatch. */
 export default async function CrmPage({ searchParams }: { searchParams: Promise<{ connected?: string; error?: string; tab?: string }> }) {

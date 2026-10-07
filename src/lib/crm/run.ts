@@ -8,6 +8,7 @@ import { prepareCampaign } from "./campaigns";
 import { runRule } from "./nurture";
 import { markRun } from "./settings";
 import { describeFailure } from "@/lib/errors";
+import { CAMPAIGNS, planAllows } from "./plan";
 
 export type AgentRunResult = {
   signals: number; followUps: number; checkIns: number;
@@ -47,7 +48,9 @@ export async function runAgent(userId: string, deadline = Date.now() + 240_000):
     }
   }
 
-  const campaigns = await db.select().from(schema.crmCampaigns).where(and(eq(schema.crmCampaigns.userId, userId), eq(schema.crmCampaigns.status, "active")));
+  // Campaigns are premium: their steps are drafted overnight only for plans that include them.
+  const active = await db.select().from(schema.crmCampaigns).where(and(eq(schema.crmCampaigns.userId, userId), eq(schema.crmCampaigns.status, "active")));
+  const campaigns = active.length && (await planAllows(userId, CAMPAIGNS)) ? active : [];
   for (const c of campaigns) {
     if (Date.now() > deadline) { out.stoppedEarly = true; break; }
     const r = await attempt(`campaign "${c.name}"`, () => prepareCampaign(userId, c.id, deadline));

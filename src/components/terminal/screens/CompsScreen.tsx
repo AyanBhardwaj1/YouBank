@@ -13,6 +13,7 @@ import { Scatter } from "@/components/charts/Scatter";
 import type { AiStatus } from "../Terminal";
 import { Select } from "@/components/ui/Select";
 import { promptDialog } from "@/components/ui/Dialog";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
 type Tier = "target" | "core" | "adjacent";
 type Row = { c: CompanyData; d: Derived; tier: Tier; rationale?: string };
@@ -132,15 +133,15 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
     setProposing(true); setAiError(null);
     try {
       const res = await fetch("/api/ai/peers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker: target.ticker }) });
+      if (!res.ok) throw await apiError(res);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
       const g: PeerGroup = {
         id: "ai", name: `AI proposed · ${json.model}`, description: json.summary ?? "",
         members: [...json.core.map((m: PeerMember) => ({ ...m, tier: "core" as const })), ...json.adjacent.map((m: PeerMember) => ({ ...m, tier: "adjacent" as const }))],
       };
       setAiGroup(g); setGroupId("ai"); setExcluded(new Set());
     } catch (e) {
-      setAiError(e instanceof Error ? e.message : String(e));
+      setAiError(errorMessage(e));
     } finally {
       setProposing(false);
     }
@@ -155,7 +156,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
     try {
       const g = await createPeerGroup({ name, description: current?.description ?? "", members: members.filter((m) => !excluded.has(m.ticker)) });
       setGroupId(g.id); setCustom([]); setExcluded(new Set()); flash(`Saved group "${name}"`);
-    } catch (e) { setAiError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setAiError(errorMessage(e)); }
   };
 
   const persistSheet = async () => {
@@ -165,7 +166,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
       const snapshot = all.map((r) => ({ ticker: r.c.ticker, tier: r.tier, ev: r.d.ev, evRevLtm: r.d.evRevLtm, evRevNtm: r.d.evRevNtm, growth: r.d.revenueGrowth, gm: r.d.grossMargin, fcfm: r.d.fcfMargin, ltmEnd: r.c.ltm.periodEnd, price: r.c.price?.last ?? null }));
       const saved = await saveSheet({ id: sheetId ?? undefined, name, targetTicker: target.ticker, members: members.filter((m) => !excluded.has(m.ticker)), excluded: [], columnSet: activeSet, sort, snapshot });
       setSheetId(saved.id); setSheets(null); flash(`Saved sheet "${name}"`);
-    } catch (e) { setAiError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setAiError(errorMessage(e)); }
   };
 
   const openSheet = async (id: number) => {
@@ -174,7 +175,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
       setSheetGroup({ id: `sheet-${sh.id}`, name: `Sheet: ${sh.name}`, description: `Saved by ${sh.createdBy}`, members: sh.members });
       setGroupId(`sheet-${sh.id}`); setCustom([]); setExcluded(new Set(sh.excluded)); setColSet((sh.columnSet as ColSet) || "all"); setColSetTouched(true); setSort(sh.sort); setSheetId(sh.id);
       flash(`Loaded "${sh.name}"`);
-    } catch (e) { setAiError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setAiError(errorMessage(e)); }
   };
 
   const statRow = (label: string, f: (v: (number | null)[]) => number | null, set: Row[]) => (
@@ -343,7 +344,7 @@ function EditableCell({ ticker, field, value, meta }: { ticker: string; field: "
       await saveManualInput({ ticker, field, value: v === "" ? null : Number(v) });
       refreshCompany(ticker);
       setEditing(false);
-    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setErr(errorMessage(e)); }
     finally { setSaving(false); }
   };
   if (editing) {

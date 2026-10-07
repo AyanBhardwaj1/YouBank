@@ -106,6 +106,7 @@ export function AppNav({ email }: { email: string }) {
                 <button role="menuitem" type="button" onClick={() => { setMenu(false); nav.customize(); }} className="flex w-full items-center gap-2 ctl px-2 py-1.5 text-left hover:bg-elevated"><SlidersHorizontal className="h-3.5 w-3.5" /> Customize the top bar</button>
                 <Link role="menuitem" href="/app/profile" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Users" className="h-3.5 w-3.5" /> Change my role</Link>
                 <Link role="menuitem" href="/app/library" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Library" className="h-3.5 w-3.5" /> Saved work</Link>
+                <Link role="menuitem" href="/download" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Download" className="h-3.5 w-3.5" /> Get the desktop app</Link>
                 <button role="menuitem" type="button" onClick={signOut} className="mt-1 flex w-full items-center gap-2 border-t border-line ctl px-2 py-1.5 text-left text-muted hover:bg-elevated hover:text-neg"><Icon name="LogOut" className="h-3.5 w-3.5" /> Sign out</button>
               </div>
             </>

@@ -1,11 +1,12 @@
 "use client";
 
 /** Pieces every CRM panel uses: the fetch helper, the action runner's shape, and the house button styles. */
+import { messageFor } from "@/lib/client/errors";
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(messageFor(res.status, body).message);
   return body as T;
 }
 

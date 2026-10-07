@@ -17,6 +17,7 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { ago, fmtPct, fmtUsd, post, useApi, useMotionLevel, useNow, useSparks } from "./client";
 import { hueOf, StoryArt } from "./DataArt";
 import { useCoarsePointer } from "@/components/ui/useMedia";
+import { errorMessage } from "@/lib/client/errors";
 
 type Props = { id: number; onClose?: () => void; onStep?: (dir: 1 | -1) => void; onChanged?: () => void; mode: "peek" | "page" };
 
@@ -34,13 +35,13 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
   useEffect(() => { void post(`/api/news/story/${id}`, { action: "read" }).catch(() => undefined); }, [id]);
 
   const act = async (action: string) => {
-    const r = await post<{ ok?: boolean; message?: string }>(`/api/news/story/${id}`, { action }).catch((e) => ({ message: e instanceof Error ? e.message : String(e) }));
+    const r = await post<{ ok?: boolean; message?: string }>(`/api/news/story/${id}`, { action }).catch((e) => ({ message: errorMessage(e) }));
     if (r.message) setNote({ id, text: r.message });
     reload(); onChanged?.();
   };
   const askWhy = async () => {
     setWhy({ id, text: null, busy: true });
-    const r = await post<{ text: string | null; reason?: string }>(`/api/news/story/${id}`, { action: "why" }).catch((e) => ({ text: null, reason: e instanceof Error ? e.message : String(e) }));
+    const r = await post<{ text: string | null; reason?: string }>(`/api/news/story/${id}`, { action: "why" }).catch((e) => ({ text: null, reason: errorMessage(e) }));
     setWhy({ id, text: r.text, busy: false, reason: r.reason });
   };
 

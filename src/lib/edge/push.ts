@@ -13,6 +13,7 @@ import { commit, createDoc, docData, finishRun, requireDoc, requireDocAccess, st
 import { addSheet, applyPatch, describePatches, writeRange, type Patch } from "@/lib/studio/ops";
 import { emptyDeck, newId, type Scalar, type Slide, type SlideEl, type StudioDocData } from "@/lib/studio/types";
 import { kindOfValue, rowsOf, type Answer, type GraphValue, type Memo, type ProformaValue, type Ranking, type Scenario, type Signal, type Table } from "./canvas/values";
+import { failureMessage } from "@/lib/errors";
 
 export type PushItem = { kind: string; label: string; value: unknown };
 export type PushRow = typeof schema.edgePushes.$inferSelect;
@@ -216,7 +217,7 @@ export async function decidePush(user: CurrentUser, id: number, action: "accept"
     return { status: "accepted", docId, label: ev.label };
   } catch (e) {
     await db.update(schema.edgePushes).set({ status: "pending", decidedAt: null }).where(eq(schema.edgePushes.id, id));
-    await finishRun(runId, "error", e instanceof Error ? e.message : String(e), {}).catch(() => undefined);
+    await finishRun(runId, "error", failureMessage(e, "edge-push-apply"), {}).catch(() => undefined);
     throw e;
   }
 }

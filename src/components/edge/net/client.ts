@@ -24,7 +24,7 @@ export type MapData = Sub & { plants: { ticker: string; name: string; lon: numbe
 export type Tree = { root: GNode; up: TreeNode[]; down: TreeNode[] };
 export type Exposure = { items: { node: GNode; score: number; via: Step[] }[] };
 export type Intros = { items: Intro[]; pooled: boolean };
-export type Status = { size: { nodes: number; links: number; companies: number }; latest: { status: string; version: string; trainedAt: string; error: string | null } | null; model: { version: string; trainedAt: string; acquirers: string; targets: string } | null };
+export type Status = { gpu?: boolean; size: { nodes: number; links: number; companies: number }; latest: { status: string; version: string; trainedAt: string; error: string | null } | null; model: { version: string; trainedAt: string; acquirers: string; targets: string } | null };
 
 export const NODE_COLOR: Record<string, string> = { company: "#5B8DEF", person: "#46B3C9", fund: "#C77DDB", subsidiary: "#8b93a1", firm: "#E3B341" };
 export const LINK_COLOR: Record<string, string> = { director: "#46B3C9", officer: "#46B3C9", insider: "#46B3C9", holder: "#C77DDB", subsidiary: "#8b93a1", acquired: "#E0795A", bought_assets: "#D98E4A", supplies: "#4FB286", advised: "#E3B341" };

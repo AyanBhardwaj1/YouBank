@@ -10,6 +10,7 @@ import type { LintIssue } from "@/lib/studio/lint";
 import { Engine } from "@/lib/studio/engine";
 import { applyPatch, applyWithUndo, describePatches, type Patch } from "@/lib/studio/ops";
 import type { StudioDocData } from "@/lib/studio/types";
+import { apiError, errorMessage, messageFor, safeText } from "@/lib/client/errors";
 
 export type Run = { id: string; instruction: string; status: string; summary: string; model: string; stats: Record<string, number>; startedAt: string; finishedAt: string | null };
 export type HistoryItem = { id: number; actor: string; actorName: string; runId: string; label: string; createdAt: string };
@@ -32,7 +33,7 @@ export type Flash = Map<string, { at: number; until: number; hidden: boolean }>;
 
 const J = async <T,>(res: Response): Promise<T> => {
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(messageFor(res.status, body).message);
   return body as T;
 };
 
@@ -155,7 +156,7 @@ export function useStudio(id: number) {
         last = cursor;
         if (document.visibilityState !== "hidden") open();
         document.addEventListener("visibilitychange", onVisibility);
-      }).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      }).catch((e) => setError(errorMessage(e)));
     }, 0);
     return () => {
       closed = true;
@@ -180,7 +181,7 @@ export function useStudio(id: number) {
       const r = await J<{ eventId: number }>(await fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ patches, undo, label: text }) }));
       applied.current.add(r.eventId);
     } catch (e) {
-      setError(`Not saved: ${e instanceof Error ? e.message : String(e)}. Reloading.`);
+      setError(`Not saved: ${errorMessage(e)}. Reloading.`);
       await load().catch(() => undefined);
     } finally { setSaving((n) => n - 1); }
   }, [id, bump, load]);
@@ -222,7 +223,7 @@ export function useStudio(id: number) {
   }, [id, receive, refreshMeta]);
 
   /** Run the agent and watch it work: every patch it commits is applied the moment it is stored. */
-  const run = useCallback(async (instruction: string, opts: { effort?: "fast" | "balanced" | "thorough"; selection?: { sheet?: string; range?: string } } = {}) => {
+  const run = useCallback(async (instruction: string, opts: { effort?: "fast" | "balanced" | "thorough" | "deep"; selection?: { sheet?: string; range?: string } } = {}) => {
     if (agent.running) return;
     const ctl = new AbortController();
     abort.current = ctl;
@@ -235,7 +236,7 @@ export function useStudio(id: number) {
     const log = (item: LogItem) => setAgent((a) => ({ ...a, log: [...a.log.slice(-120), item] }));
     try {
       const res = await fetch(`/api/studio/${id}/agent`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ instruction, effort: opts.effort, selection: opts.selection, history }), signal: ctl.signal });
-      if (!res.ok || !res.body) throw new Error((await res.json().catch(() => null))?.error ?? `Agent failed (${res.status})`);
+      if (!res.ok || !res.body) throw await apiError(res);
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -248,7 +249,8 @@ export function useStudio(id: number) {
           const line = buf.slice(0, nl).trim();
           buf = buf.slice(nl + 1);
           if (!line) continue;
-          const e = JSON.parse(line) as StudioStreamEvent;
+          let e: StudioStreamEvent;
+          try { e = JSON.parse(line) as StudioStreamEvent; } catch { continue; }
           switch (e.t) {
             case "patch": receive(e.id, e.patches, true); log({ k: "change", label: e.label, at: Date.now() }); setAgent((a) => ({ ...a, runId: e.runId })); break;
             case "focus": setFocus({ sheet: e.sheet, range: e.range, at: Date.now() }); lastWhere.current = { where: "model", sheet: e.sheet }; break;
@@ -260,13 +262,13 @@ export function useStudio(id: number) {
             case "note": log({ k: "note", text: e.text, at: Date.now() }); break;
             case "text": text += e.text; setAgent((a) => ({ ...a, text: a.text + e.text })); break;
             case "health": setHealth({ errors: e.errors, warnings: e.warnings, infos: e.infos, top: e.top }); break;
-            case "error": log({ k: "error", text: e.message, at: Date.now() }); break;
+            case "error": log({ k: "error", text: safeText(e.message), at: Date.now() }); break;
             case "done": setAgent((a) => ({ ...a, runId: e.runId || a.runId, model: e.model, stats: e.stats })); break;
           }
         }
       }
     } catch (e) {
-      if (!(e instanceof DOMException && e.name === "AbortError")) log({ k: "error", text: e instanceof Error ? e.message : String(e), at: Date.now() });
+      if (!(e instanceof DOMException && e.name === "AbortError")) log({ k: "error", text: errorMessage(e), at: Date.now() });
     } finally {
       abort.current = null;
       setAgent((a) => ({ ...a, running: false }));

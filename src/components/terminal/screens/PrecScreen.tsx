@@ -6,6 +6,7 @@ import type { FtsHit } from "@/lib/edgar/fulltext";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { StatTile } from "../StatTile";
 import { Select } from "@/components/ui/Select";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 type Result = { total: number; matched: number; rows: FtsHit[]; query: { phrase: string; keywords: string; from: string; to: string; forms: string[] } };
 
@@ -35,7 +36,11 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
   const load = useCallback((signal: AbortSignal) => {
     setLoading(true); setError(null);
     const p = new URLSearchParams({ q: keywords, phrase, from });
-    fetch(`/api/precedents?${p}`, { signal }).then((r) => r.json()).then((r) => { if (r.error) setError(r.error); else setRes(r); }).catch(() => {}).finally(() => setLoading(false));
+    fetchJson<Result>(`/api/precedents?${p}`, { signal })
+      .then(setRes)
+      .catch((e) => { if (!isAbort(e)) setError(errorMessage(e)); })
+      // A newer search took over: its own answer ends the spinner.
+      .finally(() => { if (!signal.aborted) setLoading(false); });
   }, [keywords, phrase, from]);
 
   useEffect(() => { const c = new AbortController(); const t = setTimeout(() => load(c.signal), 250); return () => { clearTimeout(t); c.abort(); }; }, [load]);
@@ -49,7 +54,7 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
           {PHRASES.map((p) => <option key={p.v} value={p.v}>{p.label}</option>)}
         </Select>
         <input value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="sector keywords" className="ctl w-48 border border-line bg-bg px-2 py-1 text-fg placeholder:text-faint focus:border-accent/60 focus:outline-none" />
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="num ctl border border-line bg-bg px-1.5 py-1 text-fg focus:border-accent/60 focus:outline-none" />
+        <input type="date" aria-label="Filed since" value={from} onChange={(e) => setFrom(e.target.value)} className="num ctl border border-line bg-bg px-1.5 py-1 text-fg focus:border-accent/60 focus:outline-none" />
         {onRun && <button type="button" onClick={() => onRun({ ticker: ticker ?? "SNOW", fn: "TOOL", arg: "precedent-transactions" })} className="ctl border border-accent/50 px-2 py-1 text-accent hover:bg-accent-soft">✦ Extract terms and multiples</button>}
         <span className="ml-auto text-muted">{loading ? "searching EDGAR…" : res ? `${res.rows.length} issuers · ${res.total.toLocaleString()} matching filings` : ""}</span>
       </div>

@@ -4,7 +4,7 @@ import { FUNCTIONS, FUNCTION_CODES, functionsForProfile, type FunctionGroup } fr
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { catalogFor } from "@/lib/workflows/catalog";
 
-const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["edge", "Edge (beta)"], ["market", "Markets and economy"], ["workspace", "Workspace"]];
+const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["edge", "Edge (beta)"], ["market", "Markets and economy"], ["crypto", "Crypto"], ["workspace", "Workspace"]];
 
 /** Keyboard and command reference, opened with "?" in the terminal. */
 export function HelpOverlay({ onClose }: { onClose: () => void }) {

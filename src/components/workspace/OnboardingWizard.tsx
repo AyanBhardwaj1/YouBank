@@ -8,6 +8,7 @@ import { ThemeThumb } from "@/components/theme/ThemePicker";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
 type Draft = Profile;
 const EMPTY: Draft = { role: "banker", specialty: "", seniority: "", firmType: "", firmName: "", firmTicker: "", sectors: [], goals: "" };
@@ -33,11 +34,11 @@ export function OnboardingWizard({ initial, userName }: { initial: Partial<Profi
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/profile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(d) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw await apiError(res);
       await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: themeId }) }).catch(() => {});
       router.push("/app");
       router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
   };
 
   const Chip = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (

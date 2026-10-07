@@ -500,6 +500,11 @@ export const TEMPLATES = [
   { id: "lbo", label: "LBO", blurb: "Sources and uses, debt schedule with cash sweep, IRR and MOIC, entry × exit sensitivity", ticker: true },
   { id: "merger", label: "Merger model", blurb: "Accretion / dilution with breakeven synergies and a premium × stock-mix grid", ticker: true, second: true },
   { id: "cap_table", label: "Cap table", blurb: "A priced round with option pool top-up and post-money ownership", ticker: false },
+  // Crypto (src/lib/studio/crypto-templates.ts): the ticker box takes a token symbol or CoinGecko id.
+  { id: "token_multiples", label: "Token multiples", blurb: "A token's market cap and FDV over its fees, revenue and holders' revenue, valued on peer multiples. Type a token (UNI, AAVE)", ticker: true },
+  { id: "token_dcf", label: "Token DCF", blurb: "Discounted cash flow to tokenholders with supply dilution from unlocks, and a discount rate × growth grid. Type a token", ticker: true },
+  { id: "staking_yield", label: "Staking yield", blurb: "Nominal and real staking yield, holder dilution and value from fees to stakers. Type a token (ETH, SOL)", ticker: true },
+  { id: "crypto_comps", label: "Crypto comps", blurb: "Peer tokens on market cap and FDV over fees, revenue and value locked, with the implied price. Type a token", ticker: true },
   { id: "blank", label: "Blank workbook", blurb: "An empty sheet: upload a file or ask the agent to build anything", ticker: false },
 ] as const;
 export type TemplateId = (typeof TEMPLATES)[number]["id"];

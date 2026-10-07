@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouBank</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+    .card { width: min(560px, 100%); }
+    .center { text-align: center; }
+    .features { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; margin: 16px 0; }
+    .features div { padding: 10px 12px; }
+    @media (max-width: 520px) { .features { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <!-- Start-up: checks the site answers, then opens it in this window. -->
+  <section id="boot" class="card center">
+    <img src="logo.svg" class="logo" alt="" />
+    <div class="row" style="justify-content: center; margin-top: 18px"><div class="spinner"></div></div>
+    <p class="muted" style="margin-top: 12px">Opening YouBank…</p>
+  </section>
+
+  <!-- First run only. -->
+  <section id="welcome" class="card hidden">
+    <img src="logo.svg" class="logo" alt="" />
+    <h1 style="margin-top: 14px">Welcome to YouBank for desktop</h1>
+    <p class="muted">Everything on the site, in its own window, and a few things a browser cannot do.</p>
+    <div class="features">
+      <div class="panel"><h3>Quick ask</h3><p class="muted small">Press <b id="hotkey">Ctrl+Shift+Space</b> in any app to ask YouBank anything.</p></div>
+      <div class="panel"><h3>Alerts</h3><p class="muted small">Edge findings, questions from your email agent and deal news, with the browser closed.</p></div>
+      <div class="panel"><h3>Your files</h3><p class="muted small">Folders of CIMs and models, searchable in your research and Studio.</p></div>
+      <div class="panel"><h3>Excel and PowerPoint</h3><p class="muted small">Studio models as real files; your edits sync back.</p></div>
+    </div>
+    <p class="small muted">Anything that reads your files, sends alerts or works while you are away is off until you turn it on in the desktop agent, and each one says first exactly what it does.</p>
+    <div class="row wrap" style="margin-top: 14px">
+      <button id="continue" class="btn primary">Continue to YouBank</button>
+      <button id="setup" class="btn">Set up the desktop agent</button>
+    </div>
+  </section>
+
+  <!-- The site is not answering: retry on a timer and on demand. -->
+  <section id="offline" class="card center hidden">
+    <img src="logo.svg" class="logo" alt="" />
+    <h1 style="margin-top: 14px">YouBank can't be reached</h1>
+    <p class="muted">Check your internet connection. Trying again <span id="countdown">shortly</span>.</p>
+    <div class="row" style="justify-content: center; margin-top: 12px">
+      <button id="retry" class="btn primary">Try again</button>
+      <button id="offline-agent" class="btn">Desktop agent</button>
+    </div>
+    <p class="small muted" style="margin-top: 16px">Your files, Office links and settings are safe on this computer. <span id="site" class="mono"></span></p>
+  </section>
+
+  <script type="module" src="boot.js"></script>
+</body>
+</html>

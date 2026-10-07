@@ -10,6 +10,7 @@ import { workflowSystemPrompt, workflowContext, workflowUserPrompt } from "@/lib
 import { WORKFLOW_OUTPUT_JSON_SCHEMA, WorkflowOutput } from "@/lib/workflows/schema";
 import type { Inputs } from "@/lib/workflows/types";
 import { db, schema } from "@/db";
+import { failureMessage, handled, logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -40,6 +41,10 @@ function cleanInputs(fields: { key: string; type: string; required?: boolean; la
 }
 
 export async function POST(req: Request) {
+  return handled(() => runTool(req));
+}
+
+async function runTool(req: Request) {
   const user = await currentUser();
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const body = (await req.json().catch(() => null)) as { id?: string; inputs?: Record<string, unknown>; model?: string; effort?: string } | null;
@@ -55,36 +60,52 @@ export async function POST(req: Request) {
   const today = new Date().toISOString().slice(0, 10);
   const encoder = new TextEncoder();
   const started = Date.now();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
-      let provider = "", model = "";
-      const { text, sources } = await runAsUser(user.id, () => runChat({
-        messages: [{ role: "user", content: workflowUserPrompt(tool, cleaned.inputs) }],
-        context: { ticker: String(cleaned.inputs.ticker ?? ""), panels: [], subject: tool.title, persona },
-        system: workflowSystemPrompt(), volatile: workflowContext(tool, persona, today), feature: `tool:${tool.id}`, parallelTools: true,
-        json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
-        tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS, signal: req.signal,
-        emit: (e) => { if (e.type === "done") { provider = e.provider; model = e.model; } if (e.type !== "text") emit(e); else emit({ type: "progress", chars: e.text.length }); },
-      }), { admin: isAdmin(user) });
-      const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-      let output: WorkflowOutput | null = null;
-      let error = "";
+  /** The run itself; a failure it throws ends the stream with an output event that says so. */
+  const produce = async (emit: (e: unknown) => void) => {
+    let provider = "", model = "", runError = "";
+    const { text, sources } = await runAsUser(user.id, () => runChat({
+      messages: [{ role: "user", content: workflowUserPrompt(tool, cleaned.inputs) }],
+      context: { ticker: String(cleaned.inputs.ticker ?? ""), panels: [], subject: tool.title, persona },
+      system: workflowSystemPrompt(), volatile: workflowContext(tool, persona, today), feature: `tool:${tool.id}`, parallelTools: true,
+      json: { name: "workflow_output", schema: WORKFLOW_OUTPUT_JSON_SCHEMA },
+      tools: tool.tools, prefs, override, maxTurns: 16, deadline: started + BUDGET_MS, signal: req.signal,
+      emit: (e) => {
+        if (e.type === "done") { provider = e.provider; model = e.model; }
+        if (e.type === "error") runError = e.message;
+        if (e.type !== "text") emit(e); else emit({ type: "progress", chars: e.text.length });
+      },
+    }), { admin: isAdmin(user) });
+    const clean = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    let output: WorkflowOutput | null = null;
+    let error = "";
+    if (!clean) {
+      // Nothing came back; the run's own error event (a limit, a provider failure) already said why.
+      error = runError || "The model returned no answer. Try again, or pick a different model.";
+    } else {
       try {
         output = WorkflowOutput.parse(JSON.parse(clean));
       } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-        if (clean) output = { title: tool.title, summary: "The model's answer could not be fully structured; the raw text is shown below.", blocks: [{ type: "markdown", text: clean.slice(0, 20_000) }], caveats: [`Structuring error: ${error.slice(0, 200)}`] };
+        // The parser's own text (a zod issue list, "Unexpected token…") is for the log, not the page.
+        logError(e, { where: `tool-output:${tool.id}` });
+        error = "The answer could not be fully structured";
+        output = { title: tool.title, summary: "The model's answer could not be fully structured; the raw text is shown below.", blocks: [{ type: "markdown", text: clean.slice(0, 20_000) }], caveats: ["Parts of this answer could not be laid out as tables and charts, so it is shown as text."] };
       }
-      let runId: number | null = null;
-      if (db && output) {
-        try {
-          const [row] = await db.insert(schema.workflowRuns).values({ userId: user.id, toolId: tool.id, title: output.title, inputs: cleaned.inputs, output, sources, provider, model, status: error ? "error" : "done", error, durationMs: Date.now() - started }).returning({ id: schema.workflowRuns.id });
-          runId = row?.id ?? null;
-        } catch { /* saving is best-effort */ }
-      }
-      emit({ type: "output", output, runId, sources, provider, model, durationMs: Date.now() - started, error: output ? "" : error || "No output produced" });
-      controller.close();
+    }
+    let runId: number | null = null;
+    if (db && output) {
+      try {
+        const [row] = await db.insert(schema.workflowRuns).values({ userId: user.id, toolId: tool.id, title: output.title, inputs: cleaned.inputs, output, sources, provider, model, status: error ? "error" : "done", error, durationMs: Date.now() - started }).returning({ id: schema.workflowRuns.id });
+        runId = row?.id ?? null;
+      } catch (e) { logError(e, { where: "tool-run-save" }); /* saving is best-effort */ }
+    }
+    emit({ type: "output", output, runId, sources, provider, model, durationMs: Date.now() - started, error: output ? "" : error });
+  };
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
+      try { await produce(emit); }
+      catch (e) { emit({ type: "output", output: null, runId: null, sources: [], provider: "", model: "", durationMs: Date.now() - started, error: failureMessage(e, "tool-run") }); }
+      try { controller.close(); } catch { /* the reader left */ }
     },
   });
   return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" } });

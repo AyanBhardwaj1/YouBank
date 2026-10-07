@@ -3,6 +3,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
+import { requireFeature } from "@/lib/billing/entitlements";
 import { upgradeOn } from "@/lib/edge/premium";
 import { PLANET, planetScenes } from "@/lib/edge/premium/planet";
 import type { Bbox } from "@/lib/edge/sources/eia";
@@ -14,12 +15,14 @@ export const dynamic = "force-dynamic";
 /**
  * Planet's sharper scenes of a plant (?asset=ID) or a finding's place (?detection=ID) from the last 60
  * days under 20% cloud, with thumbnails through /api/edge/planet/thumb. 404 { off: true } until
- * PLANET_API_KEY is set.
+ * PLANET_API_KEY is set; 402 for a plan without sharper imagery (edge.planet), before Planet is asked.
  */
 export async function GET(req: Request) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     if (!upgradeOn("planet")) return NextResponse.json({ off: true }, { status: 404 });
+    // Premium (edge.planet): set up for everyone, used by those whose plan includes it; nothing is asked of Planet otherwise.
+    await requireFeature(user, "edge.planet");
     const q = new URL(req.url).searchParams;
     const asset = Number(q.get("asset")), detection = Number(q.get("detection"));
     let bbox: Bbox | null = null;
