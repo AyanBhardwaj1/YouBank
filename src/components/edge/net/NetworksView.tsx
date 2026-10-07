@@ -17,6 +17,7 @@ import { Findings } from "./Findings";
 import { GpuRetrain } from "./GpuRetrain";
 import { ForceGraph } from "./ForceGraph";
 import { OwnershipTree } from "./OwnershipTree";
+import { errorMessage } from "@/lib/client/errors";
 
 const NetMap = dynamic(() => import("./NetMap"), { ssr: false, loading: () => <div className="h-[520px] animate-pulse rounded-lg bg-elevated/40" /> });
 
@@ -55,7 +56,7 @@ export function NetworksView({ tickers, initial }: { tickers: string[]; initial?
   const open = useCallback((t: string) => { setTicker(t.toUpperCase()); setPick(null); setQ(""); setResults([]); }, []);
   const build = async () => {
     setBuildError(null);
-    try { await post("/api/edge/graph/build", { ticker }); setBuilding(ticker); } catch (e) { setBuildError(e instanceof Error ? e.message : String(e)); }
+    try { await post("/api/edge/graph/build", { ticker }); setBuilding(ticker); } catch (e) { setBuildError(errorMessage(e)); }
   };
   const onPick = useCallback((p: Prediction | null, graph: Picks["graph"]) => {
     if (!p) { setPick(null); return; }

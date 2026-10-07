@@ -1,6 +1,6 @@
 import { currentUser } from "@/lib/auth/user";
 import { eventsSince, heartbeat, presenceFor, requireSessionAccess, sessionFeed, type Presence } from "@/lib/collab/db";
-import { follow, resumeFrom, sseStream } from "@/lib/realtime/feed";
+import { follow, resumeFrom, sseStream, streamGate } from "@/lib/realtime/feed";
 
 export const dynamic = "force-dynamic";
 /** Longer than a connection's two-minute life. */
@@ -18,11 +18,15 @@ const HEARTBEAT_MS = 15_000;
  * one session share a poll whose pace follows activity (see lib/realtime/feed).
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return streamGate(() => open(req, ctx));
+}
+
+async function open(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
   if (!user) return new Response("Sign in required", { status: 401 });
   const id = Number((await ctx.params).id);
   if (!Number.isInteger(id) || id <= 0) return new Response("bad id", { status: 400 });
-  try { await requireSessionAccess(user, id); } catch { return new Response("Forbidden", { status: 403 }); }
+  await requireSessionAccess(user, id);
   let cursor = resumeFrom(req);
 
   return sseStream(req, (frame) => {

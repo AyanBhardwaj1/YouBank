@@ -4,7 +4,7 @@ import { currentUser } from "@/lib/auth/user";
 import { addressFor, saveAccount } from "@/lib/crm/accounts";
 import { exchangeCode, googleConfig } from "@/lib/crm/gmail";
 import { OAUTH_STATE_COOKIE } from "../connect/route";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError } from "@/lib/errors";
 import { requireMailboxRoom } from "@/lib/crm/plan";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const back = (params: Record<string, string>) =>
     NextResponse.redirect(`${origin}/app/crm?${new URLSearchParams(params)}`);
 
-  const user = await currentUser();
+  const user = await currentUser().catch((e) => { logError(e, { where: "gmail-callback-session" }); return null; });
   if (!user) return NextResponse.redirect(`${origin}/sign-in`);
 
   const denied = url.searchParams.get("error");

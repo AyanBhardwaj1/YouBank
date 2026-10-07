@@ -18,6 +18,7 @@ import { Select } from "@/components/ui/Select";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
+import { errorMessage, fetchJson } from "@/lib/client/errors";
 
 const TOOL: Record<string, string> = {
   read_range: "Reading", write_cells: "Writing cells", format_cells: "Formatting", fill: "Filling formulas", insert_or_delete: "Moving rows and columns",
@@ -122,12 +123,12 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
         st.setNotice(`Extracted ${r.tables} table${r.tables === 1 ? "" : "s"}, ${r.figures} figures, to ${r.sheet?.name}. Each figure is a blue input tagged with its page.`);
         if (r.sheet) { setTab("model"); setSheetId(r.sheet.id); }
       }
-    } catch (e) { st.setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { st.setError(errorMessage(e)); }
     finally { setReading(null); }
   };
   const compare = async (cid: number) => {
     if (diffs[cid]) { setDiffs((d) => { const n = { ...d }; delete n[cid]; return n; }); return; }
-    try { const r = await st.compareCheckpoint(cid); setDiffs((d) => ({ ...d, [cid]: r.diff })); } catch (e) { st.setError(e instanceof Error ? e.message : String(e)); }
+    try { const r = await st.compareCheckpoint(cid); setDiffs((d) => ({ ...d, [cid]: r.diff })); } catch (e) { st.setError(errorMessage(e)); }
   };
   const fixable = st.lint?.filter((i) => i.fix).length ?? 0;
 
@@ -139,7 +140,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-1.5">
         <Link href="/app/studio" className="text-[11.5px] text-muted hover:text-fg">Studio</Link>
         <span className="text-muted">/</span>
-        <input value={doc.title} onChange={(e) => edit([{ op: "title", title: e.target.value }], "Renamed")} className="min-w-[160px] max-w-[360px] flex-1 bg-transparent text-[13px] font-semibold outline-none" />
+        <input aria-label="Model title" value={doc.title} onChange={(e) => edit([{ op: "title", title: e.target.value }], "Renamed")} className="min-w-[160px] max-w-[360px] flex-1 bg-transparent text-[13px] font-semibold outline-none" />
         <div className="flex overflow-hidden ctl border border-line text-[11.5px]">
           {(["model", "deck"] as const).map((t) => (
             <button key={t} type="button" onClick={() => setTab(t)} className={`flex items-center gap-1.5 px-2.5 py-1 ${tabNow === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
@@ -164,7 +165,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
             <input ref={docInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void onDocument(f); }} />
           </span>
           {meta.mine && meta.teams.length > 0 && (
-            <Select value={meta.teamId ?? ""} onChange={(v) => { void fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: v ? Number(v) : null }) }).then(() => st.reload()); }} className="ctl border border-line bg-bg px-1.5 py-1 text-[11px] text-fg">
+            <Select value={meta.teamId ?? ""} onChange={(v) => { fetchJson(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: v ? Number(v) : null }) }).then(() => st.reload(), (e) => st.setError(`Sharing was not changed. ${errorMessage(e)}`)); }} aria-label="Who can open this model" className="ctl border border-line bg-bg px-1.5 py-1 text-[11px] text-fg">
               <option value="">Private</option>
               {meta.teams.map((t) => <option key={t.id} value={t.id}>Shared: {t.name}</option>)}
             </Select>

@@ -10,6 +10,7 @@ import type { Graph } from "@/lib/edge/canvas/catalog";
 import type { RunView } from "@/lib/edge/canvas/engine";
 import { going, mergeRun } from "@/lib/edge/canvas/view";
 import { api, post } from "../client";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 
 export type CanvasData = {
   canvas: { id: number; title: string; description: string; graph: Graph; version: number; teamId: number | null; template: string; parentId: number | null; branch: string; updatedAt: string; ownerId: string };
@@ -50,7 +51,7 @@ export function useCanvas(id: number) {
     setData(d); setTitleState(d.canvas.title); version.current = d.canvas.version; setError(null);
     if (!pending.current) show(d.canvas.graph);
   }, [show]);
-  const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), []);
+  const fail = useCallback((e: unknown) => setError(errorMessage(e)), []);
 
   const load = useCallback(() => api<CanvasData>(`/api/edge/canvases/${id}`).then((d) => { apply(d); return d; }, (e) => { fail(e); return null; }), [apply, fail, id]);
 
@@ -70,12 +71,12 @@ export function useCanvas(id: number) {
         setSave("conflict"); setNotice(j.error ?? "Someone else changed this canvas; their version is loaded.");
         return;
       }
-      if (!res.ok || !j.canvas) throw new Error(j.error ?? `Could not save (HTTP ${res.status})`);
+      if (!res.ok || !j.canvas) throw new Error(`Not saved. ${messageFor(res.status, j).message}`);
       version.current = j.canvas.version;
       setSave(pending.current ? "dirty" : "saved");
     } catch (e) {
       pending.current = { ...body, ...(pending.current ?? {}) };
-      setSave("error"); setNotice(e instanceof Error ? e.message : String(e));
+      setSave("error"); setNotice(errorMessage(e));
     }
   }, [id, show]);
 

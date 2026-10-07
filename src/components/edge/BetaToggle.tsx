@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Radar as RadarIcon } from "lucide-react";
 import { useState } from "react";
 import { post } from "./client";
+import { errorMessage } from "@/lib/client/errors";
 
 export function BetaToggle({ on }: { on: boolean }) {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function BetaToggle({ on }: { on: boolean }) {
       // Re-render the layout (the tab appears or goes) and this page (the intro becomes Edge).
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally { setBusy(false); }
   };
   return (

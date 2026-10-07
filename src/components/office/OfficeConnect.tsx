@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage } from "@/lib/client/errors";
 
 type Device = { id: number; name: string; host: string; createdAt: string; lastUsedAt: string | null };
 
@@ -57,7 +58,7 @@ export function ApproveCode({ initialCode, onApproved }: { initialCode: string; 
       setState({ ok: `Connected ${body.host || "the add-in"}. Go back to it: it finishes connecting within a few seconds.` });
       setCode("");
       onApproved?.();
-    } catch (e) { setState({ error: e instanceof Error ? e.message : String(e) }); }
+    } catch (e) { setState({ error: errorMessage(e) }); }
   };
   return (
     <>

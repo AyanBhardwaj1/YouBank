@@ -1,4 +1,5 @@
 import snapshot from "./snapshot.json";
+import { siteLink } from "@/lib/site";
 
 /**
  * A frozen snapshot of real YouBank data (SEC XBRL fundamentals, FMP prices, the startup directory),
@@ -91,7 +92,7 @@ export const DEMO_ANSWERS: DemoAnswer[] = [
 
 **How to reach them.** Warm paths first: Future Africa and Ventures Platform co-invest with most of this set, and three founders have public Demo Day intro links. For cold outreach the research says a specific, numbers-led first line doubles reply rates over a generic intro; the draft is in the next block.`,
     sources: [
-      { id: "S1", label: "YouBank startup directory (YC, a16z, Show HN, Form D, web discovery)", url: "https://youbank-nu.vercel.app/app/vc" },
+      { id: "S1", label: "YouBank startup directory (YC, a16z, Show HN, Form D, web discovery)", url: siteLink("/app/vc") },
       { id: "S2", label: "Web research, funding announcements", url: "https://www.google.com/search?q=moniepoint+funding" },
       { id: "S3", label: "SEC Form D, notice of exempt offering", url: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=D" },
     ],

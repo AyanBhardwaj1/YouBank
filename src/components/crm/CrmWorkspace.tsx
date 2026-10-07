@@ -19,6 +19,7 @@ import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { promptDialog } from "@/components/ui/Dialog";
 import { useSubNav } from "@/lib/subnav";
+import { errorMessage } from "@/lib/client/errors";
 
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
@@ -103,7 +104,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   const refresh = useCallback(async () => { setTick((n) => n + 1); }, []);
   const run = async (label: string, fn: () => Promise<void>) => {
     setBusy(label); setError(null);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    try { await fn(); } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(null); }
   };
   const ctx: PanelCtx = { busy, run, say, refresh: () => { void refresh(); }, tick };
@@ -122,7 +123,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
         ]);
         if (cancelled) return;
         setThreads(t); setDeals(d.deals); setContacts(d.contacts); setCounts(d.counts); setDrafts(q); setMailbox(a); setSettings(s);
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
+      } catch (e) { if (!cancelled) setError(errorMessage(e)); }
     };
     void load();
     return () => { cancelled = true; };

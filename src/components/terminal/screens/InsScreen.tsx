@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { StatTile } from "../StatTile";
 import { HBar } from "@/components/charts/HBar";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 const money = (v: number) => (Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${(v / 1e3).toFixed(0)}K`);
 
@@ -14,7 +15,9 @@ export function InsScreen({ ticker }: { ticker: string }) {
   const [onlyOpenMarket, setOnlyOpenMarket] = useState(false);
   useEffect(() => {
     const ctrl = new AbortController();
-    fetch(`/api/company/${ticker}/insiders?limit=20`, { signal: ctrl.signal }).then((r) => r.json()).then((r) => { if (r.error) setError(r.error); else setRows(r.transactions); }).catch(() => {});
+    fetchJson<{ transactions: InsiderTx[] }>(`/api/company/${ticker}/insiders?limit=20`, { signal: ctrl.signal })
+      .then((r) => { setError(null); setRows(r.transactions ?? []); })
+      .catch((e) => { if (!isAbort(e)) { setError(errorMessage(e)); setRows([]); } });
     return () => ctrl.abort();
   }, [ticker]);
   const list = useMemo(() => (rows ?? []).filter((t) => !t.derivative && (!onlyOpenMarket || t.code === "P" || t.code === "S")), [rows, onlyOpenMarket]);

@@ -8,10 +8,10 @@
  * Only a real trigger delivery is relayed. Neon's proxy strips any x-neon-* header a caller sends, so a
  * present x-neon-trigger-invocation-id that matches the body's invocation_id can only come from a trigger.
  *
- * Deploy:   neon functions deploy autopilot --src neon/autopilot.ts --env YOUBANK_URL=https://youbank-nu.vercel.app --env AUTOPILOT_SECRET=...
+ * Deploy:   neon functions deploy autopilot --src neon/autopilot.ts --env YOUBANK_URL=https://<your domain, the same as NEXT_PUBLIC_SITE_URL> --env AUTOPILOT_SECRET=...
  * Schedule: neon triggers create --function-slug autopilot --name autopilot-heartbeat --cron '*\/5 * * * *'
  */
-export default {
+const handler = {
   async fetch(req: Request): Promise<Response> {
     const invocation = req.headers.get("x-neon-trigger-invocation-id");
     const body = (await req.json().catch(() => null)) as { invocation_id?: string } | null;
@@ -29,3 +29,5 @@ export default {
     return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
   },
 };
+
+export default handler;

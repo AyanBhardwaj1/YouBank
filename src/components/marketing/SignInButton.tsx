@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
+import { errorMessage } from "@/lib/client/errors";
 
 /** `next` is where a returning person lands; `newUser` where a first-time one does (onboarding, unless a flow must finish first). */
 export function SignInButton({ label = "Continue with Google", next = "/app", newUser = "/onboarding", className = "" }: { label?: string; next?: string; newUser?: string; className?: string }) {
@@ -13,7 +14,7 @@ export function SignInButton({ label = "Continue with Google", next = "/app", ne
       const authClient = await getAuthClient();
       await authClient.signIn.social({ provider: "google", callbackURL: `${window.location.origin}${next}`, newUserCallbackURL: `${window.location.origin}${newUser}` });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
       setBusy(false);
     }
   };

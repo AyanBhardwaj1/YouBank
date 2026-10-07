@@ -10,6 +10,7 @@ import { createContext, useContext, useEffect, useState, useSyncExternalStore, t
 import type { Command } from "@/lib/functions";
 import type { Researched } from "@/lib/market/research";
 import type { Snapshot } from "@/lib/terminal/snapshot";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Data                                                                                             */
@@ -34,12 +35,12 @@ async function load<T>(url: string): Promise<Result<T>> {
       const res = await fetch(url);
       const j = (await res.json().catch(() => ({}))) as { error?: string; planLimited?: boolean; snapshot?: Snapshot };
       const sources = sourcesOf(res);
-      const r: Result<unknown> = res.ok ? { data: j, sources } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited, sources, snapshot: j.snapshot };
+      const r: Result<unknown> = res.ok ? { data: j, sources } : { error: messageFor(res.status, j).message, planLimited: !!j.planLimited, sources, snapshot: j.snapshot };
       // Keep answers and plan limits; let transient failures retry on the next open.
       if (res.ok || j.planLimited || res.status === 404 || res.status === 400) cache.set(url, { at: Date.now(), r });
       return r;
     } catch (e) {
-      return { error: e instanceof Error ? e.message : "Network error" };
+      return { error: errorMessage(e) };
     } finally {
       inflight.delete(url);
     }
@@ -84,9 +85,9 @@ export async function postTerminal<T>(fn: string, body: unknown): Promise<Result
   try {
     const res = await fetch(`/api/terminal/${fn}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const j = (await res.json().catch(() => ({}))) as { error?: string; planLimited?: boolean };
-    return res.ok ? { data: j as T, sources: sourcesOf(res) } : { error: j.error ?? `HTTP ${res.status}`, planLimited: !!j.planLimited, sources: sourcesOf(res) };
+    return res.ok ? { data: j as T, sources: sourcesOf(res) } : { error: messageFor(res.status, j).message, planLimited: !!j.planLimited, sources: sourcesOf(res) };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Network error" };
+    return { error: errorMessage(e) };
   }
 }
 

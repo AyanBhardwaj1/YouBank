@@ -18,7 +18,8 @@ export function parseArgs(argv, defaults) {
 export function guardTarget(raw) {
   const url = new URL(raw);
   const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  const production = /^(youbank-nu\.vercel\.app|youbank\.vercel\.app)$/i.test(url.hostname) || !url.hostname.endsWith(".vercel.app") && !local;
+  const site = (() => { try { return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "").hostname; } catch { return ""; } })();
+  const production = /^(youbank-nu\.vercel\.app|youbank\.vercel\.app)$/i.test(url.hostname) || (!!site && url.hostname === site) || !url.hostname.endsWith(".vercel.app") && !local;
   if (local) return url.origin;
   if (!production && process.env.LOADTEST_ALLOW_PREVIEW === "1") return url.origin;
   throw new Error(`Refusing to load-test ${url.hostname}: only localhost, or a preview deployment with LOADTEST_ALLOW_PREVIEW=1 (never production).`);

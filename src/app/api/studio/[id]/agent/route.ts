@@ -2,7 +2,7 @@ import { lease } from "@/lib/locks";
 import { requestUser } from "@/lib/office/auth";
 import { runStudioAgent, type StudioStreamEvent } from "@/lib/studio/agent";
 import { requireDoc } from "@/lib/studio/db";
-import { errorResponse, logError } from "@/lib/errors";
+import { errorResponse, handled, logError } from "@/lib/errors";
 import { requireFeature } from "@/lib/billing/entitlements";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,10 @@ export const maxDuration = 300;
  * agents editing the same model would fight over it and double the cost.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return handled(() => start(req, ctx));
+}
+
+async function start(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await requestUser(req);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const id = Number((await ctx.params).id);
