@@ -13,7 +13,7 @@ let protect: ReturnType<typeof auth.middleware> | null = null;
  * someone who keeps a page open, with the bell, the feed or the terminal polling, would make every
  * poll ask Neon Auth for their session once the cookie expired, and Neon Auth rate-limits those calls
  * from our servers (the load test signed people out that way). A sign-in redirect is never applied to
- * an API route.
+ * an API route. Stripe's webhook (`/api/billing/webhook`) carries no session and skips this entirely.
  */
 export default async function proxy(req: NextRequest, ...rest: unknown[]) {
   // Development-only bypass, mirrored in currentUser(); never active in production builds.
@@ -34,5 +34,5 @@ export default async function proxy(req: NextRequest, ...rest: unknown[]) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/onboarding/:path*", "/api/((?!auth/|cron/|health|market/health|office/pair/|inngest).*)"],
+  matcher: ["/app/:path*", "/onboarding/:path*", "/api/((?!auth/|cron/|health|market/health|office/pair/|inngest|billing/webhook$).*)"],
 };

@@ -4,6 +4,7 @@ import { secretsMatch } from "@/lib/crm/crypto";
 import { runAsUser } from "@/lib/ai/usage";
 import { describeFailure, handled } from "@/lib/errors";
 import { pool, poolSize } from "@/lib/pool";
+import { siteUrl } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -22,7 +23,8 @@ async function handle(req: Request) {
   const ok = [process.env.AUTOPILOT_SECRET, process.env.CRON_SECRET].some((s) => s && secretsMatch(auth, `Bearer ${s}`));
   if (!ok) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  return handled(() => beat(new URL(req.url).origin));
+  // Links in the mail it sends use the site's own address, whichever host the heartbeat called.
+  return handled(() => beat(siteUrl()));
 }
 
 async function beat(origin: string) {

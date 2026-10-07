@@ -267,6 +267,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                   <h3 className="text-[13px] font-semibold">Invite someone</h3>
                   <p className="mt-1 max-w-[70ch] text-[11.5px] text-muted">
                     Invitations are links. Send the link to your colleague; they join when they open it while signed in as that address. Links expire after 14 days.
+                    {" "}On a Deal Team or Enterprise plan, give members a paid seat in <a href="/app/settings?tab=plan" className="underline hover:text-fg">Settings, under Plan</a>.
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-1.5">
                     <input value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} type="email" placeholder="colleague@firm.com"

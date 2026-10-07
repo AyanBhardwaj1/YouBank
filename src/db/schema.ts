@@ -1269,6 +1269,52 @@ export const subscriptions = pgTable("subscriptions", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   currentPeriodEnd: ts("current_period_end"),
+  /** drizzle/0022_credits.sql: the billing dates allowances reset on, and a cancellation at period end. */
+  currentPeriodStart: ts("current_period_start"),
+  billingAnchor: ts("billing_anchor"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  cancelAt: ts("cancel_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId)]);
+}, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId), index("subscriptions_stripe_subscription_idx").on(t.stripeSubscriptionId)]);
+
+/**
+ * AI credit packs bought (or granted). `usd` is AI use at list price; the unique payment intent makes the
+ * Stripe webhook idempotent. drizzle/0022_credits.sql.
+ */
+export const aiCreditGrants = pgTable("ai_credit_grants", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  pack: text("pack").notNull(),
+  usd: doublePrecision("usd").notNull(),
+  refundedUsd: doublePrecision("refunded_usd").notNull().default(0),
+  paidCents: integer("paid_cents").notNull().default(0),
+  currency: text("currency").notNull().default("usd"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  note: text("note").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("ai_credit_grants_payment_intent_uidx").on(t.stripePaymentIntentId), index("ai_credit_grants_user_idx").on(t.userId, t.createdAt)]);
+
+/** Credits used per allowance period (spend beyond the plan's allowance), settled from the ledger when the period ends. */
+export const aiCreditDraws = pgTable("ai_credit_draws", {
+  userId: text("user_id").notNull(),
+  periodStart: ts("period_start").notNull(),
+  periodEnd: ts("period_end").notNull(),
+  capUsd: doublePrecision("cap_usd").notNull(),
+  availableUsd: doublePrecision("available_usd").notNull(),
+  usedUsd: doublePrecision("used_usd").notNull().default(0),
+  settled: boolean("settled").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.periodStart] })]);
+
+/** Deal Team and Enterprise seats the subscription's owner has given to members of their teams. */
+export const seatAssignments = pgTable("seat_assignments", {
+  id: serial("id").primaryKey(),
+  ownerUserId: text("owner_user_id").notNull(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  email: text("email").notNull().default(""),
+  name: text("name").notNull().default(""),
+  assignedAt: ts("assigned_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("seat_assignments_user_uidx").on(t.userId), index("seat_assignments_owner_idx").on(t.ownerUserId, t.assignedAt)]);
