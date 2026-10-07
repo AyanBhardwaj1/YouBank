@@ -250,3 +250,13 @@ seats on the invoice (the minimum count) and, for yearly billing, over twelve mo
    `packs.ts`).
 4. Update the tables above.
 5. Run `scripts/stripe-setup.ts` with the live key to publish new prices.
+
+### Premium features and the AI allowance
+
+A premium feature sets `inAiAllowance: true` in its registry entry when its spend is recorded in the
+AI usage ledger (`recordUsage`). That spend counts against the person's daily and monthly AI allowance
+and their credits, so it can never exceed what the plan includes. The cost model counts it inside the
+capped AI budget: at light and typical use it replaces ordinary AI work the persona already does, and
+at heavy use it is added and the allowance cap bounds the total. Features paid outside the ledger
+(imagery bought per km², GPU time, other licences) leave the flag unset and are added on top of the plan's
+cost at every level.
