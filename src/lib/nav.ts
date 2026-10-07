@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crm" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -48,6 +48,10 @@ export const FEATURES: NavFeature[] = [
       tab("/app/crm", "tab", "nurture", "Nurture"), tab("/app/crm", "tab", "agent", "Agent & autopilot"),
     ],
   },
+  {
+    id: "calendar", href: "/app/calendar", label: "Calendar", icon: "Calendar", blurb: "Every calendar, meetings and prep briefs",
+    links: [tab("/app/calendar", "view", "week", "Week", true), tab("/app/calendar", "view", "day", "Day"), tab("/app/calendar", "view", "agenda", "Agenda")],
+  },
   { id: "collab", href: "/app/collab", label: "Together", icon: "Users", blurb: "Work through a tool together, live" },
   { id: "library", href: "/app/library", label: "Library", icon: "Library", blurb: "Your saved work" },
   { id: "team", href: "/app/team", label: "Team", icon: "Building", blurb: "Members, roles and sharing" },
@@ -55,7 +59,7 @@ export const FEATURES: NavFeature[] = [
     id: "settings", href: "/app/settings", label: "Settings", icon: "Settings", blurb: "Style, AI model, alerts and data",
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
-      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
     ],
   },
 ];

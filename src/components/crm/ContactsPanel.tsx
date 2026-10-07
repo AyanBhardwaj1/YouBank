@@ -6,6 +6,7 @@ import { CONTACT_KINDS, KIND_LABEL, type ContactKind } from "@/lib/crm/model";
 import { Empty, Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { confirmDialog } from "@/components/ui/Dialog";
+import { MeetingLine, ScheduleButton, useMeetingSummaries } from "@/components/calendar/MeetingBadges";
 
 type Signal = { id: number; kind: string; title: string; url: string; strength: string };
 type Contact = {
@@ -21,6 +22,7 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
   const [q, setQ] = useState("");
   const [adding, setAdding] = useState<typeof BLANK | null>(null);
   const [notes, setNotes] = useState<{ id: number; text: string } | null>(null);
+  const meetings = useMeetingSummaries(ctx.tick);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +97,7 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
                 {c.optedOutAt && <span className="ctl bg-neg/15 px-1.5 py-0.5 text-neg">Do not contact</span>}
               </div>
             </div>
+            <MeetingLine summary={meetings?.contacts[c.id]} />
             {c.signals.map((s) => (
               <p key={s.id} className="mt-1.5 flex items-start gap-1.5 text-[11px]">
                 <Icon name={s.kind === "edge" ? "Radar" : s.kind === "news" ? "Newspaper" : "TrendingUp"} className={`mt-0.5 h-3 w-3 shrink-0 ${s.kind === "edge" ? "text-accent" : "text-pos"}`} />
@@ -113,6 +116,7 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
             ) : c.notes ? <p className="mt-1.5 whitespace-pre-wrap text-[11px] text-muted"><span className="font-semibold">Notes:</span> {c.notes}</p> : null}
             <div className="mt-2 flex flex-wrap gap-3">
               {notes?.id !== c.id && <button type="button" onClick={() => setNotes({ id: c.id, text: c.notes })} className={btn.link}>{c.notes ? "Edit notes" : "Add notes"}</button>}
+              {!c.optedOutAt && <ScheduleButton className={btn.link} label="Schedule" prefill={{ title: `${c.name || c.email}${c.company ? ` (${c.company})` : ""}`, attendees: [{ email: c.email, name: c.name }] }} onBooked={(m) => { ctx.say(m); ctx.refresh(); }} />}
               {c.optedOutAt
                 ? <button type="button" disabled={!!ctx.busy} onClick={async () => { if (await confirmDialog({ title: `Allow outreach to ${c.name || c.email} again?`, body: "They asked not to be contacted. Only continue if they have told you otherwise.", confirmLabel: "Allow contact", tone: "danger" })) void patch(c.id, { optedOut: false }, "They can be contacted again."); }} className={btn.link}>Allow contact again</button>
                 : <button type="button" disabled={!!ctx.busy} onClick={() => patch(c.id, { optedOut: true }, "Marked do not contact. Pending outreach to them was withdrawn.")} className={btn.danger}>Do not contact</button>}

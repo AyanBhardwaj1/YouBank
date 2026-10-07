@@ -1272,3 +1272,125 @@ export const subscriptions = pgTable("subscriptions", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId)]);
+
+
+/* ---------------- Calendar ---------------- */
+
+/** Settings for a connected calendar account. Never the password or tokens. */
+export type CalendarAccountSettings = { serverUrl?: string; homeUrl?: string; username?: string; preset?: string; url?: string };
+/** A push channel (Google watch) or subscription (Microsoft Graph). The secret is encrypted. */
+export type CalendarPush = { kind: "google" | "microsoft"; id: string; resourceId: string; expiresAt: string; secret: string };
+export type CalendarAttendee = { email: string; name: string; response: string; optional?: boolean; organizer?: boolean; self?: boolean };
+
+/**
+ * A connected calendar account: Google or Microsoft (OAuth), CalDAV (app password) or an ICS link.
+ * Tokens and the app password are encrypted like mailbox tokens (src/lib/crm/crypto.ts).
+ */
+export const calendarAccounts = pgTable("calendar_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  provider: text("provider").notNull(), // google | microsoft | caldav | ics
+  address: text("address").notNull(),
+  displayName: text("display_name").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  tokenExpiresAt: ts("token_expires_at"),
+  secret: text("secret").notNull().default(""),
+  settings: jsonb("settings").$type<CalendarAccountSettings>().notNull().default({}),
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  status: text("status").notNull().default("connected"), // connected | needs_reauth | error
+  lastError: text("last_error").notNull().default(""),
+  lastSyncAt: ts("last_sync_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_accounts_user_provider_address_uidx").on(t.userId, t.provider, t.address)]);
+
+/** A calendar inside an account: shown or hidden, and where its sync and push notifications stand. */
+export const calendarCalendars = pgTable("calendar_calendars", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => calendarAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  remoteId: text("remote_id").notNull(),
+  name: text("name").notNull().default(""),
+  color: text("color").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  canWrite: boolean("can_write").notNull().default(false),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  visible: boolean("visible").notNull().default(true),
+  syncToken: text("sync_token").notNull().default(""),
+  /** When the current incremental window began; Microsoft's delta windows are restarted daily. */
+  windowStart: ts("window_start"),
+  lastSyncedAt: ts("last_synced_at"),
+  pushId: text("push_id"),
+  push: jsonb("push").$type<CalendarPush | null>(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_calendars_account_remote_uidx").on(t.accountId, t.remoteId),
+  index("calendar_calendars_user_idx").on(t.userId),
+  index("calendar_calendars_push_idx").on(t.pushId),
+]);
+
+/** One occurrence of an event in the sync window, with the Relationships contacts and deals it involves. */
+export const calendarEvents = pgTable("calendar_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  calendarId: integer("calendar_id").notNull().references(() => calendarCalendars.id, { onDelete: "cascade" }),
+  remoteId: text("remote_id").notNull(),
+  groupKey: text("group_key").notNull().default(""),
+  icalUid: text("ical_uid").notNull().default(""),
+  recurrenceId: text("recurrence_id"),
+  seriesId: text("series_id"),
+  title: text("title").notNull().default(""),
+  description: text("description").notNull().default(""),
+  location: text("location").notNull().default(""),
+  startsAt: ts("starts_at").notNull(),
+  endsAt: ts("ends_at").notNull(),
+  allDay: boolean("all_day").notNull().default(false),
+  timezone: text("timezone").notNull().default(""),
+  status: text("status").notNull().default("confirmed"), // confirmed | tentative | cancelled
+  busy: boolean("busy").notNull().default(true),
+  organizer: jsonb("organizer").$type<CalendarAttendee | null>(),
+  attendees: jsonb("attendees").$type<CalendarAttendee[]>().notNull().default([]),
+  videoUrl: text("video_url").notNull().default(""),
+  htmlLink: text("html_link").notNull().default(""),
+  etag: text("etag").notNull().default(""),
+  href: text("href").notNull().default(""),
+  contactIds: jsonb("contact_ids").$type<number[]>().notNull().default([]),
+  dealIds: jsonb("deal_ids").$type<number[]>().notNull().default([]),
+  external: boolean("external").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_events_calendar_remote_uidx").on(t.calendarId, t.remoteId),
+  index("calendar_events_user_start_idx").on(t.userId, t.startsAt),
+  index("calendar_events_group_idx").on(t.calendarId, t.groupKey),
+  index("calendar_events_contacts_idx").using("gin", sql`${t.contactIds} jsonb_path_ops`),
+  index("calendar_events_deals_idx").using("gin", sql`${t.dealIds} jsonb_path_ops`),
+]);
+
+/** Each person's scheduling preferences, and whether their external meetings are briefed each morning. */
+export const calendarPrefs = pgTable("calendar_prefs", {
+  userId: text("user_id").primaryKey(),
+  /** Kept so background work (the morning briefs) can check the plan, which administrators bypass by email. */
+  email: text("email").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  workHours: jsonb("work_hours").$type<{ start?: string; end?: string; days?: number[] }>().notNull().default({}),
+  defaultCalendarId: integer("default_calendar_id"),
+  defaultDuration: integer("default_duration").notNull().default(30),
+  /** A personal meeting room link, offered when creating a meeting. */
+  videoUrl: text("video_url").notNull().default(""),
+  autoBrief: boolean("auto_brief").notNull().default(false),
+  /** The local date of the last morning run, YYYY-MM-DD. */
+  autoBriefLast: text("auto_brief_last").notNull().default(""),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** An AI meeting brief. Made only on a click, or by the morning run the person switched on. */
+export const calendarBriefs = pgTable("calendar_briefs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  eventId: bigint("event_id", { mode: "number" }).notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  trigger: text("trigger").notNull().default("click"), // click | morning
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  provider: text("provider").notNull().default(""),
+  model: text("model").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_briefs_event_uidx").on(t.eventId), index("calendar_briefs_user_idx").on(t.userId, t.createdAt)]);

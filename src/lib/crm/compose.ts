@@ -10,6 +10,7 @@ import { asEntries, listPlaybook } from "./knowledge";
 import { companyDomain } from "./model";
 import { writeCompose, type HistoryItem } from "./outreach";
 import { getSettings, personaFor, standingOrders } from "./settings";
+import { schedulingNote } from "@/lib/calendar/scheduling";
 
 /**
  * A new email to anyone, from a one-line brief: "ask Maya for a 20-minute call next week about the
@@ -34,9 +35,13 @@ export async function composeDraft(userId: string, input: { to: string; name?: s
   const [ctx, settings, playbook, directory] = await Promise.all([loadUserContext(userId), getSettings(userId), listPlaybook(userId), directoryRecord(contact.startupId)]);
 
   const kind = opts.kind ?? "compose";
-  const [lessons, examples, known] = await Promise.all([lessonsFor(userId, kind), ownExamples(userId, brief), knowledgeNote(userId, contact.id)]);
+  const [lessons, examples, known, availability] = await Promise.all([
+    lessonsFor(userId, kind), ownExamples(userId, brief), knowledgeNote(userId, contact.id),
+    // "Ask Maya for a call next week": offer real free times from the calendar (premium; empty otherwise).
+    schedulingNote(userId, brief).catch(() => ""),
+  ]);
   const { data, provider, model } = await writeCompose({
-    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known].filter(Boolean).join("\n\n"),
+    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known, availability].filter(Boolean).join("\n\n"),
     playbook: renderPlaybook(selectPlaybook(asEntries(playbook), brief)), brief,
     to: { name: contact.name, email, company: contact.company, notes: contact.notes }, directory,
     history: history.reverse().map((m): HistoryItem => ({ direction: m.direction === "outbound" ? "outbound" : "inbound", sentAt: m.sentAt?.toISOString().slice(0, 10) ?? null, subject: m.subject, body: m.body })),

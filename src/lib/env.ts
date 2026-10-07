@@ -9,12 +9,14 @@ const REQUIRED = ["DATABASE_URL", "NEON_AUTH_BASE_URL", "NEON_AUTH_COOKIE_SECRET
 /** Needed in production for a feature (crons, SEC, AI, mail, the heartbeat). */
 const PRODUCTION = ["CRON_SECRET", "AUTOPILOT_SECRET", "EDGAR_USER_AGENT", "EMAIL_TOKEN_SECRET"];
 /** Optional, but must be numbers when set. */
-const NUMERIC = ["AI_USER_DAILY_USD", "AI_GLOBAL_DAILY_USD", "CHAT_BUDGET_MS", "WORKFLOW_BUDGET_MS", "NEWS_AI_BUDGET_USD", "AUTOPILOT_POOL", "AGENT_POOL", "NEON_AUTH_SESSION_DATA_TTL", "EDGE_MODAL_MONTHLY_USD", "EDGE_INNGEST_MONTHLY", "EDGE_R2_MAX_GB", "EDGE_DOCS_DB_MB"];
+const NUMERIC = ["AI_USER_DAILY_USD", "AI_GLOBAL_DAILY_USD", "CHAT_BUDGET_MS", "WORKFLOW_BUDGET_MS", "NEWS_AI_BUDGET_USD", "AUTOPILOT_POOL", "AGENT_POOL", "CALENDAR_POOL", "NEON_AUTH_SESSION_DATA_TTL", "EDGE_MODAL_MONTHLY_USD", "EDGE_INNGEST_MONTHLY", "EDGE_R2_MAX_GB", "EDGE_DOCS_DB_MB"];
 /** Edge's services each need all of their keys; half a set is a mistake worth naming. */
 const GROUPS: [string, string[]][] = [
   ["Cloudflare R2", ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]],
   ["Inngest", ["INNGEST_EVENT_KEY", "INNGEST_SIGNING_KEY"]],
   ["the Modal ML service", ["EDGE_ML_URL", "EDGE_ML_SECRET"]],
+  ["Microsoft 365 calendars", ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"]],
+  ["Google Calendar's own OAuth client", ["GOOGLE_CALENDAR_CLIENT_ID", "GOOGLE_CALENDAR_CLIENT_SECRET"]],
 ];
 
 /** Pure, for tests. */

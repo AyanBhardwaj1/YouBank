@@ -1,0 +1,8 @@
+{
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendars/AAMkAGI2TGuLAAA=/calendarView/delta?$deltatoken=R0usmci39OQxqJrxK4",
+  "value": [
+    { "id": "AAMkAGI2TGuLAAA=OCC1", "subject": "1:1", "start": { "dateTime": "2026-10-13T14:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-13T14:30:00.0000000", "timeZone": "UTC" }, "isAllDay": false, "showAs": "tentative", "type": "occurrence", "seriesMasterId": "AAMkAGI2TGuLAAA=SERIES", "originalStart": "2026-10-13T14:00:00Z", "attendees": [] },
+    { "id": "AAMkAGI2TGuLAAA=DAY1", "subject": "Out of office", "start": { "dateTime": "2026-10-15T00:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-16T00:00:00.0000000", "timeZone": "UTC" }, "isAllDay": true, "showAs": "oof", "type": "singleInstance" },
+    { "id": "AAMkAGI2TGuLAAA=SERIES", "subject": "1:1", "type": "seriesMaster", "start": { "dateTime": "2026-09-01T14:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-09-01T14:30:00.0000000", "timeZone": "UTC" } }
+  ]
+}

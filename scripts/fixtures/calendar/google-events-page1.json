@@ -1,0 +1,29 @@
+{
+  "kind": "calendar#events", "summary": "me@youbank.test", "timeZone": "America/New_York", "accessRole": "owner",
+  "nextPageToken": "CigKGjRwZ2R2b2JjNTVwbmE",
+  "items": [
+    {
+      "kind": "calendar#event", "etag": "\"3400000000000000\"", "id": "4pgdvobc55pna", "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=NHBnZHZvYmM1NXBuYQ", "summary": "Ledgerline diligence",
+      "description": "Agenda: metrics, pipeline.", "location": "",
+      "creator": { "email": "me@youbank.test", "self": true }, "organizer": { "email": "me@youbank.test", "self": true },
+      "start": { "dateTime": "2026-10-12T10:00:00-04:00", "timeZone": "America/New_York" },
+      "end": { "dateTime": "2026-10-12T10:45:00-04:00", "timeZone": "America/New_York" },
+      "iCalUID": "4pgdvobc55pna@google.com", "sequence": 0, "hangoutLink": "https://meet.google.com/abc-defg-hij",
+      "attendees": [
+        { "email": "me@youbank.test", "organizer": true, "self": true, "responseStatus": "accepted" },
+        { "email": "maya@ledgerline.io", "displayName": "Maya Ruiz", "responseStatus": "tentative" },
+        { "email": "c_1888@resource.calendar.google.com", "displayName": "Room 4", "resource": true, "responseStatus": "accepted" }
+      ],
+      "conferenceData": { "entryPoints": [ { "entryPointType": "video", "uri": "https://meet.google.com/abc-defg-hij", "label": "meet.google.com/abc-defg-hij" }, { "entryPointType": "phone", "uri": "tel:+1-555-0100" } ] },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event", "etag": "\"3400000000000001\"", "id": "weekly123_20261013T130000Z", "status": "confirmed",
+      "summary": "Pipeline review", "start": { "dateTime": "2026-10-13T09:00:00-04:00", "timeZone": "America/New_York" },
+      "end": { "dateTime": "2026-10-13T09:30:00-04:00", "timeZone": "America/New_York" },
+      "recurringEventId": "weekly123", "originalStartTime": { "dateTime": "2026-10-13T09:00:00-04:00", "timeZone": "America/New_York" },
+      "iCalUID": "weekly123@google.com", "organizer": { "email": "me@youbank.test", "self": true }, "eventType": "default"
+    }
+  ]
+}

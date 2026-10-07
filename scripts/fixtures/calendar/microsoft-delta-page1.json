@@ -1,0 +1,21 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(event)",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/calendars/AAMkAGI2TGuLAAA=/calendarView/delta?$skiptoken=R0usmcCM996atia_s",
+  "value": [
+    {
+      "@odata.etag": "W/\"EZ9r3czxY0m2jz8c45czkwAAFXcvIw==\"", "id": "AAMkAGI2TGuLAAA=EVT1", "subject": "Northwind board prep",
+      "bodyPreview": "Prep for the board.", "body": { "contentType": "html", "content": "<html><body><p>Prep for the board.</p><p>Join: <a href=\"https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=y\">Teams</a></p></body></html>" },
+      "start": { "dateTime": "2026-10-12T17:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-12T18:00:00.0000000", "timeZone": "UTC" },
+      "isAllDay": false, "isCancelled": false, "showAs": "busy", "type": "singleInstance",
+      "location": { "displayName": "Microsoft Teams Meeting" }, "webLink": "https://outlook.office365.com/owa/?itemid=EVT1",
+      "onlineMeeting": { "joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=y" },
+      "organizer": { "emailAddress": { "name": "Pat", "address": "cfo@northwind.com" } },
+      "attendees": [
+        { "type": "required", "status": { "response": "accepted", "time": "2026-10-01T10:00:00Z" }, "emailAddress": { "name": "Me", "address": "me@youbank.test" } },
+        { "type": "optional", "status": { "response": "none", "time": "0001-01-01T00:00:00Z" }, "emailAddress": { "name": "Lee", "address": "ceo@northwind.com" } },
+        { "type": "resource", "status": { "response": "accepted" }, "emailAddress": { "name": "Board room", "address": "boardroom@northwind.com" } }
+      ],
+      "iCalUId": "040000008200E00074C5B7101A82E008EVT1", "seriesMasterId": null
+    }
+  ]
+}

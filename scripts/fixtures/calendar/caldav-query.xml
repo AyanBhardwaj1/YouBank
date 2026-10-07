@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <response>
+    <href>/123456789/calendars/home/one-off.ics</href>
+    <propstat>
+      <prop>
+        <getetag>"C=101@U=abc"</getetag>
+        <C:calendar-data><![CDATA[BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//iOS 18.0//EN
+BEGIN:VEVENT
+UID:one-off@icloud
+DTSTAMP:20260930T120000Z
+DTSTART;TZID=Europe/London:20261021T100000
+DTEND;TZID=Europe/London:20261021T110000
+SUMMARY:Coffee with Maya
+LOCATION:Monmouth\, Borough Market
+ORGANIZER;CN=Me:mailto:me@icloud.com
+ATTENDEE;CN=Maya Ruiz;PARTSTAT=ACCEPTED:mailto:maya@ledgerline.io
+END:VEVENT
+END:VCALENDAR
+]]></C:calendar-data>
+      </prop>
+      <status>HTTP/1.1 200 OK</status>
+    </propstat>
+  </response>
+  <response>
+    <href>/123456789/calendars/home/weekly.ics</href>
+    <propstat>
+      <prop>
+        <getetag>"C=102@U=abc"</getetag>
+        <C:calendar-data>BEGIN:VCALENDAR&#13;
+VERSION:2.0&#13;
+BEGIN:VEVENT&#13;
+UID:weekly@icloud&#13;
+DTSTAMP:20260901T120000Z&#13;
+DTSTART;TZID=Europe/London:20261005T090000&#13;
+DTEND;TZID=Europe/London:20261005T093000&#13;
+RRULE:FREQ=WEEKLY;COUNT=4&#13;
+SUMMARY:Monday stand-up&#13;
+DESCRIPTION:https://meet.google.com/xyz-abcd-efg&#13;
+END:VEVENT&#13;
+BEGIN:VEVENT&#13;
+UID:weekly@icloud&#13;
+DTSTAMP:20260901T120000Z&#13;
+RECURRENCE-ID;TZID=Europe/London:20261012T090000&#13;
+DTSTART;TZID=Europe/London:20261012T100000&#13;
+DTEND;TZID=Europe/London:20261012T103000&#13;
+SUMMARY:Monday stand-up (late)&#13;
+END:VEVENT&#13;
+END:VCALENDAR&#13;
+</C:calendar-data>
+      </prop>
+      <status>HTTP/1.1 200 OK</status>
+    </propstat>
+  </response>
+</multistatus>

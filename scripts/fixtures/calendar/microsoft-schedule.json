@@ -1,0 +1,4 @@
+{ "value": [ { "scheduleId": "me@youbank.test", "availabilityView": "0220", "scheduleItems": [
+  { "isPrivate": false, "status": "busy", "subject": "Board prep", "start": { "dateTime": "2026-10-05T13:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-05T14:00:00.0000000", "timeZone": "UTC" } },
+  { "isPrivate": false, "status": "free", "subject": "Hold", "start": { "dateTime": "2026-10-05T15:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-05T16:00:00.0000000", "timeZone": "UTC" } }
+] } ] }

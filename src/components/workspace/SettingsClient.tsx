@@ -14,12 +14,14 @@ import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 import { EdgeUpgrades } from "@/components/edge/Upgrades";
+import { CalendarSettings } from "@/components/calendar/CalendarSettings";
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
   { id: "ai", label: "AI model", icon: "Cpu" },
   { id: "news", label: "News and alerts", icon: "Newspaper" },
   { id: "desk", label: "My desk", icon: "Layout" },
+  { id: "calendar", label: "Calendar", icon: "Calendar" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
 ] as const;
@@ -61,6 +63,8 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
         )}
 
         {tab === "news" && <NewsSettings />}
+
+        {tab === "calendar" && <CalendarSettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

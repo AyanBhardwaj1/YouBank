@@ -1,0 +1,7 @@
+{
+  "kind": "calendar#events", "nextSyncToken": "CPDAlvWDx70CEPDAlvWDx70CGAU=",
+  "items": [
+    { "kind": "calendar#event", "id": "allday1", "status": "confirmed", "summary": "Offsite", "start": { "date": "2026-10-14" }, "end": { "date": "2026-10-16" }, "transparency": "transparent", "iCalUID": "allday1@google.com" },
+    { "kind": "calendar#event", "id": "wl1", "status": "confirmed", "summary": "Home", "eventType": "workingLocation", "start": { "date": "2026-10-15" }, "end": { "date": "2026-10-16" } }
+  ]
+}

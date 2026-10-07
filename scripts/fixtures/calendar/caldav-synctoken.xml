@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<multistatus xmlns="DAV:">
+  <response><href>/123456789/calendars/home/</href><propstat><prop><sync-token>HwoQEgwAAAh4Z2Y6AAAAAA==</sync-token></prop><status>HTTP/1.1 200 OK</status></propstat></response>
+</multistatus>

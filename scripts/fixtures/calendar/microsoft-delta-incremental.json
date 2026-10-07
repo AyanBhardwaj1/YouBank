@@ -1,0 +1,7 @@
+{
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendars/AAMkAGI2TGuLAAA=/calendarView/delta?$deltatoken=NEXT2",
+  "value": [
+    { "@odata.type": "#microsoft.graph.event", "id": "AAMkAGI2TGuLAAA=EVT1", "@removed": { "reason": "deleted" } },
+    { "id": "AAMkAGI2TGuLAAA=EVT2", "subject": "Free time hold", "showAs": "free", "isCancelled": false, "isAllDay": false, "start": { "dateTime": "2026-10-14T16:00:00.0000000", "timeZone": "UTC" }, "end": { "dateTime": "2026-10-14T17:00:00.0000000", "timeZone": "UTC" } }
+  ]
+}

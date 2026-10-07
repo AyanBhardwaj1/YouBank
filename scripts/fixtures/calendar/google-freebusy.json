@@ -1,0 +1,2 @@
+{ "kind": "calendar#freeBusy", "timeMin": "2026-10-05T00:00:00.000Z", "timeMax": "2026-10-06T00:00:00.000Z",
+  "calendars": { "me@youbank.test": { "busy": [ { "start": "2026-10-05T13:00:00Z", "end": "2026-10-05T14:00:00Z" } ] }, "team_abc@group.calendar.google.com": { "busy": [ { "start": "2026-10-05T15:00:00Z", "end": "2026-10-05T15:30:00Z" } ] } } }
