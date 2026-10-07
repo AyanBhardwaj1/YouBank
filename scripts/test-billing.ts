@@ -20,7 +20,7 @@ import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPa
 import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
 import { intervalsFor, PLAN_ORDER, PLANS, yearlySavingPct, type PlanId } from "@/lib/billing/plans";
-import { CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, PACK_WINDOW_MS, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, reversedShare, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
+import { CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, PACK_WINDOW_MS, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, resolveDuplicate, reversedShare, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -211,6 +211,16 @@ async function main() {
     check("an open checkout for the same pack is reused", pk.reuse?.id === "cs_c" && pk.expire.length === 0);
     check("a second live subscription is recognised as a duplicate", isDuplicate({ status: "active", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_2" }));
     check("the same subscription, or replacing a lapsed one, is not", !isDuplicate({ status: "active", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_1" }) && !isDuplicate({ status: "canceled", stripeSubscriptionId: "sub_1" }, { status: "active", stripeSubscriptionId: "sub_2" }) && !isDuplicate(null, { status: "active", stripeSubscriptionId: "sub_2" }));
+    const sub = (id: string, created: number, o: { userId?: string; cancelAtPeriodEnd?: boolean } = {}) => ({ id, created, metadata: (o.userId ? { userId: o.userId } : {}) as Record<string, string>, cancel_at_period_end: !!o.cancelAtPeriodEnd, cancel_at: null });
+    const t0 = 1_790_000_000;
+    const twice = resolveDuplicate("u1", sub("sub_new", t0 + 600, { userId: "u1" }), sub("sub_old", t0, { userId: "u1" }));
+    check("a double checkout cancels the newer subscription and keeps the older, in either order", twice.keep.id === "sub_old" && twice.drop?.id === "sub_new" && resolveDuplicate("u1", sub("sub_old", t0, { userId: "u1" }), sub("sub_new", t0 + 600, { userId: "u1" })).drop?.id === "sub_new");
+    const manual = resolveDuplicate("u1", sub("sub_old", t0, { userId: "u1" }), sub("sub_dash", t0 + 600));
+    check("a subscription made outside Checkout is never cancelled; the plan follows the newer", manual.drop === null && manual.keep.id === "sub_dash");
+    const moved = resolveDuplicate("u1", sub("sub_old", t0, { userId: "u1", cancelAtPeriodEnd: true }), sub("sub_new", t0 + 600, { userId: "u1" }));
+    check("a move to a new subscription with the old one set to end cancels nothing and follows the new one", moved.drop === null && moved.keep.id === "sub_new");
+    check("two subscriptions started days apart are not a double checkout", resolveDuplicate("u1", sub("a", t0, { userId: "u1" }), sub("b", t0 + 3 * 86_400, { userId: "u1" })).drop === null);
+    check("another person's subscription is never cancelled for this one", resolveDuplicate("u1", sub("a", t0, { userId: "u1" }), sub("b", t0 + 60, { userId: "u2" })).drop === null);
     const ahead = (ms: number, now: number) => sessionExpiry(ms, now) - Math.floor(now / 1000);
     check("checkout sessions close after about half an hour (never under Stripe's 30-minute minimum)", [0, 1, 299_999, 599_999].every((d) => ahead(CHECKOUT_WINDOW_MS, t + d) > 30 * 60 && ahead(CHECKOUT_WINDOW_MS, t + d) <= 42 * 60) && ahead(PACK_WINDOW_MS, t + 59_000) > 30 * 60);
     check("a retried create within the window sends the same expiry, so Stripe's idempotency accepts it", sessionExpiry(CHECKOUT_WINDOW_MS, t) === sessionExpiry(CHECKOUT_WINDOW_MS, t + 4 * 60_000) && sessionExpiry(PACK_WINDOW_MS, t) === sessionExpiry(PACK_WINDOW_MS, t + 20_000));

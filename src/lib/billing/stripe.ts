@@ -17,7 +17,8 @@
  *   on their `subscriptions` row (status "none" until they subscribe). Checkout then never runs twice at
  *   once for them: an open session for the same purchase is reused, other open subscription sessions are
  *   expired, the create call carries an idempotency key per person, plan, interval and seats for ten
- *   minutes, and a second live subscription that still slips through is cancelled and refunded.
+ *   minutes, and a second live subscription that still slips through (both from Checkout, within a day) is
+ *   cancelled and refunded; any other pair of live subscriptions is logged and left alone (resolveDuplicate).
  */
 import Stripe from "stripe";
 import { and, eq, isNull } from "drizzle-orm";
@@ -194,10 +195,31 @@ export function isDuplicate(existing: Pick<SubscriptionRow, "status" | "stripeSu
     && LIVE_STATUSES.includes(existing.status) && LIVE_STATUSES.includes(incoming.status);
 }
 
+/** How far apart two subscriptions can start and still be one double purchase (a Checkout page lasts about 40 minutes). */
+export const DUPLICATE_WINDOW_S = 24 * 3600;
+
+type SubLike = Pick<Stripe.Subscription, "id" | "created" | "metadata" | "cancel_at_period_end" | "cancel_at">;
+
+/**
+ * Two live subscriptions for one person: which one their row follows, and which (if any) to cancel and
+ * refund. Only an accidental double checkout is undone: both made by YouBank's Checkout for this person
+ * (their metadata says so), started within DUPLICATE_WINDOW_S of each other, and neither set to end; then
+ * the newer goes. Anything else (one made in the dashboard, a move to a new price with the old one set to
+ * end) cancels nothing, and the row follows the one that carries on: the one not ending, else the newer. Pure.
+ */
+export function resolveDuplicate<S extends SubLike>(userId: string, a: S, b: S): { keep: S; drop: S | null } {
+  const [older, newer] = a.created <= b.created ? [a, b] : [b, a];
+  const ending = (s: S) => !!s.cancel_at_period_end || !!s.cancel_at;
+  const ours = (s: S) => s.metadata?.userId === userId;
+  if (ours(older) && ours(newer) && newer.created - older.created <= DUPLICATE_WINDOW_S && !ending(older) && !ending(newer)) return { keep: older, drop: newer };
+  return { keep: ending(newer) && !ending(older) ? older : newer, drop: null };
+}
+
 /**
  * Write a person's row from a subscription as Stripe holds it now. Idempotent. When it would be a second
- * live subscription beside the stored one (two checkouts that both went through), the newer of the two is
- * cancelled and refunded and the older one stays, whichever event arrives first.
+ * live subscription beside the stored one, resolveDuplicate decides: a double checkout (two that both went
+ * through) has its newer subscription cancelled and refunded, whichever event arrives first; any other
+ * pair is left for the owner to sort out, and logged.
  */
 export async function applySubscription(userId: string, sub: Stripe.Subscription): Promise<RowValues | null> {
   const db = requireDb();
@@ -206,9 +228,9 @@ export async function applySubscription(userId: string, sub: Stripe.Subscription
   if (existing?.stripeSubscriptionId && isDuplicate(existing, next)) {
     const other = await stripeCall("subscription", (s) => s.subscriptions.retrieve(existing.stripeSubscriptionId!));
     if (LIVE_STATUSES.includes(other.status)) {
-      const [keep, drop] = other.created <= sub.created ? [other, sub] : [sub, other];
-      await cancelDuplicate(userId, drop);
-      if (keep.id === existing.stripeSubscriptionId) return null;
+      const { keep, drop } = resolveDuplicate(userId, other, sub);
+      if (drop) await cancelDuplicate(userId, drop);
+      else logError(new Error(`Two live subscriptions for ${userId} (${other.id}, ${sub.id}) that are not a double checkout; neither was cancelled. The plan follows ${keep.id}.`), { status: 409, where: "billing:two-subscriptions" });
       next = rowFromSubscription(userId, keep);
     }
   }
