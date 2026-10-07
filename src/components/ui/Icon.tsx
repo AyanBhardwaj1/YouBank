@@ -7,6 +7,9 @@ import {
   Mail, Map, MessageSquare, Network, Percent, PieChart, Presentation, Radar, Receipt, Scale, ScrollText, Search, Shield, Sparkles, Split, Target, TrendingDown,
   TrendingUp, Users, Wallet, Zap, Gauge, Banknote, BadgeDollarSign, Hourglass, Table, Settings, Palette, Home, Terminal, Rocket, Library, LogOut, ChevronRight, Play,
   Save, Copy, Download, RefreshCw, X, Plus, ArrowRight, Check, Bot, Cpu, Eye, Filter, Lightbulb, Star, Timer, Wand2, Bell, Lock, Layout, MousePointerClick, Building, FlaskConical, Stethoscope, Factory, Store, Radio, Fuel, Server, Newspaper, Mountain, type LucideProps,
+  // Newsroom: audio, Brief mode, the recap, the globe, following and sharing.
+  Headphones, AudioLines, Film, Share2, Pause, SkipForward, SkipBack, BellPlus, BellRing, BellOff, Info, ChevronUp, ChevronDown, ChevronLeft, Volume2, Link2, Image, Video, Maximize2, ArrowUpRight,
+  ExternalLink, Bookmark, BookmarkCheck, EyeOff, ThumbsDown, GalleryVerticalEnd, Globe2, Orbit, Keyboard, ArrowLeft, LoaderCircle, Square, Clapperboard, Crosshair,
 } from "lucide-react";
 
 const MAP: Record<string, React.ComponentType<LucideProps>> = {
@@ -16,6 +19,8 @@ const MAP: Record<string, React.ComponentType<LucideProps>> = {
   Mail, Map, MessageSquare, Network, Percent, PieChart, Presentation, Radar, Receipt, Scale, ScrollText, Search, Shield, Sparkles, Split, Target, TrendingDown,
   TrendingUp, Users, Wallet, Zap, Gauge, Banknote, BadgeDollarSign, Hourglass, Table, Settings, Palette, Home, Terminal, Rocket, Library, LogOut, ChevronRight, Play,
   Save, Copy, Download, RefreshCw, X, Plus, ArrowRight, Check, Bot, Cpu, Eye, Filter, Lightbulb, Star, Timer, Wand2, Bell, Lock, Layout, MousePointerClick, Building, FlaskConical, Stethoscope, Factory, Store, Radio, Fuel, Server, Newspaper, Mountain,
+  Headphones, AudioLines, Film, Share2, Pause, SkipForward, SkipBack, BellPlus, BellRing, BellOff, Info, ChevronUp, ChevronDown, ChevronLeft, Volume2, Link2, Image, Video, Maximize2, ArrowUpRight,
+  ExternalLink, Bookmark, BookmarkCheck, EyeOff, ThumbsDown, GalleryVerticalEnd, Globe2, Orbit, Keyboard, ArrowLeft, LoaderCircle, Square, Clapperboard, Crosshair,
   // Aliases for names packs may use
   Chart: BarChart3, BarChart: BarChart3, Trending: TrendingUp, Money: DollarSign, Doc: FileText, Document: FileText, List: ListChecks, Book: BookOpen, Graduation: GraduationCap, Bank: Landmark, People: Users, Waterfall: Layers, Grid: Table, Spreadsheet: FileSpreadsheet, Balance: Scale, Clock: Timer, Search2: FileSearch, Filing: ScrollText, Deal: Handshake, Fire: Flame,
 };

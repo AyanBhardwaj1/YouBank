@@ -277,10 +277,29 @@ reads the important stories once: bullets, key numbers, why it matters, companie
 against SEC's list) and deal terms. Deals and raises fill a tracker with the premium to the unaffected
 close and implied multiples from SEC figures, and advisor league tables.
 
-- **Four editions**, chosen in the header or in Settings: Terminal (a Bloomberg-style wire), Editorial
-  (an FT-style magazine), Brief (an Axios-style morning brief with the wire alongside) and Modern (an
-  Apple News-style dashboard). With the advanced switch, any look goes with any layout. Stories open in
-  a side peek or on their own page; motion is rich, subtle or off (and off under reduced motion).
+- **Five editions**, chosen in the header or in Settings: Front page (a data-led front: the hero
+  beside its chart, generated data-art thumbnails, "the day in data" drawn in as you scroll, a ticker
+  and the globe), Terminal (a Bloomberg-style wire), Editorial (an FT-style magazine), Brief (an
+  Axios-style morning brief with the wire alongside) and Modern (an Apple News-style dashboard). With
+  the advanced switch, any look goes with any layout. Stories open in a side peek or on their own page;
+  motion is rich, subtle or off (and off under reduced motion).
+- **A front page that learns**, explainably: what you read, save, follow and hide becomes an affinity
+  per desk tag, company and kind of story, fading over two weeks, with the top kept varied. Every card
+  says why it is there, and "Why you're seeing this" shows the whole sum.
+- **Inside a story**: an interactive chart (the price reaction with the moment it broke, the deal on a
+  log scale, the key figures, or how coverage spread), a timeline, a relationship map of who is
+  involved (with your own contacts), and "why this matters to you": your watchlist, contacts, pipeline
+  and Edge watches it touches (free; an AI note on request with Pro).
+- **The globe**: where the last two days' news is happening, markers sized by significance, filtered
+  by desk, one click to the stories.
+- **Listen, swipe, watch**: an audio briefing with a chapter per story (free in your browser's voice;
+  with Pro, an AI script in a neural voice, on a click or each morning), Brief mode (a 20-second card
+  per story, swipe on a phone, keys on a desktop), and a 60-second recap of animated slides you can
+  save as images or record to video in the browser.
+- **Follow a story** to get a bell alert and a push when it develops (five free, unlimited with Pro).
+- **Public story pages** at `/news/<story>`: the summary, chart, timeline and sources for anyone, with
+  link previews drawn from the story's data, share buttons and a sign-up invitation; never anything
+  personal. In the sitemap.
 - **The morning brief**, written once a day per desk with a "for you" section, on Home, in the app, and
   by email (from your own connected mailbox), browser push or Slack.
 - **Alerts** for watchlist companies (urgent for a bankruptcy, restatement or takeover), companies

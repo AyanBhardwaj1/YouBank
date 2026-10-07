@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { canUse } from "@/lib/billing/entitlements";
 import { withinRate } from "@/lib/locks";
 import { encryptToken, encryptionReady } from "@/lib/crm/crypto";
 import { budgetStatus } from "@/lib/news/budget";
@@ -88,6 +89,10 @@ export async function POST(req: Request) {
       else next.slack = encryptToken(url);
     } else if (typeof stored.slack === "string") next.slack = stored.slack;
     const prefs = normalizeNewsPrefs(next, { role: row.role as never });
+    // The daily audio briefing spends on a model and a neural voice every morning: only for plans that include it.
+    if (prefs.audio.daily && !normalizeNewsPrefs(stored, { role: row.role as never }).audio.daily && !(await canUse(user, "news.audio-daily"))) {
+      return NextResponse.json({ error: "The daily audio briefing is part of the Pro plan. Upgrade in Settings, under Plan, to switch it on." }, { status: 402 });
+    }
     extra.news = prefs;
     await db.update(schema.profiles).set({ extra, updatedAt: new Date() }).where(eq(schema.profiles.userId, user.id));
     return NextResponse.json({ prefs: publicPrefs(prefs) });

@@ -15,13 +15,13 @@ import { hueOf, StoryArt } from "./DataArt";
 export type CardVariant = "row" | "compact" | "card" | "tile" | "lead" | "brief";
 type Props = { story: Story; variant: CardVariant; sparks: Map<string, Spark | null>; now: number; fresh?: boolean; index?: number; onOpen: (s: Story) => void; onSave?: (s: Story) => void; lines?: string[]; why?: string };
 
-const sourceLine = (s: Story) => {
+export const sourceLine = (s: Story) => {
   const names = [...new Set(s.sources.map((x) => (x.kind === "filing" ? "SEC" : x.name)))];
   const shown = names.slice(0, 2).join(", ");
   return names.length > 2 || s.sourceCount > names.length ? `${shown} +${Math.max(s.sourceCount, names.length) - 2 > 0 ? Math.max(s.sourceCount, names.length) - 2 : 1}` : shown;
 };
 
-function Kicker({ s, now }: { s: Story; now: number }) {
+export function Kicker({ s, now }: { s: Story; now: number }) {
   return (
     <div className="nr-kicker flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
       <span style={{ color: hueOf(s.tags) }}>{s.filing ? `${s.filing.form}${s.filing.items[0] ? ` ${s.filing.items[0]}` : ""}` : s.categoryLabel}</span>
@@ -34,7 +34,7 @@ function Kicker({ s, now }: { s: Story; now: number }) {
   );
 }
 
-function Reasons({ reasons }: { reasons: string[] }) {
+export function Reasons({ reasons }: { reasons: string[] }) {
   const personal = reasons.filter((r) => !r.startsWith("For your desk"));
   if (!personal.length) return null;
   return (
@@ -48,7 +48,7 @@ function Reasons({ reasons }: { reasons: string[] }) {
   );
 }
 
-function Tickers({ s, sparks }: { s: Story; sparks: Map<string, Spark | null> }) {
+export function Tickers({ s, sparks }: { s: Story; sparks: Map<string, Spark | null> }) {
   if (!s.tickers.length) return null;
   return (
     <div className="flex flex-wrap gap-1">
@@ -60,7 +60,7 @@ function Tickers({ s, sparks }: { s: Story; sparks: Map<string, Spark | null> })
   );
 }
 
-function SaveButton({ s, onSave }: { s: Story; onSave?: (s: Story) => void }) {
+export function SaveButton({ s, onSave }: { s: Story; onSave?: (s: Story) => void }) {
   if (!onSave) return null;
   return (
     <button type="button" onClick={(e) => { e.stopPropagation(); onSave(s); }} className="shrink-0 rounded-md p-1 text-muted transition hover:bg-elevated hover:text-accent" aria-label={s.saved ? "Remove from saved" : "Save story"} title={s.saved ? "Saved" : "Save"}>

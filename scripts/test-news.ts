@@ -1,7 +1,10 @@
 /**
  * Checks for the Newsroom's pure logic: cleaning, feed and filing parsing, robots.txt, extraction,
  * classification, clustering, ranking, desks, preferences, the budget, deals, alerts, the calendar,
- * research acceptance and the email. No network, no database.   pnpm exec tsx scripts/test-news.ts
+ * research acceptance and the email; and the Newsroom's newer parts: the learned front page and its
+ * explanations, diversity, "why this matters to you", timelines, relationship maps and charts, the
+ * globe, the audio briefing's script, the recap's slides, follows, public pages and the premium
+ * registry. No network, no database.   pnpm exec tsx scripts/test-news.ts
  */
 import { allowedAt } from "@/lib/news/budget";
 import { nyToUtc, recurringEvents } from "@/lib/news/calendar";
@@ -29,6 +32,16 @@ import { rankEntries } from "@/lib/news/radar";
 import { countryId, placesIn, stateId } from "@/lib/news/radar/places";
 import { approvalEntries, bankApplications, energyNotice, recallEntries, tradeCase, trialEntries, type FrDoc } from "@/lib/news/radar/sources";
 import { radarMap } from "@/lib/news/radar/view";
+import { diversify, learnAffinity, learnedScore, reasonFor, topFeatures, type Signal } from "@/lib/news/affinity";
+import { briefingChapters, mergeScript, MAX_CHAPTER_CHARS, speakable, ttsCostUsd } from "@/lib/news/briefing";
+import { canFollowMore, FREE_FOLLOWS, followUpdate } from "@/lib/news/follow";
+import { filterPoints, globePoints, markerRadius, significance, storyPlaces } from "@/lib/news/geo";
+import { mattersToYou } from "@/lib/news/matters";
+import { isPublicStory } from "@/lib/news/public";
+import { recapMs, recapSlides, RECAP_TARGET_MS, slideAt, wrapText } from "@/lib/news/recap";
+import { idFromSlug, slugFor, slugWords } from "@/lib/news/slug";
+import { briefCard, chartFor, eventIndex, figureBars, layoutGraph, parseFigure, storyGraph, storyTimeline } from "@/lib/news/storyviz";
+import { FEATURES, featureById } from "@/lib/billing/features";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -116,7 +129,7 @@ async function main() {
   check("muted topics disappear; fresher ranks first", rank(reader, [{ ...base, id: 4, headline: "crypto exchange news" }]).length === 0 && rank(reader, [{ ...base, id: 5, headline: "Old", updatedAt: new Date(now - 40 * 3_600_000) }, { ...base, id: 6, headline: "New" }])[0].id === 6);
 
   console.log("preferences");
-  check("editions follow the role", defaultNewsPrefs({ role: "markets" }).edition === "terminal" && defaultNewsPrefs({ role: "vc" }).edition === "editorial" && defaultNewsPrefs({ role: "pe" }).layout === "dashboard");
+  check("editions follow the role", defaultNewsPrefs({ role: "markets" }).edition === "terminal" && defaultNewsPrefs({ role: "vc" }).edition === "front" && defaultNewsPrefs({ role: "vc" }).layout === "front" && defaultNewsPrefs({ role: "pe" }).layout === "dashboard");
   const adv = normalizeNewsPrefs({ edition: "brief", advanced: true, look: "editorial", layout: "wire", motion: "subtle", reading: "page", brief: { time: "25:00", timezone: "Not/AZone" } }, { role: "banker" });
   check("advanced mixes look and layout; bad times and zones fall back", adv.look === "editorial" && adv.layout === "wire" && adv.motion === "subtle" && adv.reading === "page" && adv.brief.time === "07:00" && adv.brief.timezone === "America/New_York", adv);
   const simple = normalizeNewsPrefs({ edition: "modern", advanced: false, look: "terminal" }, { role: "banker" });
@@ -208,6 +221,110 @@ async function main() {
   const t0 = Date.parse("2026-09-29T12:00:00Z");
   const ranked = rankEntries([{ ...apps[2], weight: 0.36, at: "2026-09-29T12:00:00Z" }, { ...apps[0], weight: 0.62, at: "2026-09-20T12:00:00Z" }], t0);
   check("radar ranking: weight first, freshness second", ranked[0].weight === 0.62, ranked.map((r) => r.weight));
+
+
+  console.log("the learned front page");
+  const sig = (kind: Signal["kind"], daysAgo: number, f: Partial<Signal>): Signal => ({ kind, at: new Date(now - daysAgo * 86_400_000), tags: [], tickers: [], companies: [], category: "general", ...f });
+  const learned = learnAffinity([
+    sig("read", 1, { tags: ["energy"], tickers: ["XOM"] }), sig("read", 2, { tags: ["energy"] }), sig("read", 3, { tags: ["energy"] }), sig("save", 1, { tickers: ["XOM"], companies: ["Exxon Mobil Corp"] }),
+    sig("hide", 1, { tags: ["consumer"], companies: ["Acme Toys Inc"] }), sig("hide", 2, { companies: ["Acme Toys"] }), sig("read", 90, { tags: ["tech"] }),
+  ], new Date(now));
+  const fx = learned.features;
+  check("reads, saves and hides become affinities; old actions are ignored", (fx.get("tag:energy")?.affinity ?? 0) > 0.4 && (fx.get("co:acme toys")?.affinity ?? 0) < -0.7 && !fx.has("tag:tech") && learned.signals === 6, [...fx.values()].map((f) => [f.key, f.affinity.toFixed(2)]));
+  const decayed = learnAffinity([sig("read", 28, { tags: ["energy"] })], new Date(now)).features.get("tag:energy")!.affinity, fresh = learnAffinity([sig("read", 0, { tags: ["energy"] })], new Date(now)).features.get("tag:energy")!.affinity;
+  check("votes fade with a two-week half-life", Math.abs(decayed - Math.tanh(0.25 / 4)) < 1e-6 && Math.abs(fresh - Math.tanh(1 / 4)) < 1e-6, { decayed, fresh });
+  const liked = learnedScore(learned, { tags: ["energy"], tickers: ["XOM"], companies: [], category: "deals" });
+  const disliked = learnedScore(learned, { tags: ["consumer"], tickers: [], companies: ["ACME TOYS, INC."], category: "deals" });
+  check("a story like the ones read rises, with the evidence in words", liked.score > 0.3 && /^You (saved|read)/.test(liked.reason ?? ""), liked);
+  check("a story like the ones hidden sinks, and says so", disliked.score < -0.4 && (disliked.reason ?? "").startsWith("Fewer like this: you hid 2 stories on"), disliked);
+  check("reasons read naturally", reasonFor({ key: "tag:energy", label: "Energy & power", affinity: 0.6, evidence: { read: 6, save: 0, follow: 0, hide: 0 } }) === "You read 6 Energy & power stories lately" && reasonFor({ key: "tk:NVDA", label: "NVDA", affinity: 0.5, evidence: { read: 0, save: 2, follow: 0, hide: 0 } }) === "You saved 2 stories on NVDA");
+  check("what the page learned, strongest first", topFeatures(learned).liked[0].affinity >= topFeatures(learned).liked.at(-1)!.affinity && topFeatures(learned).avoided.some((f) => f.label.startsWith("Acme")));
+  const lr: Reader = { ...reader, follows: { tickers: [], topics: [] }, watch: new Set(), network: new Map(), affinity: learned };
+  const sx = score(lr, { ...base, id: 9, headline: "Exxon weighs a deal", tickers: ["XOM"] });
+  check("the ranking shows its parts and adds the learned reason", sx.explain.learned > 0 && sx.explain.fit > 0 && sx.explain.freshness > 0.99 && sx.reasons.some((r) => r.startsWith("You ")), sx);
+  check("a disliked story never scores below zero (it sinks, it is not muted)", score(lr, { ...base, id: 10, headline: "Acme Toys recall", desks: ["consumer"], entities: [{ name: "Acme Toys", kind: "company" }] }).score >= 0);
+  const dv = diversify([
+    { id: 1, score: 1, category: "deals", tickers: ["XOM"], desks: ["energy"] }, { id: 2, score: 0.99, category: "deals", tickers: ["XOM"], desks: ["energy"] },
+    { id: 3, score: 0.98, category: "deals", tickers: ["CVX"], desks: ["energy"] }, { id: 4, score: 0.9, category: "policy", tickers: [], desks: ["energy"] },
+  ]);
+  check("diversity: a second story on the same company gives way to a different one", dv.map((x) => x.id).join() === "1,3,4,2", dv.map((x) => x.id));
+
+  console.log("why this matters to you");
+  const mm = mattersToYou({ headline: "Chevron to buy Hess Midstream; Permian assets in Texas", tickers: ["CVX", "HESM"], entities: [{ name: "Chevron Corporation", ticker: "CVX", kind: "company" }, { name: "Hess Midstream", kind: "company" }], places: ["us:TX", "r:permian"] }, {
+    watch: new Set(["CVX"]), network: new Map([[normCompany("Hess Midstream"), [{ contactId: 3, name: "Ann Lee", company: "Hess Midstream" }]]]),
+    deals: [{ id: 1, name: "Hess Midstream", stage: "diligence", status: "open" }, { id: 2, name: "Hess Midstream", stage: "closed", status: "lost" }, { id: 3, name: "AB", stage: "x", status: "open" }],
+    edge: [{ id: 5, kind: "place", label: "Permian Basin", bbox: [-105, 30, -100, 34] }, { id: 6, kind: "company", label: "Chevron", ticker: "CVX" }],
+  });
+  check("watchlist, pipeline, contacts and Edge watches each match, most specific first", mm.map((m) => m.kind).join() === "watchlist,pipeline,contact,edge,edge" && mm[1].detail.startsWith("Stage: diligence") && mm[2].label === "Ann Lee works at Hess Midstream" && mm[0].href.includes("ticker=CVX"), mm);
+  check("nothing matches when nothing is shared", mattersToYou({ headline: "Fed holds rates", tickers: [], entities: [] }, { watch: new Set(["CVX"]), network: new Map(), deals: [], edge: [] }).length === 0);
+
+  console.log("timelines, maps and charts");
+  const tl = storyTimeline([
+    { title: "Acme to buy Widget", source: "Reuters", kind: "article", url: "u1", at: "2026-10-01T12:00:00Z" },
+    { title: "Acme agrees deal", source: "Bloomberg", kind: "article", url: "u2", at: "2026-10-01T12:30:00Z" },
+    { title: "Acme deal update", source: "Reuters", kind: "article", url: "u3", at: "2026-10-01T13:00:00Z" },
+    { title: "Acme Corp 8-K", source: "SEC EDGAR", kind: "filing", url: "u4", at: "2026-10-01T14:00:00Z", form: "8-K" },
+  ], [{ id: 77, headline: "Acme explores sale", at: "2026-09-20T12:00:00Z" }, { id: 78, headline: "Too old", at: "2026-08-01T00:00:00Z" }]);
+  check("timeline: earlier stories, the first report, one entry per outlet, filings named", tl.map((e) => e.kind).join() === "earlier,first,source,filing" && tl[1].label === "First reported by Reuters" && tl[3].label === "8-K current report" && tl[0].clusterId === 77, tl);
+  const sg = storyGraph("Acme to buy Widget for $4B", [{ name: "Acme Corp", ticker: "ACME", kind: "company", role: "acquirer" }, { name: "Widget Inc", kind: "company" }, { name: "Jane Smith", kind: "person", role: "CEO of Widget" }, { name: "FTC", kind: "agency" }],
+    { kind: "acquisition", acquirer: "Acme Corporation", target: "Widget", investors: [], advisors: [{ firm: "Goldman Sachs", side: "buyer", role: "financial" }] }, [{ name: "Bob Ray", company: "Widget Inc." }]);
+  const label = (id: string) => sg.nodes.find((n) => n.id === id)?.label;
+  check("relationship map: the deal joins buyer and target, names merge, people tie to their company, contacts appear", sg.edges.some((e) => e.kind === "deal" && label(e.from) === "Acme Corporation" && label(e.to) === "Widget") && sg.nodes.filter((n) => n.kind !== "story" && /acme/i.test(n.label)).length === 1 && sg.nodes.find((n) => n.label === "Acme Corporation")?.ticker === "ACME"
+    && sg.edges.some((e) => e.kind === "role" && label(e.from) === "Jane Smith" && label(e.to) === "Widget") && sg.edges.some((e) => e.kind === "works" && label(e.from) === "Bob Ray") && sg.edges.some((e) => e.kind === "advise" && label(e.from) === "Goldman Sachs" && label(e.to) === "Acme Corporation") && sg.edges.some((e) => e.from === "story" && label(e.to) === "FTC"), sg);
+  check("the public map never has contacts", !storyGraph("x", [{ name: "Widget", kind: "company" }], null).nodes.some((n) => n.kind === "contact"));
+  const pos = layoutGraph(sg);
+  check("layout: the story at the centre, everything inside the frame, nothing on top of anything else", pos.get("story")!.x === 0.5 && [...pos.values()].every((p) => p.x > 0.02 && p.x < 0.98 && p.y > 0.02 && p.y < 0.98) && [...pos.values()].every((a, i, all) => all.every((b, j) => i === j || Math.hypot(a.x - b.x, a.y - b.y) > 0.05)), [...pos.entries()]);
+  check("figures read as numbers", parseFigure("$4.1 billion")?.n === 4.1e9 && parseFigure("$4.1 billion")?.unit === "$" && parseFigure("18%")?.unit === "%" && parseFigure("12.5x")?.unit === "x" && parseFigure("1.2m shares")?.n === 1.2e6 && parseFigure("no number") === null);
+  check("figure bars: same unit, two or more, largest first", figureBars([{ label: "Deal value", value: "$4.1 billion" }, { label: "Debt", value: "$900 million" }, { label: "Premium", value: "18%" }]).map((b) => b.label).join() === "Deal value,Debt" && figureBars([{ label: "Premium", value: "18%" }]).length === 0);
+  const cs = { tickers: ["ACME"], deal: null, summary: null, sources: [{ at: "a" }, { at: "b" }], sourceCount: 2, filing: null };
+  check("one chart per card: deal, then price, then figures, filing, coverage", chartFor({ ...cs, deal: { valueUsd: 1e9, premium: null } }, () => true) === "deal" && chartFor(cs, () => true) === "price" && chartFor(cs, () => false) === "coverage" && chartFor({ ...cs, sourceCount: 1, filing: { form: "8-K" } }, () => false) === "filing");
+  check("the story's moment on a 30-day line", eventIndex(30, new Date(now - 7 * 86_400_000).toISOString(), now) === 24 && eventIndex(30, new Date(now - 2 * 3_600_000).toISOString(), now) === 28 && eventIndex(30, new Date(now - 90 * 86_400_000).toISOString(), now) === null);
+  const bc = briefCard({ headline: "Acme agrees to buy Widget for $4.1 billion in cash", summary: { bullets: ["Acme will pay $40 a share, an 18% premium to Friday's close.", "The deal is expected to close in the first half of next year, subject to regulators.", "A third bullet that should not fit."], numbers: [], why: "It is the largest industrial deal this year." } });
+  check("Brief mode: a 20-second card of at most two bullets", bc.lines.length === 2 && bc.seconds <= 22 && bc.seconds >= 10, bc);
+
+  console.log("the globe");
+  check("stories are placed by the places they name; listed companies with none sit in the US, inferred", storyPlaces({ headline: "Saudi Aramco and TotalEnergies plan Qatar LNG venture", tickers: [] }).ids.join() === "c:SA,c:QA" && storyPlaces({ headline: "Acme beats estimates", tickers: ["ACME"] }).inferred && storyPlaces({ headline: "A thought piece", tickers: [] }).ids.length === 0);
+  const gpts = globePoints([
+    { id: 1, headline: "Exxon expands in Guyana", importance: 0.8, sourceCount: 4, tags: ["energy"], category: "deals", updatedAt: "2026-10-01T10:00:00Z", tickers: ["XOM"] },
+    { id: 2, headline: "Guyana oil output rises", importance: 0.4, sourceCount: 1, tags: ["energy", "macro"], category: "macro", updatedAt: "2026-10-01T12:00:00Z", tickers: [] },
+    { id: 3, headline: "Japan and Korea chip pact", importance: 0.6, sourceCount: 2, tags: ["tech"], category: "policy", updatedAt: "2026-10-01T11:00:00Z", tickers: [] },
+    { id: 4, headline: "Acme beats", importance: 0.5, sourceCount: 1, tags: ["tech"], category: "earnings", updatedAt: "2026-10-01T09:00:00Z", tickers: ["ACME"] },
+  ]);
+  const guyana = gpts.find((p) => p.id === "c:GY")!;
+  check("places gather their stories, weighted by significance, and split a multi-place story", gpts[0].id === "c:GY" && guyana.stories.length === 2 && Math.abs(guyana.weight - (significance(0.8, 4) + significance(0.4, 1))) < 0.002 && Math.abs(gpts.find((p) => p.id === "c:JP")!.weight - significance(0.6, 2) / 2) < 0.002 && gpts.find((p) => p.id === "c:US")?.inferred === true && guyana.latest === "2026-10-01T12:00:00Z", gpts);
+  check("the desk filter keeps matching stories and reweights", filterPoints(gpts, ["tech"]).map((p) => p.id).sort().join() === "c:JP,c:KR,c:US" && filterPoints(gpts, null).length === gpts.length && filterPoints(gpts, ["macro"])[0].stories.length === 1);
+  check("marker size grows with the square root of weight", markerRadius(1, 1) === 22 && markerRadius(0.25, 1) === 13 && markerRadius(0, 1) === 4);
+
+  console.log("the audio briefing");
+  check("finance text is made speakable", speakable("Acme raised $4.1bn at a 12.5x multiple, up 18% in Q3 — $40 a share") === "Acme raised 4.1 billion dollars at a 12.5 times multiple, up 18 percent in the third quarter, 40 dollars a share");
+  const ch = briefingChapters({ name: "Ada Lovelace", deskLabel: "Energy", date: new Date("2026-10-02T12:00:00Z"), stories: [
+    { id: 1, headline: "Exxon buys a shale driller", bullets: ["A $5bn all-stock deal."], why: "Consolidation continues.", tickers: ["XOM"], category: "deals", reasons: ["On your watchlist: XOM"] },
+    { id: 2, headline: "OPEC holds output", bullets: [], why: "", tickers: [], category: "macro" },
+  ], watch: [{ label: "WTI crude", last: 71.2, change: -0.012 }] });
+  check("chapters: an opening, one per story, the markets, a close", ch.map((c) => c.id).join() === "intro,s1,s2,markets,outro" && ch[0].text.startsWith("Good morning, Ada. This is your Energy briefing for Friday, October 2: 2 stories") && ch[1].text.includes("5 billion dollars") && ch[1].text.includes("on your watchlist") && ch[2].text.startsWith("Finally: OPEC holds output.") && ch[3].text.includes("WTI crude down 1.2 percent") && ch[1].clusterId === 1, ch);
+  const merged = mergeScript(ch, [{ id: "s1", text: "Exxon is buying a shale driller for five billion dollars in stock. It's the latest in a run of consolidation." }, { id: "s2", text: "" }, { id: "nope", text: "ignored text here" }]);
+  check("the AI script keeps the chapters; anything dropped keeps its free text", merged.length === ch.length && merged[1].text.startsWith("Exxon is buying") && merged[2].text === ch[2].text && merged.every((c) => c.text.length <= MAX_CHAPTER_CHARS));
+  check("voice cost is about $0.015 a minute", Math.abs(ttsCostUsd([{ id: "a", title: "", text: "", seconds: 240 }]) - 0.06) < 1e-9);
+
+  console.log("the 60-second recap");
+  const rs = (id: number) => ({ id, headline: `Story ${id}`, category: "deals", categoryLabel: "Deals", tags: ["energy"], tickers: [], sourceCount: 2, bullet: "", figure: null, change: null, closes: [] });
+  const slides = recapSlides({ desk: "Energy", date: "Friday", stories: [1, 2, 3, 4, 5, 6].map(rs), deals: [{ label: "A", valueUsd: 2e9, kind: "acquisition" }, { label: "B", valueUsd: 5e9, kind: "merger" }, { label: "C", valueUsd: null, kind: "raise" }], movers: [{ symbol: "XOM", change: 0.01 }, { symbol: "CVX", change: -0.03 }, { symbol: "OXY", change: 0.02 }], storyCount: 40, sourceCount: 22, url: "https://x/news" });
+  check("slides: title, five stories, deals, movers, close, in about a minute", slides.map((x) => x.kind).join() === "title,story,story,story,story,story,deals,movers,outro" && Math.abs(recapMs(slides) - RECAP_TARGET_MS) <= 5_000 && slides[6].kind === "deals" && slides[6].deals[0].label === "B" && slides[7].kind === "movers" && slides[7].movers[0].symbol === "CVX", slides.map((x) => [x.kind, x.ms]));
+  check("the clock finds the slide and how far through it", slideAt(slides, 0).index === 0 && slideAt(slides, 5_000).index === 1 && slideAt(slides, 2_500).progress === 0.5 && slideAt(slides, 10e6).progress === 1);
+  check("text wraps at words and marks a cut", wrapText("one two three four five six", 9, 2).join("|") === "one two|three…" && wrapText("short", 20, 3).join() === "short");
+
+  console.log("follows");
+  const fu = (seen: number, seenAgoH: number, notifiedAgoH: number | null, sources: number, updatedAgoH: number) => followUpdate({ seenSources: seen, seenAt: new Date(now - seenAgoH * 3_600_000), notifiedAt: notifiedAgoH === null ? null : new Date(now - notifiedAgoH * 3_600_000) }, { sourceCount: sources, updatedAt: new Date(now - updatedAgoH * 3_600_000) }, new Date(now));
+  check("a followed story alerts when another outlet joins or it moves hours later, not twice in two hours", fu(2, 5, null, 3, 1).due && fu(2, 5, null, 3, 1).newSources === 1 && !fu(3, 1, null, 3, 0.5).due && fu(3, 5, null, 3, 1).due && !fu(2, 5, 1, 4, 0.2).due);
+  check("five follows free, more with the plan", canFollowMore(FREE_FOLLOWS - 1, false) && !canFollowMore(FREE_FOLLOWS, false) && canFollowMore(500, true));
+
+  console.log("public pages and premium");
+  check("slugs: id first, words from the headline", slugFor(42, "Acme's $4.1B deal for Widget & Co. — what's next?") === "42-acmes-4-1b-deal-for-widget-and-co-whats-next" && idFromSlug("42-acmes-deal") === 42 && idFromSlug("42") === 42 && idFromSlug("x-42") === null && idFromSlug("0") === null && slugWords("Café société") === "cafe-societe");
+  check("only stories built wholly from public sources get a page", isPublicStory({ headline: "Acme agrees to buy Widget" }, [{ kind: "article", url: "https://a" }, { kind: "filing", url: "https://sec" }]) && !isPublicStory({ headline: "Acme agrees to buy Widget" }, [{ kind: "upload", url: "https://a" }]) && !isPublicStory({ headline: "Acme agrees to buy Widget" }, []) && !isPublicStory({ headline: "Short" }, [{ kind: "article", url: "https://a" }]));
+  const nf = FEATURES.filter((f) => f.id.startsWith("news."));
+  check("the Newsroom's premium features are registered with honest costs", nf.length === 4 && nf.filter((f) => f.metered).every((f) => (f.costPerUseUsd ?? 0) > 0) && featureById("news.follows")?.metered === false && (featureById("news.audio")?.costPerUseUsd ?? 0) >= 0.05 && new Set(FEATURES.map((f) => f.id)).size === FEATURES.length, nf);
+  const audioPrefs = normalizeNewsPrefs({ audio: { daily: true, voice: "nope", speed: 9 } }, { role: "banker" });
+  check("audio preferences: daily only when asked, unknown voices and speeds fall back", audioPrefs.audio.daily && audioPrefs.audio.voice === "marin" && audioPrefs.audio.speed === 1 && !defaultNewsPrefs({ role: "vc" }).audio.daily);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

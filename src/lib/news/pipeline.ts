@@ -1,13 +1,19 @@
 /**
  * One pass of the Newsroom, run every ten minutes: poll the sources that are due, cluster what is new
- * into stories, have the model read the important ones, raise alerts, write and deliver the morning
- * briefs, run the research briefs, and prune. A lock keeps passes from overlapping; every stage runs
- * inside a time budget so a slow source or model cannot make the pass overrun its function limit.
+ * into stories, have the model read the important ones, raise alerts, tell followers when a story they
+ * follow moves, write and deliver the morning briefs, make the daily audio briefings people switched
+ * on, run the research briefs, and prune. A lock keeps passes from overlapping; every stage runs inside
+ * a time budget so a slow source or model cannot make the pass overrun its function limit.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { runAsUser } from "@/lib/ai/usage";
+import { isAdmin } from "@/lib/auth/admin";
+import { canUse } from "@/lib/billing/entitlements";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { alertsFor, newsUsers } from "./alerts";
+import { audioSlot, makeBriefing } from "./audio";
+import { followUpdates, pruneFollows } from "./follow";
 import { briefSlot, deskBrief, forYou } from "./brief";
 import { bestCluster, embed } from "./cluster";
 import { briefEmail, briefSlack, emailSelf, pushToUser, slackPost } from "./deliver";
@@ -46,7 +52,7 @@ async function pool<T>(xs: T[], n: number, deadline: number, f: (x: T) => Promis
   }));
 }
 
-export type TickReport = { ms: number; fetched: number; failed: number; newItems: number; clustered: number; newStories: number; enriched: number; merged: number; alerts: number; briefs: number; delivered: number; researched: number; radars: number; pruned: boolean; errors: string[] };
+export type TickReport = { ms: number; fetched: number; failed: number; newItems: number; clustered: number; newStories: number; enriched: number; merged: number; alerts: number; followUpdates: number; briefs: number; delivered: number; audio: number; researched: number; radars: number; pruned: boolean; errors: string[] };
 
 /** Poll due sources and store what is new. */
 async function ingest(deadline: number, report: TickReport) {
@@ -169,6 +175,43 @@ async function briefs(users: string[], origin: string, deadline: number, report:
   }
 }
 
+/**
+ * Daily audio briefings, for the people who switched them on: made once a day at their brief time,
+ * three per pass at most. The plan is checked again here, before anything is spent, so a lapsed plan
+ * stops it even with the switch still on. A failure waits three hours before the next try.
+ */
+async function dailyAudio(deadline: number, report: TickReport) {
+  const now = new Date();
+  const rows = await requireDb().select({ userId: schema.profiles.userId }).from(schema.profiles)
+    .where(and(isNotNull(schema.profiles.completedAt), sql`${schema.profiles.extra}->'news'->'audio'->>'daily' = 'true'`)).limit(2000);
+  let made = 0;
+  for (const { userId } of rows) {
+    if (made >= 3 || Date.now() > deadline) return;
+    const ctx = await readerFor(userId).catch(() => null);
+    if (!ctx?.prefs.audio.daily || !briefDue(now, ctx.prefs).due) continue;
+    const slot = audioSlot(ctx, now);
+    const tried = `news:audio-daily:${userId}:${slot}`;
+    if (await cacheGet(tried)) continue;
+    const [done] = await requireDb().select({ id: schema.newsBriefings.id }).from(schema.newsBriefings).where(and(eq(schema.newsBriefings.userId, userId), eq(schema.newsBriefings.slot, slot), eq(schema.newsBriefings.kind, "daily")));
+    if (done) continue;
+    const user = { id: userId, email: ctx.email };
+    if (!(await canUse(user, "news.audio-daily").catch(() => false))) continue;
+    await cacheSet(tried, "1", 3 * 3_600_000);
+    made++;
+    try {
+      const b = await runAsUser(userId, () => makeBriefing(ctx, "daily", now), { admin: isAdmin(user) });
+      const minutes = Math.max(1, Math.round(b.chapters.reduce((n, c) => n + c.seconds, 0) / 60));
+      const [row] = await requireDb().insert(schema.newsNotifications).values({
+        userId, key: `audio:${slot}`, kind: "brief", title: `Your ${ctx.desk.label} audio briefing is ready`, body: `${b.chapters.filter((c) => c.clusterId).length} stories, about ${minutes} minutes.`, url: "/app/news?listen=1",
+      }).onConflictDoNothing().returning();
+      if (row && ctx.prefs.brief.channels.includes("push")) await pushToUser(userId, { title: row.title, body: row.body, url: row.url, tag: row.key }).catch(() => 0);
+      report.audio++;
+    } catch (e) {
+      report.errors.push(`audio ${userId.slice(0, 6)}: ${e instanceof Error ? e.message.slice(0, 80) : e}`);
+    }
+  }
+}
+
 /** Research briefs at 08:00 and 13:00 New York time, for active desks, two per pass. */
 async function research(users: string[], deadline: number, report: TickReport) {
   const ny = localParts(new Date(), "America/New_York");
@@ -188,7 +231,7 @@ async function research(users: string[], deadline: number, report: TickReport) {
 
 export async function tick(origin: string, budgetMs = 250_000): Promise<TickReport> {
   const started = Date.now();
-  const report: TickReport = { ms: 0, fetched: 0, failed: 0, newItems: 0, clustered: 0, newStories: 0, enriched: 0, merged: 0, alerts: 0, briefs: 0, delivered: 0, researched: 0, radars: 0, pruned: false, errors: [] };
+  const report: TickReport = { ms: 0, fetched: 0, failed: 0, newItems: 0, clustered: 0, newStories: 0, enriched: 0, merged: 0, alerts: 0, followUpdates: 0, briefs: 0, delivered: 0, audio: 0, researched: 0, radars: 0, pruned: false, errors: [] };
   if (await cacheGet("news:tick-lock")) { report.errors.push("another pass is running"); return report; }
   await cacheSet("news:tick-lock", String(started), Math.min(budgetMs + 30_000, 300_000));
   const at = (share: number) => started + budgetMs * share;
@@ -202,12 +245,14 @@ export async function tick(origin: string, budgetMs = 250_000): Promise<TickRepo
     const users = await newsUsers().catch(() => [] as string[]);
     const alertsEnd = until(0.8, 0.06);
     for (const u of users) { if (Date.now() > alertsEnd) break; report.alerts += await alertsFor(u, origin).catch(() => 0); }
-    await briefs(users, origin, until(0.92, 0.06), report).catch((e) => report.errors.push(`briefs: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
+    report.followUpdates = await followUpdates(until(0.83, 0.03)).catch((e) => { report.errors.push(`follows: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return 0; });
+    await briefs(users, origin, until(0.9, 0.06), report).catch((e) => report.errors.push(`briefs: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
+    await dailyAudio(until(0.94, 0.05), report).catch((e) => report.errors.push(`audio: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
     await research(users, until(0.97, 0.03), report).catch((e) => report.errors.push(`research: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
     report.radars = await warmRadars(until(0.99, 0.08)).catch((e) => { report.errors.push(`radar: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return 0; });
     const ny = localParts(new Date(), "America/New_York");
     const pruneKey = `news:pruned:${ny.date}`;
-    if (ny.hour >= 3 && !(await cacheGet(pruneKey))) { await prune().catch(() => undefined); await cacheSet(pruneKey, "1", 2 * 86_400_000); report.pruned = true; }
+    if (ny.hour >= 3 && !(await cacheGet(pruneKey))) { await prune().catch(() => undefined); await pruneFollows().catch(() => undefined); await cacheSet(pruneKey, "1", 2 * 86_400_000); report.pruned = true; }
   } finally {
     await cacheSet("news:tick-lock", "", 1).catch(() => undefined);
   }

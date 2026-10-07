@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * Settings, News and alerts: how the Newsroom looks (four editions, previewed in their own type, or any
+ * Settings, News and alerts: how the Newsroom looks (five editions, previewed in their own type, or any
  * look with any layout), how stories open, how much motion, which desk, when the morning brief comes and
- * where, what alerts and where, the delivery channels (mailbox, this browser, Slack), follows and mutes,
- * and this month's AI spend against the cap.
+ * where, the audio briefing (its voice, speed and the premium daily switch), what alerts and where, the
+ * delivery channels (mailbox, this browser, Slack), follows and mutes, and this month's AI spend.
  */
 import Link from "next/link";
 import { Bell, Check, Hash, Mail, MonitorSmartphone } from "lucide-react";
 import { useState } from "react";
-import type { Channel, EditionId, LayoutId, LookId, NewsPrefs } from "@/lib/news/prefs";
+import { VOICES, type Channel, type EditionId, type LayoutId, type LookId, type NewsPrefs, type VoiceId } from "@/lib/news/prefs";
 import { post, useApi } from "./client";
 import { Select } from "@/components/ui/Select";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { useFeature } from "@/lib/client/plan";
 
 type PrefsResponse = {
   prefs: Omit<NewsPrefs, "slack"> & { slackConnected: boolean };
@@ -51,7 +53,7 @@ function EditionPreview({ id, e, selected, onPick }: { id: EditionId; e: PrefsRe
     <button type="button" onClick={onPick} className={`group overflow-hidden rounded-[var(--radius)] border text-left transition ${selected ? "border-accent ring-2 ring-accent/30" : "border-line hover:border-line-strong"}`}>
       <div className="nr bg-bg p-3" data-look={e.look} data-motion="off">
         <div className="nr-kicker">Deals · 2h · Bloomberg +3</div>
-        <div className="nr-head mt-1 text-fg" style={{ fontSize: id === "editorial" ? 22 : id === "terminal" ? 12.5 : 16 }}>Acme agrees to buy Widget for $4.1 billion</div>
+        <div className="nr-head mt-1 text-fg" style={{ fontSize: id === "editorial" || id === "front" ? 22 : id === "terminal" ? 12.5 : 16 }}>Acme agrees to buy Widget for $4.1 billion</div>
         {id !== "terminal" && <p className="nr-body mt-1 line-clamp-2 text-fg/75">An 18% premium to the unaffected close, all cash.{id === "brief" ? " Why it matters: the third deal this quarter." : ""}</p>}
         <div className="mt-2 flex gap-1">{[0, 1, 2].map((k) => <div key={k} className="nr-card h-5 flex-1" />)}</div>
       </div>
@@ -67,6 +69,7 @@ const urlB64 = (b64: string) => { const pad = "=".repeat((4 - (b64.length % 4)) 
 
 export function NewsSettings() {
   const { data, reload } = useApi<PrefsResponse>("/api/news/prefs");
+  const dailyAudio = useFeature("news.audio-daily");
   const [draft, setDraft] = useState<Partial<NewsPrefs> | null>(null);
   const [msg, setMsg] = useState("");
   const [slackUrl, setSlackUrl] = useState("");
@@ -106,7 +109,7 @@ export function NewsSettings() {
       {msg && <p className="mt-3 rounded-[var(--radius-sm)] bg-accent-soft px-3 py-1.5 text-[11.5px] text-fg">{msg}</p>}
 
       <Row title="Edition" hint="A look paired with its layout. You can also switch from the top of the Newsroom.">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {(Object.keys(data.editions) as EditionId[]).map((id) => <EditionPreview key={id} id={id} e={data.editions[id]} selected={!p.advanced && p.edition === id} onPick={() => save({ edition: id, advanced: false, look: data.editions[id].look, layout: data.editions[id].layout })} />)}
         </div>
         <div className="mt-3"><Toggle on={p.advanced} label="Advanced: choose the look and the layout separately" onChange={(v) => save({ advanced: v })} /></div>
@@ -146,6 +149,14 @@ export function NewsSettings() {
         </div>
         <div className="mt-3 flex flex-wrap gap-4">
           {(["email", "push", "slack"] as Channel[]).map((c) => <Toggle key={c} on={p.brief.channels.includes(c)} label={c === "email" ? "Email" : c === "push" ? "Browser push" : "Slack"} onChange={(v) => save({ brief: { ...p.brief, channels: setChannels(p.brief.channels, c, v) } })} />)}
+        </div>
+      </Row>
+
+      <Row title="Audio briefing" hint="Your stories read aloud, a chapter each, from Listen in the Newsroom. Free with your browser's voice; with Pro, an AI-written script in a natural neural voice, and (if you switch it on) made for you each morning at your brief time.">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="flex items-center gap-2"><Toggle on={p.audio.daily} label="Make it every morning" onChange={(v) => save({ audio: { ...p.audio, daily: v } })} />{dailyAudio === false && <PremiumBadge feature="news.audio-daily" />}</span>
+          <label className="text-[12px] text-muted">Neural voice <Select value={p.audio.voice} onChange={(v) => save({ audio: { ...p.audio, voice: v as VoiceId } })} className="ml-1 rounded-md border border-line bg-elevated px-1.5 py-0.5 text-[12px] text-fg">{(Object.keys(VOICES) as VoiceId[]).map((v) => <option key={v} value={v}>{VOICES[v]}</option>)}</Select></label>
+          <label className="text-[12px] text-muted">Speed <Select value={String(p.audio.speed)} onChange={(v) => save({ audio: { ...p.audio, speed: Number(v) } })} className="ml-1 rounded-md border border-line bg-elevated px-1.5 py-0.5 text-[12px] text-fg">{[0.85, 1, 1.25, 1.5].map((r) => <option key={r} value={String(r)}>{r}×</option>)}</Select></label>
         </div>
       </Row>
 

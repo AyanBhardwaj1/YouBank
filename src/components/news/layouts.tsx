@@ -20,6 +20,12 @@ export type LayoutProps = {
   onOpen: (s: Story) => void; onSave: (s: Story) => void; onOpenCluster: (id: number) => void; onCategory: (c: string) => void;
   brief: BriefData | null; deals: DealsData | null; radar: RadarScreen | null; deskLabel: string; showRadar: boolean;
   scrollRef: RefObject<HTMLDivElement | null>;
+  /** The desk's lenses and sectors, for the globe's desk filter. */
+  deskTags?: string[];
+  /** Category counts for the whole ranked feed (the front page's "what the desk is reading"). */
+  counts?: Record<string, number>;
+  /** Open Brief mode, the audio briefing, the recap or the globe (the front page's buttons). */
+  onAction?: (a: "brief" | "listen" | "recap" | "globe") => void;
 };
 
 const SECTION_ORDER: Category[] = ["deals", "funding", "capital", "earnings", "markets", "policy", "macro", "legal", "people", "product", "research", "filings", "general"];

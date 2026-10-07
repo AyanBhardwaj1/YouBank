@@ -2,10 +2,12 @@
 
 /**
  * Reading a story: the side peek (the feed stays beside it; arrow keys step through stories) and the
- * full page share one body. What happened, the key numbers, why it matters (and, on request, why it
- * matters to you), deal terms with the premium and implied multiples (and, with the Edge beta on, the
- * deal on Edge's map), every source with a link to its publisher, the companies in it (straight into the
- * terminal), and related stories.
+ * full page share one body. What happened, its chart (the price reaction, the deal, the key figures or
+ * how coverage spread), the key numbers, why it matters, and why it matters to you (what it touches in
+ * your own YouBank, free; an AI note on request, premium), deal terms with the premium and implied
+ * multiples (and, with the Edge beta on, the deal on Edge's map), the timeline, the relationship map,
+ * every source with a link to its publisher, the companies in it (straight into the terminal), and
+ * related stories. Follow it to hear when it moves; share its public page.
  */
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
@@ -14,8 +16,18 @@ import { useEffect, useState } from "react";
 import type { StoryView } from "@/lib/news/views";
 import { DealMap } from "@/components/edge/DealMap";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { ago, fmtPct, fmtUsd, post, useApi, useMotionLevel, useNow, useSparks } from "./client";
-import { hueOf, StoryArt } from "./DataArt";
+import { ago, fmtPct, fmtUsd, post, useApi, useMotionLevel, useNow, useSparks, type Spark } from "./client";
+import { ArtThumb, hueOf } from "./DataArt";
+import { figureBars } from "@/lib/news/storyviz";
+import { useFeature } from "@/lib/client/plan";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { Icon } from "@/components/ui/Icon";
+import { RelationshipMap } from "./RelationshipMap";
+import { FollowButton, ShareButtons, WhyShown } from "./StoryActions";
+import { CoverageChart, DealChart, FigureBars, PriceReaction } from "./StoryCharts";
+import { StoryTimeline } from "./StoryTimeline";
+
+const MATTER_ICON: Record<string, string> = { watchlist: "Star", contact: "Users", pipeline: "Briefcase", edge: "Radar" };
 
 type Props = { id: number; onClose?: () => void; onStep?: (dir: 1 | -1) => void; onChanged?: () => void; mode: "peek" | "page" };
 
@@ -28,6 +40,7 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
   const { edge } = useWorkspace();
   const now = useNow();
   const sparks = useSparks(s?.tickers ?? []);
+  const whyAi = useFeature("news.why-ai");
   const [why, setWhy] = useState<{ id: number; text: string | null; busy: boolean; reason?: string }>({ id: 0, text: null, busy: false });
   const [note, setNote] = useState<{ id: number; text: string } | null>(null);
   useEffect(() => { void post(`/api/news/story/${id}`, { action: "read" }).catch(() => undefined); }, [id]);
@@ -60,9 +73,12 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
         </div>
       </div>
       <h1 className={`nr-head mt-3 text-fg ${mode === "page" ? "nr-lead" : "nr-h2"}`} style={mode === "peek" ? { fontSize: "calc(var(--nr-h2) * 1.25)" } : undefined}>{s.headline}</h1>
-      {s.reasons.filter((r) => !r.startsWith("For your desk")).length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{s.reasons.filter((r) => !r.startsWith("For your desk")).map((r) => <span key={r} className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 text-[11px] text-accent">{r}</span>)}</div>}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {s.reasons.filter((r) => !r.startsWith("For your desk")).map((r) => <span key={r} className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 text-[11px] text-accent">{r}</span>)}
+        <WhyShown explain={s.explain} reasons={s.reasons} align="left" />
+      </div>
 
-      <div className="nr-card mt-5 h-[150px] overflow-hidden p-4"><StoryArt story={s} sparks={sparks} height={118} size="lg" /></div>
+      <StoryChart s={s} sparks={sparks} now={now} />
 
       {s.summary?.bullets?.length ? (
         <Section title="What happened">
@@ -77,6 +93,19 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
 
       <Section title="Why it matters">
         {s.summary?.why && <p className="nr-body text-fg/85">{s.summary.why}</p>}
+        {s.matters.length > 0 && (
+          <div className="mt-3 rounded-[var(--nr-radius)] border border-line p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-accent"><Icon name="Target" className="h-3.5 w-3.5" />Why this matters to you</div>
+            <ul className="space-y-2">{s.matters.map((m) => (
+              <li key={`${m.kind}-${m.label}`}>
+                <Link href={m.href} className="group flex items-start gap-2">
+                  <Icon name={MATTER_ICON[m.kind] ?? "Sparkles"} className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted group-hover:text-accent" />
+                  <span><span className="block text-[12.5px] text-fg group-hover:text-accent">{m.label}</span><span className="block text-[11px] text-muted">{m.detail}</span></span>
+                </Link>
+              </li>
+            ))}</ul>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {personal ? (
             <motion.div key="mine" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 rounded-[var(--nr-radius)] border border-accent/30 bg-accent-soft/60 p-3">
@@ -85,9 +114,12 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
             </motion.div>
           ) : (
             <motion.div key="ask" className="mt-3">
-              <button type="button" onClick={askWhy} disabled={why.busy} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-[11.5px] text-accent transition hover:bg-accent-soft disabled:opacity-60">
-                <Sparkles className="h-3.5 w-3.5" /> {why.busy ? "Thinking about your desk…" : "Why it matters to you"}
-              </button>
+              <span className="inline-flex flex-wrap items-center gap-2">
+                <button type="button" onClick={askWhy} disabled={why.busy} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-[11.5px] text-accent transition hover:bg-accent-soft disabled:opacity-60">
+                  <Sparkles className="h-3.5 w-3.5" /> {why.busy ? "Thinking about your desk…" : s.matters.length ? "Explain it for me, with AI" : "Why it matters to you, by AI"}
+                </button>
+                {whyAi === false && <PremiumBadge feature="news.why-ai" />}
+              </span>
               {why.id === id && why.reason && <p className="mt-2 text-[11px] text-muted">{why.reason}</p>}
             </motion.div>
           )}
@@ -118,6 +150,18 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
         </Section>
       )}
 
+      {s.timeline.length > 1 && (
+        <Section title="Timeline">
+          <StoryTimeline events={s.timeline} now={now} hrefFor={(cid) => `/app/news/story/${cid}`} />
+        </Section>
+      )}
+
+      {s.graph.nodes.length > 2 && (
+        <Section title="Who is involved">
+          <RelationshipMap graph={s.graph} linkFor={(n) => (n.ticker ? `/app/terminal?ticker=${encodeURIComponent(n.ticker)}&fn=DES` : n.kind === "contact" ? "/app/crm?tab=contacts" : null)} />
+        </Section>
+      )}
+
       <Section title={`Sources (${s.items.length})`}>
         <ol className="space-y-2">{s.items.map((i) => (
           <li key={`${i.url}-${i.at}`} className="nr-card p-3">
@@ -132,17 +176,39 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
       <div className="sticky bottom-0 mt-6 flex flex-wrap items-center gap-2 border-t border-line bg-bg/85 py-3 backdrop-blur">
         {lead && <a href={lead.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-full bg-fg px-3 py-1.5 text-[12px] text-bg hover:opacity-90"><ExternalLink className="h-3.5 w-3.5" /> Read at {lead.source}</a>}
         <button type="button" onClick={() => act(s.saved ? "unsave" : "save")} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[12px] text-fg hover:border-accent/50">{s.saved ? <BookmarkCheck className="h-3.5 w-3.5 text-accent" /> : <Bookmark className="h-3.5 w-3.5" />}{s.saved ? "Saved" : "Save"}</button>
+        <FollowButton id={s.id} following={s.following} onChange={() => onChanged?.()} />
         {network && <button type="button" onClick={() => act("reach-out")} className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1.5 text-[12px] text-accent hover:bg-accent-soft"><Network className="h-3.5 w-3.5" /> Reason to reach out</button>}
         <Link href={`/app/terminal?fn=AI&ticker=${s.tickers[0] ?? ""}`} className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[12px] text-fg hover:border-accent/50"><Sparkles className="h-3.5 w-3.5" /> Ask AI</Link>
         <button type="button" onClick={() => { void act("hide"); onClose?.(); }} className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2 py-1.5 text-[11.5px] text-muted hover:text-fg"><EyeOff className="h-3.5 w-3.5" /> Hide</button>
       </div>
       {note?.id === id && <p className="mt-2 text-[11.5px] text-muted">{note.text}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+        <span>Share the public page (the story and its sources, nothing about you):</span>
+        <ShareButtons url={`${typeof window !== "undefined" ? window.location.origin : ""}/news/${s.slug}`} title={s.headline} compact />
+      </div>
 
       {s.related.length > 0 && (
         <Section title="Related">
           <div className="space-y-1">{s.related.map((r) => <Link key={r.id} href={`/app/news/story/${r.id}`} className="block rounded-md px-2 py-1.5 text-[12.5px] text-fg hover:bg-elevated"><span className="text-muted">{now ? ago(r.updatedAt, now) : ""} · </span>{r.headline}</Link>)}</div>
         </Section>
       )}
+    </div>
+  );
+}
+
+/** The story's chart: the best its data supports, interactive and drawn in on view. */
+function StoryChart({ s, sparks, now }: { s: StoryView; sparks: Map<string, Spark | null>; now: number }) {
+  const ticker = s.tickers.find((t) => sparks.get(t)?.closes?.length);
+  const spark = ticker ? sparks.get(ticker)! : null;
+  const bars = s.summary ? figureBars(s.summary.numbers) : [];
+  const deal = s.deal && (s.deal.valueUsd || s.deal.premium !== null);
+  if (!spark && !deal && bars.length < 2 && s.sources.length < 2) return <div className="mt-5"><ArtThumb story={s} sparks={sparks} height={140} /></div>;
+  return (
+    <div className="nr-card mt-5 space-y-5 p-4">
+      {spark && ticker && <PriceReaction ticker={ticker} closes={spark.closes} firstSeenAt={s.firstSeenAt} now={now} height={150} />}
+      {deal && <DealChart valueUsd={s.deal!.valueUsd} premium={s.deal!.premium} evEbitda={s.deal!.evEbitda} label={s.deal!.kind.replace("_", " ")} />}
+      {!deal && bars.length >= 2 && <FigureBars bars={bars} />}
+      {!spark && !deal && bars.length < 2 && <CoverageChart sources={s.sources.map((x) => ({ name: x.name, at: x.at }))} />}
     </div>
   );
 }

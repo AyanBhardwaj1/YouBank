@@ -1,10 +1,13 @@
 "use client";
 
 /**
- * The Newsroom. One feed ranked for this person, worn in any of four editions (or any look with any
- * layout, with the advanced switch), with the morning brief, the deal tracker, the sector radar and saved
- * stories as views. Stories open in a side peek or on their own page, as the person prefers.
+ * The Newsroom. One feed ranked for this person, worn in any of five editions (or any look with any
+ * layout, with the advanced switch), with the morning brief, the globe of where the news is happening,
+ * the deal tracker, the sector radar and saved stories as views. Stories open in a side peek or on
+ * their own page, as the person prefers. Three other ways in, loaded only when opened: Brief mode
+ * (swipe cards), the audio briefing, and the 60-second recap.
  */
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Columns3, LayoutDashboard, Newspaper, Rows3, Search, SlidersHorizontal, Terminal as TerminalIcon } from "lucide-react";
@@ -17,22 +20,34 @@ import { DealTracker, LeagueTable, type BriefData, type DealsData } from "./Boar
 import type { RadarScreen } from "@/lib/news/radar/view";
 import { RadarView } from "./Radar";
 import { DashboardLayout, HybridLayout, MagazineLayout, WireLayout, type LayoutProps } from "./layouts";
+import { FrontLayout } from "./FrontPage";
+import { Icon } from "@/components/ui/Icon";
+import type { GlobePoint } from "@/lib/news/geo";
 import { StoryCard } from "./StoryCard";
 import { StoryPeek } from "./StoryReader";
 import { useSubNav } from "@/lib/subnav";
 import { Select } from "@/components/ui/Select";
 
-type View = "today" | "deals" | "radar" | "saved";
-const EDITION_ICON: Record<EditionId, React.ReactNode> = {
-  terminal: <TerminalIcon className="h-3.5 w-3.5" />, editorial: <Newspaper className="h-3.5 w-3.5" />, brief: <Rows3 className="h-3.5 w-3.5" />, modern: <LayoutDashboard className="h-3.5 w-3.5" />,
-};
-const LAYOUT_OF: Record<LayoutId, (p: LayoutProps) => React.ReactNode> = { wire: WireLayout, magazine: MagazineLayout, hybrid: HybridLayout, dashboard: DashboardLayout };
+const NewsGlobe = dynamic(() => import("./NewsGlobe"), { ssr: false, loading: () => <div className="shimmer h-[520px] rounded-[var(--nr-radius)]" /> });
+const BriefDeck = dynamic(() => import("./BriefDeck").then((m) => m.BriefDeck), { ssr: false });
+const BriefingPlayer = dynamic(() => import("./BriefingPlayer").then((m) => m.BriefingPlayer), { ssr: false });
+const Recap = dynamic(() => import("./Recap").then((m) => m.Recap), { ssr: false });
 
-export function Newsroom({ initialView = "today", initialStory = null }: { initialView?: View; initialStory?: number | null }) {
+type View = "today" | "globe" | "deals" | "radar" | "saved";
+const VIEWS: View[] = ["today", "globe", "deals", "radar", "saved"];
+type Overlay = "brief" | "listen" | "recap" | null;
+const EDITION_ICON: Record<EditionId, React.ReactNode> = {
+  front: <Icon name="Layout" className="h-3.5 w-3.5" />, terminal: <TerminalIcon className="h-3.5 w-3.5" />, editorial: <Newspaper className="h-3.5 w-3.5" />, brief: <Rows3 className="h-3.5 w-3.5" />, modern: <LayoutDashboard className="h-3.5 w-3.5" />,
+};
+const LAYOUT_OF: Record<LayoutId, (p: LayoutProps) => React.ReactNode> = { front: FrontLayout, wire: WireLayout, magazine: MagazineLayout, hybrid: HybridLayout, dashboard: DashboardLayout };
+
+export function Newsroom({ initialView = "today", initialStory = null, initialOverlay = null }: { initialView?: View; initialStory?: number | null; initialOverlay?: Overlay }) {
   const router = useRouter();
   const now = useNow();
   const [view, setView] = useState<View>(initialView);
-  useSubNav("/app/news", (v) => { if (v === "today" || v === "deals" || v === "radar" || v === "saved") setView(v); });
+  useSubNav("/app/news", (v) => { if ((VIEWS as string[]).includes(v)) setView(v as View); });
+  const [overlay, setOverlay] = useState<Overlay>(initialOverlay);
+  const [globeTags, setGlobeTags] = useState<"desk" | "all" | string>("desk");
   const [category, setCategory] = useState("");
   const [query, setQuery] = useState({ typed: "", applied: "" });
   const [desk, setDesk] = useState("");
@@ -58,6 +73,8 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
   const brief = useApi<BriefData>(view === "today" && deskId ? `/api/news/brief?desk=${encodeURIComponent(deskId)}` : null, 5 * 60_000);
   const deals = useApi<DealsData>((view === "deals" || layout === "dashboard") ? `/api/news/deals?days=${view === "deals" ? 60 : 30}` : null, 5 * 60_000);
   const radar = useApi<RadarScreen>((view === "radar" || layout === "dashboard") ? `/api/news/radar${radarSector ? `?sector=${radarSector}` : ""}` : null, 15 * 60_000);
+  const globe = useApi<{ points: GlobePoint[]; stories: number }>(view === "globe" ? "/api/news/globe" : null, 5 * 60_000);
+  const deskTags = useMemo(() => (data ? [...data.desk.lenses, ...data.desk.sectors] : []), [data]);
   const chooseRadar = (sector: string) => {
     setRadarSector(sector);
     void post("/api/news/prefs", { prefs: { radar: sector === radar.data?.own ? "" : sector } }).catch(() => undefined);
@@ -108,13 +125,21 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
               <span className="hidden items-center gap-1.5 text-[11px] text-muted md:flex"><span className="pulse-ring inline-block h-1.5 w-1.5 rounded-full bg-pos" />{data && now ? `updated ${ago(data.generatedAt, now)}` : "live"}</span>
             </div>
             <nav className="flex items-center gap-0.5" aria-label="Newsroom views">
-              {(["today", "deals", "radar", "saved"] as View[]).map((v) => (
+              {VIEWS.map((v) => (
                 <button key={v} type="button" onClick={() => setView(v)} className={`relative rounded-md px-2.5 py-1 text-[12px] capitalize transition ${view === v ? "text-fg" : "text-muted hover:text-fg"}`}>
                   {view === v && <motion.span layoutId="nr-tab" className="absolute inset-0 rounded-md bg-elevated" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
-                  <span className="relative">{v === "today" ? "Today" : v}</span>
+                  <span className="relative">{v === "today" ? "Today" : v === "globe" ? <span className="inline-flex items-center gap-1"><Icon name="Globe2" className="h-3 w-3" />Globe</span> : v}</span>
                 </button>
               ))}
             </nav>
+            <div className="flex items-center gap-1" role="group" aria-label="Other ways to read">
+              {([["brief", "GalleryVerticalEnd", "Brief", "Brief mode: swipe through today's stories, a 20-second card each"], ["listen", "Headphones", "Listen", "Your audio briefing, with a chapter per story"], ["recap", "Film", "Recap", "Your day in 60 seconds, to watch or share"]] as const).map(([id, icon, label, hint]) => (
+                <button key={id} type="button" onClick={() => setOverlay(id)} disabled={!data?.stories.length && id !== "listen"} title={hint} aria-pressed={overlay === id}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] transition disabled:opacity-40 ${overlay === id ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:border-accent/40 hover:text-fg"}`}>
+                  <Icon name={icon} className="h-3.5 w-3.5" /><span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
+            </div>
             <form onSubmit={(e) => { e.preventDefault(); setQuery((q) => ({ ...q, applied: q.typed.trim() })); setView("today"); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1">
               <Search className="h-3.5 w-3.5 text-muted" />
               <input ref={searchRef} value={query.typed} onChange={(e) => { const t = e.target.value; setQuery((q) => ({ typed: t, applied: t ? q.applied : "" })); }} placeholder="Search stories  /" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint md:w-56" />
@@ -160,7 +185,8 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
               <motion.div key={`${view}-${look}-${layout}`} initial={motionLevel === "off" ? false : { opacity: 0, y: motionLevel === "rich" ? 10 : 0, filter: motionLevel === "rich" ? "blur(4px)" : "none" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={motionLevel === "off" ? undefined : { opacity: 0, y: motionLevel === "rich" ? -6 : 0 }} transition={transition}>
                 {view === "today" && (stories.length
                   ? <Layout stories={stories} fresh={feed.fresh} sparks={sparks} now={now} onOpen={open} onSave={save} onOpenCluster={(id) => open(id)} onCategory={setCategory}
-                      brief={brief.data} deals={deals.data} radar={radar.data} deskLabel={data.desk.label} showRadar={showRadar} scrollRef={scrollRef} />
+                      brief={brief.data} deals={deals.data} radar={radar.data} deskLabel={data.desk.label} showRadar={showRadar} scrollRef={scrollRef}
+                      deskTags={deskTags} counts={counts} onAction={(a) => (a === "globe" ? setView("globe") : setOverlay(a))} />
                   : <Empty text={query.applied ? `No stories match “${query.applied}” in the last month.` : "Your desk's first stories arrive as sources are read, every ten minutes."} />)}
                 {view === "saved" && (stories.length
                   ? <div className="mx-auto max-w-[900px] divide-y divide-line px-5 py-6">{stories.map((s, i) => <StoryCard key={s.id} story={s} variant="brief" index={i} sparks={sparks} now={now} onOpen={open} onSave={save} />)}</div>
@@ -171,16 +197,45 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
                     <div className="space-y-4">{deals.data && <><div className="nr-card p-[var(--nr-pad)]"><LeagueTable rows={deals.data.league.financial} title="Financial advisors, last 12 months" /></div><div className="nr-card p-[var(--nr-pad)]"><LeagueTable rows={deals.data.league.legal} title="Legal advisors, last 12 months" /></div></>}</div>
                   </div>
                 )}
+                {view === "globe" && (
+                  <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-5">
+                    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <h2 className="nr-head nr-h2 text-fg" style={{ fontSize: "calc(var(--nr-h2) * 1.3)" }}>Where the news is happening</h2>
+                        <p className="mt-1 max-w-[70ch] text-[12px] text-muted">The last two days of stories, placed by the countries, states and regions they name; markers grow with each place&apos;s importance and breadth of coverage. Stories about US-listed companies that name no place sit in the United States, drawn fainter.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Desk filter">
+                        {[["desk", `${data.desk.label}`], ["all", "Every desk"], ...data.desk.sectors.map((t) => [t, SECTOR_NAME[t] ?? t])].map(([id, label]) => (
+                          <button key={id} type="button" role="radio" aria-checked={globeTags === id} onClick={() => setGlobeTags(id)} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${globeTags === id ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {globe.data ? <NewsGlobe points={globe.data.points} tags={globeTags === "all" ? null : globeTags === "desk" ? deskTags : [globeTags]} now={now} onOpen={(id) => open(id)} height="min(70vh, 640px)" /> : <div className="shimmer h-[520px] rounded-[var(--nr-radius)]" />}
+                  </div>
+                )}
                 {view === "radar" && <RadarView data={radar.data ?? null} now={now} onChoose={chooseRadar} onOpenCluster={(id) => open(id)} />}
               </motion.div>
             </AnimatePresence>
           )}
         </div>
         <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />
+        {/* On a phone, Brief mode is one tap away. */}
+        {data && stories.length > 0 && !overlay && view === "today" && (
+          <button type="button" onClick={() => setOverlay("brief")} className="fixed bottom-5 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-fg shadow-float md:hidden" aria-label="Open Brief mode">
+            <Icon name="GalleryVerticalEnd" className="h-4 w-4" />Brief
+          </button>
+        )}
+        <AnimatePresence>
+          {overlay === "brief" && data && <BriefDeck key="deck" stories={stories} sparks={sparks} now={now} onClose={() => setOverlay(null)} onOpen={(s) => { setOverlay(null); open(s); }} onSave={save} onChanged={() => feed.reload()} />}
+          {overlay === "recap" && data && <Recap key="recap" stories={stories} sparks={sparks} deskLabel={data.desk.label} deals={stories.filter((s) => s.deal?.valueUsd).map((s) => ({ headline: s.deal!.target || s.headline, valueUsd: s.deal!.valueUsd, kind: s.deal!.kind }))} now={now} onClose={() => setOverlay(null)} />}
+          {overlay === "listen" && <BriefingPlayer key="player" onClose={() => setOverlay(null)} onOpenCluster={(id) => open(id)} />}
+        </AnimatePresence>
       </div>
     </MotionContext>
   );
 }
+
+const SECTOR_NAME: Record<string, string> = { tech: "Technology", healthcare: "Healthcare", energy: "Energy", financials: "Financials", consumer: "Consumer", industrials: "Industrials", media: "Media", realestate: "Real estate" };
 
 function Empty({ text }: { text: string }) {
   return <div className="mx-auto flex max-w-[520px] flex-col items-center gap-3 px-6 py-24 text-center"><Columns3 className="h-8 w-8 text-faint" /><p className="text-[13px] text-muted">{text}</p></div>;

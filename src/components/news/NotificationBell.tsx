@@ -1,6 +1,6 @@
 "use client";
 
-/** The bell in the top bar: alerts and briefs, the unread count, one click to the story. Polls every minute. */
+/** The bell in the top bar: alerts, briefs and updates to followed stories, the unread count, one click to the story. Polls every minute. */
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Bell, BellRing, Newspaper } from "lucide-react";
@@ -29,13 +29,13 @@ export function NotificationBell() {
               className="float absolute right-0 z-50 mt-1.5 w-[360px] max-w-[92vw] overflow-hidden rounded-[var(--radius)] border border-line-strong bg-raised text-[12px]">
               <div className="flex items-center justify-between border-b border-line px-3 py-2"><span className="font-semibold text-fg">Alerts and briefs</span>{unread > 0 && <button type="button" onClick={markAll} className="text-[11px] text-muted hover:text-fg">Mark all read</button>}</div>
               <div className="max-h-[420px] overflow-y-auto">
-                {!data?.items.length && <p className="px-3 py-6 text-center text-muted">Nothing yet. Alerts for your watchlist, your network and your desk land here, with the morning brief.</p>}
+                {!data?.items.length && <p className="px-3 py-6 text-center text-muted">Nothing yet. Alerts for your watchlist, your network and your desk land here, with the morning brief and updates to stories you follow.</p>}
                 {data?.items.map((n) => (
                   <Link key={n.id} href={n.url || "/app/news"} onClick={() => { setOpen(false); if (!n.read) void post("/api/news/notifications", { ids: [n.id] }).then(reload); }}
                     className={`flex gap-2.5 border-b border-line/60 px-3 py-2.5 hover:bg-elevated ${n.read ? "opacity-70" : ""}`}>
                     <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${n.read ? "bg-transparent" : n.urgent ? "bg-neg" : "bg-accent"}`} />
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-muted">{n.kind === "brief" ? <><Newspaper className="h-3 w-3" /> Brief</> : n.urgent ? <span className="text-neg">Urgent</span> : "Alert"}<span className="normal-case tracking-normal">· {now ? ago(n.at, now) : ""}</span></span>
+                      <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-muted">{n.kind === "brief" ? <><Newspaper className="h-3 w-3" /> Brief</> : n.kind === "follow" ? <span className="text-accent">Story update</span> : n.urgent ? <span className="text-neg">Urgent</span> : "Alert"}<span className="normal-case tracking-normal">· {now ? ago(n.at, now) : ""}</span></span>
                       <span className="mt-0.5 block leading-snug text-fg">{n.title}</span>
                       {n.body && <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted">{n.body}</span>}
                     </span>

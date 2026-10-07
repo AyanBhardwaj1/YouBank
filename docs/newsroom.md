@@ -1,8 +1,12 @@
 # The Newsroom
 
-A news desk for every profile, built on free sources, ranked for each person, and readable four ways.
-Code: `src/lib/news/` (pipeline), `src/components/news/` (interface), `src/app/api/news/*` and
-`/api/cron/news`. Tests: `scripts/test-news.ts`. Data: migration `drizzle/0011_newsroom.sql`.
+A news desk for every profile, built on free sources, ranked for each person (and learning from what
+they read), readable five ways, listenable, swipeable, and shareable as public pages.
+Code: `src/lib/news/` (pipeline), `src/components/news/` (interface), `src/app/api/news/*`,
+`/api/cron/news` and the public pages in `src/app/news/`. Tests: `scripts/test-news.ts`. Data:
+migrations `drizzle/0011_newsroom.sql` and `drizzle/0021_newsroom_plus.sql`.
+
+![The front page](newsroom/front-desktop-dark.png)
 
 ## Sources, and the line we hold
 
@@ -99,8 +103,37 @@ by category listing only (it rate-limits abstract searches), one request every t
 A story's score for a person is desk fit (lenses count most, then sectors), importance (source
 standing, breadth of coverage, event type, size, filing weight, then the model's view), personal reasons
 (watchlist and followed tickers, companies where their Relationships contacts work, followed topics),
-and freshness (a 20-hour half-life). Muted sources and topics drop out. Every reason is shown on the
-card in words.
+what their own reading has taught the page, and freshness (a 20-hour half-life). Muted sources and
+topics drop out. Every reason is shown on the card in words, and "Why you're seeing this" lays out
+every part of the sum as bars.
+
+### The learned front page (`affinity.ts`)
+
+A simple, explainable model, deliberately not a black box:
+
+- What a person reads (opening a story, or four seconds on a Brief card), saves, follows and hides
+  are votes for every feature of that story: its desk tags, tickers, named companies and kind.
+  Read 1, save 3, follow 4, hide -4.
+- Votes fade with a 14-day half-life; nothing older than 60 days is read. A feature's affinity is
+  tanh(votes / 4), between -1 and 1.
+- A story's learned score takes its best company or ticker in full, desk tags at 0.6 and its kind at
+  0.4, the second-best feature at half, and the strongest dislike in full; it adds at most 0.35 to the
+  score (about what a followed topic adds) and a disliked story sinks but is never hidden.
+- The reason names the evidence: "You read 6 Energy & power stories lately", "You saved 2 stories on
+  NVDA", "Fewer like this: you hid 2 stories on Acme".
+- A greedy re-rank keeps the top 40 varied: the same lead company again loses 25%, a category's third
+  story and beyond 10% each, a sector's fourth and beyond 5% each.
+
+The signals are the person's own rows in `news_user_items` and `news_follows`, read once per two
+minutes per instance; no new table.
+
+### Why this matters to you (`matters.ts`)
+
+Free and rule-based: the story matched against the person's watchlist and followed tickers, the
+companies where their Relationships contacts work, their open Relationships pipeline items, and their
+(and their team's) Edge watches, by company, ticker, or a watched area containing a place the story
+names. Each match links to where it lives. The AI note that builds on these matches is premium
+(`news.why-ai`) and written on request; a note already written is free to read again.
 
 ## Desks
 
@@ -110,6 +143,20 @@ accounting, careers, the economy, policy) and sectors. Each banking group, PE st
 role maps to one, with its own market watch (crude, Brent and gas for energy; XBI for healthcare; KRE
 for FIG; HYG and leveraged loans for credit desks) and calendar (EIA's weekly reports and the rig count
 for energy; jobless claims for markets desks; watchlist earnings dates).
+
+## Premium (`src/lib/billing/features/news.ts`)
+
+| Feature | Plan | Metered | Cost per use | Checked in |
+|---|---|---|---|---|
+| `news.audio`: AI audio briefing | Pro | yes | $0.065 | `POST /api/news/briefing` |
+| `news.audio-daily`: daily audio briefing | Pro | yes | $0.065 a day | `POST /api/news/prefs` (switching on) and the Newsroom pass (each run) |
+| `news.why-ai`: AI "why it matters to you" | Pro | yes | $0.001 | `POST /api/news/story/[id]` (`why`) |
+| `news.follows`: unlimited story follows | Pro | no | | `POST /api/news/story/[id]` (`follow`, past five) |
+
+Everything else (the front page, globe, charts, timelines, maps, Brief mode, the recap, the browser
+briefing, rule-based matches, five follows, public pages) is free. Administrators can use all of it.
+
+![Brief mode on a phone](newsroom/brief-phone-dark.png)
 
 ## AI and its budget
 
@@ -132,6 +179,77 @@ Alerts go by email only when urgent; quiet hours hold the rest. A story alerts o
 five per run. Network alerts also raise a "reconnect" suggestion in Relationships, whose draft uses the
 story as its reason.
 
+## Following a story
+
+Follow any story (five free, more with `news.follows`). Each Newsroom pass compares the story's
+outlets and last update with what the person last heard; another outlet joining, or new reporting
+three hours on, becomes one "Story update" in the bell and a push to their devices (held in quiet
+hours), at most once per story every two hours and five a pass. Follows move with merged stories and
+lapse after 30 quiet days.
+
+## Audio briefing
+
+Listen opens a player with a chapter per story (an opening, the person's "for you" stories, then the
+desk brief, the market watch, a close), with skip, speed and lock-screen controls.
+
+| Version | Script | Voice | Cost |
+|---|---|---|---|
+| Free | Built from the stories' own summaries, made speakable ("$4.1bn" is "4.1 billion dollars") | The browser's own (Web Speech API) | Nothing |
+| `news.audio` (Pro), on a click | A small model rewrites the chapters as spoken English from their facts only | OpenAI `gpt-4o-mini-tts`, one request per chapter, the person's chosen voice and speed | About $0.065 |
+| `news.audio-daily` (Pro), switched on | The same, made at the brief time each morning and announced in the bell | The same | About $0.065 a day |
+
+The plan is checked when the daily switch is turned on and again before every morning's run. Audio
+goes to R2 (signed links, an hour each) when it is set up; otherwise it is returned once with the
+response and not kept. Without `OPENAI_API_KEY` the AI script is still written and the browser reads
+it; without a model or a voice nothing is stored or spent. Spend goes to the person's own AI ledger
+(`audio-briefing-script`, `audio-briefing-voice`), under their daily AI cap, not the shared Newsroom
+budget. Briefings are kept a week.
+
+## Brief mode and the 60-second recap
+
+Brief mode is the day as a vertical deck, one card per screen: scroll-snapped on a phone (swipe up),
+keys on a desktop (↓/j, ↑/k, s save, f follow, x less like this, Enter, Esc). Each card is a 20-second
+read (the headline and as much summary as fits in about 60 words) with one chart: the deal, the price
+reaction, the key figures, or how fast coverage spread.
+
+The recap is the day in about a minute of animated slides (a title card, five stories, the deals
+board, the movers, a close), drawn on a 1080 by 1350 canvas in the person's theme. "Save images" hands
+every slide to the share sheet (or downloads them); "Record video" plays it once while the browser's
+MediaRecorder captures the canvas to WebM (MP4 where that is all the browser records). Nothing is
+encoded on our side.
+
+## The globe
+
+Where the last 48 hours of stories are happening: MapLibre's globe projection with a style of our own
+(land from `public/news/land.json`, generated from the radar's Natural Earth outline by
+`scripts/gen-news-land.ts`; no map tiles), tinted from the theme and re-tinted when it changes.
+Stories are placed by the places they name (the radar's gazetteer); a story about a US-listed company
+or a filing that names no place sits in the United States, drawn fainter. Markers are sized by the sum
+of their stories' significance (importance raised by breadth of coverage), coloured by sector, the
+busiest pulsing; the desk filter runs in the browser. It turns slowly until touched (rich motion
+only). It is a view of its own and a teaser on the front page, loaded only when it scrolls into view.
+
+## Inside a story
+
+The reader adds, to the summary and sources: the story's best chart (the price reaction with the
+moment it broke marked and a crosshair, the deal on a log scale with its premium and multiple, the key
+figures as bars, or coverage over time), drawn in as it scrolls into view; a timeline (earlier stories
+on the same companies, the first report, each outlet as it joined, filings by form); a relationship
+map (buyer and target joined by the deal, advisors beside the side they advise, people beside their
+company, and your own contacts, in the app only); "why this matters to you"; Follow; and Share.
+
+## Public pages
+
+`/news` and `/news/<id>-<headline-words>` are open to anyone, built only from `public.ts`, which takes
+no user at all: headline, our summary and figures, chart, timeline, the public relationship map, and
+every source linked. Never reasons, notes, saved or followed state, watchlists, contacts or pipeline.
+Each page has a canonical URL (old slugs redirect), Open Graph and Twitter metadata, NewsArticle
+JSON-LD, a generated link preview (`opengraph-image.tsx`: the headline beside a chart from the story's
+data), share buttons, and an invitation to sign up (signing in returns to the story). The last week's
+notable stories are in the sitemap, and `/news` is open to crawlers.
+
+![A public story page](newsroom/public-desktop-light.png)
+
 ## Editions
 
 One set of components; the look is CSS variables on `.nr[data-look]` (type, scale, density, surfaces,
@@ -139,12 +257,25 @@ radius, shadow), the layout a component:
 
 | Edition | Look | Layout | Default for |
 |---|---|---|---|
+| Front page | Display serif over data art, soft cards | Front: a ticker of markets and headlines, the hero beside its chart, data-art cards, "the day in data" (deal sizes, how the names moved, what the news is about, the day's filings), "for you", the globe, sections | VC, consulting, students |
 | Terminal | Bloomberg: mono, dense, ruled rows | Wire, grouped by hour, with a ticker tape | Public markets |
-| Editorial | FT, The Information: serif display, hairlines, air | Magazine: masthead, lead with parallax, sections | VC, consulting, students |
+| Editorial | FT, The Information: serif display, hairlines, air | Magazine: masthead, lead with parallax, sections | |
 | Brief | Axios, Morning Brew: heavy sans, "why it matters" | Hybrid: the brief, the live wire, story rails | Banking, corporate finance, accounting |
 | Modern | Apple News, Linear: soft depth, round | Dashboard: brief, market watch, calendar, tiles, deals, filings, league table, radar | PE |
 
 Visuals are data art, never licensed photos: the company's 30-day price line, a deal-size bar, a filing
-stamp, a paper's upvotes, or a monogram on its sector's colour. Motion is rich (layouts cross-fade,
+stamp, a paper's upvotes, or a monogram on its sector's colour. Cards without a chart get a generated
+thumbnail, the same every visit: the price line as a ridge, rings for a deal's size against $1B, a
+stamped form over ruled lines, or one arc per outlet fanned around the company's initials. Motion is rich (layouts cross-fade,
 cards spring and flip to show why a story matters, numbers tick, the tape scrolls), subtle, or off, and
 always off when the system asks for reduced motion.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Front page, desktop, dark](newsroom/front-desktop-dark.png) | ![Front page, phone, light](newsroom/front-phone-light.png) |
+| ![The globe](newsroom/globe-desktop-dark.png) | ![A story: chart, deal and "why you're seeing this"](newsroom/story-desktop-light.png) |
+| ![Brief mode on a phone](newsroom/brief-phone-dark.png) | ![A public story page](newsroom/public-desktop-light.png) |
+
+Taken from fictional stories in a local harness (no real companies or figures).

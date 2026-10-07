@@ -7,8 +7,12 @@ import { Logo } from "@/components/brand/Logo";
 
 export const metadata = { title: "Sign in" };
 
-export default async function SignIn() {
-  if (await currentUser()) redirect("/app");
+/** Where to land after signing in: ?next=, only for paths inside the app (never another site). */
+const safeNext = (v: unknown) => (typeof v === "string" && /^\/app(\/[A-Za-z0-9/_\-?=&.%]*)?$/.test(v) && !v.startsWith("//") ? v : "/app");
+
+export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const next = safeNext((await searchParams).next);
+  if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -21,7 +25,7 @@ export default async function SignIn() {
         </Link>
         <h1 className="mt-5 text-[20px] font-semibold tracking-tight">Sign in</h1>
         <p className="mt-1 text-[12.5px] text-muted">Google only, for now. Your watchlists, sheets, saved runs, model and style preferences are kept on your account.</p>
-        <SignInButton className="mt-5" />
+        <SignInButton className="mt-5" next={next} />
         <div className="mt-6 border-t border-line pt-4">
           <div className="text-[10.5px] uppercase tracking-wider text-muted">You will be asked what you do</div>
           <div className="mt-2 flex flex-wrap gap-1.5">

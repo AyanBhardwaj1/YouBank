@@ -182,7 +182,7 @@ export const sharedRecentClusters = (hours: number, limit: number, minImportance
 
 /* ---------------- Retention ---------------- */
 
-/** Keep the tables small: items 30 days, embeddings 4 days, stories 120 days unless saved or a deal, briefs 60 days, read alerts 60 days. */
+/** Keep the tables small: items 30 days, embeddings 4 days, stories 120 days unless saved or a deal, briefs 60 days, read alerts 60 days, audio briefings 7 days. */
 export async function prune(now = new Date()) {
   const db = requireDb();
   const day = 86_400_000;
@@ -195,6 +195,8 @@ export async function prune(now = new Date()) {
   await db.delete(schema.newsBriefs).where(lt(schema.newsBriefs.createdAt, new Date(now.getTime() - 60 * day)));
   await db.delete(schema.newsNotifications).where(and(lt(schema.newsNotifications.createdAt, new Date(now.getTime() - 60 * day)), sql`${schema.newsNotifications.readAt} is not null`));
   await db.delete(schema.newsNotifications).where(lt(schema.newsNotifications.createdAt, new Date(now.getTime() - 120 * day)));
+  // Audio briefings: their chapters are kept a week (the audio itself, in object storage, is overwritten daily).
+  await db.delete(schema.newsBriefings).where(lt(schema.newsBriefings.createdAt, new Date(now.getTime() - 7 * day))).catch(() => undefined);
 }
 
 /* ---------------- Duplicates ---------------- */
@@ -256,6 +258,9 @@ export async function mergeDuplicates(hours = 36): Promise<number> {
     await db.update(schema.newsItems).set({ clusterId: keep }).where(eq(schema.newsItems.clusterId, drop));
     await db.execute(sql`insert into news_user_items (user_id, cluster_id, read_at, saved_at, hidden_at, why, updated_at) select user_id, ${keep}, read_at, saved_at, hidden_at, why, updated_at from news_user_items where cluster_id = ${drop} on conflict (user_id, cluster_id) do nothing`);
     await db.delete(schema.newsUserItems).where(eq(schema.newsUserItems.clusterId, drop));
+    // Followers of the dropped story now follow the one that survives, keeping their place in it.
+    await db.execute(sql`insert into news_follows (user_id, cluster_id, seen_sources, seen_at, notified_at, updates, created_at) select user_id, ${keep}, seen_sources, seen_at, notified_at, updates, created_at from news_follows where cluster_id = ${drop} on conflict (user_id, cluster_id) do nothing`).catch(() => undefined);
+    await db.delete(schema.newsFollows).where(eq(schema.newsFollows.clusterId, drop)).catch(() => undefined);
     await db.update(schema.newsNotifications).set({ clusterId: keep, url: `/app/news/story/${keep}` }).where(eq(schema.newsNotifications.clusterId, drop));
     await db.delete(schema.newsDeals).where(eq(schema.newsDeals.clusterId, drop));
     await db.delete(schema.newsClusters).where(eq(schema.newsClusters.id, drop));
