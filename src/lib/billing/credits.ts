@@ -90,7 +90,7 @@ export async function grantPack(g: { userId: string; pack: PackId; paymentIntent
   return rows.length > 0;
 }
 
-/** A refund on a pack's payment takes back the same share of its credits. Returns the person, if a pack was found. */
+/** A refund or dispute on a pack's payment takes back the same share of its credits (set, not added: the caller passes the whole share). Returns the person, if a pack was found. */
 export async function refundPack(paymentIntentId: string, refundedShare: number): Promise<string | null> {
   const share = Math.min(1, Math.max(0, refundedShare));
   const [row] = await requireDb().update(schema.aiCreditGrants).set({ refundedUsd: sql`${schema.aiCreditGrants.usd} * ${share}` })

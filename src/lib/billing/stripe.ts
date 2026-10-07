@@ -10,7 +10,8 @@
  *   not switched on, and the routes answer with that sentence.
  * - The `subscriptions` row is only ever written from a subscription as Stripe holds it now (fetched
  *   fresh, never taken from an event's copy), so replayed, duplicated or out-of-order webhooks all
- *   converge on the same row. Credit packs are granted once per payment intent (a unique index). So the
+ *   converge on the same row. Credit packs are granted once per payment intent (a unique index), and taken
+ *   back by refunds and disputes from the charge as Stripe holds it now. So the
  *   webhook is idempotent by construction.
  * - Every person who reaches Checkout gets one Stripe customer, created with an idempotency key and kept
  *   on their `subscriptions` row (status "none" until they subscribe). Checkout then never runs twice at
@@ -288,11 +289,30 @@ export async function grantFromSession(session: Stripe.Checkout.Session, grant: 
   return userId;
 }
 
-/** A refund on a credit pack takes back the same share of its credits. Subscription refunds change nothing here. */
-export async function refundFromCharge(charge: Stripe.Charge): Promise<string | null> {
+/** Dispute outcomes that leave the money with us: won, an inquiry closed, or one prevented by a refund (counted as a refund). */
+const DISPUTE_RETURNED = ["won", "warning_closed", "prevented"];
+
+/**
+ * The share of a payment taken back: what was refunded, plus what an open or lost dispute holds (a won
+ * one gives it back). Pure, for tests.
+ */
+export function reversedShare(charge: { amount: number; amount_refunded: number }, disputes: { amount: number; status: string }[] = []): number {
+  if (!charge.amount) return 0;
+  const held = disputes.filter((d) => !DISPUTE_RETURNED.includes(d.status)).reduce((s, d) => s + d.amount, 0);
+  return Math.min(1, Math.max(0, (charge.amount_refunded + held) / charge.amount));
+}
+
+/**
+ * A refund or dispute on a credit pack's payment takes back the same share of its credits, and a won
+ * dispute gives it back. The charge and its disputes are read fresh, so events arriving twice or out of
+ * order converge. Subscription payments change nothing here.
+ */
+export async function reverseFromCharge(chargeId: string): Promise<string | null> {
+  const charge = await stripeCall("charge", (s) => s.charges.retrieve(chargeId));
   const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
   if (!pi || !charge.amount) return null;
-  const userId = await refundPack(pi, charge.amount_refunded / charge.amount);
+  const disputes = charge.disputed ? (await stripeCall("disputes", (s) => s.disputes.list({ charge: charge.id, limit: 10 }))).data : [];
+  const userId = await refundPack(pi, reversedShare(charge, disputes));
   if (userId) forgetAiCaps(userId);
   return userId;
 }
@@ -397,6 +417,8 @@ export const WEBHOOK_EVENTS = [
   "customer.subscription.updated",
   "customer.subscription.deleted",
   "charge.refunded",
+  "charge.dispute.created",
+  "charge.dispute.closed",
 ] as const;
 
 /** Drop the cached plan and credits of a person and of everyone holding one of their seats. */
@@ -419,8 +441,14 @@ export async function handleEvent(event: Stripe.Event): Promise<string | null> {
       userId = await syncSubscription(event.data.object.id, event.data.object.metadata?.userId);
       break;
     case "charge.refunded":
-      userId = await refundFromCharge(event.data.object);
+      userId = await reverseFromCharge(event.data.object.id);
       break;
+    case "charge.dispute.created":
+    case "charge.dispute.closed": {
+      const charge = event.data.object.charge;
+      userId = await reverseFromCharge(typeof charge === "string" ? charge : charge.id);
+      break;
+    }
     default:
       return null;
   }

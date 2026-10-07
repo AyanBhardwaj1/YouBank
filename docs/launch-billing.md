@@ -95,7 +95,7 @@ Add `--tax` if you are ready to collect tax now (otherwise step 8). It:
 - creates the webhook endpoint `https://youbank.com/api/billing/webhook` for exactly these events:
   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
   `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`,
-  `charge.refunded`;
+  `charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`;
 - configures the customer portal: card, billing address and tax ID, invoice history, switching plans and
   intervals, seat counts (Deal Team 3 to 500, Enterprise 5 to 500), cancellation at the end of the period
   with a reason, downgrades at the end of the period;

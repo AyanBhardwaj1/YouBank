@@ -83,7 +83,8 @@ $5.60 a month whatever they do, and about $2 typically; Campus at most $12.61.
 - **Accounting.** `ai_credit_grants` holds one row per pack (unique on the payment intent, so a webhook
   that arrives twice grants once); `ai_credit_draws` holds the credits used per allowance period, written
   as spend passes the allowance and settled from the usage ledger when the period ends. A refund in
-  Stripe (`charge.refunded`) takes back the refunded share of that pack's credits.
+  Stripe (`charge.refunded`) takes back the refunded share of that pack's credits, and so does an open
+  or lost dispute (`charge.dispute.created`, `charge.dispute.closed`); a won dispute gives them back.
 
 **Plans plus packs at the full allowance.** A Pro person who uses the whole $25 allowance and then a $25
 pack costs us about $29.74 + $15 = $44.74 and pays $59 + $25 = $84: 42% after fees. Packs never lower a

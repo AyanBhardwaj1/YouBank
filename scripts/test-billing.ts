@@ -20,7 +20,7 @@ import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPa
 import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
 import { intervalsFor, PLAN_ORDER, PLANS, yearlySavingPct, type PlanId } from "@/lib/billing/plans";
-import { CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, PACK_WINDOW_MS, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
+import { CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, PACK_WINDOW_MS, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, reversedShare, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -181,7 +181,12 @@ async function main() {
     check("an unknown pack grants nothing", (await grantFromSession(session({ payment_intent: "pi_6", metadata: { kind: "credits", pack: "ai999" } }), fakeGrant)) === null);
     const sql0022 = readFileSync(new URL("../drizzle/0022_credits.sql", import.meta.url), "utf8");
     check("the database enforces it: a unique index on the payment intent", /CREATE UNIQUE INDEX IF NOT EXISTS "ai_credit_grants_payment_intent_uidx" ON "ai_credit_grants" \("stripe_payment_intent_id"\)/.test(sql0022));
-    check("the webhook listens for completed and delayed payments and refunds", ["checkout.session.completed", "checkout.session.async_payment_succeeded", "charge.refunded"].every((e) => (WEBHOOK_EVENTS as readonly string[]).includes(e)));
+    check("the webhook listens for completed and delayed payments, refunds and disputes", ["checkout.session.completed", "checkout.session.async_payment_succeeded", "charge.refunded", "charge.dispute.created", "charge.dispute.closed"].every((e) => (WEBHOOK_EVENTS as readonly string[]).includes(e)));
+    const charge = { amount: 2500, amount_refunded: 0 };
+    check("a partial refund takes back that share of the credits", reversedShare({ amount: 2500, amount_refunded: 1000 }) === 0.4);
+    check("an open or lost dispute takes back the disputed share", reversedShare(charge, [{ amount: 2500, status: "needs_response" }]) === 1 && reversedShare(charge, [{ amount: 2500, status: "lost" }]) === 1 && reversedShare(charge, [{ amount: 2500, status: "warning_needs_response" }]) === 1);
+    check("a won dispute (or a closed inquiry) gives the credits back", reversedShare(charge, [{ amount: 2500, status: "won" }]) === 0 && reversedShare(charge, [{ amount: 2500, status: "warning_closed" }]) === 0);
+    check("a refund plus a dispute never takes back more than the pack", reversedShare({ amount: 2500, amount_refunded: 1000 }, [{ amount: 2500, status: "under_review" }]) === 1);
   }
 
   console.log("double-checkout guard");
