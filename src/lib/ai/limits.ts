@@ -4,7 +4,7 @@
  * - AI_GLOBAL_DAILY_USD ($200 by default) caps everyone's spend per UTC day, background work included;
  * - each person's spend is capped per UTC day and per allowance month by their plan's AI allowance
  *   (src/lib/billing/plans.ts: Free $0.75 a day and $3 a month, up to Enterprise), except administrators
- *   (ADMIN_EMAILS), who have none. The allowance month runs from the billing anniversary for someone with
+ *   (ADMIN_EMAILS), who have none. The allowance month runs from the billing anniversary for someone who has (or had)
  *   a subscription or an assigned seat, and from the 1st (UTC) otherwise. AI_USER_DAILY_USD and
  *   AI_USER_MONTHLY_USD, when set, replace the plan amounts for everyone: the operator's lever;
  * - once the month's allowance is used, AI credit packs (src/lib/billing/packs.ts) carry on until they

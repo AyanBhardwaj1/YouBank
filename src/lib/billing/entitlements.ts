@@ -25,8 +25,8 @@ export type Entitlements = {
   /** Ids of the premium features this person may use. */
   features: string[];
   /**
-   * The billing anchor (ISO) the AI allowance resets on, monthly: the person's own live subscription's,
-   * or the owner's for an assigned seat. Null means the calendar month.
+   * The billing anchor (ISO) the AI allowance resets on, monthly: the owner's for an assigned seat, else the
+   * person's own subscription's (kept after it ends, so the period does not jump). Null means the calendar month.
    */
   anchor: string | null;
   /** Set when the plan comes from a seat on someone else's subscription. */
@@ -63,10 +63,11 @@ export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">
   const row = await ownRow(user.id);
   if (row) {
     status = row.status;
-    if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) {
-      plan = row.plan;
-      anchor = row.billingAnchor ?? null;
-    }
+    // The anniversary outlives the subscription: a plan that ends (at its period's end, as cancellations
+    // do) starts a fresh allowance month on Free. Falling back to the calendar month instead would count
+    // the paid period's spend against Free's allowance and draw the difference from the person's credits.
+    anchor = row.billingAnchor ?? null;
+    if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) plan = row.plan;
   }
   let seat: Entitlements["seat"] = null;
   if (db && !planAtLeast(plan, "enterprise")) {
