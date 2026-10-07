@@ -8,18 +8,21 @@ A Tauri v2 app for Windows, macOS and Linux. It is two things in one window:
    retries, updates from GitHub Releases, and a global hotkey for quick ask.
 2. **A local agent.** With the person's consent, part by part: it indexes folders of PDFs, Word, Excel and
    PowerPoint files into Edge documents, keeps Studio workbooks in step with real `.xlsx` files on disk
-   (and lets the AI edit them), shows alerts, and runs scheduled briefs and checks while it sits in the
-   tray.
+   (and lets the AI edit them), shows alerts, runs scheduled briefs and checks while it sits in the
+   tray, and listens to meetings with the meeting copilot.
 
 The basic app and everything the site does are free. Three parts need a paid plan, because they cost us
 money each time they run (see `src/lib/billing/features/desktop.ts`): indexing more than 25 local files,
-scheduled AI tasks, and AI edits to local Office files. The server checks the plan every time.
+scheduled AI tasks, and AI edits to local Office files. Recording meetings and their transcripts are free;
+live suggestions during a call, and notes past three meetings a month, need a plan
+(`src/lib/billing/features/meetings.ts`). The server checks the plan every time.
 
 - [Run it](#run-it)
 - [Build installers](#build-installers)
 - [Release](#release)
 - [Signing and updates: the secrets](#signing-and-updates-the-secrets)
 - [Architecture](#architecture)
+- [The meeting copilot](#the-meeting-copilot)
 - [Permissions and safety](#permissions-and-safety)
 - [The server side](#the-server-side)
 - [Checks](#checks)
@@ -27,16 +30,18 @@ scheduled AI tasks, and AI edits to local Office files. The server checks the pl
 
 ## Run it
 
-You need Rust (stable, 1.82 or later), Node 20+ with pnpm, and your system's webview libraries:
+You need Rust (stable, 1.85 or later), Node 20+ with pnpm, and your system's webview libraries:
 
 - **Windows:** WebView2 (already on Windows 10 and 11) and the Visual Studio C++ build tools.
 - **macOS:** Xcode command line tools (`xcode-select --install`).
 - **Linux (Debian, Ubuntu):**
   ```bash
   sudo apt install libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-    libdbus-1-dev libxdo-dev libssl-dev build-essential pkg-config
+    libdbus-1-dev libxdo-dev libssl-dev libasound2-dev build-essential pkg-config
   ```
   Connecting needs a Secret Service keyring (GNOME Keyring or KWallet), which desktops have by default.
+  The meeting copilot records through PulseAudio (or PipeWire's pulse server, the default on current
+  desktops); `pactl` and `wmctrl`, when installed, help it notice calls.
 
 ```bash
 cd desktop
@@ -135,11 +140,14 @@ desktop/
   src/                    the app's own pages: plain HTML, CSS and ES modules, no build step
     index.html, boot.js     start-up, first-run welcome, offline screen with retry
     quickask.html/.js       the floating quick ask window
-    agent.html/.js          the desktop agent's settings: account, files, Office, alerts, tasks, app
+    agent.html/.js          the desktop agent's settings: account, files, Office, alerts, tasks, meetings, app
+    pill.html/.js           the meeting pill: the offer, the consent step, the recording time and Stop
+    copilot.html/.js        the copilot window during a meeting: transcript, brief, suggestions, ask
     app.js, styles.css      shared helpers and the colours (light and dark follow the system)
   src-tauri/
     tauri.conf.json         bundle targets, CSP, deep-link scheme, updater endpoints
     capabilities/local.json   what the app's own pages may call (every app command)
+    Info.plist              macOS usage strings for the microphone and system audio
     capabilities/remote.json  what the website may call (three commands)
     build.rs                the app's command list; generates one permission per command
     linux/youbank.desktop   the .deb's desktop entry (passes youbank:// links to the app)
@@ -156,7 +164,10 @@ desktop/
       office.rs     Studio pull and push, linking a workbook, AI edits, backups
       ask.rs        quick ask: streams the answer from the server to the window
       updater.rs    update checks and "Restart to update"
-      tray.rs       the tray menu
+      tray.rs       the tray menu; the red recording dot
+      capture.rs    meeting audio: microphone and system audio, 16 kHz chunks with levels
+      detect.rs     noticing Zoom, Teams, Meet, Webex and Slack calls
+      meetings.rs   the copilot: offer, consent, recording, sending chunks, "notes ready"
       deeplink.rs   youbank:// links
       commands.rs   every command a page may call
 ```
@@ -214,6 +225,49 @@ backup and pulls the result back into the file. Every overwrite keeps the previo
 day (only within four hours of it, so a laptop opened in the evening does not send the morning brief),
 the email agent's status and watch checks every few hours. A run that fails waits for its next slot.
 
+## The meeting copilot
+
+Off until the person accepts its screen (desktop agent → Meetings). Then:
+
+1. **Noticing a call.** Every 15 seconds (while "notice calls" is on) the app looks at running processes,
+   which apps use the microphone (`pactl` recording streams on Linux, the microphone privacy store in the
+   registry on Windows) and window titles (`wmctrl` on Linux, `tasklist` on Windows). A call in Zoom,
+   Teams, Meet (a browser tab), Webex or a Slack huddle brings up the **pill**, a small window on top in
+   the top right corner: "Zoom call detected. Start the meeting copilot?", with Not now and Never for
+   Zoom. Apps and words the person chose never to record are never offered. An app the person set (on
+   the site) to start on its own starts without asking, with the indicator.
+2. **Consent.** Start shows the reminder that some places require everyone's consent before a call is
+   recorded, and a Copy notice button with the text to paste in the meeting chat (set on the site). Only
+   "Start recording" records. The tray's "Start meeting copilot…" goes to the same step.
+3. **Recording** (`capture.rs`, through cpal): the microphone, and what the computer plays: WASAPI
+   loopback on Windows; CoreAudio's process tap on macOS 14.2 and later (macOS asks for "Screen & System
+   Audio Recording" the first time; `Info.plist` carries the usage strings); the default output's monitor
+   source through PulseAudio or PipeWire on Linux. Where system audio cannot be opened (older macOS, no
+   PulseAudio, permission refused) the copilot records the microphone alone and the pill says so: the
+   others are still heard through speakers, not through headphones. Loopback delivers nothing during
+   silence, so gaps are filled to keep the two tracks in time. Both are mixed to 16 kHz mono and cut
+   into WAV chunks of about 30 seconds, each starting one second before the last ended, with the
+   microphone and system levels every quarter second (how the server knows which lines were the
+   person's own).
+4. **While it records** the tray icon has a red dot, its tooltip says so, and its menu offers Stop; the
+   pill shows a pulsing dot, the time, what has been sent, a Copilot button and Stop (Stop, Stop and
+   delete, Keep recording). The copilot window shows the rolling transcript, the people and deals
+   (pick them from Relationships), what YouBank knows about them (free), live suggestions (Pro, a switch
+   for this meeting only, about once a minute) and an ask box.
+5. **Sending** (`meetings.rs`). Chunks are written to the app data folder (`meetings/<id>/`) and sent in
+   order to `PUT /api/desktop/meetings/:id/chunks/:seq`; each is deleted once YouBank has transcribed it,
+   or moved to `Documents/YouBank/Meetings` if the person keeps a local copy. Offline, chunks wait and
+   are retried with a back-off. A stopped meeting is ended on YouBank only after its last chunk is
+   through, even across a restart; Stop and delete removes the local chunks and the meeting.
+6. **Notes ready.** The app checks every 20 seconds until the notes are written, then shows "Meeting
+   notes ready" with the summary; "Open latest alert" in the tray opens the meeting in Relationships.
+   Notes for meetings recorded elsewhere (the notetaker, another computer) arrive with the alerts, if
+   "Meeting notes ready" is on there.
+
+The settings that follow the person across computers (the notice, never-record apps and words,
+auto-start, retention, notes) live on the site; this computer keeps whether it notices calls, records
+system audio, keeps a local copy and opens the copilot window on start.
+
 ## Permissions and safety
 
 - **The website gets three commands, nothing else.** `capabilities/remote.json` lets the site call
@@ -235,6 +289,10 @@ the email agent's status and watch checks every few hours. A run that fails wait
 - **Consent.** Local files, Excel and PowerPoint, alerts and scheduled tasks each start with a screen
   saying exactly what they do, and stay off until accepted. The Rust side keeps anything without consent
   switched off whatever a page sends.
+- **Meetings.** Nothing records until the person agrees to the consent step (or set that app to start on
+  its own, on the site). The red dot and the pill show for the whole recording. Audio stays on this
+  computer only until it is transcribed, unless the person keeps a copy. Live suggestions spend only
+  while switched on for that meeting, and the server checks the switch and the plan on every call.
 - **Money.** Nothing that costs money runs without a person asking: uploading files is a click (or a
   folder the person set to upload on its own), an AI edit is a click, and a scheduled AI task runs only
   after the person switched it on for this computer. The server keeps its own copy of the switches
@@ -258,6 +316,10 @@ All in the main Next.js app (see the root README):
 | `POST, DELETE /api/desktop/files`, `PUT …/:id/part`, `POST …/:id/complete` | Local files into Edge documents |
 | `GET, POST /api/desktop/studio`, `GET, POST …/:id`, `POST …/:id/agent` | List, link, pull, push, AI edit |
 | `GET /api/desktop/update` | Redirects the updater to the newest desktop release's `latest.json` |
+| `GET, POST, PUT /api/desktop/meetings` | Recent meetings, copilot settings and plan; start a meeting (after consent); save the settings |
+| `PUT /api/desktop/meetings/:id/chunks/:seq` | One chunk of audio (raw WAV, levels in the query), transcribed and dropped |
+| `GET, PATCH /api/desktop/meetings/:id`, `POST …/end` | State and the latest transcript; who and what it is about; end (or discard) |
+| `GET …/:id/brief`, `PUT, POST …/:id/live`, `POST …/:id/ask`, `GET /api/desktop/meetings/search` | The free brief; live suggestions on or off and one round (premium); ask; contact and deal search |
 
 Desktop tokens (`ybd_…`) only work on these routes, and Office add-in tokens do not work on them. The
 tables are in `drizzle/0017_desktop.sql`.
@@ -267,12 +329,23 @@ tables are in `drizzle/0017_desktop.sql`.
 ```bash
 cd desktop
 pnpm check:web     # the pages parse; every command they call is registered and allowed
-pnpm check:rust    # cargo fmt --check, clippy -D warnings, 15 unit tests
+pnpm check:rust    # cargo fmt --check, clippy -D warnings, 27 unit tests
 ```
 
 The unit tests cover the link parser, the navigation rules, site addresses, settings defaults and
 cleaning, the scheduler's timing, which files are indexed and which folders are too broad, path hashing,
-file names, and the streaming parser (including a character split across two network chunks).
+file names, the streaming parser (including a character split across two network chunks), and for the
+meeting copilot: downmixing, resampling, levels, WAV headers, mixing, filling loopback's silent gaps,
+overlapping chunks, call detection from process, microphone and window snapshots (and the `pactl`,
+registry, `tasklist` and `wmctrl` parsers), the never-record rules, which send failures wait and which
+drop, and the recording dot.
+
+The capture was also run on Linux against a PulseAudio server with two null sinks: a tone played into
+the "microphone" for the first eight seconds and another into the speakers' monitor after that came
+back as two chunks (0–31.7 s and 30.7–37.7 s, overlapping by a second), with the microphone levels high
+in the first part and the system levels high in the second. `capture.rs` and `detect.rs` also compile
+and pass Clippy for Windows (`x86_64-pc-windows-msvc`) and macOS (`aarch64-apple-darwin`); they were not
+run there.
 
 The app was also run end to end under Xvfb on Linux against a stand-in for the `/api/desktop/**` routes:
 first-run and offline screens, the website's command allow-list, connecting with a code and keeping the
@@ -294,5 +367,10 @@ an answer, `youbank://` links and a second launch handing over to the running ap
 - **Deal notifications** cover news about deals (Edge findings, filings), not stage changes, which the
   person usually made themselves.
 - **Linux without a keyring** (some minimal window managers) cannot stay connected; the app says so.
+- **Meeting copilot.** Windows loopback and the macOS process tap were not run on those systems. On
+  macOS, calls are noticed from processes only (window titles would need the Accessibility permission),
+  so Meet in a browser is not noticed there, and macOS before 14.2 records the microphone only.
+  Transcription always happens on YouBank's server (no local model). Speaker names beyond "You" depend on
+  the notes step naming the diarizer's per-chunk labels.
 - The installers have only been built for Linux here (a `.deb`); the Windows and macOS builds run in the
   release workflow.

@@ -36,6 +36,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Relationships: the email agent](#relationships-the-email-agent)
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
+   - [Meetings: the meeting copilot](#meetings-the-meeting-copilot)
    - [Teams and live collaboration](#teams-and-live-collaboration)
    - [YouBank for desktop](#youbank-for-desktop)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
@@ -961,6 +962,35 @@ Graduation offers appear at the top of the queue.
 | Learning from edits | Lessons and own-writing examples | G. Gao et al., PRELUDE/CIPHER, NeurIPS (2024), arXiv:2404.15269; PROSE, ICML (2025), arXiv:2505.23815 |
 | Prompt-injection risk in mail agents | The security veto | The Trojan Hippo and EchoLeak attacks (2025–2026) |
 
+### Meetings: the meeting copilot
+
+The copilot listens to meetings and files what it learns into Relationships (the full design, and where
+a calendar plugs in, are in [docs/meetings.md](docs/meetings.md)). Two ways to listen:
+
+- **The desktop app** (free). When a Zoom, Teams, Google Meet, Webex or Slack huddle call starts, it
+  offers to start; nothing records until the person agrees to a prompt reminding them that some places
+  require everyone's consent (with a notice to paste in the chat). It records the microphone and what the
+  computer plays (WASAPI loopback, CoreAudio's tap on macOS 14.2+, the PulseAudio/PipeWire monitor on
+  Linux; microphone only where that is not available), shows a red dot in the tray and a small pill with
+  the time and Stop, and sends 30-second chunks to be transcribed. Audio is deleted once transcribed.
+- **The notetaker bot** (Pro, `meetings.bot`, about $0.65 an hour through Recall.ai): sent to a meeting
+  link by a click, or by an auto-join rule the person switched on; it joins as a participant and its
+  transcript names each speaker.
+
+Transcription uses OpenAI's speaker-labelled model when `OPENAI_API_KEY` is set, otherwise the ML
+service's Whisper and Parakeet. During a call, the copilot window shows the rolling transcript and what
+YouBank knows about the people in it (contacts, deal stage, recent emails, a listed company's numbers),
+free; live suggested questions are Pro (`meetings.live`), on only while switched on for that meeting.
+
+When the meeting ends, the notes (free for three meetings a month, then Pro, `meetings.notes`): a
+summary, decisions, action items with owners and dates, open questions, each person's sentiment,
+interest and signals, and follow-up drafts. They are filed the way the email agent files mail: each
+participant matched to a contact (or added and marked for review), a meeting entry on each contact's and
+deal's timeline carrying their topics (contact knowledge), stated deal terms as proposed changes to
+accept or reject (never written over), follow-ups in the review queue (never sent by autopilot).
+Relationships → Meetings lists the meetings, and each meeting's page shows the transcript, the notes,
+the proposed updates as cards, and an "ask about this meeting" box.
+
 ### Teams and live collaboration
 
 - **Teams** (`/app/team`) are shared workspaces.
@@ -998,6 +1028,9 @@ from the latest `desktop-v*` GitHub Release and says in plain words what the app
     (Pro, `desktop.office_agent`) run the Studio agent and write the result back, keeping a backup.
   - **Alerts.** Edge findings and other bell alerts, the email agent's questions and news about pipeline
     deals, polled every few minutes (read only).
+  - **The meeting copilot** (see [Meetings](#meetings-the-meeting-copilot)): notices calls, asks for
+    consent, records the microphone and system audio, shows a recording pill and the copilot window, and
+    says when the notes are ready.
   - **Scheduled tasks** from the tray: the morning brief and the email agent's status (free), the Edge
     brief and watch checks (Pro, `desktop.background_ai`). An AI task runs on its schedule only if the
     person switched it on for that computer; the server keeps its own copy of that switch and refuses
@@ -1104,6 +1137,7 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| Meetings | `meetings` (each meeting: source, consent, participants, the live switch, notes), `meeting_chunks` (the transcript, one row per audio chunk), `meeting_links` (contacts and deals), `meeting_settings`; a meeting's proposed changes are `crm_actions` rows with `meeting_id` |
 | Desktop app | `desktop_pairings` (as for Office), `desktop_devices` (connected computers: the hashed token, system, app version, the scheduled-task switches, last use, revocation), `desktop_files` (each indexed local file: a hash of its path, its name, content hash and Edge document) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
@@ -1122,6 +1156,7 @@ All tables are in `src/db/schema.ts`.
   - `0009_ai_usage`
   - `0010_contact_knowledge`
   - `0017_desktop`
+  - `0019_meetings`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1196,6 +1231,8 @@ bash scripts/preflight.sh                                         # everything t
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar and the download page's release lookup |
 | `DESKTOP_RELEASE_REPO` | no | Where the desktop installers are released; default `AyanBhardwaj1/YouBank` |
+| `MEETINGS_TRANSCRIBE`, `MEETINGS_TRANSCRIBE_MODEL` | no | Meeting transcription: force `openai` or `ml`; the OpenAI model (default `gpt-4o-transcribe-diarize`) |
+| `RECALL_API_KEY`, `RECALL_REGION`, `RECALL_WEBHOOK_SECRET` | for the notetaker | Recall.ai's key, region (default `us-west-2`) and webhook signing secret; webhooks go to `/api/meetings/webhook` |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
 
 ---
@@ -1284,7 +1321,8 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Desktop app (15 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; the pages' scripts and that every command they call is registered and allowed |
+| Meetings (83 checks) | `pnpm exec tsx scripts/test-meetings.ts` | Transcript chunk stitching (overlaps, re-sent chunks, per-chunk speaker labels, "You" from the microphone levels); participant matching; the notes parser (action items, owners, dates); proposed deal changes; the notetaker's webhook signatures, events and transcripts; meeting context and auto-join; transcription answers and engine choice; the premium features |
+| Desktop app (27 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; meeting audio (mixing, resampling, levels, WAV, overlapping chunks, silence in loopback), call detection and its parsers, never-record rules, the recording dot; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
@@ -1430,8 +1468,8 @@ YouBank/
   src/app/                 routes: marketing, /for/<role>, /download, /onboarding, /app/*, /office/* (the add-in),
                            /desktop/connect, /api/*
   src/components/
-    crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
-                           agent settings, engine insights, mailbox bar
+    crm/                   workspace, review queue, inbox, pipeline, contacts, meetings, campaigns,
+                           nurture, agent settings, engine insights, mailbox bar
     studio/                Studio home, workspace, grid, deck view, slide charts, state hook
     office/                the add-in's task pane, and the connect and install pages
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
@@ -1441,6 +1479,8 @@ YouBank/
   src/db/schema.ts         every table
   src/lib/
     crm/                   the relationships agent, autopilot and the adaptive engine (see Architecture)
+    meetings/              the meeting copilot: transcription, stitching, matching, notes, filing into
+                           Relationships, the notetaker bot, meeting context (docs/meetings.md)
     studio/                formula engine, functions, number formats, templates, audit, deck, edit
                            operations, persistence, .xlsx/.pptx, the Studio agent, workbook sync,
                            checkpoints, the brand check, reading printouts and data rooms
@@ -1460,6 +1500,7 @@ YouBank/
 | Doc | What |
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
+| [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
