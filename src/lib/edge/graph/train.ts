@@ -10,7 +10,7 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { cacheJson } from "@/lib/cache";
-import { logError } from "@/lib/errors";
+import { failureMessage, logError, storedMessage } from "@/lib/errors";
 import type { MlDone } from "../infra/ml";
 import { mlReady, mlStart } from "../infra/ml";
 import { getJson, putJson, r2Ready } from "../infra/r2";
@@ -142,7 +142,7 @@ export async function startTraining(reason: string): Promise<{ modelId: number; 
     const callId = await mlStart("graph.train", { graphKey: key, splitDate: g.splitDate, topK: 80, seed: 0 }, `graph:${row.id}`);
     return { modelId: row.id, version, callId };
   } catch (e) {
-    await requireDb().update(schema.edgeModels).set({ status: "failed", metrics: { exported: g.stats, splitDate: g.splitDate, error: String((e as Error).message).slice(0, 300) } }).where(eq(schema.edgeModels.id, row.id));
+    await requireDb().update(schema.edgeModels).set({ status: "failed", metrics: { exported: g.stats, splitDate: g.splitDate, error: failureMessage(e, "edge-graph-train").slice(0, 300) } }).where(eq(schema.edgeModels.id, row.id));
     throw e;
   }
 }
@@ -156,7 +156,7 @@ export async function finishTraining(modelId: number, done: MlDone | null): Prom
   if (!model) return { ok: false, predictions: 0 };
   const prior = (model.metrics ?? {}) as ModelMetrics;
   if (!done?.ok || !done.result) {
-    await db.update(schema.edgeModels).set({ status: "failed", metrics: { ...prior, error: (done?.error ?? "The ML service did not answer in time.").slice(0, 300) } }).where(eq(schema.edgeModels.id, modelId));
+    await db.update(schema.edgeModels).set({ status: "failed", metrics: { ...prior, error: storedMessage(done?.error ?? "The ML service did not answer in time.", "Training failed on the ML service.").slice(0, 300) } }).where(eq(schema.edgeModels.id, modelId));
     return { ok: false, predictions: 0 };
   }
   const res = done.result as { modelKey?: string; predictionsKey?: string; metrics?: { gnn?: Metrics; baseline?: Metrics }; info?: Record<string, unknown> };

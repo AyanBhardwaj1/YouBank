@@ -12,13 +12,14 @@ import type { LintIssue } from "@/lib/studio/lint";
 import { applyPatch, applyWithUndo, renameSheet, type Patch } from "@/lib/studio/ops";
 import type { Snapshot } from "@/lib/studio/sync";
 import type { StudioDocData } from "@/lib/studio/types";
+import { apiError, errorMessage, messageFor, safeText } from "@/lib/client/errors";
 
 type Me = { name: string; email: string };
 type DocMeta = { id: number; title: string; kind: string; ticker: string; sheets: number; slides: number; updatedAt: string; mine: boolean };
 type Ev = { id: number; patches: Patch[]; undo?: Patch[]; actor: string; actorName: string; runId: string; label: string };
 type Line = { k: "tool" | "change" | "note" | "error" | "text"; text: string; done?: boolean; name?: string };
 
-const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const msg = (e: unknown) => errorMessage(e);
 const TOOLS: Record<string, string> = {
   read_range: "Reading", write_cells: "Writing cells", format_cells: "Formatting", fill: "Filling formulas", insert_or_delete: "Moving rows and columns",
   clear_range: "Clearing", sheets: "Arranging sheets", build_model: "Building the model from SEC data", company_data: "Pulling SEC financials",
@@ -160,7 +161,7 @@ function RunLog({ lines, running }: { lines: Line[]; running: boolean }) {
 /** Stream an agent run: every event goes to `on`; returns when the run ends. */
 async function streamRun(docId: number, body: Record<string, unknown>, signal: AbortSignal, on: (e: StudioStreamEvent) => void) {
   const res = await request(`/api/studio/${docId}/agent`, { json: body, signal });
-  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `The agent could not start (${res.status})`);
+  if (!res.ok) throw await apiError(res);
   for await (const e of ndjson<StudioStreamEvent>(res)) on(e);
 }
 
@@ -176,7 +177,7 @@ function useRunLog() {
       case "patch": add({ k: "change", text: e.label }); break;
       case "note": add({ k: "note", text: e.text }); break;
       case "text": setLines((x) => (x[x.length - 1]?.k === "text" ? [...x.slice(0, -1), { k: "text", text: x[x.length - 1].text + e.text }] : [...x, { k: "text", text: e.text }])); break;
-      case "error": add({ k: "error", text: e.message }); break;
+      case "error": add({ k: "error", text: safeText(e.message) }); break;
       default: break;
     }
   }, [add]);
@@ -427,7 +428,7 @@ function useExcelLink(docId: number, onSignOut: () => void) {
         const res = await request(`/api/studio/${docId}/sync`, { json: { snapshot: snapshot as Snapshot, base: cursor.current } });
         const data = (await res.json().catch(() => null)) as { event: { id: number; patches: Patch[] } | null; error?: string } | null;
         if (res.status === 409) continue;
-        if (!res.ok) throw new Error(data?.error ?? `Sync failed (${res.status})`);
+        if (!res.ok) throw new Error(`Sync failed. ${messageFor(res.status, data).message}`);
         for (const d of taken) dirty.current.delete(d);
         if (!only) needFull.current = false;
         if (data?.event) { applied.current.add(data.event.id); for (const p of data.event.patches) applyPatch(m, p); }

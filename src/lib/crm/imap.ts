@@ -6,6 +6,7 @@ import type { EmailAddress } from "@/db/schema";
 import { isAutomatedMessage } from "./autopilot-rules";
 import type { IncomingMessage } from "./db";
 import { newMessageId, stripQuoted, type FetchedThread } from "./gmail";
+import { logError } from "@/lib/errors";
 
 /**
  * Any mailbox over IMAP (reading) and SMTP (sending), signed in with an app password.
@@ -77,7 +78,9 @@ export function friendlyMailError(e: unknown, stage: "IMAP" | "SMTP"): Error {
   if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|timeout|EHOSTUNREACH/i.test(detail)) {
     return new Error(`Could not reach the ${stage} server. Check the host and port.`);
   }
-  return new Error(`${stage}: ${msg}`);
+  // Anything else is the server's own protocol text: logged under a reference, not shown.
+  const ref = logError(e, { where: `mail-${stage.toLowerCase()}` });
+  return new Error(`The ${stage} mail server did not accept the request (ref ${ref}). Check the mailbox settings, or try again later.`);
 }
 
 /** Sign in to both servers without reading or sending anything, so a bad password fails at connect time. */

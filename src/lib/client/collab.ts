@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiError, errorMessage, readError } from "./errors";
 
 export type Presence = { userId: string; name: string; field: string; lastSeenAt: string };
 export type CollabSession = { id: number; title: string; kind: string; refId: string; teamId: number | null; state: Record<string, unknown>; ownerId: string; status: string };
@@ -70,8 +71,8 @@ export function useCollabSession(sessionId: number | null, opts?: { selfId?: str
       }
       try {
         const res = await fetch(`/api/collab/${sessionId}`);
+        if (!res.ok) throw await apiError(res);
         const body = await res.json().catch(() => null);
-        if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Could not open the session (${res.status})`);
         if (cancelled) return;
         setSession((body as { session: CollabSession }).session);
         setPresence((body as { presence: Presence[] }).presence);
@@ -79,7 +80,7 @@ export function useCollabSession(sessionId: number | null, opts?: { selfId?: str
         last = Number((body as { lastEventId?: number }).lastEventId) || 0;
         if (document.visibilityState !== "hidden") open();
         document.addEventListener("visibilitychange", onVisibility);
-      } catch (e) { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); }
+      } catch (e) { if (!cancelled) setError(errorMessage(e)); }
     };
     void load();
     if (sessionId === null) return () => { cancelled = true; };
@@ -110,7 +111,10 @@ export function useCollabSession(sessionId: number | null, opts?: { selfId?: str
       void fetch(`/api/collab/${sessionId}`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ patch: body }),
-      }).catch(() => {});
+      })
+        // A lost edit must not pass silently: the others never saw it.
+        .then(async (r) => { if (!r.ok) setError(`Your last change was not saved. ${await readError(r)}`); else setError(null); })
+        .catch((e) => setError(`Your last change was not saved. ${errorMessage(e)}`));
     }, 250);
   }, [sessionId]);
 

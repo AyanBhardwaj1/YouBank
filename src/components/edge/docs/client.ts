@@ -9,6 +9,7 @@ import type { AskInput, FullAnswer } from "@/lib/edge/docs/answer";
 import type { ChangeRow, DocCompare, Radar } from "@/lib/edge/docs/changes";
 import type { SpeakerTone, Turn } from "@/lib/edge/docs/tone";
 import type { TopicMap } from "@/lib/edge/docs/topics";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
 export type { AskInput, ChangeRow, DocCompare, Radar, SpeakerTone, TopicMap, Turn };
 
@@ -42,7 +43,7 @@ export const FORM_OPTIONS = ["10-K", "10-Q", "8-K", "DEF 14A", "S-4"];
 export const READING = new Set(["queued", "parsing", "indexing"]);
 
 export const fmtBytes = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(b >= 100 * 1024 ** 2 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
-export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+export const errorText = (e: unknown) => errorMessage(e);
 
 /** The wait before the next check: `ms` while all is well, doubling with each failure in a row (5 s, 10 s, 20 s…), up to a minute. Pure, for tests. */
 export const pollDelay = (ms: number, failures: number) => Math.min(ms * 2 ** Math.min(failures, 8), Math.max(ms, 60_000));
@@ -83,10 +84,7 @@ export function warmReranker(): void {
   void fetch("/api/edge/ask/warm", { method: "POST", keepalive: true }).catch(() => undefined);
 }
 
-async function failure(res: Response): Promise<Error> {
-  const j = (await res.json().catch(() => ({}))) as { error?: string };
-  return new Error(j.error ?? `HTTP ${res.status}`);
-}
+const failure = (res: Response): Promise<Error> => apiError(res);
 
 /** Ask the documents; `onProgress` hears each stage while sources are read and passages found. */
 export async function askStream(input: AskInput, onProgress: (message: string) => void, signal?: AbortSignal): Promise<DocAnswer> {

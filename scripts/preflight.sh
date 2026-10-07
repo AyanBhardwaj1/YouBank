@@ -31,6 +31,9 @@ pnpm exec tsx scripts/test-maps.ts > /tmp/youbank-test-maps.log 2>&1 && tail -1 
 step "launch limits"
 pnpm exec tsx scripts/test-launch.ts > /tmp/youbank-test-launch.log 2>&1 && tail -1 /tmp/youbank-test-launch.log || { cat /tmp/youbank-test-launch.log; fail=1; }
 
+step "errors"
+pnpm exec tsx scripts/test-errors.ts > /tmp/youbank-test-errors.log 2>&1 && tail -1 /tmp/youbank-test-errors.log || { cat /tmp/youbank-test-errors.log; fail=1; }
+
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1
 

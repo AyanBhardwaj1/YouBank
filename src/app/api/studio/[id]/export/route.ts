@@ -14,6 +14,12 @@ export const maxDuration = 60;
  * With as=base64 the file comes back as JSON with the slide ids, which is how PowerPoint inserts it.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  // Plain text, not JSON: a download link opened in a tab shows the body as it is.
+  try { return await exportFile(req, ctx); }
+  catch (e) { const f = describeFailure(e, 500, "studio-export"); return new Response(f.message, { status: f.status }); }
+}
+
+async function exportFile(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await requestUser(req);
   if (!user) return new Response("Sign in required", { status: 401 });
   if (!(await withinRate(`studio-export:${user.id}`, 30, 600_000))) return new Response("Many files have been built in the last few minutes. Try again shortly.", { status: 429 });

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { CrmInsights } from "@/lib/crm/insights";
 import { STAGE_LABEL, isStage } from "@/lib/crm/model";
 import { Empty, ago, api, btn, money, type PanelCtx } from "./shared";
+import { errorMessage } from "@/lib/client/errors";
 
 type Knowledge = { topics: { topic: string; awareness: number; interest: number; told: number; engaged: number; evidence: string; lastTold: string | null; lastSeen: string | null }[]; talkingPoints: { topic: string; why: string }[]; tagged: number };
 
@@ -45,7 +46,7 @@ export function InsightsPanel({ ctx }: { ctx: PanelCtx }) {
 
   useEffect(() => {
     let cancelled = false;
-    api<CrmInsights>("/api/crm/insights").then((d) => { if (!cancelled) { setData(d); setError(null); } }).catch((e: Error) => { if (!cancelled) setError(e.message); });
+    api<CrmInsights>("/api/crm/insights").then((d) => { if (!cancelled) { setData(d); setError(null); } }).catch((e: unknown) => { if (!cancelled) setError(errorMessage(e)); });
     return () => { cancelled = true; };
   }, [ctx.tick]);
 

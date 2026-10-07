@@ -8,12 +8,13 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useReducedMotion } from "motion/react";
 import type { FeedView } from "@/lib/news/views";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
+/** A JSON fetch whose failures throw an ApiError with a message safe to show (lib/client/errors). */
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
-  const j = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
-  return j;
+  if (!r.ok) throw await apiError(r);
+  return (await r.json().catch(() => ({}))) as T;
 }
 export const post = <T,>(url: string, body: unknown) => api<T>(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
@@ -49,7 +50,7 @@ export function useApi<T>(url: string | null, pollMs = 0, initial?: T, seededAt?
     };
     const load = () => api<T>(url)
       .then((data) => { failures = 0; if (live) setState({ url, data, error: null }); })
-      .catch((e) => { failures++; if (live) setState((s) => ({ url, data: s.data, error: e instanceof Error ? e.message : String(e) })); })
+      .catch((e) => { failures++; if (live) setState((s) => ({ url, data: s.data, error: errorMessage(e) })); })
       .finally(schedule);
     const onVisibility = () => { if (document.visibilityState !== "hidden" && due) { due = false; void load(); } };
     const fresh = skipFirst.current && seed.current !== undefined && Math.abs(Date.now() - new Date(seed.current).getTime()) < 15_000;

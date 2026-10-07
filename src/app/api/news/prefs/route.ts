@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     if (typeof body.slackWebhook === "string") {
       const url = body.slackWebhook.trim();
       if (!url) delete next.slack;
-      else if (!isSlackWebhook(url)) return NextResponse.json({ error: "That is not a Slack incoming-webhook URL (https://hooks.slack.com/…)" }, { status: 400 });
+      else if (!isSlackWebhook(url)) return NextResponse.json({ error: "That is not a Slack incoming-webhook URL. Paste the one Slack gives you, starting hooks.slack.com/services/." }, { status: 400 });
       else if (!encryptionReady()) return NextResponse.json({ error: "Encryption is not configured on this server" }, { status: 500 });
       else next.slack = encryptToken(url);
     } else if (typeof stored.slack === "string") next.slack = stored.slack;

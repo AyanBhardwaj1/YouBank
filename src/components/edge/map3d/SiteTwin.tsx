@@ -7,6 +7,7 @@
  * imagery draped on the terrain, and a recorded 3D time-lapse. Every paid or heavy step starts from a
  * button here, and the server checks the plan again before it runs. The glTF export of the twin is free.
  */
+import { errorMessage } from "@/lib/client/errors";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { Icon } from "@/components/ui/Icon";
@@ -36,7 +37,7 @@ const body = (t: TwinTarget) => (t.asset ? { asset: t.asset } : { detection: t.d
 const n0 = (v: number) => Math.round(v).toLocaleString("en-US");
 const small = () => typeof window !== "undefined" && (window.matchMedia?.("(max-width: 640px)").matches ?? false);
 /** A failure in words: the server's own plain message, or a dropped connection said plainly. */
-const errText = (e: unknown) => (e instanceof TypeError ? "Could not reach YouBank. Check the connection and try again." : e instanceof Error ? e.message : String(e));
+const errText = (e: unknown) => errorMessage(e);
 
 function Section({ title, badge, children }: { title: string; badge?: ReactNode; children: ReactNode }) {
   return (
