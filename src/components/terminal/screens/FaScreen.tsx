@@ -50,7 +50,7 @@ export function FaScreen({ company: c }: { company: CompanyData }) {
         </div>
       </div>
 
-      <table className="w-full text-[11.5px]">
+      <div className="table-scroll"><table className="w-full text-[11.5px]">
         <thead className="text-[10.5px] uppercase tracking-wider text-muted">
           <tr className="border-b border-line">
             <th className="py-1 text-left font-normal">LTM summary</th>
@@ -69,7 +69,7 @@ export function FaScreen({ company: c }: { company: CompanyData }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <ul className="list-disc pl-4 text-[10px] text-muted">
         {c.sources.notes.map((n) => <li key={n}>{n}</li>)}
       </ul>

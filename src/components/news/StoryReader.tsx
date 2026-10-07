@@ -16,6 +16,7 @@ import { DealMap } from "@/components/edge/DealMap";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { ago, fmtPct, fmtUsd, post, useApi, useMotionLevel, useNow, useSparks } from "./client";
 import { hueOf, StoryArt } from "./DataArt";
+import { useCoarsePointer } from "@/components/ui/useMedia";
 import { errorMessage } from "@/lib/client/errors";
 
 type Props = { id: number; onClose?: () => void; onStep?: (dir: 1 | -1) => void; onChanged?: () => void; mode: "peek" | "page" };
@@ -55,9 +56,9 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
       <div className="flex items-center justify-between gap-2">
         <div className="nr-kicker flex items-center gap-1.5"><span style={{ color: hueOf(s.tags) }}>{s.filing ? s.filing.form : s.categoryLabel}</span><span className="text-faint">·</span><span className="normal-case tracking-normal">{now ? ago(s.firstSeenAt, now) : ""}</span><span className="text-faint">·</span><span className="normal-case tracking-normal">{s.sourceCount} source{s.sourceCount === 1 ? "" : "s"}</span></div>
         <div className="flex items-center gap-0.5">
-          {onStep && <><button type="button" onClick={() => onStep(-1)} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg" aria-label="Previous story"><ArrowLeft className="h-4 w-4" /></button><button type="button" onClick={() => onStep(1)} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg" aria-label="Next story"><ArrowRight className="h-4 w-4" /></button></>}
-          {mode === "peek" && <Link href={`/app/news/story/${s.id}`} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg" aria-label="Open full page" title="Open full page"><Maximize2 className="h-4 w-4" /></Link>}
-          {onClose && <button type="button" onClick={onClose} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg" aria-label="Close"><X className="h-4 w-4" /></button>}
+          {onStep && <><button type="button" onClick={() => onStep(-1)} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:p-2.5" aria-label="Previous story"><ArrowLeft className="h-4 w-4" /></button><button type="button" onClick={() => onStep(1)} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:p-2.5" aria-label="Next story"><ArrowRight className="h-4 w-4" /></button></>}
+          {mode === "peek" && <Link href={`/app/news/story/${s.id}`} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:p-2.5" aria-label="Open full page" title="Open full page"><Maximize2 className="h-4 w-4" /></Link>}
+          {onClose && <button type="button" onClick={onClose} className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:p-2.5" aria-label="Close"><X className="h-4 w-4" /></button>}
         </div>
       </div>
       <h1 className={`nr-head mt-3 text-fg ${mode === "page" ? "nr-lead" : "nr-h2"}`} style={mode === "peek" ? { fontSize: "calc(var(--nr-h2) * 1.25)" } : undefined}>{s.headline}</h1>
@@ -148,9 +149,13 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
   );
 }
 
-/** The side peek: slides in over the right of the feed; Esc closes, arrows step through stories. */
+/**
+ * The side peek: slides in over the right of the feed; Esc closes, arrows step through stories. On a
+ * phone it takes the whole screen (over the tab bar, clear of the notch) and a swipe to the right closes it.
+ */
 export function StoryPeek({ id, onClose, onStep, onChanged }: { id: number | null; onClose: () => void; onStep: (dir: 1 | -1) => void; onChanged?: () => void }) {
   const motionLevel = useMotionLevel();
+  const coarse = useCoarsePointer();
   useEffect(() => {
     if (id === null) return;
     const onKey = (e: KeyboardEvent) => {
@@ -167,8 +172,11 @@ export function StoryPeek({ id, onClose, onStep, onChanged }: { id: number | nul
     <AnimatePresence>
       {id !== null && (
         <>
-          <motion.button key="scrim" type="button" aria-label="Close story" className="fixed inset-0 top-10 z-40 bg-black/25 backdrop-blur-[1px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-          <motion.aside key="peek" role="dialog" aria-modal="true" aria-label="Story" className="nr-peek fixed bottom-0 right-0 top-10 z-50 w-[min(600px,94vw)] overflow-y-auto border-l border-line bg-bg shadow-2xl" initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={spring}>
+          <motion.button key="scrim" type="button" aria-label="Close story" className="fixed inset-0 top-10 z-40 bg-black/25 backdrop-blur-[1px] max-md:top-0 max-md:z-[60]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+          <motion.aside key="peek" role="dialog" aria-modal="true" aria-label="Story" className="nr-peek scroll-touch fixed bottom-0 right-0 top-10 z-50 w-[min(600px,94vw)] overflow-y-auto border-l border-line bg-bg shadow-2xl max-md:top-0 max-md:z-[61] max-md:w-full max-md:border-l-0 max-md:pb-safe max-md:pt-safe"
+            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={spring}
+            drag="x" dragListener={coarse} dragConstraints={{ left: 0, right: 0 }} dragElastic={{ left: 0, right: 0.6 }} dragDirectionLock style={{ touchAction: "pan-y" }}
+            onDragEnd={(_, info) => { if (info.offset.x > 110 || info.velocity.x > 600) onClose(); }}>
             <StoryBody key={id} id={id} mode="peek" onClose={onClose} onStep={onStep} onChanged={onChanged} />
           </motion.aside>
         </>

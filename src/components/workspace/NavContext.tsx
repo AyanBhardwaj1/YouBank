@@ -14,6 +14,8 @@ export type Nav = {
   open: boolean;
   setOpen: (open: boolean) => void;
   customizing: boolean;
+  /** Phone-sized screen: the sidebar is a bottom sheet and the pinned features are the tab bar. */
+  phone: boolean;
   /** Open the sidebar on "Customize the top bar", or leave it. */
   customize: (on?: boolean) => void;
 };

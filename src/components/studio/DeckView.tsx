@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion, type PanInfo } from "motion/react";
 import { Icon } from "@/components/ui/Icon";
+import { usePhone } from "@/components/ui/useMedia";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { resolveChart, resolveMarker, resolveTable, resolveValue } from "@/lib/studio/deck";
 import type { Engine } from "@/lib/studio/engine";
@@ -74,15 +76,20 @@ export function SlideView({ slide, index, theme, engine, width, selected, onSele
   useEffect(() => {
     if (!drag) return;
     const inch = width / SLIDE_W;
-    const mv = (e: MouseEvent) => {
+    const mv = (e: PointerEvent) => {
       const dx = (e.clientX - drag.sx) / inch, dy = (e.clientY - drag.sy) / inch;
       const b = drag.mode === "move" ? { ...drag.box, x: Math.max(0, Math.min(SLIDE_W - drag.box.w, drag.box.x + dx)), y: Math.max(0, Math.min(SLIDE_H - drag.box.h, drag.box.y + dy)) } : { ...drag.box, w: Math.max(0.5, drag.box.w + dx), h: Math.max(0.3, drag.box.h + dy) };
       setLive({ id: drag.id, box: { x: Math.round(b.x * 20) / 20, y: Math.round(b.y * 20) / 20, w: Math.round(b.w * 20) / 20, h: Math.round(b.h * 20) / 20 } });
     };
     const up = () => { setLive((l) => { if (l) onMoveEl?.(l.id, l.box); return null; }); setDrag(null); };
-    window.addEventListener("mousemove", mv);
-    window.addEventListener("mouseup", up, { once: true });
-    return () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); };
+    // Pointer events, so a finger can move and size an element as a mouse does.
+    // If the browser takes the touch for a scroll it sends pointercancel instead of pointerup: drop the drag
+    // unsaved, or the next touch anywhere would move the element from where this one started.
+    const cancel = () => { setLive(null); setDrag(null); };
+    window.addEventListener("pointermove", mv);
+    window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", cancel, { once: true });
+    return () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", cancel); };
   }, [drag, onMoveEl, width]);
 
   if (slide.layout === "title" || slide.layout === "section") {
@@ -96,7 +103,7 @@ export function SlideView({ slide, index, theme, engine, width, selected, onSele
     );
   }
   return (
-    <div style={{ width, height, background: "#fff", position: "relative", overflow: "hidden", fontFamily: font, boxShadow: flash ? `0 0 0 3px ${theme.accent}` : undefined }} onMouseDown={() => onSelectEl?.(null)}>
+    <div style={{ width, height, background: "#fff", position: "relative", overflow: "hidden", fontFamily: font, boxShadow: flash ? `0 0 0 3px ${theme.accent}` : undefined }} onPointerDown={() => onSelectEl?.(null)}>
       <div style={{ position: "absolute", left: pct(0.5, SLIDE_W), top: pct(0.28, SLIDE_H), width: pct(12.33, SLIDE_W), height: pct(0.7, SLIDE_H), display: "flex", alignItems: "center", fontSize: pt(24), fontWeight: 700, color: theme.primary, whiteSpace: "nowrap", overflow: "hidden" }}>{slide.title}</div>
       <div style={{ position: "absolute", left: pct(0.5, SLIDE_W), top: pct(1.02, SLIDE_H), width: pct(12.33, SLIDE_W), height: Math.max(1, pt(1.5)), background: theme.accent }} />
       {slide.elements.map((el) => {
@@ -104,10 +111,11 @@ export function SlideView({ slide, index, theme, engine, width, selected, onSele
         const sel = selected === el.id;
         return (
           <div key={el.id}
-            onMouseDown={(e) => { if (readOnly || !onSelectEl) return; e.stopPropagation(); onSelectEl(el.id); setDrag({ id: el.id, mode: "move", sx: e.clientX, sy: e.clientY, box: { x: el.x, y: el.y, w: el.w, h: el.h } }); }}
-            style={{ position: "absolute", left: pct(b.x, SLIDE_W), top: pct(b.y, SLIDE_H), width: pct(b.w, SLIDE_W), height: pct(b.h, SLIDE_H), outline: sel ? "2px solid #1A73E8" : undefined, cursor: onSelectEl && !readOnly ? "move" : undefined }}>
+            onPointerDown={(e) => { if (readOnly || !onSelectEl) return; e.stopPropagation(); onSelectEl(el.id); setDrag({ id: el.id, mode: "move", sx: e.clientX, sy: e.clientY, box: { x: el.x, y: el.y, w: el.w, h: el.h } }); }}
+            // A selected element takes the finger for itself (moving it); otherwise a swipe turns the slide.
+            style={{ position: "absolute", left: pct(b.x, SLIDE_W), top: pct(b.y, SLIDE_H), width: pct(b.w, SLIDE_W), height: pct(b.h, SLIDE_H), outline: sel ? "2px solid #1A73E8" : undefined, cursor: onSelectEl && !readOnly ? "move" : undefined, touchAction: sel ? "none" : undefined }}>
             <Element el={el} engine={engine} theme={theme} pt={pt} />
-            {sel && !readOnly && <span onMouseDown={(e) => { e.stopPropagation(); setDrag({ id: el.id, mode: "size", sx: e.clientX, sy: e.clientY, box: { x: el.x, y: el.y, w: el.w, h: el.h } }); }} style={{ position: "absolute", right: -5, bottom: -5, width: 10, height: 10, background: "#1A73E8", cursor: "nwse-resize" }} />}
+            {sel && !readOnly && <span onPointerDown={(e) => { e.stopPropagation(); setDrag({ id: el.id, mode: "size", sx: e.clientX, sy: e.clientY, box: { x: el.x, y: el.y, w: el.w, h: el.h } }); }} className="hit" style={{ position: "absolute", right: -5, bottom: -5, width: 10, height: 10, background: "#1A73E8", cursor: "nwse-resize", touchAction: "none" }} />}
           </div>
         );
       })}
@@ -125,13 +133,15 @@ export function DeckView({ doc, engine, current, setCurrent, onEdit, comments, r
   const box = useRef<HTMLDivElement | null>(null);
   const [w, setW] = useState(900);
   const [selEl, setSelEl] = useState<string | null>(null);
+  const phone = usePhone();
   const id = current && deck.slides[current] ? current : deck.order[0] ?? null;
   const slide = id ? deck.slides[id] : null;
   const index = id ? deck.order.indexOf(id) : -1;
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setW(Math.min(el.clientWidth - 48, ((el.clientHeight - 90) * SLIDE_W) / SLIDE_H)));
+    // The slide fills the width the padding leaves (less on a phone, where the padding is smaller).
+    const ro = new ResizeObserver(() => { const pad = el.clientWidth < 640 ? 24 : 48; setW(Math.min(el.clientWidth - pad, ((el.clientHeight - (el.clientWidth < 640 ? 150 : 90)) * SLIDE_W) / SLIDE_H)); });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -150,6 +160,9 @@ export function DeckView({ doc, engine, current, setCurrent, onEdit, comments, r
     onEdit([{ op: "slide_upsert", slide: s, index: index + 1 }], "Added a slide");
     setCurrent(s.id);
   };
+  /** Phones: step through the deck by swiping the slide or with the arrows under it. */
+  const step = (by: -1 | 1) => { const j = index + by; if (j >= 0 && j < deck.order.length) { setCurrent(deck.order[j]); setSelEl(null); } };
+  const onSwipe = (_: unknown, info: PanInfo) => { if (info.offset.x < -50 || info.velocity.x < -400) step(1); else if (info.offset.x > 50 || info.velocity.x > 400) step(-1); };
   const slideComments = comments.filter((c) => !c.resolved && c.target.kind === "slide" && id && c.target.slide === id);
 
   useEffect(() => {
@@ -180,34 +193,46 @@ export function DeckView({ doc, engine, current, setCurrent, onEdit, comments, r
   }
   const selected = slide?.elements.find((x) => x.id === selEl);
   return (
-    <div className="flex h-full min-h-0">
-      <div className="w-[196px] shrink-0 overflow-y-auto border-r border-line bg-panel p-2">
+    <div className="flex h-full min-h-0 max-md:flex-col-reverse">
+      {/* Thumbnails: a column on a big screen, a strip along the bottom on a phone. */}
+      <div className="no-scrollbar w-[196px] shrink-0 overflow-y-auto border-r border-line bg-panel p-2 max-md:flex max-md:w-auto max-md:gap-2 max-md:overflow-x-auto max-md:overflow-y-hidden max-md:border-r-0 max-md:border-t">
         {deck.order.map((sid, i) => (
-          <button key={sid} type="button" onClick={() => { setCurrent(sid); setSelEl(null); }} className={`mb-2 flex w-full items-start gap-1.5 text-left ${sid === id ? "" : "opacity-80 hover:opacity-100"}`}>
-            <span className="num w-4 shrink-0 pt-0.5 text-[10px] text-muted">{i + 1}</span>
+          <button key={sid} type="button" onClick={() => { setCurrent(sid); setSelEl(null); }} aria-label={`Slide ${i + 1}`} aria-current={sid === id ? "true" : undefined} className={`mb-2 flex w-full items-start gap-1.5 text-left max-md:mb-0 max-md:w-auto max-md:shrink-0 ${sid === id ? "" : "opacity-80 hover:opacity-100"}`}>
+            <span className="num w-4 shrink-0 pt-0.5 text-[10px] text-muted max-md:hidden">{i + 1}</span>
             <span className={`block overflow-hidden rounded-sm ${sid === id ? "ring-2 ring-accent" : "ring-1 ring-line"}`}>
-              <SlideView slide={deck.slides[sid]} index={i} theme={deck.theme} engine={engine} width={160} flash={flashSlide === sid} />
+              <SlideView slide={deck.slides[sid]} index={i} theme={deck.theme} engine={engine} width={phone ? 96 : 160} flash={flashSlide === sid} />
             </span>
           </button>
         ))}
-        {!readOnly && <button type="button" onClick={addBlank} className="mt-1 w-full ctl border border-dashed border-line py-1.5 text-[11px] text-muted hover:border-accent/60 hover:text-fg">+ Slide</button>}
+        {!readOnly && <button type="button" onClick={addBlank} className="mt-1 w-full ctl border border-dashed border-line py-1.5 text-[11px] text-muted hover:border-accent/60 hover:text-fg max-md:mt-0 max-md:w-[72px] max-md:shrink-0">+ Slide</button>}
       </div>
-      <div ref={box} className="flex min-w-0 flex-1 flex-col items-center overflow-auto bg-bg/40 p-6">
+      <div ref={box} className="scroll-touch flex min-h-0 min-w-0 flex-1 flex-col items-center overflow-auto bg-bg/40 p-6 max-md:p-3">
         {slide && (
           <>
-            <div className="mb-2 flex w-full max-w-[1200px] flex-wrap items-center gap-2 text-[11.5px]">
+            <div className="mb-2 flex w-full max-w-[1200px] flex-wrap items-center gap-2 text-[11.5px] max-md:[&>button]:min-h-9 max-md:[&>button]:min-w-9">
               {readOnly ? <span className="font-semibold">{slide.title}</span> : (
-                <input aria-label="Slide title" value={slide.title} onChange={(e) => upsert({ ...slide, title: e.target.value }, "Retitled a slide")} className="min-w-[220px] flex-1 ctl border border-line bg-bg px-2 py-1 text-[12px] font-semibold outline-none focus:border-accent/60" />
+                <input value={slide.title} onChange={(e) => upsert({ ...slide, title: e.target.value }, "Retitled a slide")} aria-label="Slide title" className="min-w-[220px] flex-1 ctl border border-line bg-bg px-2 py-1 text-[12px] font-semibold outline-none focus:border-accent/60 max-md:min-w-0 max-md:basis-full" />
               )}
               {!readOnly && <>
                 <button type="button" title="Move up" onClick={() => moveSlide(-1)} className="ctl border border-line px-1.5 py-1 hover:border-accent/60">↑</button>
                 <button type="button" title="Move down" onClick={() => moveSlide(1)} className="ctl border border-line px-1.5 py-1 hover:border-accent/60">↓</button>
                 <button type="button" onClick={async () => { const t = await promptDialog({ title: "Comment on this slide", body: "The agent can act on it when you ask.", placeholder: "e.g. Tighten the headline and move the chart left", multiline: true, confirmLabel: "Comment" }); if (t && id) onEdit([{ op: "comments", comments: [...comments, { id: newId("cm"), target: { kind: "slide", slide: id }, text: t, author: "you", at: new Date().toISOString() }] }], "Commented on a slide"); }} className="ctl border border-line px-2 py-1 hover:border-accent/60">Comment</button>
                 <button type="button" onClick={async () => { if (id && await confirmDialog({ title: "Delete this slide?", body: "Undo brings it back.", confirmLabel: "Delete slide", tone: "danger" })) { onEdit([{ op: "slide_delete", id }], "Deleted a slide"); } }} className="ctl border border-line px-2 py-1 text-muted hover:border-neg/60 hover:text-neg">Delete</button>
+                {/* The Delete key removes a selected element; a phone has no Delete key. */}
+                {selEl && <button type="button" onClick={() => { upsert({ ...slide, elements: slide.elements.filter((x) => x.id !== selEl) }, "Removed an element"); setSelEl(null); }} className="ctl border border-line px-2 py-1 text-muted hover:border-neg/60 hover:text-neg md:hidden">Remove element</button>}
               </>}
             </div>
-            <div className="shadow-lg"><SlideView slide={slide} index={index} theme={deck.theme} engine={engine} width={Math.max(320, w)} selected={selEl} onSelectEl={setSelEl} readOnly={readOnly} flash={flashSlide === id}
-              onMoveEl={(eid, b) => upsert({ ...slide, elements: slide.elements.map((x) => (x.id === eid ? { ...x, ...b } : x)) }, "Moved an element")} /></div>
+            <motion.div className="shadow-lg" drag={phone && !selEl ? "x" : false} dragSnapToOrigin dragElastic={0.35} dragMomentum={false} onDragEnd={onSwipe} style={{ touchAction: phone && !selEl ? "pan-y" : undefined }}>
+              <SlideView slide={slide} index={index} theme={deck.theme} engine={engine} width={Math.max(240, w)} selected={selEl} onSelectEl={setSelEl} readOnly={readOnly} flash={flashSlide === id}
+                onMoveEl={(eid, b) => upsert({ ...slide, elements: slide.elements.map((x) => (x.id === eid ? { ...x, ...b } : x)) }, "Moved an element")} />
+            </motion.div>
+            {phone && (
+              <div className="mt-2 flex w-full items-center justify-between text-[12px] text-muted">
+                <button type="button" onClick={() => step(-1)} disabled={index <= 0} aria-label="Previous slide" className="grid h-10 w-10 place-items-center ctl border border-line disabled:opacity-30"><Icon name="ChevronRight" className="h-4 w-4 rotate-180" /></button>
+                <span className="num">{index + 1} / {deck.order.length}{selEl ? " · element selected" : " · swipe to turn"}</span>
+                <button type="button" onClick={() => step(1)} disabled={index >= deck.order.length - 1} aria-label="Next slide" className="grid h-10 w-10 place-items-center ctl border border-line disabled:opacity-30"><Icon name="ChevronRight" className="h-4 w-4" /></button>
+              </div>
+            )}
             {selected?.type === "text" && !readOnly && (
               <textarea value={selected.text} onChange={(e) => upsert({ ...slide, elements: slide.elements.map((x) => (x.id === selected.id ? { ...x, text: e.target.value } as SlideEl : x)) }, "Edited slide text")} rows={4} className="mt-3 w-full max-w-[1200px] ctl border border-line bg-bg p-2 text-[12px] outline-none focus:border-accent/60" />
             )}

@@ -18,6 +18,8 @@ import { Select } from "@/components/ui/Select";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
+import { Sheet } from "@/components/ui/Sheet";
+import { usePhone } from "@/components/ui/useMedia";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 
 const TOOL: Record<string, string> = {
@@ -53,6 +55,11 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   const [reading, setReading] = useState<string | null>(null);
   const [cpName, setCpName] = useState("");
   const [diffs, setDiffs] = useState<Record<number, SemDiff>>({});
+  // Phones: the agent panel is a bottom sheet over the sheet it is writing, and the export and document
+  // actions sit behind a "more" button; every one of them is still there.
+  const phone = usePhone();
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const readOnly = false;
   // While the agent works and "Follow agent" is on, the view goes where the agent is writing.
@@ -110,7 +117,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
     if (sid && p) { setTab("model"); setSheetId(sid); setSel(cellSel(p.r, p.c)); }
   };
 
-  const pickDocument = (kind: "markup" | "extract") => { docKind.current = kind; setDocMenu(false); docInput.current?.click(); };
+  const pickDocument = (kind: "markup" | "extract") => { docKind.current = kind; setDocMenu(false); setMoreOpen(false); docInput.current?.click(); };
+  const renameSheet_ = async (sid: string) => { const was = doc.workbook.sheets[sid].name; const n = (await promptDialog({ title: "Rename sheet", label: "Sheet name", defaultValue: was, confirmLabel: "Rename" }))?.trim(); if (n && n !== was) edit(renameSheet(doc, was, n)); };
   const onDocument = async (f: File) => {
     const kind = docKind.current;
     setReading(kind === "markup" ? `Reading the markup in ${f.name}…` : `Extracting tables from ${f.name}…`);
@@ -134,22 +142,212 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
 
   const intake = meta.intake as null | { file: string; sheets: { name: string; cells: number; formulas: number; hidden: boolean }[]; unsupported: { fn: string; count: number }[]; externalLinks: number; dropped: string[]; warnings: string[] };
 
+  const agentBody = (
+    <>
+      <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11.5px]">
+        {(["agent", "checks", "history"] as const).map((t) => (
+          <button key={t} type="button" onClick={() => { setSide(t); if (t === "history") void st.loadCheckpoints().catch(() => undefined); }} className={`ctl px-2 py-0.5 max-md:min-h-9 max-md:px-3 ${side === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
+            {t === "agent" ? "Agent" : t === "checks" ? `Checks${st.health && st.health.errors ? ` · ${st.health.errors}` : ""}` : "History"}
+          </button>
+        ))}
+        {st.health && (
+          <button type="button" onClick={() => { setSide("checks"); void st.action("audit"); }} className={`ml-auto ctl px-2 py-0.5 text-[11px] ${st.health.errors ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos"}`}>
+            {st.health.errors ? `${st.health.errors} error${st.health.errors === 1 ? "" : "s"}` : "No errors"}{st.health.warnings ? ` · ${st.health.warnings} warning${st.health.warnings === 1 ? "" : "s"}` : ""}
+          </button>
+        )}
+      </div>
+      <EdgePushes docId={id} onAccepted={(label) => st.setNotice(`${label}. Undo it from History.`)} />
+
+      {side === "agent" && (
+        <>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[12px]">
+            {intake && !st.agent.log.length && !st.chat.length && (
+              <div className="mb-3 ctl border border-line bg-bg/50 p-2.5 text-[11.5px]">
+                <p className="font-semibold">Intake report: {intake.file}</p>
+                <p className="mt-1 text-muted">{intake.sheets.length} sheet{intake.sheets.length === 1 ? "" : "s"}, {intake.sheets.reduce((n, s) => n + s.cells, 0).toLocaleString()} cells, {intake.sheets.reduce((n, s) => n + s.formulas, 0).toLocaleString()} formulas.</p>
+                {intake.unsupported.length > 0 && <p className="mt-1">Functions shown with the file&apos;s saved values: {intake.unsupported.map((u) => `${u.fn} (${u.count})`).join(", ")}.</p>}
+                {intake.externalLinks > 0 && <p className="mt-1 text-neg">{intake.externalLinks} link{intake.externalLinks === 1 ? "" : "s"} to other workbooks: values kept, formulas noted in the cell source.</p>}
+                {intake.warnings.map((w) => <p key={w} className="mt-1">{w}</p>)}
+                {intake.dropped.length > 0 && <p className="mt-1 text-muted">Not imported: {intake.dropped.join("; ")}.</p>}
+                <button type="button" onClick={() => runPrompt("Review this uploaded model like a VP: audit it, list the ten most important issues with cell references, and fix the clear-cut ones.")} className="mt-2 ctl bg-accent px-2 py-1 text-[11.5px] font-semibold text-bg">Review this file</button>
+              </div>
+            )}
+            {!st.agent.log.length && !st.chat.length && (
+              <div>
+                <p className="text-[11.5px] text-muted">Tell the agent what to build or change. You&apos;ll watch it work in the {tabNow === "model" ? "sheet" : "deck"}, and every change can be undone.</p>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {tasks.map((t) => <button key={t} type="button" onClick={() => runPrompt(t)} className="ctl border border-line bg-bg/50 px-2 py-1.5 text-left text-[11.5px] hover:border-accent/60">{t}</button>)}
+                </div>
+                {openComments.length > 0 && <p className="mt-3 text-[11px] text-muted">{openComments.length} open comment{openComments.length === 1 ? "" : "s"}. Try &ldquo;Turn all open comments&rdquo;.</p>}
+              </div>
+            )}
+            {st.chat.map((m, i) => (
+              m.role === "user"
+                ? <p key={i} className="mt-3 ctl bg-accent-soft px-2 py-1.5 text-[12px] font-medium">{m.content}</p>
+                : <p key={i} className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed">{m.content}</p>
+            ))}
+            {(st.agent.running || st.agent.log.length > 0) && <RunLog log={st.agent.log} running={st.agent.running} />}
+            {st.agent.running && st.agent.text && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed">{st.agent.text}</p>}
+            {!st.agent.running && st.agent.runId && st.agent.stats && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted">
+                <span>{st.agent.stats.cells ?? 0} cells · {st.agent.stats.slides ?? 0} slides · {st.agent.stats.seconds ?? 0}s{st.agent.model ? ` · ${st.agent.model}` : ""}</span>
+                <button type="button" onClick={() => void st.undoRun(st.agent.runId!)} className="underline hover:text-fg">Undo this run</button>
+              </div>
+            )}
+            <div ref={logEnd} />
+          </div>
+          <div className="border-t border-line p-2">
+            <textarea
+              value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runPrompt(prompt); } }}
+              placeholder={tabNow === "model" ? `e.g. "Build a DCF for ${meta.ticker || "NVDA"}", "add a 10-year projection", "fix the circularity"` : `e.g. "add a slide with the comps table", "turn the comments"`}
+              className="w-full resize-none ctl border border-line bg-bg px-2 py-1.5 text-[12px] outline-none focus:border-accent/60"
+            />
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <div className="flex overflow-hidden ctl border border-line text-[10.5px]">
+                {(["fast", "balanced", "thorough", "deep"] as const).map((e) => <button key={e} type="button" onClick={() => setEffort(e)} title={e === "deep" ? "Maximum reasoning, more steps, then a review pass that fixes what the audit finds. Premium." : undefined} className={`px-2 py-0.5 capitalize max-md:min-h-9 ${effort === e ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{e}</button>)}
+              </div>
+              {effort === "deep" && <PremiumBadge feature="studio.deep-build" />}
+              <span className="min-w-0 truncate text-[10.5px] text-muted">{selRange(sel)} on {sheet.name}</span>
+              {st.agent.running
+                ? <button type="button" onClick={st.stop} className="ml-auto ctl border border-neg/50 px-2.5 py-1 text-[11.5px] text-neg max-md:min-h-10 max-md:px-5">Stop</button>
+                : <button type="button" disabled={!prompt.trim()} onClick={() => runPrompt(prompt)} className="ml-auto shrink-0 whitespace-nowrap ctl bg-accent px-3 py-1 text-[11.5px] font-semibold text-bg disabled:opacity-40 max-md:min-h-10 max-md:px-5">Run<span className="max-md:hidden"> ⌘↵</span></button>}
+            </div>
+          </div>
+        </>
+      )}
+
+      {side === "checks" && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11.5px]">
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => void st.action("audit")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Audit the model</button>
+            <button type="button" onClick={() => void st.action("tieout")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Tie out the deck</button>
+            <button type="button" onClick={() => void st.action("lint")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Brand check</button>
+          </div>
+          {st.lint && (
+            <div className="mt-3">
+              <p className="font-semibold">Brand check: {st.lint.length === 0 ? "the deck is ready to send" : `${st.lint.length} item${st.lint.length === 1 ? "" : "s"}`}</p>
+              <ul className="mt-1 space-y-1">
+                {st.lint.map((i) => (
+                  <li key={i.key} className="flex items-start gap-1.5">
+                    <button type="button" onClick={() => { setTab("deck"); setSlide(i.slide); }} className="min-w-0 flex-1 text-left hover:text-fg">
+                      <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${i.severity === "error" ? "bg-neg/15 text-neg" : i.severity === "warning" ? "bg-accent-soft text-accent" : "bg-elevated text-muted"}`}>{i.severity}</span>
+                      <span className="text-muted">{i.slideTitle}:</span> {i.message}
+                    </button>
+                    {i.fix && <button type="button" onClick={() => void st.action("lint_fix", { keys: [i.key] })} className="shrink-0 text-[10.5px] text-accent underline">{i.fixLabel ?? "Fix"}</button>}
+                  </li>
+                ))}
+              </ul>
+              {fixable > 1 && <button type="button" onClick={() => void st.action("lint_fix")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Fix all {fixable}</button>}
+            </div>
+          )}
+          {st.issues && (
+            <div className="mt-3">
+              <p className="font-semibold">Model audit: {st.issues.filter((i) => i.severity === "error").length} errors, {st.issues.filter((i) => i.severity === "warning").length} warnings</p>
+              {st.issues.length === 0 && <p className="mt-1 text-pos">No issues found.</p>}
+              <ul className="mt-1 space-y-1">
+                {st.issues.slice(0, 80).map((i, k) => (
+                  <li key={k}><button type="button" onClick={() => go(i.sheet, i.cell)} className="w-full text-left hover:text-fg">
+                    <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${i.severity === "error" ? "bg-neg/15 text-neg" : i.severity === "warning" ? "bg-accent-soft text-accent" : "bg-elevated text-muted"}`}>{i.severity}</span>
+                    <span className="num">{i.sheet}!{i.cell}</span> <span className="text-muted">{i.message}</span>
+                  </button></li>
+                ))}
+              </ul>
+              {st.issues.some((i) => i.severity !== "info") && <button type="button" onClick={() => runPrompt("Fix the errors and warnings the audit found. Leave intentional items alone and say why.")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Ask the agent to fix these</button>}
+            </div>
+          )}
+          {st.ties && (
+            <div className="mt-4">
+              <p className="font-semibold">Deck tie-out: {st.ties.length === 0 ? "every figure ties to the model" : `${st.ties.length} item${st.ties.length === 1 ? "" : "s"}`}</p>
+              <ul className="mt-1 space-y-1">
+                {st.ties.map((t, k) => (
+                  <li key={k}><button type="button" onClick={() => { setTab("deck"); setSlide(t.slide); }} className="w-full text-left hover:text-fg">
+                    <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${t.severity === "error" ? "bg-neg/15 text-neg" : "bg-accent-soft text-accent"}`}>{t.severity}</span>
+                    <span className="text-muted">{t.slideTitle}:</span> {t.message}
+                  </button></li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {openComments.length > 0 && (
+            <div className="mt-4">
+              <p className="font-semibold">Open comments</p>
+              <ul className="mt-1 space-y-1">{openComments.map((c) => <li key={c.id} className="text-muted">{c.target.kind === "cell" ? `${doc.workbook.sheets[c.target.sheet]?.name}!${c.target.cell}` : `Slide ${doc.deck.order.indexOf(c.target.slide) + 1}`}: <span className="text-fg">{c.text}</span></li>)}</ul>
+              <button type="button" onClick={() => runPrompt("Turn all open comments: make each change in the model or deck, keep links intact, and resolve each comment saying what you did.")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Turn the comments</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {side === "history" && (
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11.5px]">
+          <p className="font-semibold">Checkpoints</p>
+          <p className="text-[10.5px] text-muted">Save the model and deck as they are now (&ldquo;Sent to MD&rdquo;), then see exactly what moved since.</p>
+          <div className="mt-1 flex gap-1">
+            <input value={cpName} onChange={(e) => setCpName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && cpName.trim()) { void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x))); } }} placeholder="Name, e.g. Sent to MD" className="min-w-0 flex-1 ctl border border-line bg-bg px-2 py-1 outline-none focus:border-accent/60" />
+            <button type="button" disabled={!cpName.trim()} onClick={() => void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x)))} className="ctl bg-accent px-2 py-1 font-semibold text-bg disabled:opacity-40">Save</button>
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {(st.checkpoints ?? []).map((c) => (
+              <li key={c.id} className="ctl border border-line bg-bg/40 p-2">
+                <p className="font-medium">{c.name}</p>
+                <p className="text-[10.5px] text-muted">{c.createdByName || "Someone"} · {ago(c.createdAt)}</p>
+                <div className="mt-1 flex gap-3 text-[10.5px]">
+                  <button type="button" onClick={() => void compare(c.id)} className="text-muted underline hover:text-fg">{diffs[c.id] ? "Hide changes" : "What changed since"}</button>
+                  <button type="button" onClick={async () => { if (await confirmDialog({ title: `Go back to "${c.name}"?`, body: "The model and deck return to that point, as one change you can undo.", confirmLabel: "Restore" })) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
+                </div>
+                {diffs[c.id] && <DiffView d={diffs[c.id]} go={go} />}
+              </li>
+            ))}
+            {st.checkpoints && !st.checkpoints.length && <li className="text-muted">None yet.</li>}
+          </ul>
+          <p className="mt-4 font-semibold">Agent and Edge runs</p>
+          <ul className="mt-1 space-y-2">
+            {meta.runs.map((r) => (
+              <li key={r.id} className="ctl border border-line bg-bg/40 p-2">
+                <p className="font-medium">{r.instruction}</p>
+                <p className="mt-0.5 text-[10.5px] text-muted">{r.status} · {ago(r.startedAt)}{r.stats?.cells ? ` · ${r.stats.cells} cells` : ""}{r.stats?.slides ? ` · ${r.stats.slides} slides` : ""}</p>
+                {r.status === "done" && <button type="button" onClick={() => void st.undoRun(r.id)} className="mt-1 text-[10.5px] underline text-muted hover:text-fg">Undo this run</button>}
+              </li>
+            ))}
+            {!meta.runs.length && <li className="text-muted">No runs yet.</li>}
+          </ul>
+          <p className="mt-4 font-semibold">Every change</p>
+          <ul className="mt-1 space-y-1">
+            {meta.history.map((h) => (
+              <li key={h.id} className="flex items-start justify-between gap-2">
+                <span><span className={h.actor === "agent" || h.actor === "edge" ? "text-accent" : "text-fg"}>{h.actor === "agent" ? "Agent" : h.actor === "edge" ? "Edge" : h.actorName || "Someone"}</span> <span className="text-muted">{h.label}</span></span>
+                <button type="button" onClick={() => void st.undoEvent(h.id)} className="shrink-0 text-[10.5px] text-muted underline hover:text-fg">Undo</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Top bar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-panel px-3 py-1.5">
-        <Link href="/app/studio" className="text-[11.5px] text-muted hover:text-fg">Studio</Link>
-        <span className="text-muted">/</span>
-        <input aria-label="Model title" value={doc.title} onChange={(e) => edit([{ op: "title", title: e.target.value }], "Renamed")} className="min-w-[160px] max-w-[360px] flex-1 bg-transparent text-[13px] font-semibold outline-none" />
-        <div className="flex overflow-hidden ctl border border-line text-[11.5px]">
+        <Link href="/app/studio" className="text-[11.5px] text-muted hover:text-fg max-md:-ml-1 max-md:grid max-md:h-10 max-md:w-8 max-md:place-items-center" aria-label="Back to Studio">
+          <Icon name="ChevronRight" className="hidden h-5 w-5 rotate-180 max-md:block" /><span className="max-md:hidden">Studio</span>
+        </Link>
+        <span className="text-muted max-md:hidden">/</span>
+        <input value={doc.title} onChange={(e) => edit([{ op: "title", title: e.target.value }], "Renamed")} aria-label="Title" className="min-w-[160px] max-w-[360px] flex-1 bg-transparent text-[13px] font-semibold outline-none max-md:min-w-0 max-md:text-[15px]" />
+        <span className="text-[11px] text-muted md:hidden" aria-live="polite">{st.saving ? "Saving…" : "Saved"}</span>
+        <button type="button" onClick={() => setMoreOpen(true)} aria-label="Export, documents and sharing" className="grid h-10 w-10 shrink-0 place-items-center ctl text-muted active:bg-elevated md:hidden">
+          <Icon name="Download" className="h-[18px] w-[18px]" />
+        </button>
+        <div className="flex overflow-hidden ctl border border-line text-[11.5px] max-md:order-last max-md:w-full">
           {(["model", "deck"] as const).map((t) => (
-            <button key={t} type="button" onClick={() => setTab(t)} className={`flex items-center gap-1.5 px-2.5 py-1 ${tabNow === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
+            <button key={t} type="button" onClick={() => setTab(t)} className={`flex items-center gap-1.5 px-2.5 py-1 max-md:min-h-9 max-md:flex-1 max-md:justify-center ${tabNow === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
               <Icon name={t === "model" ? "FileSpreadsheet" : "Presentation"} className="h-3.5 w-3.5" />{t === "model" ? `Model · ${doc.workbook.order.length}` : `Deck · ${doc.deck.order.length}`}
             </button>
           ))}
         </div>
-        <label className="flex items-center gap-1 text-[11px] text-muted"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow agent</label>
-        <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted">
+        <label className="flex items-center gap-1 text-[11px] text-muted max-md:hidden"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow agent</label>
+        <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted max-md:hidden">
           {st.saving ? "Saving…" : "Saved"}
           <a href={`/api/studio/${id}/export?format=xlsx`} className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60"><Icon name="Download" className="mr-1 inline h-3.5 w-3.5" />Excel</a>
           <a href={`/api/studio/${id}/export?format=pptx`} className="ctl border border-line px-2 py-1 text-fg hover:border-accent/60"><Icon name="Download" className="mr-1 inline h-3.5 w-3.5" />PowerPoint</a>
@@ -180,7 +378,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
         <div className="flex min-w-0 flex-1 flex-col">
           {tabNow === "model" ? (
             <>
-              <div className="flex flex-wrap items-center gap-1 border-b border-line bg-panel px-2 py-1 text-[11.5px]">
+              <div className="no-scrollbar flex flex-wrap items-center gap-1 border-b border-line bg-panel px-2 py-1 text-[11.5px] max-md:flex-nowrap max-md:overflow-x-auto max-md:py-1.5 max-md:[&>button]:min-h-9 max-md:[&>button]:shrink-0 max-md:[&>button]:px-3">
                 <Select value={active?.s?.nf ?? "General"} onChange={(v) => style({ nf: v === "General" ? undefined : v })} className="ctl border border-line bg-bg px-1.5 py-0.5 text-[11.5px]">
                   {NUMBER_FORMATS.map((f) => <option key={f.nf} value={f.nf}>{f.label}</option>)}
                   {active?.s?.nf && !NUMBER_FORMATS.some((f) => f.nf === active.s?.nf) && <option value={active.s.nf}>{active.s.nf}</option>}
@@ -196,8 +394,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
                 <span className="mx-1 h-4 w-px bg-line" />
                 <button type="button" onClick={() => st.undoLast()} className="ctl border border-line px-2 py-0.5" title="Undo (Cmd/Ctrl+Z)">Undo</button>
                 <button type="button" onClick={addComment} className="ctl border border-line px-2 py-0.5">Comment</button>
-                <label className="ml-1 flex items-center gap-1 text-[11px] text-muted" title="Tint cells by type: inputs blue, links green, formulas grey, numbers typed into formulas orange"><input type="checkbox" checked={showTypes} onChange={(e) => setShowTypes(e.target.checked)} /> Cell types</label>
-                <span className="ml-auto flex items-center gap-1">
+                <label className="ml-1 flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] text-muted max-md:min-h-9 max-md:px-1" title="Tint cells by type: inputs blue, links green, formulas grey, numbers typed into formulas orange"><input type="checkbox" checked={showTypes} onChange={(e) => setShowTypes(e.target.checked)} /> Cell types</label>
+                <span className="ml-auto flex items-center gap-1 max-md:ml-1 max-md:[&>button]:min-h-9 max-md:[&>button]:shrink-0 max-md:[&>button]:whitespace-nowrap max-md:[&>button]:px-3">
                   <button type="button" onClick={() => void st.action("format").then(() => st.setNotice("Applied banker formatting."))} className="ctl border border-line px-2 py-0.5 hover:border-accent/60">Format</button>
                   <button type="button" onClick={() => { setSide("checks"); void st.action("audit"); }} className="ctl border border-line px-2 py-0.5 hover:border-accent/60">Audit</button>
                   {doc.workbook.order.some((x) => doc.workbook.sheets[x].sens?.length) && <button type="button" onClick={() => void st.action("refresh")} className="ctl border border-line px-2 py-0.5 hover:border-accent/60">Refresh tables</button>}
@@ -206,13 +404,14 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <div className="min-h-0 flex-1">
                 <Grid engine={engine} sheet={sheet} flash={st.flash} focus={st.focus} follow={follow} sel={sel} setSel={setSel} onEdit={edit} onUndo={() => st.undoLast()} comments={doc.comments} showTypes={showTypes} readOnly={readOnly} onStyle={style} now={st.clock} agentActive={st.agent.running} />
               </div>
-              <div className="flex items-center gap-0.5 overflow-x-auto border-t border-line bg-panel px-1.5 py-1 text-[11.5px]">
+              <div className="no-scrollbar flex items-center gap-0.5 overflow-x-auto border-t border-line bg-panel px-1.5 py-1 text-[11.5px] max-md:[&>button]:min-h-9 max-md:[&>button]:shrink-0">
                 {doc.workbook.order.map((sid) => (
-                  <button key={sid} type="button" onClick={() => setSheetId(sid)} onDoubleClick={async () => { const was = doc.workbook.sheets[sid].name; const n = (await promptDialog({ title: "Rename sheet", label: "Sheet name", defaultValue: was, confirmLabel: "Rename" }))?.trim(); if (n && n !== was) edit(renameSheet(doc, was, n)); }}
-                    className={`ctl whitespace-nowrap px-2.5 py-0.5 ${sid === sheet.id ? "bg-bg font-semibold text-fg shadow-sm" : "text-muted hover:text-fg"}`}>{doc.workbook.sheets[sid].name}</button>
+                  // Double-click renames; on a phone, tapping the sheet you are already on does.
+                  <button key={sid} type="button" onClick={() => { if (phone && sid === sheet.id) void renameSheet_(sid); else setSheetId(sid); }} onDoubleClick={() => { if (!phone) void renameSheet_(sid); }}
+                    className={`ctl whitespace-nowrap px-2.5 py-0.5 max-md:px-3.5 ${sid === sheet.id ? "bg-bg font-semibold text-fg shadow-sm" : "text-muted hover:text-fg"}`}>{doc.workbook.sheets[sid].name}</button>
                 ))}
-                <button type="button" title="Add a sheet" onClick={() => { const { patch, sheet: s } = addSheet(doc, "Sheet"); edit([patch]); setSheetId(s.id); }} className="ctl px-2 py-0.5 text-muted hover:text-fg">+</button>
-                {doc.workbook.order.length > 1 && <button type="button" title="Delete this sheet" onClick={async () => { if (await confirmDialog({ title: `Delete sheet "${sheet.name}"?`, body: "Formulas pointing at it will show #REF!. Undo brings it back.", confirmLabel: "Delete sheet", tone: "danger" })) { edit(deleteSheet(doc, sheet.name)); setSheetId(null); } }} className="ml-auto ctl px-2 py-0.5 text-muted hover:text-neg">Delete sheet</button>}
+                <button type="button" title="Add a sheet" aria-label="Add a sheet" onClick={() => { const { patch, sheet: s } = addSheet(doc, "Sheet"); edit([patch]); setSheetId(s.id); }} className="ctl px-2 py-0.5 text-muted hover:text-fg max-md:min-w-9 max-md:text-[16px]">+</button>
+                {doc.workbook.order.length > 1 && <button type="button" title="Delete this sheet" onClick={async () => { if (await confirmDialog({ title: `Delete sheet "${sheet.name}"?`, body: "Formulas pointing at it will show #REF!. Undo brings it back.", confirmLabel: "Delete sheet", tone: "danger" })) { edit(deleteSheet(doc, sheet.name)); setSheetId(null); } }} className="ml-auto ctl whitespace-nowrap px-2 py-0.5 text-muted hover:text-neg">Delete sheet</button>}
               </div>
             </>
           ) : (
@@ -220,193 +419,68 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
               <DeckView doc={doc} engine={engine} current={slideNow} setCurrent={setSlide} onEdit={edit} comments={doc.comments} readOnly={readOnly} flashSlide={st.agent.running ? st.focusSlide : null} />
             </div>
           )}
+          {/* Phones: the agent's handle, always in reach, showing what it is doing. Shown by CSS rather than
+              the phone check, so it is in place from the first paint and the sheet above it never jumps. */}
+          <button type="button" onClick={() => setAgentOpen(true)} aria-expanded={agentOpen}
+            className="flex min-h-12 shrink-0 items-center gap-2.5 border-t border-line bg-panel px-3 text-left active:bg-elevated md:hidden">
+            <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${st.agent.running ? "bg-accent text-accent-fg" : "bg-accent-soft text-accent"}`}>
+              {st.agent.running ? <span className="h-2 w-2 animate-pulse rounded-full bg-accent-fg" /> : <Icon name="Sparkles" className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{st.agent.running ? agentDoing(st.agent.log) : "Ask the agent to build or change something"}</span>
+            {st.health && <span className={`shrink-0 ctl px-1.5 py-0.5 text-[11px] ${st.health.errors ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos"}`}>{st.health.errors ? `${st.health.errors} error${st.health.errors === 1 ? "" : "s"}` : "No errors"}</span>}
+            <Icon name="ChevronRight" className="h-4 w-4 shrink-0 -rotate-90 text-muted" />
+          </button>
         </div>
 
-        {/* Agent */}
-        <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-panel">
-          <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11.5px]">
-            {(["agent", "checks", "history"] as const).map((t) => (
-              <button key={t} type="button" onClick={() => { setSide(t); if (t === "history") void st.loadCheckpoints().catch(() => undefined); }} className={`ctl px-2 py-0.5 ${side === t ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
-                {t === "agent" ? "Agent" : t === "checks" ? `Checks${st.health && st.health.errors ? ` · ${st.health.errors}` : ""}` : "History"}
-              </button>
-            ))}
-            {st.health && (
-              <button type="button" onClick={() => { setSide("checks"); void st.action("audit"); }} className={`ml-auto ctl px-2 py-0.5 text-[11px] ${st.health.errors ? "bg-neg/15 text-neg" : "bg-pos/15 text-pos"}`}>
-                {st.health.errors ? `${st.health.errors} error${st.health.errors === 1 ? "" : "s"}` : "No errors"}{st.health.warnings ? ` · ${st.health.warnings} warning${st.health.warnings === 1 ? "" : "s"}` : ""}
-              </button>
-            )}
-          </div>
-          <EdgePushes docId={id} onAccepted={(label) => st.setNotice(`${label}. Undo it from History.`)} />
-
-          {side === "agent" && (
-            <>
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[12px]">
-                {intake && !st.agent.log.length && !st.chat.length && (
-                  <div className="mb-3 ctl border border-line bg-bg/50 p-2.5 text-[11.5px]">
-                    <p className="font-semibold">Intake report: {intake.file}</p>
-                    <p className="mt-1 text-muted">{intake.sheets.length} sheet{intake.sheets.length === 1 ? "" : "s"}, {intake.sheets.reduce((n, s) => n + s.cells, 0).toLocaleString()} cells, {intake.sheets.reduce((n, s) => n + s.formulas, 0).toLocaleString()} formulas.</p>
-                    {intake.unsupported.length > 0 && <p className="mt-1">Functions shown with the file&apos;s saved values: {intake.unsupported.map((u) => `${u.fn} (${u.count})`).join(", ")}.</p>}
-                    {intake.externalLinks > 0 && <p className="mt-1 text-neg">{intake.externalLinks} link{intake.externalLinks === 1 ? "" : "s"} to other workbooks: values kept, formulas noted in the cell source.</p>}
-                    {intake.warnings.map((w) => <p key={w} className="mt-1">{w}</p>)}
-                    {intake.dropped.length > 0 && <p className="mt-1 text-muted">Not imported: {intake.dropped.join("; ")}.</p>}
-                    <button type="button" onClick={() => runPrompt("Review this uploaded model like a VP: audit it, list the ten most important issues with cell references, and fix the clear-cut ones.")} className="mt-2 ctl bg-accent px-2 py-1 text-[11.5px] font-semibold text-bg">Review this file</button>
-                  </div>
-                )}
-                {!st.agent.log.length && !st.chat.length && (
-                  <div>
-                    <p className="text-[11.5px] text-muted">Tell the agent what to build or change. You&apos;ll watch it work in the {tabNow === "model" ? "sheet" : "deck"}, and every change can be undone.</p>
-                    <div className="mt-2 flex flex-col gap-1.5">
-                      {tasks.map((t) => <button key={t} type="button" onClick={() => runPrompt(t)} className="ctl border border-line bg-bg/50 px-2 py-1.5 text-left text-[11.5px] hover:border-accent/60">{t}</button>)}
-                    </div>
-                    {openComments.length > 0 && <p className="mt-3 text-[11px] text-muted">{openComments.length} open comment{openComments.length === 1 ? "" : "s"}. Try &ldquo;Turn all open comments&rdquo;.</p>}
-                  </div>
-                )}
-                {st.chat.map((m, i) => (
-                  m.role === "user"
-                    ? <p key={i} className="mt-3 ctl bg-accent-soft px-2 py-1.5 text-[12px] font-medium">{m.content}</p>
-                    : <p key={i} className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed">{m.content}</p>
-                ))}
-                {(st.agent.running || st.agent.log.length > 0) && <RunLog log={st.agent.log} running={st.agent.running} />}
-                {st.agent.running && st.agent.text && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed">{st.agent.text}</p>}
-                {!st.agent.running && st.agent.runId && st.agent.stats && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted">
-                    <span>{st.agent.stats.cells ?? 0} cells · {st.agent.stats.slides ?? 0} slides · {st.agent.stats.seconds ?? 0}s{st.agent.model ? ` · ${st.agent.model}` : ""}</span>
-                    <button type="button" onClick={() => void st.undoRun(st.agent.runId!)} className="underline hover:text-fg">Undo this run</button>
-                  </div>
-                )}
-                <div ref={logEnd} />
+        {phone && (
+          <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title="Workbook" size="auto">
+            <div className="space-y-4 pb-2 text-[14px]">
+              <label className="flex min-h-11 items-center justify-between gap-3">
+                <span><span className="block text-fg">Follow the agent</span><span className="block text-[12px] text-muted">Jump to the sheet or slide it is writing.</span></span>
+                <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="h-5 w-5 shrink-0 accent-[var(--accent)]" />
+              </label>
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Export</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <a href={`/api/studio/${id}/export?format=xlsx`} className="flex min-h-11 items-center justify-center gap-2 ctl border border-line text-fg active:bg-elevated"><Icon name="Download" className="h-4 w-4" />Excel</a>
+                  <a href={`/api/studio/${id}/export?format=pptx`} className="flex min-h-11 items-center justify-center gap-2 ctl border border-line text-fg active:bg-elevated"><Icon name="Download" className="h-4 w-4" />PowerPoint</a>
+                </div>
+                <Link href="/app/office" className="mt-2 flex min-h-11 items-center gap-2 ctl border border-line px-3 text-fg active:bg-elevated"><Icon name="FileSpreadsheet" className="h-4 w-4" /><span className="flex-1">Excel and PowerPoint add-in</span><Icon name="ChevronRight" className="h-4 w-4 text-muted" /></Link>
               </div>
-              <div className="border-t border-line p-2">
-                <textarea
-                  value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); runPrompt(prompt); } }}
-                  placeholder={tabNow === "model" ? `e.g. "Build a DCF for ${meta.ticker || "NVDA"}", "add a 10-year projection", "fix the circularity"` : `e.g. "add a slide with the comps table", "turn the comments"`}
-                  className="w-full resize-none ctl border border-line bg-bg px-2 py-1.5 text-[12px] outline-none focus:border-accent/60"
-                />
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <div className="flex overflow-hidden ctl border border-line text-[10.5px]">
-                    {(["fast", "balanced", "thorough", "deep"] as const).map((e) => <button key={e} type="button" onClick={() => setEffort(e)} title={e === "deep" ? "Maximum reasoning, more steps, then a review pass that fixes what the audit finds. Premium." : undefined} className={`px-2 py-0.5 capitalize ${effort === e ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{e}</button>)}
-                  </div>
-                  {effort === "deep" && <PremiumBadge feature="studio.deep-build" />}
-                  <span className="text-[10.5px] text-muted">{selRange(sel)} on {sheet.name}</span>
-                  {st.agent.running
-                    ? <button type="button" onClick={st.stop} className="ml-auto ctl border border-neg/50 px-2.5 py-1 text-[11.5px] text-neg">Stop</button>
-                    : <button type="button" disabled={!prompt.trim()} onClick={() => runPrompt(prompt)} className="ml-auto ctl bg-accent px-3 py-1 text-[11.5px] font-semibold text-bg disabled:opacity-40">Run ⌘↵</button>}
-                </div>
+              <div>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">From a document</p>
+                <button type="button" disabled={!!reading} onClick={() => pickDocument("markup")} className="flex w-full flex-col items-start ctl border border-line px-3 py-2.5 text-left active:bg-elevated disabled:opacity-50"><span className="text-fg">Marked-up printout → comments</span><span className="text-[12px] text-muted">A PDF or photo of the pen marks; each becomes a comment on its cell or slide.</span></button>
+                <button type="button" disabled={!!reading} onClick={() => pickDocument("extract")} className="mt-2 flex w-full flex-col items-start ctl border border-line px-3 py-2.5 text-left active:bg-elevated disabled:opacity-50"><span className="text-fg">Data-room PDF → tables</span><span className="text-[12px] text-muted">Financial tables from a CIM or accounts, as sourced inputs on a new sheet.</span></button>
               </div>
-            </>
-          )}
-
-          {side === "checks" && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11.5px]">
-              <div className="flex gap-1.5">
-                <button type="button" onClick={() => void st.action("audit")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Audit the model</button>
-                <button type="button" onClick={() => void st.action("tieout")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Tie out the deck</button>
-                <button type="button" onClick={() => void st.action("lint")} className="ctl border border-line px-2 py-1 hover:border-accent/60">Brand check</button>
-              </div>
-              {st.lint && (
-                <div className="mt-3">
-                  <p className="font-semibold">Brand check: {st.lint.length === 0 ? "the deck is ready to send" : `${st.lint.length} item${st.lint.length === 1 ? "" : "s"}`}</p>
-                  <ul className="mt-1 space-y-1">
-                    {st.lint.map((i) => (
-                      <li key={i.key} className="flex items-start gap-1.5">
-                        <button type="button" onClick={() => { setTab("deck"); setSlide(i.slide); }} className="min-w-0 flex-1 text-left hover:text-fg">
-                          <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${i.severity === "error" ? "bg-neg/15 text-neg" : i.severity === "warning" ? "bg-accent-soft text-accent" : "bg-elevated text-muted"}`}>{i.severity}</span>
-                          <span className="text-muted">{i.slideTitle}:</span> {i.message}
-                        </button>
-                        {i.fix && <button type="button" onClick={() => void st.action("lint_fix", { keys: [i.key] })} className="shrink-0 text-[10.5px] text-accent underline">{i.fixLabel ?? "Fix"}</button>}
-                      </li>
-                    ))}
-                  </ul>
-                  {fixable > 1 && <button type="button" onClick={() => void st.action("lint_fix")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Fix all {fixable}</button>}
-                </div>
-              )}
-              {st.issues && (
-                <div className="mt-3">
-                  <p className="font-semibold">Model audit: {st.issues.filter((i) => i.severity === "error").length} errors, {st.issues.filter((i) => i.severity === "warning").length} warnings</p>
-                  {st.issues.length === 0 && <p className="mt-1 text-pos">No issues found.</p>}
-                  <ul className="mt-1 space-y-1">
-                    {st.issues.slice(0, 80).map((i, k) => (
-                      <li key={k}><button type="button" onClick={() => go(i.sheet, i.cell)} className="w-full text-left hover:text-fg">
-                        <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${i.severity === "error" ? "bg-neg/15 text-neg" : i.severity === "warning" ? "bg-accent-soft text-accent" : "bg-elevated text-muted"}`}>{i.severity}</span>
-                        <span className="num">{i.sheet}!{i.cell}</span> <span className="text-muted">{i.message}</span>
-                      </button></li>
-                    ))}
-                  </ul>
-                  {st.issues.some((i) => i.severity !== "info") && <button type="button" onClick={() => runPrompt("Fix the errors and warnings the audit found. Leave intentional items alone and say why.")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Ask the agent to fix these</button>}
-                </div>
-              )}
-              {st.ties && (
-                <div className="mt-4">
-                  <p className="font-semibold">Deck tie-out: {st.ties.length === 0 ? "every figure ties to the model" : `${st.ties.length} item${st.ties.length === 1 ? "" : "s"}`}</p>
-                  <ul className="mt-1 space-y-1">
-                    {st.ties.map((t, k) => (
-                      <li key={k}><button type="button" onClick={() => { setTab("deck"); setSlide(t.slide); }} className="w-full text-left hover:text-fg">
-                        <span className={`mr-1.5 ctl px-1 text-[9.5px] uppercase ${t.severity === "error" ? "bg-neg/15 text-neg" : "bg-accent-soft text-accent"}`}>{t.severity}</span>
-                        <span className="text-muted">{t.slideTitle}:</span> {t.message}
-                      </button></li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {openComments.length > 0 && (
-                <div className="mt-4">
-                  <p className="font-semibold">Open comments</p>
-                  <ul className="mt-1 space-y-1">{openComments.map((c) => <li key={c.id} className="text-muted">{c.target.kind === "cell" ? `${doc.workbook.sheets[c.target.sheet]?.name}!${c.target.cell}` : `Slide ${doc.deck.order.indexOf(c.target.slide) + 1}`}: <span className="text-fg">{c.text}</span></li>)}</ul>
-                  <button type="button" onClick={() => runPrompt("Turn all open comments: make each change in the model or deck, keep links intact, and resolve each comment saying what you did.")} className="mt-2 ctl bg-accent px-2 py-1 font-semibold text-bg">Turn the comments</button>
+              {meta.mine && meta.teams.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">Sharing</p>
+                  <Select value={meta.teamId ?? ""} onChange={(v) => { void fetch(`/api/studio/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ share: v ? Number(v) : null }) }).then(() => st.reload()); }} className="w-full ctl border border-line bg-bg px-3 py-2.5 text-fg">
+                    <option value="">Private</option>
+                    {meta.teams.map((t) => <option key={t.id} value={t.id}>Shared: {t.name}</option>)}
+                  </Select>
                 </div>
               )}
             </div>
-          )}
-
-          {side === "history" && (
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2 text-[11.5px]">
-              <p className="font-semibold">Checkpoints</p>
-              <p className="text-[10.5px] text-muted">Save the model and deck as they are now (&ldquo;Sent to MD&rdquo;), then see exactly what moved since.</p>
-              <div className="mt-1 flex gap-1">
-                <input value={cpName} onChange={(e) => setCpName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && cpName.trim()) { void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x))); } }} placeholder="Name, e.g. Sent to MD" className="min-w-0 flex-1 ctl border border-line bg-bg px-2 py-1 outline-none focus:border-accent/60" />
-                <button type="button" disabled={!cpName.trim()} onClick={() => void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x)))} className="ctl bg-accent px-2 py-1 font-semibold text-bg disabled:opacity-40">Save</button>
-              </div>
-              <ul className="mt-2 space-y-1.5">
-                {(st.checkpoints ?? []).map((c) => (
-                  <li key={c.id} className="ctl border border-line bg-bg/40 p-2">
-                    <p className="font-medium">{c.name}</p>
-                    <p className="text-[10.5px] text-muted">{c.createdByName || "Someone"} · {ago(c.createdAt)}</p>
-                    <div className="mt-1 flex gap-3 text-[10.5px]">
-                      <button type="button" onClick={() => void compare(c.id)} className="text-muted underline hover:text-fg">{diffs[c.id] ? "Hide changes" : "What changed since"}</button>
-                      <button type="button" onClick={async () => { if (await confirmDialog({ title: `Go back to "${c.name}"?`, body: "The model and deck return to that point, as one change you can undo.", confirmLabel: "Restore" })) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
-                    </div>
-                    {diffs[c.id] && <DiffView d={diffs[c.id]} go={go} />}
-                  </li>
-                ))}
-                {st.checkpoints && !st.checkpoints.length && <li className="text-muted">None yet.</li>}
-              </ul>
-              <p className="mt-4 font-semibold">Agent and Edge runs</p>
-              <ul className="mt-1 space-y-2">
-                {meta.runs.map((r) => (
-                  <li key={r.id} className="ctl border border-line bg-bg/40 p-2">
-                    <p className="font-medium">{r.instruction}</p>
-                    <p className="mt-0.5 text-[10.5px] text-muted">{r.status} · {ago(r.startedAt)}{r.stats?.cells ? ` · ${r.stats.cells} cells` : ""}{r.stats?.slides ? ` · ${r.stats.slides} slides` : ""}</p>
-                    {r.status === "done" && <button type="button" onClick={() => void st.undoRun(r.id)} className="mt-1 text-[10.5px] underline text-muted hover:text-fg">Undo this run</button>}
-                  </li>
-                ))}
-                {!meta.runs.length && <li className="text-muted">No runs yet.</li>}
-              </ul>
-              <p className="mt-4 font-semibold">Every change</p>
-              <ul className="mt-1 space-y-1">
-                {meta.history.map((h) => (
-                  <li key={h.id} className="flex items-start justify-between gap-2">
-                    <span><span className={h.actor === "agent" || h.actor === "edge" ? "text-accent" : "text-fg"}>{h.actor === "agent" ? "Agent" : h.actor === "edge" ? "Edge" : h.actorName || "Someone"}</span> <span className="text-muted">{h.label}</span></span>
-                    <button type="button" onClick={() => void st.undoEvent(h.id)} className="shrink-0 text-[10.5px] text-muted underline hover:text-fg">Undo</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </aside>
+          </Sheet>
+        )}
+        {/* Agent: beside the work on a big screen, a sheet over it on a phone. */}
+        {phone ? (
+          <Sheet open={agentOpen} onClose={() => setAgentOpen(false)} size="half" expandable modal={false} padded={false} label="Agent">
+            <div className="flex h-full min-h-0 flex-col text-[12px]">{agentBody}</div>
+          </Sheet>
+        ) : (
+          <aside className="hidden w-[300px] shrink-0 flex-col border-l border-line bg-panel md:flex xl:w-[360px]">{agentBody}</aside>
+        )}
       </div>
     </div>
   );
+}
+
+/** What the agent is doing now, in a few words, for the phone's agent bar. */
+function agentDoing(log: LogItem[]): string {
+  const t = [...log].reverse().find((l) => l.k === "tool");
+  return t && t.k === "tool" ? `${TOOL[t.name] ?? t.name}…` : "Working…";
 }
 
 function RunLog({ log, running }: { log: LogItem[]; running: boolean }) {

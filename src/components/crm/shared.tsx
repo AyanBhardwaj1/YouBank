@@ -29,12 +29,13 @@ export type PanelCtx = {
   tick: number;
 };
 
+/** Button looks. On a phone they grow to finger size (40px tall); text links get a bigger hit area. */
 export const btn = {
-  primary: "ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white disabled:opacity-50",
-  accent: "ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:opacity-90 disabled:opacity-50",
-  ghost: "ctl border border-line px-2.5 py-1 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg disabled:opacity-50",
-  link: "text-[11.5px] text-muted transition hover:text-fg disabled:opacity-50",
-  danger: "text-[11.5px] text-muted transition hover:text-neg disabled:opacity-50",
+  primary: "ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:bg-white disabled:opacity-50 max-md:min-h-10 max-md:px-3.5",
+  accent: "ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-bg transition hover:opacity-90 disabled:opacity-50 max-md:min-h-10 max-md:px-3.5",
+  ghost: "ctl border border-line px-2.5 py-1 text-[11.5px] text-muted transition hover:border-accent/50 hover:text-fg disabled:opacity-50 max-md:min-h-10 max-md:px-3.5",
+  link: "hit text-[11.5px] text-muted transition hover:text-fg disabled:opacity-50",
+  danger: "hit text-[11.5px] text-muted transition hover:text-neg disabled:opacity-50",
 };
 
 export const input = "ctl border border-line bg-bg/60 px-2.5 py-1.5 text-[12px] outline-none focus:border-accent/60";

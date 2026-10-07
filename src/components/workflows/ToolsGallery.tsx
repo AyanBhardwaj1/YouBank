@@ -53,19 +53,20 @@ export function ToolsGallery({ role: roleProp }: { role?: RoleId }) {
           <h1 className="text-[16px] font-semibold">Tools for {ROLES[role].label.toLowerCase()}s{profile.specialty ? ` · ${profile.specialty}` : ""}</h1>
           <div className="text-[11px] text-muted">{counts.ai} AI workflows and {counts.calc} calculators{allRoles ? " across every role" : " tailored to your profile"}. Each run is saved to your library.</div>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tools…" className="ctl w-56 border border-line bg-bg px-2.5 py-1.5 text-[12px] placeholder:text-faint focus:border-accent/60 focus:outline-none" />
-          <div className="flex overflow-hidden ctl border border-line text-[11px]">
+        <div className="ml-auto flex items-center gap-2 max-md:ml-0 max-md:w-full max-md:flex-wrap">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tools…" aria-label="Search tools" className="ctl w-56 border border-line bg-bg px-2.5 py-1.5 text-[12px] placeholder:text-faint focus:border-accent/60 focus:outline-none max-md:min-h-10 max-md:w-full" />
+          <div className="flex overflow-hidden ctl border border-line text-[11px] max-md:[&>button]:min-h-9 max-md:[&>button]:px-3.5">
             {(["", "ai", "calc"] as const).map((k) => <button key={k} type="button" onClick={() => setKind(k)} className={`px-2.5 py-1.5 ${kind === k ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{k === "" ? "All" : k === "ai" ? "AI" : "Calculators"}</button>)}
           </div>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted"><input type="checkbox" checked={allRoles} onChange={(e) => setAllRoles(e.target.checked)} /> every role</label>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted max-md:min-h-9"><input type="checkbox" checked={allRoles} onChange={(e) => setAllRoles(e.target.checked)} /> every role</label>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5 border-b border-line px-4 py-2">
+      {/* Categories: wrapped chips on a big screen, one sideways-scrolling row on a phone. */}
+      <div className="no-scrollbar flex flex-wrap gap-1.5 border-b border-line px-4 py-2 max-md:flex-nowrap max-md:overflow-x-auto max-md:[&>button]:shrink-0 max-md:[&>button]:whitespace-nowrap max-md:[&>button]:py-1.5">
         <button type="button" onClick={() => setCat("")} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${!cat ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>All categories</button>
         {cats.map((c) => <button key={c} type="button" onClick={() => setCat(cat === c ? "" : c)} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${cat === c ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{c} <span className="num opacity-60">{base.filter((t) => t.category === c).length}</span></button>)}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="scroll-touch min-h-0 flex-1 overflow-auto p-4">
         {forYou.length > 0 && (
           <>
             <div className="mb-2 text-[10.5px] uppercase tracking-wider text-muted">Built for {profile.specialty}</div>

@@ -71,14 +71,14 @@ export function XbrlScreen({ ticker }: { ticker: string }) {
             <>
               <div className="mb-2 text-[12px] font-semibold">{series.concept} <span className="num text-[10px] font-normal text-muted">{series.unit} · {kind}</span></div>
               {points.length >= 2 ? <LineChart series={[{ name: series.concept.slice(0, 18), points: points.map((p) => ({ x: p.end.slice(0, 7), y: p.value })) }]} format={(v) => fmtVal(v, series.unit)} height={180} /> : null}
-              <table className="num mt-3 w-full text-[11px]">
+              <div className="table-scroll"><table className="num mt-3 w-full text-[11px]">
                 <thead className="text-[10px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Period end</th><th className="py-1 text-right font-normal">Value</th><th className="py-1 text-right font-normal">Form</th></tr></thead>
                 <tbody className="stagger">
                   {[...points].reverse().map((p) => (
                     <tr key={p.end} className="border-b border-line/50"><td className="py-1">{p.end}</td><td className="py-1 text-right">{fmtVal(p.value, series.unit)}</td><td className="py-1 text-right text-muted">{p.form ?? ""}</td></tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
               {series.error && <div className="mt-2 text-[11px] text-neg">{series.error}</div>}
             </>
           )}

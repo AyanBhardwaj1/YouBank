@@ -83,10 +83,10 @@ function Recording({ v, quote }: { v: PassageView; quote?: string }) {
               {v.tone.turn.note && <p className="col-span-2 text-[11px] text-muted">{v.tone.turn.note}</p>}
             </div>
           )}
-          <table className="mt-2 w-full text-[11px]">
+          <div className="table-scroll"><table className="mt-2 w-full text-[11px]">
             <thead><tr className="text-left text-muted"><th className="font-normal">Speaker</th><th className="text-right font-normal">Turns</th><th className="text-right font-normal">Hedging</th><th className="text-right font-normal">Tone</th></tr></thead>
             <tbody>{v.tone.speakers.map((s) => <tr key={s.speaker} className="border-t border-line"><td className="py-0.5 font-sans">{s.speaker}</td><td className="text-right">{s.turns}</td><td className="text-right">{s.hedging.toFixed(2)}</td><td className={`text-right ${s.tone > 0.15 ? "text-pos" : s.tone < -0.15 ? "text-neg" : ""}`}>{s.tone >= 0 ? "+" : ""}{s.tone.toFixed(2)}</td></tr>)}</tbody>
-          </table>
+          </table></div>
           <p className="mt-1 text-[10.5px] text-faint">Scored per speaker turn by a language model; a guide to where to listen, not a measurement.</p>
         </div>
       )}

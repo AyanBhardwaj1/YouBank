@@ -67,7 +67,7 @@ export function PrecScreen({ onRun, ticker }: { onRun?: (c: Command) => void; ti
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">
         {error && <div className="p-3 text-[11px] text-neg">{error}</div>}
         {!res && !error && <div className="flex flex-col gap-2 p-3">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="shimmer h-5 ctl" style={{ animationDelay: `${i * 60}ms` }} />)}</div>}
         {res && (

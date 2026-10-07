@@ -90,7 +90,7 @@ export function MapView({ state, focus, onOpenDeal }: { state: EdgeState; focus:
 
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="panel relative h-[64vh] min-h-[420px] overflow-hidden">
+      <div className="panel relative h-[64vh] min-h-[420px] overflow-hidden max-md:h-[58dvh] max-md:min-h-[340px]">
         <EarthMap bbox={region.bbox} assets={assets.data} highlight={highlight} markers={markers} satellite={satOn ? sat.data : null} focus={jump ?? fly} initial3D={!!focus?.threeD}
           site={twin?.site ?? null} overlay={overlay} scene3d={scene3d} drape={view.drape} planet={view.planet} onApi={setMapApi}
           onMarker={(id) => { setPicked(id); setAsset(null); }} onAsset={(a) => { setAsset(a); setPicked(null); }} onZoom={setZoom} />
@@ -121,7 +121,9 @@ export function MapView({ state, focus, onOpenDeal }: { state: EdgeState; focus:
           </div>
         )}
       </div>
-      <aside className="min-w-0 space-y-2">
+      {/* Below the side-by-side width, what you picked on the map rises as a sheet over the map's lower part. */}
+      <aside className={`min-w-0 ${asset || card ? "max-lg:fixed max-lg:overscroll-contain max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-[70] max-lg:max-h-[62dvh] max-lg:overflow-y-auto max-lg:rounded-t-[14px] max-lg:border max-lg:border-b-0 max-lg:border-line-strong max-lg:bg-panel max-lg:px-3 max-lg:pb-[calc(12px+var(--safe-b))] max-lg:pt-1 max-lg:shadow-[0_-12px_40px_rgba(0,0,0,.35)] max-lg:[&_button:has(svg.lucide-x)]:min-h-10" : ""}`}>
+        {(asset || card) && <div className="mx-auto mb-1 mt-1 lg:hidden"><span className="sheet-handle mx-auto block" aria-hidden /></div>}
         {asset && !card ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px] text-muted">

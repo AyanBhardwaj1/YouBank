@@ -221,7 +221,7 @@ export function ResearchNote({ research }: { research: Researched }) {
   return (
     <details className="rounded-md border border-chart-emphasis/40 bg-chart-emphasis/5 px-2.5 py-1.5 text-[11px]">
       <summary className="cursor-pointer select-none text-[10.5px] font-semibold text-fg/90">Researched by AI on the web: {facts.length} figure{facts.length === 1 ? "" : "s"}, each checked against its source</summary>
-      <table className="mt-1.5 w-full text-[11px]">
+      <div className="table-scroll"><table className="mt-1.5 w-full text-[11px]">
         <tbody>
           {facts.map(([k, f]) => (
             <tr key={k} className="border-b border-line/50 last:border-0 align-top">
@@ -232,7 +232,7 @@ export function ResearchNote({ research }: { research: Researched }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {research.rejected.length > 0 && <div className="mt-1 text-[10px] text-faint">Left out: {research.rejected.slice(0, 6).map((r) => `${FACT_LABEL[r.field] ?? r.field} (${r.reason})`).join("; ")}</div>}
       <div className="mt-1 text-[10px] text-faint">{research.model} · {research.searches} search{research.searches === 1 ? "" : "es"} · {research.researchedAt.slice(0, 16).replace("T", " ")} UTC. A backup, not a data feed: check anything you rely on.</div>
     </details>
@@ -382,7 +382,7 @@ export function DataTable<R>({ rows, columns, rowKey, initialSort, onRow, max, e
   const shown = max ? sorted.slice(0, max) : sorted;
   if (!rows.length) return <div className="py-3 text-[11px] text-muted">{empty}</div>;
   return (
-    <div className="min-w-0 overflow-x-auto">
+    <div className="table-scroll min-w-0 overflow-x-auto">
       <table className="num w-full text-[11px]">
         <thead className="sticky top-0 z-10 bg-panel text-[10px] uppercase tracking-wider text-muted">
           <tr className="border-b border-line">
@@ -647,7 +647,7 @@ export function Meter({ value, label, zones = [0.15, 0.35], invert = false, deta
 /** A correlation matrix: blue for positive, red for negative, stronger colour for stronger links. */
 export function Heatmap({ labels, matrix, format = (v: number) => v.toFixed(2) }: { labels: string[]; matrix: number[][]; format?: (v: number) => string }) {
   return (
-    <div className="min-w-0 overflow-x-auto">
+    <div className="table-scroll min-w-0 overflow-x-auto">
       <table className="num border-separate border-spacing-0.5 text-[10px]">
         <thead><tr><th />{labels.map((l) => <th key={l} className="px-1 font-semibold text-muted">{l}</th>)}</tr></thead>
         <tbody>

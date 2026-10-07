@@ -1,9 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { DialogHost } from "@/components/ui/Dialog";
+import { MobileViewport } from "@/components/ui/MobileViewport";
+import { MotionPrefs } from "@/components/motion/MotionPrefs";
 import { THEME_COOKIE, themeById } from "@/lib/themes";
 import { currentUser } from "@/lib/auth/user";
 import { siteUrl } from "@/lib/site";
@@ -27,6 +29,17 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image", title: "YouBank", description: "The AI deal desk that learns how you work.", images: ["/brand/og.png"] },
 };
 
+/**
+ * Phones: draw edge to edge (`viewport-fit=cover`, with the notch and home bar kept clear by the
+ * safe-area insets in CSS), and on Android let the keyboard shrink the page instead of covering it
+ * (iOS ignores that and is handled by MobileViewport). Pinch-zoom stays allowed. The browser bar takes
+ * the theme's background, which ThemeProvider keeps in step when the style changes.
+ */
+export async function generateViewport(): Promise<Viewport> {
+  const theme = themeById((await cookies()).get(THEME_COOKIE)?.value);
+  return { width: "device-width", initialScale: 1, viewportFit: "cover", interactiveWidget: "resizes-content", themeColor: theme.vars.bg };
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const jar = await cookies();
   const theme = themeById(jar.get(THEME_COOKIE)?.value);
@@ -34,7 +47,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" data-theme={theme.id} className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full">
-        <ThemeProvider initial={theme.id} signedIn={!!user}>{children}<DialogHost /></ThemeProvider>
+        <ThemeProvider initial={theme.id} signedIn={!!user}><MotionPrefs>{children}<DialogHost /></MotionPrefs></ThemeProvider>
+        <MobileViewport />
       </body>
     </html>
   );

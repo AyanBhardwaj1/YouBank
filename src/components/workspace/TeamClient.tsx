@@ -224,7 +224,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
 
               {/* Members */}
               <div className="mt-4 ctl overflow-hidden border border-line">
-                <table className="w-full text-[12px]">
+                <div className="table-scroll"><table className="w-full text-[12px]">
                   <thead className="bg-elevated/60 text-[10.5px] uppercase tracking-wide text-muted">
                     <tr><th className="px-3 py-2 text-left font-semibold">Member</th><th className="px-3 py-2 text-left font-semibold">Role</th><th className="px-3 py-2" /></tr>
                   </thead>
@@ -258,7 +258,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                       );
                     })}
                   </tbody>
-                </table>
+                </table></div>
               </div>
 
               {/* Invites */}

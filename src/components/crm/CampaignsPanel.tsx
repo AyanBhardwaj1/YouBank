@@ -353,7 +353,7 @@ function CampaignDetail({ id, ctx, onBack, onDrafted }: { id: number; ctx: Panel
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 {!l.email && !["disqualified", "opted_out"].includes(l.status) && (
                   <>
-                    <input value={emails[l.id] ?? ""} onChange={(e) => setEmails({ ...emails, [l.id]: e.target.value })} placeholder="Add their email" className={`${input} w-[220px] py-1`} />
+                    <input value={emails[l.id] ?? ""} onChange={(e) => setEmails({ ...emails, [l.id]: e.target.value })} placeholder="Add their email" className={`${input} w-[220px] py-1 max-md:w-full`} />
                     <button type="button" disabled={!!ctx.busy || !(emails[l.id] ?? "").trim()} onClick={() => patchLead(l.id, { email: emails[l.id] }, "Address added.")} className={btn.ghost}>Save</button>
                   </>
                 )}

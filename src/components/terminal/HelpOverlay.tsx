@@ -16,11 +16,11 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
     ["Enter", "run the command"], ["↑ ↓", "move through suggestions"], ["Esc", "close a menu, restore a maximized panel"], ["?", "this reference"],
   ];
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-auto bg-bg/70 p-6 backdrop-blur-sm" onClick={onClose} role="presentation">
-      <div className="rise float w-full max-w-[860px] panel p-5" role="dialog" aria-modal="true" aria-label="Commands and keys" onClick={(e) => e.stopPropagation()}>
+    <div className="scroll-touch fixed inset-0 z-[60] flex items-start justify-center overflow-auto bg-bg/70 p-6 backdrop-blur-sm max-md:p-0 max-md:pt-[calc(var(--safe-t)+12px)]" onClick={onClose} role="presentation">
+      <div className="rise float w-full max-w-[860px] panel p-5 max-md:min-h-full max-md:rounded-b-none max-md:p-4 max-md:pb-[calc(16px+var(--safe-b))]" role="dialog" aria-modal="true" aria-label="Commands and keys" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-baseline justify-between">
           <h2 className="text-[16px] font-semibold">Commands and keys</h2>
-          <button type="button" onClick={onClose} className="text-[11px] text-muted hover:text-fg">close (Esc)</button>
+          <button type="button" onClick={onClose} className="text-[11px] text-muted hover:text-fg max-md:-mr-2 max-md:min-h-11 max-md:px-3 max-md:text-[14px]">Close<span className="max-md:hidden"> (Esc)</span></button>
         </div>
         <div className="mt-4 grid gap-5 md:grid-cols-2">
           <div>

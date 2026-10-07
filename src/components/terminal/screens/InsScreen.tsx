@@ -41,7 +41,7 @@ export function InsScreen({ ticker }: { ticker: string }) {
         <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={onlyOpenMarket} onChange={(e) => setOnlyOpenMarket(e.target.checked)} /> open-market only (P/S)</label>
         <span className="ml-auto text-muted">Non-derivative transactions, SEC Form 4</span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">
         {!rows && !error && <div className="p-3 text-[11px] text-muted">Reading Form 4 filings…</div>}
         {error && <div className="p-3 text-[11px] text-neg">{error}</div>}
         {rows && rows.length === 0 && <div className="p-3 text-[11px] text-muted">No recent Form 4 filings.</div>}

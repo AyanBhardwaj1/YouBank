@@ -271,7 +271,7 @@ export function CompsScreen({ company: target, onRun, ai }: { company: CompanyDa
         <span className="text-muted">{peers.length} peers{pending.length ? ` · ${pending.length} loading` : ""} · USD mm</span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">
         <table className="w-full whitespace-nowrap text-[11.5px]">
           <thead className="sticky top-0 z-10 bg-panel text-[10.5px] uppercase tracking-wider text-muted">
             <tr className="border-b border-line-strong">

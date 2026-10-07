@@ -123,7 +123,7 @@ export function RealismPanel({ r, note }: { r: Realism; note?: string }) {
       )}
       {r.warnings.length > 0 && <ul className="mt-2 space-y-0.5">{r.warnings.slice(0, 5).map((w) => <li key={w} className="flex gap-1.5 text-[11px] text-muted"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-accent" />{w}</li>)}</ul>}
       {open && (
-        <div className="mt-2 overflow-x-auto">
+        <div className="table-scroll mt-2 overflow-x-auto">
           <table className="w-full text-[11px]">
             <thead><tr className="text-left text-muted"><th className="font-normal">Series</th><th className="text-right font-normal">Daily vol real / synthetic</th><th className="text-right font-normal">Excess kurtosis</th><th className="text-right font-normal">Vol clustering</th><th className="text-right font-normal">KS</th></tr></thead>
             <tbody>{r.columns.map((c) => (

@@ -56,7 +56,7 @@ export function DemoComps() {
         ))}
         <span className="ml-auto flex items-center gap-1.5 text-muted"><span className="pulse-ring h-1.5 w-1.5 rounded-full bg-pos" /> SEC XBRL, LTM to {rows[0]?.ltmEnd ?? DEMO.asOf}</span>
       </div>
-      <div className="overflow-auto">
+      <div className="table-scroll overflow-auto">
         <table className="w-full whitespace-nowrap text-[11.5px]">
           <thead className="bg-panel text-[10px] uppercase tracking-wider text-muted">
             <tr className="border-b border-line-strong">

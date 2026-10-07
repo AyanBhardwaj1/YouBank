@@ -138,9 +138,15 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
           </nav>
           <div className="ml-auto flex items-center gap-2">
             <ThemeMenu />
-            <Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted transition hover:border-accent/50 hover:text-fg">Sign in</Link>
+            <Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted transition hover:border-accent/50 hover:text-fg max-md:flex max-md:min-h-10 max-md:items-center">Sign in</Link>
           </div>
         </div>
+        {/* Phones: the section links as one sideways-scrolling row under the bar, rather than hidden. */}
+        <nav aria-label="Sections" className="no-scrollbar flex gap-1.5 overflow-x-auto px-5 pb-2.5 text-[12.5px] text-muted md:hidden">
+          {[["#loop", "Product"], ["#agent", "Agent"], ["#terminal", "Terminal"], ["#studio", "Studio"], ["#engine", "Adaptive engine"], ["#demos", "Demos"], ["#pricing", "Pricing"], ["#data", "Data"]].map(([href, label]) => (
+            <a key={href} href={href} className="flex min-h-9 shrink-0 items-center rounded-full border border-line px-3.5 active:bg-elevated">{label}</a>
+          ))}
+        </nav>
       </header>
 
       {/* hero */}

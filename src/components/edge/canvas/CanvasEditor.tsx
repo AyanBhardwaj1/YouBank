@@ -29,6 +29,7 @@ import { KIND_COLOR, MODULE_COLOR } from "./colors";
 import { MiniPreview } from "./MiniPreview";
 import { ModuleNode, type ModuleData } from "./ModuleNode";
 import { Modal, Sheet } from "./Overlays";
+import { Sheet as BottomSheet } from "@/components/ui/Sheet";
 import { Outputs } from "./Results";
 import { CanvasSkeleton } from "./Skeleton";
 import { useCanvas } from "./useCanvas";
@@ -122,7 +123,8 @@ const Flow = memo(function Flow({ nodes, edges, readOnly, onNodesChange, onEdges
       onPaneClick={onPaneClick} onNodeClick={onNodeClick} nodesDraggable={!readOnly} nodesConnectable={!readOnly} deleteKeyCode={null} fitView fitViewOptions={FIT_VIEW} minZoom={0.2} maxZoom={1.6} proOptions={PRO_OPTIONS}>
       <Background gap={22} size={1} color="var(--line)" />
       <Controls showInteractive={false} position="bottom-left" />
-      <MiniMap pannable zoomable position="bottom-right" nodeColor={minimapColor} maskColor="rgba(0,0,0,0.35)" style={MINIMAP_STYLE} />
+      {/* On a phone the overview map would cover a third of the canvas; pinch-zoom does its job there. */}
+      <MiniMap pannable zoomable position="bottom-right" nodeColor={minimapColor} maskColor="rgba(0,0,0,0.35)" style={MINIMAP_STYLE} className="max-md:hidden!" />
     </ReactFlow>
   );
 });
@@ -149,6 +151,8 @@ function Editor({ id }: { id: number }) {
   const [compare, setCompare] = useState<{ a: RunView; b: RunView } | null>(null);
   const [sheet, setSheet] = useState(false);
   const sheetId = useId();
+  // Phones: the block palette (a column beside the canvas from md up) opens as a sheet from "Blocks".
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const graph = c.graph;
   const available = useMemo(() => new Set(c.data?.available ?? []), [c.data?.available]);
   const issues = useMemo(() => (graph ? validate(graph, available) : []), [graph, available]);
@@ -321,6 +325,25 @@ function Editor({ id }: { id: number }) {
     select(null);
   };
 
+  /** The block palette, in the side column or (finger-sized, closing after a pick) in the phone's sheet. */
+  const paletteList = (touch: boolean) => MODULES.map((m) => {
+    const blocks = palette.filter((d) => d.module === m);
+    if (!blocks.length) return null;
+    return (
+      <div key={m} className="mb-3">
+        <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: MODULE_COLOR[m] }} />{MODULE_LABEL[m]}</div>
+        {blocks.map((d) => (
+          <button key={d.type} type="button" draggable onDragStart={(e) => { e.dataTransfer.setData("application/x-edge-block", d.type); e.dataTransfer.effectAllowed = "move"; }} onClick={() => { addBlock(d.type); if (touch) setPaletteOpen(false); }} title={d.blurb}
+            className={`mb-1 flex w-full items-start gap-2 rounded-md border border-transparent px-1.5 py-1 text-left hover:border-line hover:bg-elevated/60 ${touch ? "min-h-12 py-2" : ""}`}>
+            <Icon name={d.icon} className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
+            <span className="min-w-0"><span className="block text-[12px]">{d.label}</span><span className="block truncate text-[10.5px] text-faint">{d.blurb}</span></span>
+          </button>
+        ))}
+      </div>
+    );
+    });
+
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
@@ -335,6 +358,11 @@ function Editor({ id }: { id: number }) {
             <button type="button" onClick={() => void act("checkpoint", async () => { const label = await promptDialog({ title: "Name this checkpoint", label: "Name", defaultValue: `Checkpoint ${data.checkpoints.length + 1}`, confirmLabel: "Save checkpoint" }); if (label) { await post(`/api/edge/canvases/${id}/checkpoints`, { label }); await c.load(); } })} title="Save a named checkpoint" className="rounded p-1.5 text-muted hover:text-fg"><BookmarkPlus className="h-4 w-4" /></button>
             <button type="button" onClick={() => void act("branch", async () => { const label = await promptDialog({ title: "Branch this canvas", body: "A copy you can change and compare side by side, such as a bull and a bear case.", label: "Branch name", defaultValue: "bear case", confirmLabel: "Branch" }); if (label) { const r = await post<{ canvas: { id: number } }>(`/api/edge/canvases/${id}/branch`, { label }); router.push(`/app/edge/canvas/${r.canvas.id}`); } })} title="Branch into a variant" className="rounded p-1.5 text-muted hover:text-fg"><GitBranch className="h-4 w-4" /></button>
           </>}
+          {!readOnly && (
+            <button type="button" onClick={() => setPaletteOpen(true)} aria-haspopup="dialog" className="flex min-h-9 items-center gap-1 rounded px-1.5 py-1 text-[12px] text-muted hover:text-fg md:hidden">
+              <Plus className="h-4 w-4" />Blocks
+            </button>
+          )}
           <button type="button" onClick={() => setSheet((o) => !o)} aria-expanded={sheet} aria-controls={sheet ? sheetId : undefined} title="Settings, results, runs and versions"
             className="flex items-center gap-1 rounded px-1.5 py-1 text-[12px] text-muted hover:text-fg lg:hidden"><PanelBottomOpen className="h-4 w-4" />Details</button>
           <button type="button" onClick={() => void run()} disabled={readOnly || !!running || busy === "run" || errors.length > 0} title={errors.length ? errors[0].message : "Run (Cmd+Enter)"} className="ctl ml-1 flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg disabled:opacity-50">
@@ -343,29 +371,20 @@ function Editor({ id }: { id: number }) {
         </div>
       </header>
       {c.notice && <div className="flex items-center gap-2 border-b border-line bg-accent-soft px-3 py-1.5 text-[11.5px] text-accent"><span className="flex-1">{c.notice}</span><button type="button" onClick={() => c.setNotice(null)} aria-label="Dismiss"><X className="h-3.5 w-3.5" /></button></div>}
-      <div className="border-b border-line bg-elevated/60 px-3 py-1.5 text-[11.5px] text-muted md:hidden">Canvases are built on a tablet or a computer. Here you can run this one and read its results; the feed, alerts and stories work fully on a phone.</div>
+      {!readOnly && (
+        <BottomSheet open={paletteOpen} onClose={() => setPaletteOpen(false)} title="Add a block" size="full" padded={false}>
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-panel px-4 py-2"><Search className="h-4 w-4 text-muted" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a block" aria-label="Find a block" className="min-h-10 w-full bg-transparent outline-none placeholder:text-faint" /></div>
+          <div className="px-3 py-2">{paletteList(true)}</div>
+        </BottomSheet>
+      )}
+      <div className="border-b border-line bg-elevated/60 px-3 py-1.5 text-[11.5px] text-muted md:hidden">{readOnly ? "Pinch to zoom and drag to look around." : "Add steps from Blocks. To connect two blocks, tap a dot on one and then a dot on the other; pinch to zoom."}</div>
 
       <div className="flex min-h-0 flex-1">
         {!readOnly && (
           <aside className="hidden w-[210px] shrink-0 flex-col border-r border-line md:flex">
             <div className="flex items-center gap-1.5 border-b border-line px-2 py-1.5"><Search className="h-3.5 w-3.5 text-muted" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a block" className="w-full bg-transparent text-[12px] outline-none placeholder:text-faint" /></div>
             <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-              {MODULES.map((m) => {
-                const blocks = palette.filter((d) => d.module === m);
-                if (!blocks.length) return null;
-                return (
-                  <div key={m} className="mb-3">
-                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: MODULE_COLOR[m] }} />{MODULE_LABEL[m]}</div>
-                    {blocks.map((d) => (
-                      <button key={d.type} type="button" draggable onDragStart={(e) => { e.dataTransfer.setData("application/x-edge-block", d.type); e.dataTransfer.effectAllowed = "move"; }} onClick={() => addBlock(d.type)} title={d.blurb}
-                        className="mb-1 flex w-full items-start gap-2 rounded-md border border-transparent px-1.5 py-1 text-left hover:border-line hover:bg-elevated/60">
-                        <Icon name={d.icon} className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
-                        <span className="min-w-0"><span className="block text-[12px]">{d.label}</span><span className="block truncate text-[10.5px] text-faint">{d.blurb}</span></span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })}
+              {paletteList(false)}
             </div>
           </aside>
         )}

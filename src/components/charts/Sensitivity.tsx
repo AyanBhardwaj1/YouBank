@@ -12,7 +12,7 @@ export function Sensitivity({ rows, cols, values, rowLabel, colLabel, format, ti
   return (
     <figure className="m-0">
       {title && <figcaption className="mb-1 text-[11px] text-muted">{title}</figcaption>}
-      <div className="overflow-auto">
+      <div className="table-scroll overflow-auto">
         <table className="text-[11px]">
           <thead>
             <tr>

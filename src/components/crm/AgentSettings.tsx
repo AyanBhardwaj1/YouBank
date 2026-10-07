@@ -132,7 +132,7 @@ export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
           </span>
         </label>
 
-        <div className="mt-3 overflow-x-auto">
+        <div className="table-scroll mt-3 overflow-x-auto">
           <table className="w-full min-w-[560px] font-sans text-[12px]">
             <thead>
               <tr className="text-left text-[10.5px] text-muted">
