@@ -936,6 +936,37 @@ export const newsPushSubs = pgTable("news_push_subs", {
   lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("news_push_subs_endpoint_uidx").on(t.endpoint), index("news_push_subs_user_idx").on(t.userId)]);
 
+/** A developing story someone follows: what they last heard about it, so each update alerts once. */
+export const newsFollows = pgTable("news_follows", {
+  userId: text("user_id").notNull(),
+  clusterId: integer("cluster_id").notNull(),
+  /** The story's source count when last told (or when followed). */
+  seenSources: integer("seen_sources").notNull().default(1),
+  /** The story's last update when last told. */
+  seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  updates: integer("updates").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.clusterId] }), index("news_follows_cluster_idx").on(t.clusterId)]);
+
+export type BriefingChapter = { id: string; title: string; text: string; clusterId?: number; tickers?: string[]; seconds: number };
+export type BriefingAudio = { key: string; bytes: number; seconds: number }[];
+
+/** A personal audio briefing: chapters with their scripts, and storage keys for a neural voice's audio. */
+export const newsBriefings = pgTable("news_briefings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  slot: text("slot").notNull(),
+  kind: text("kind").notNull(), // ai | daily
+  desk: text("desk").notNull().default(""),
+  chapters: jsonb("chapters").$type<BriefingChapter[]>().notNull().default([]),
+  audio: jsonb("audio").$type<BriefingAudio | null>(),
+  voice: text("voice").notNull().default(""),
+  model: text("model").notNull().default(""),
+  costUsd: doublePrecision("cost_usd").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("news_briefings_user_slot_kind_uidx").on(t.userId, t.slot, t.kind)]);
+
 /* ---------------- Edge ---------------- */
 
 /** A PostGIS geometry (WGS84). Written and read as GeoJSON through SQL (ST_GeomFromGeoJSON, ST_AsGeoJSON). */
