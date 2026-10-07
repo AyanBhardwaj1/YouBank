@@ -156,12 +156,17 @@ export function forgetAiCaps(userId: string) {
   credits.delete(userId);
 }
 
-/** The last credit use written per person and period, so a draw is only written when it grows by a cent. */
+/**
+ * The last credit use written per person and period. The period's row is written on the first check while
+ * the person holds credits (even before spend passes the allowance), so the call that crosses it is still
+ * settled from the ledger when the period ends; after that, only when the use grows by a cent.
+ */
 const drawn = new Map<string, number>();
 function recordDraw(userId: string, period: Period, cap: number, available: number, spend: number) {
   const used = splitSpend(spend, cap, available).credits;
   const k = `${userId}:${period.start.getTime()}`;
-  if (used <= 0 || used - (drawn.get(k) ?? 0) < 0.01) return;
+  const prev = drawn.get(k);
+  if (prev !== undefined && used - prev < 0.01) return;
   if (drawn.size > 5_000) drawn.clear();
   drawn.set(k, used);
   void noteDraw(userId, period, cap, available, spend).catch(() => drawn.delete(k));
@@ -213,7 +218,7 @@ export async function aiBlocked(userId: string | null, pendingUsd = 0): Promise<
     capped ? spent(capped, "month", period.start).catch(() => 0) : Promise.resolve(null),
     capped && caps?.monthlyUsd != null ? creditsFor(capped, period) : Promise.resolve(NO_CREDITS),
   ]);
-  if (capped && mineMonth !== null && caps?.monthlyUsd != null && state.availableUsd > 0 && mineMonth > caps.monthlyUsd) {
+  if (capped && mineMonth !== null && caps?.monthlyUsd != null && state.availableUsd > 0) {
     recordDraw(capped, period, caps.monthlyUsd, state.availableUsd, mineMonth);
   }
   return blockedAt({

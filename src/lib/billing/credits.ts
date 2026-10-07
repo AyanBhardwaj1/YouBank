@@ -66,11 +66,12 @@ export const packsLeft = (state: CreditState, usedNowUsd: number) => remainingBy
 
 /**
  * Record this period's credit use so far: spend beyond the allowance, up to what was available. Only ever
- * raises the stored amount, so out-of-order calls from several instances are harmless.
+ * raises the stored amount, so out-of-order calls from several instances are harmless. Written at zero too:
+ * a period needs its row to be settled from the ledger when it ends, or the last call of a period that
+ * crossed the allowance would never be counted.
  */
 export async function noteDraw(userId: string, period: Period, capUsd: number, availableUsd: number, spendUsd: number): Promise<void> {
   const used = splitSpend(spendUsd, capUsd, availableUsd).credits;
-  if (used <= 0) return;
   const t = schema.aiCreditDraws;
   await requireDb().insert(t).values({ userId, periodStart: period.start, periodEnd: period.end, capUsd, availableUsd, usedUsd: used })
     .onConflictDoUpdate({ target: [t.userId, t.periodStart], set: { periodEnd: period.end, capUsd, availableUsd, usedUsd: sql`greatest(${t.usedUsd}, ${used})`, updatedAt: new Date() } });
