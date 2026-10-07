@@ -6,6 +6,7 @@ import type { Command } from "@/lib/functions";
 import type { AiStatus, OpenPanel } from "../Terminal";
 import { Markdown, type Source } from "../Markdown";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { apiError, errorMessage, safeText } from "@/lib/client/errors";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
 type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; error?: string; streaming?: boolean };
@@ -34,10 +35,8 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ messages: history.map(({ role, content }) => ({ role, content })), context: { ticker, panels: openPanels.map((p) => `${p.ticker} ${p.fn}`.trim()), subject } }),
       });
-      if (!res.ok || !res.body) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error ?? `HTTP ${res.status}`);
-      }
+      if (!res.ok || !res.body) throw await apiError(res);
+      let finished = false;
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -50,7 +49,9 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
           const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
           for (const line of chunk.split("\n")) {
             if (!line.startsWith("data: ")) continue;
-            const ev = JSON.parse(line.slice(6));
+            let ev;
+            try { ev = JSON.parse(line.slice(6)); } catch { continue; }
+            if (ev.type === "done" || ev.type === "error") finished = true;
             if (ev.type === "text") patchLast((m) => ({ ...m, content: m.content + ev.text }));
             else if (ev.type === "tool") patchLast((m) => {
               const tools = [...(m.tools ?? [])];
@@ -59,12 +60,14 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               return { ...m, tools };
             });
             else if (ev.type === "sources") patchLast((m) => ({ ...m, sources: ev.sources }));
-            else if (ev.type === "error") patchLast((m) => ({ ...m, error: ev.message }));
+            else if (ev.type === "error") patchLast((m) => ({ ...m, error: safeText(ev.message) }));
           }
         }
       }
+      // The connection closed before the answer did (the function was stopped, the network dropped).
+      if (!finished) patchLast((m) => ({ ...m, error: "The answer was cut off. Ask again to retry." }));
     } catch (e) {
-      patchLast((m) => ({ ...m, error: e instanceof Error ? e.message : String(e) }));
+      patchLast((m) => ({ ...m, error: errorMessage(e) }));
     } finally {
       patchLast((m) => ({ ...m, streaming: false }));
       setBusy(false);

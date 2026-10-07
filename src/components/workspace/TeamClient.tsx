@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/Icon";
 import { ROLE_BLURB, ROLE_LABEL, assignableBy, can, outranks, type TeamRole } from "@/lib/teams/roles";
 import { Select } from "@/components/ui/Select";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 
 type Me = { id: string; email: string; name: string };
 type Team = { id: number; name: string; slug: string; role: TeamRole; memberCount: number; createdAt: string };
@@ -19,7 +20,7 @@ const INVITABLE = (actor: TeamRole): TeamRole[] => assignableBy(actor).filter((r
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new Error(messageFor(res.status, body).message);
   return body as T;
 }
 
@@ -51,7 +52,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
         const d = await api<Detail>(`/api/teams/${selected}`);
         if (!cancelled) setDetail(d);
       } catch (e) {
-        if (!cancelled) { setDetail(null); setError(e instanceof Error ? e.message : String(e)); }
+        if (!cancelled) { setDetail(null); setError(errorMessage(e)); }
       }
     };
     void load();
@@ -60,7 +61,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true); setError(null);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    try { await fn(); } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   };
 
@@ -285,7 +286,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
                     <div className="mt-3 ctl border border-accent/40 bg-accent-soft/40 p-2.5">
                       <div className="text-[11px] font-semibold text-accent">Invitation link</div>
                       <div className="mt-1.5 flex gap-1.5">
-                        <input readOnly value={lastLink} onFocus={(e) => e.currentTarget.select()}
+                        <input readOnly aria-label="Invitation link" value={lastLink} onFocus={(e) => e.currentTarget.select()}
                           className="num ctl min-w-0 flex-1 border border-line bg-bg/60 px-2 py-1 text-[11px] outline-none" />
                         <button type="button" onClick={() => { void navigator.clipboard?.writeText(lastLink).then(() => say("Link copied")); }}
                           className="ctl border border-line px-2 py-1 text-[11px] transition hover:border-accent/50">Copy</button>

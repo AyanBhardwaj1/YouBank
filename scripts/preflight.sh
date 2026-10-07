@@ -25,11 +25,16 @@ pnpm exec tsx scripts/test-news.ts > /tmp/youbank-test-news.log 2>&1 && tail -1 
 step "edge"
 pnpm exec tsx scripts/test-edge.ts > /tmp/youbank-test-edge.log 2>&1 && tail -1 /tmp/youbank-test-edge.log || { cat /tmp/youbank-test-edge.log; fail=1; }
 
+step "3d maps"
+pnpm exec tsx scripts/test-maps.ts > /tmp/youbank-test-maps.log 2>&1 && tail -1 /tmp/youbank-test-maps.log || { cat /tmp/youbank-test-maps.log; fail=1; }
+
 step "launch limits"
 pnpm exec tsx scripts/test-launch.ts > /tmp/youbank-test-launch.log 2>&1 && tail -1 /tmp/youbank-test-launch.log || { cat /tmp/youbank-test-launch.log; fail=1; }
 
 step "billing"
 pnpm exec tsx scripts/test-billing.ts > /tmp/youbank-test-billing.log 2>&1 && tail -1 /tmp/youbank-test-billing.log || { cat /tmp/youbank-test-billing.log; fail=1; }
+step "errors"
+pnpm exec tsx scripts/test-errors.ts > /tmp/youbank-test-errors.log 2>&1 && tail -1 /tmp/youbank-test-errors.log || { cat /tmp/youbank-test-errors.log; fail=1; }
 
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1

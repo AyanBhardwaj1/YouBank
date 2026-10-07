@@ -4,12 +4,11 @@ import { db, schema } from "@/db";
 import { currentUser } from "@/lib/auth/user";
 import { activeTeam, myTeams, type TeamSummary } from "@/lib/teams/db";
 import { TeamClient } from "@/components/workspace/TeamClient";
+// Drizzle keeps Postgres's "relation does not exist" on the error's cause, so the check lives in lib/errors.
+import { isMissingTable } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Team" };
-
-/** True when the teams tables have not been created yet, so the page can say so instead of erroring. */
-const isMissingTable = (e: unknown) => /relation .* does not exist|undefined_table/i.test(e instanceof Error ? e.message : String(e));
 
 export default async function TeamPage() {
   const user = await currentUser();

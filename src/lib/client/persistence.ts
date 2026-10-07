@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PeerGroup, PeerMember } from "@/lib/static-data";
+import { apiError, errorMessage } from "./errors";
 
 /* ---- current user (no auth yet: a name stored in the browser, sent as x-user) ---- */
 export function getUser(): string {
@@ -13,9 +14,8 @@ export function setUser(name: string) {
 const headers = () => ({ "content-type": "application/json", "x-user": getUser() });
 
 async function json<T>(res: Response): Promise<T> {
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${res.status}`);
-  return j as T;
+  if (!res.ok) throw await apiError(res);
+  return (await res.json().catch(() => ({}))) as T;
 }
 
 /* ---- peer groups saved in Neon ---- */
@@ -31,7 +31,7 @@ export async function refreshPeerGroups() {
     groupsError = null;
   } catch (e) {
     groupsCache = groupsCache ?? [];
-    groupsError = e instanceof Error ? e.message : String(e);
+    groupsError = errorMessage(e);
   }
   notify();
 }

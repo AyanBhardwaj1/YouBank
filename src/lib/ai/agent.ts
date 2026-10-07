@@ -13,7 +13,7 @@ import { aiBlocked, guardAi, takeRunSlot } from "./limits";
 import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";
 import { routeFor, type AiTask } from "./route";
 import { aiUser, recordUsage } from "./usage";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError } from "@/lib/errors";
 import { fitToSchema } from "./fit";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -112,12 +112,18 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
 
 /** A failed run as the person sees it: provider errors by kind, anything internal as a logged reference. */
 export function describeError(e: unknown): string {
-  if (e instanceof Anthropic.AuthenticationError) return "Anthropic: invalid API key";
-  if (e instanceof Anthropic.RateLimitError) return "Anthropic: rate limited, retry shortly";
-  if (e instanceof Anthropic.APIError) return describeFailure(new Error(`Anthropic API error ${e.status}: ${e.message}`), 502, "anthropic").message;
-  if (e instanceof OpenAI.AuthenticationError) return "OpenAI: invalid API key";
-  if (e instanceof OpenAI.RateLimitError) return "OpenAI: rate limited, retry shortly";
-  if (e instanceof OpenAI.APIError) return describeFailure(new Error(`OpenAI API error ${e.status}: ${e.message}`), 502, "openai").message;
+  // The provider's own text is never shown (it can quote our request back); it is logged under the
+  // reference the "our side" line carries.
+  if (e instanceof Anthropic.AuthenticationError || e instanceof OpenAI.AuthenticationError) {
+    return `The AI provider rejected this server's key (ref ${logError(e, { status: 502, where: "ai-auth" })}). An administrator needs to update it.`;
+  }
+  if (e instanceof Anthropic.RateLimitError || e instanceof OpenAI.RateLimitError) return "The AI provider is rate limiting requests. Try again in a minute.";
+  const provider = e instanceof Anthropic.APIError ? "anthropic" : e instanceof OpenAI.APIError ? "openai" : null;
+  if (provider) {
+    const status = (e as { status?: number }).status ?? 0;
+    if (status === 529 || status === 503) return "The AI provider is overloaded right now. Try again in a minute.";
+    return describeFailure(new Error(`${provider === "anthropic" ? "Anthropic" : "OpenAI"} API error ${status}: ${(e as Error).message}`), 502, provider).message;
+  }
   return describeFailure(e, 502, "ai-run").message;
 }
 

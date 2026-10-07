@@ -12,6 +12,7 @@ import { useState } from "react";
 import type { Channel, EditionId, LayoutId, LookId, NewsPrefs } from "@/lib/news/prefs";
 import { post, useApi } from "./client";
 import { Select } from "@/components/ui/Select";
+import { errorMessage } from "@/lib/client/errors";
 
 type PrefsResponse = {
   prefs: Omit<NewsPrefs, "slack"> & { slackConnected: boolean };
@@ -76,11 +77,11 @@ export function NewsSettings() {
   const save = async (patch: Partial<NewsPrefs>) => {
     const merged = { ...p, ...patch };
     setDraft(merged);
-    const r = await post<{ prefs: PrefsResponse["prefs"] }>("/api/news/prefs", { prefs: merged }).catch((e) => { setMsg(e instanceof Error ? e.message : String(e)); return null; });
+    const r = await post<{ prefs: PrefsResponse["prefs"] }>("/api/news/prefs", { prefs: merged }).catch((e) => { setMsg(errorMessage(e)); return null; });
     if (r) { setDraft(r.prefs); setMsg("Saved."); }
   };
   const setChannels = (list: Channel[], c: Channel, on: boolean) => (on ? [...new Set([...list, c])] : list.filter((x) => x !== c));
-  const test = async (kind: Channel) => { setMsg("Sending…"); const r = await post<{ ok?: boolean; message?: string }>("/api/news/prefs", { test: kind }).catch((e) => ({ message: e instanceof Error ? e.message : String(e) })); setMsg(r.message ?? ""); };
+  const test = async (kind: Channel) => { setMsg("Sending…"); const r = await post<{ ok?: boolean; message?: string }>("/api/news/prefs", { test: kind }).catch((e) => ({ message: errorMessage(e) })); setMsg(r.message ?? ""); };
   const enablePush = async () => {
     try {
       if (!("serviceWorker" in navigator) || !("PushManager" in window)) { setMsg("This browser does not support push notifications."); return; }
@@ -90,10 +91,10 @@ export function NewsSettings() {
       await post("/api/news/push", { subscription: sub.toJSON() });
       await save({ alerts: { ...p.alerts, channels: setChannels(p.alerts.channels, "push", true) } });
       setMsg("Push is on for this browser."); reload();
-    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setMsg(errorMessage(e)); }
   };
   const saveSlack = async (clear = false) => {
-    const r = await post<{ prefs?: unknown; error?: string }>("/api/news/prefs", { prefs: p, slackWebhook: clear ? "" : slackUrl }).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+    const r = await post<{ prefs?: unknown; error?: string }>("/api/news/prefs", { prefs: p, slackWebhook: clear ? "" : slackUrl }).catch((e) => ({ error: errorMessage(e) }));
     setMsg("error" in r && r.error ? r.error : clear ? "Slack disconnected." : "Slack connected."); setSlackUrl(""); setDraft(null); reload();
   };
   const listOf = (s: string) => s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean);

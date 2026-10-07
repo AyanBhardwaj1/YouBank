@@ -20,6 +20,7 @@ import { applyRefinement, startRefine } from "./refine";
 import { finishIngest, startIngest } from "./docs/uploads";
 import { setDoc } from "./docs/store";
 import "./runtime";
+import { failureMessage } from "@/lib/errors";
 
 const asSteps = (step: unknown) => step as Steps;
 
@@ -68,7 +69,7 @@ export const docIngest = inngest.createFunction(
     const docId = Number((event.data as { docId: number }).docId);
     const first = await s.run("start", async () => {
       try { return await startIngest(docId); }
-      catch (e) { await setDoc(docId, { status: "failed", error: String((e as Error).message ?? e).slice(0, 300) }); return { done: true as const }; }
+      catch (e) { await setDoc(docId, { status: "failed", error: failureMessage(e, "edge-doc-ingest").slice(0, 300) }); return { done: true as const }; }
     });
     if ("done" in first) return { docId, done: true };
     const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: first.wait.task === "audio.transcribe" ? "60m" : "20m", if: doneFor(first.wait.callId) });

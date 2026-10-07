@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/auth/user";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MODELS, type Effort } from "@/lib/ai/models";
 import { runAsUser } from "@/lib/ai/usage";
+import { failureMessage, handled } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -15,6 +16,10 @@ const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const BUDGET_MS = Number(process.env.CHAT_BUDGET_MS) || 235_000;
 
 export async function POST(req: Request) {
+  return handled(() => chat(req));
+}
+
+async function chat(req: Request) {
   const user = await currentUser();
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const { persona, prefs } = await loadUserContext(user.id);
@@ -42,9 +47,15 @@ export async function POST(req: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       const emit = (e: unknown) => { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`)); } catch { /* closed */ } };
-      // Closing the chat stops the run between turns.
-      await runAsUser(user.id, () => runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS, feature: "terminal-ai", parallelTools: true, signal: req.signal }), { admin: isAdmin(user) });
-      controller.close();
+      // Closing the chat stops the run between turns. runChat reports its own failures as events; this
+      // catches what happens before it starts (the spend check, the run slot), so the stream still ends
+      // with a message instead of a dropped connection.
+      try {
+        await runAsUser(user.id, () => runChat({ messages, context, emit, prefs, override, deadline: Date.now() + BUDGET_MS, feature: "terminal-ai", parallelTools: true, signal: req.signal }), { admin: isAdmin(user) });
+      } catch (e) {
+        emit({ type: "error", message: failureMessage(e, "ai-chat") });
+      }
+      try { controller.close(); } catch { /* the reader left */ }
     },
   });
   return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" } });

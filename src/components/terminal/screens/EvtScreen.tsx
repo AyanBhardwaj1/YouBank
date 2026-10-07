@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Command } from "@/lib/functions";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 type Filing = { form: string; filed: string; period: string; items: string; title: string; url: string; index: string; accession: string };
 
@@ -20,7 +21,9 @@ export function EvtScreen({ ticker, onRun }: { ticker: string; onRun: (c: Comman
   const [filter, setFilter] = useState<string>("");
   useEffect(() => {
     const ctrl = new AbortController();
-    fetch(`/api/company/${ticker}/filings?limit=100`, { signal: ctrl.signal }).then((r) => r.json()).then((r) => { if (r.error) setError(r.error); else setRows(r.filings); }).catch(() => {});
+    fetchJson<{ filings: Filing[] }>(`/api/company/${ticker}/filings?limit=100`, { signal: ctrl.signal })
+      .then((r) => { setError(null); setRows(r.filings ?? []); })
+      .catch((e) => { if (!isAbort(e)) { setError(errorMessage(e)); setRows([]); } });
     return () => ctrl.abort();
   }, [ticker]);
   const list = useMemo(() => (rows ?? []).filter((f) => !filter || f.form === filter || f.form.startsWith(filter)), [rows, filter]);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ConceptMatch, ConceptSeries } from "@/lib/edgar/series";
 import { LineChart } from "@/components/charts/LineChart";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 const fmtVal = (v: number, unit: string) => (unit === "USD" ? (Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${v.toLocaleString("en-US")}`) : unit === "shares" ? `${(v / 1e6).toFixed(1)}M sh` : unit === "pure" ? v.toFixed(3) : `${v.toLocaleString("en-US")} ${unit}`);
 
@@ -19,7 +20,9 @@ export function XbrlScreen({ ticker }: { ticker: string }) {
   useEffect(() => {
     const ctrl = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/company/${ticker}/series?find=${encodeURIComponent(q || ".")}`, { signal: ctrl.signal }).then((r) => r.json()).then((r) => { if (r.error) setError(r.error); else { setError(null); setMatches(r.matches); } }).catch(() => {});
+      fetchJson<{ matches: ConceptMatch[] }>(`/api/company/${ticker}/series?find=${encodeURIComponent(q || ".")}`, { signal: ctrl.signal })
+        .then((r) => { setError(null); setMatches(r.matches ?? []); })
+        .catch((e) => { if (!isAbort(e)) { setError(errorMessage(e)); setMatches([]); } });
     }, 200);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [ticker, q]);
@@ -27,7 +30,9 @@ export function XbrlScreen({ ticker }: { ticker: string }) {
   useEffect(() => {
     if (!selected) return;
     const ctrl = new AbortController();
-    fetch(`/api/company/${ticker}/series?concepts=${encodeURIComponent(selected)}&periods=12`, { signal: ctrl.signal }).then((r) => r.json()).then((r) => setLoaded({ concept: selected, data: r.series?.[0] ?? null })).catch(() => {});
+    fetchJson<{ series?: ConceptSeries[] }>(`/api/company/${ticker}/series?concepts=${encodeURIComponent(selected)}&periods=12`, { signal: ctrl.signal })
+      .then((r) => setLoaded({ concept: selected, data: r.series?.[0] ?? null }))
+      .catch((e) => { if (!isAbort(e)) { setError(errorMessage(e)); setLoaded({ concept: selected, data: null }); } });
     return () => ctrl.abort();
   }, [ticker, selected]);
 

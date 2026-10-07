@@ -6,6 +6,7 @@ import { requireEdge } from "@/lib/edge/access";
 import { indexFilings, indexWorkspace } from "@/lib/edge/docs/sources";
 import { uploadUsage } from "@/lib/edge/docs/store";
 import { rateLimit } from "@/lib/locks";
+import { failureMessage, storedMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -32,7 +33,8 @@ export async function GET() {
       uploadUsage(user.id),
     ]);
     const view = (r: (typeof mine)[number]) => ({
-      id: r.id, source: r.source, title: r.title, url: r.url, status: r.status, error: r.error, pages: r.pages, chunks: r.chunks, lang: r.lang, durationSec: r.durationSec, mime: r.mime, fileId: r.fileId,
+      id: r.id, source: r.source, title: r.title, url: r.url, status: r.status, // Rows written before errors were screened may hold a raw message.
+      error: storedMessage(r.error, "Reading this document failed. Try adding it again."), pages: r.pages, chunks: r.chunks, lang: r.lang, durationSec: r.durationSec, mime: r.mime, fileId: r.fileId,
       ticker: r.ticker, form: r.form, createdAt: r.createdAt.toISOString(), mine: r.ownerId === user.id, shared: !!r.teamId, teamId: r.teamId,
     });
     return NextResponse.json({ docs: mine.map(view), filings: filings.map(view), usage });
@@ -49,7 +51,7 @@ export async function POST(req: Request) {
     if (body?.kind === "workspace") return NextResponse.json(await indexWorkspace(user.id, deadline));
     if (body?.kind === "sec" && body.tickers?.length) {
       const out = [];
-      for (const t of body.tickers.slice(0, 4)) out.push(await indexFilings(t.toUpperCase(), body.forms ?? [], body.months ?? 12, deadline).catch((e) => ({ error: String((e as Error).message) })));
+      for (const t of body.tickers.slice(0, 4)) out.push(await indexFilings(t.toUpperCase(), body.forms ?? [], body.months ?? 12, deadline).catch((e) => ({ error: failureMessage(e, "edge-index-filings") })));
       return NextResponse.json({ results: out });
     }
     return NextResponse.json({ error: "Say what to read." }, { status: 400 });
