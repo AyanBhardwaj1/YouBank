@@ -188,10 +188,15 @@ export const meteredFeatures = (plan: PlanId) => FEATURES.filter((f) => f.metere
 
 /** What one person on `plan` costs us in a month at `level`. */
 export function costToServe(plan: PlanId, level: Level, usage: Usage = USAGE[plan][level]): CostBreakdown {
-  const aiUncapped = unitCost(usage, (u) => u.inAiAllowance);
+  // Premium features whose spend lands in the AI ledger draw down the same allowance as everything else.
+  // At light and typical use they replace ordinary AI work the persona already does (a deep-research run
+  // instead of a dozen answers), so they add nothing there; a heavy user stacks them, and the allowance
+  // cap then bounds the total. Only costs paid outside the ledger (imagery, GPU time) add on top.
+  const premiumUse = (inAllowance: boolean) => meteredFeatures(plan).filter((f) => !!f.inAiAllowance === inAllowance).reduce((s, f) => s + (f.costPerUseUsd ?? 0) * PREMIUM_USES[level], 0);
+  const aiUncapped = unitCost(usage, (u) => u.inAiAllowance) + (level === "heavy" ? premiumUse(true) : 0);
   const ai = Math.min(aiUncapped, PLANS[plan].ai.monthlyUsd);
   const other = unitCost(usage, (u) => !u.inAiAllowance && u.area !== "infra");
-  const premium = meteredFeatures(plan).reduce((s, f) => s + (f.costPerUseUsd ?? 0) * PREMIUM_USES[level], 0);
+  const premium = premiumUse(false);
   const infra = unitCost(INFRA[level], () => true);
   const fixed = PLANS[plan].monthlyUsd || PLANS[plan].yearlyMonthlyUsd ? fixedMonthlyUsd() / PAYING_SEATS : 0;
   return { aiUncapped, ai, other, premium, infra, fixed, total: ai + other + premium + infra + fixed };

@@ -129,17 +129,28 @@ export async function exportGraph() {
 }
 
 /** Export the graph and start training on the ML service; the returned call finishes with `edge/ml.done`. */
-export async function startTraining(reason: string): Promise<{ modelId: number; version: string; callId: string } | { skipped: string }> {
+/**
+ * What a GPU retraining asks of the ML service (premium: edge.graph-gpu): twice the width, more passes
+ * and ten minutes a fit, on its graph.train.gpu task. The budget is per fit and a run fits twice (the
+ * backtest model, then the final one), so two budgets plus loading and scoring must stay inside the
+ * task's 30-minute timeout, or the paid run is cut off with nothing saved. The CPU run keeps the
+ * service's defaults.
+ */
+export const GPU_TRAINING = { hidden: 128, epochs: 120, budgetSeconds: 600 };
+
+export async function startTraining(reason: string, opts: { gpu?: boolean } = {}): Promise<{ modelId: number; version: string; callId: string } | { skipped: string }> {
   if (!mlReady() || !r2Ready()) return { skipped: "The ML service or file storage is not set up." };
   const g = await exportGraph();
   if (g.stats.deals < 8) return { skipped: `Only ${g.stats.deals} dated deals between companies so far; the model needs at least 8.` };
   const version = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const key = `graph/export-${version}.json`;
   await putJson(key, g.graph);
-  const [row] = await requireDb().insert(schema.edgeModels).values({ kind: "gnn-deals", version, status: "training", metrics: { exported: g.stats, splitDate: g.splitDate, reason } }).returning({ id: schema.edgeModels.id });
+  const [row] = await requireDb().insert(schema.edgeModels).values({ kind: "gnn-deals", version, status: "training", metrics: { exported: g.stats, splitDate: g.splitDate, reason, ...(opts.gpu ? { device: "gpu" } : {}) } }).returning({ id: schema.edgeModels.id });
   try {
     // Ask for more than are kept: candidates that are gone (acquired, delisted) or related are dropped after.
-    const callId = await mlStart("graph.train", { graphKey: key, splitDate: g.splitDate, topK: 80, seed: 0 }, `graph:${row.id}`);
+    const callId = opts.gpu
+      ? await mlStart("graph.train.gpu", { graphKey: key, splitDate: g.splitDate, topK: 80, seed: 0, ...GPU_TRAINING }, `graph:${row.id}`)
+      : await mlStart("graph.train", { graphKey: key, splitDate: g.splitDate, topK: 80, seed: 0 }, `graph:${row.id}`);
     return { modelId: row.id, version, callId };
   } catch (e) {
     await requireDb().update(schema.edgeModels).set({ status: "failed", metrics: { exported: g.stats, splitDate: g.splitDate, error: failureMessage(e, "edge-graph-train").slice(0, 300) } }).where(eq(schema.edgeModels.id, row.id));

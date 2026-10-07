@@ -10,6 +10,7 @@ import { after } from "next/server";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { runAsUser } from "@/lib/ai/context";
+import { premiumScopeById } from "@/lib/billing/use";
 import type { CurrentUser } from "@/lib/auth/user";
 import { failureMessage, logError } from "@/lib/errors";
 import { rateLimit } from "@/lib/locks";
@@ -187,6 +188,16 @@ async function saveResult(runId: number, nodeId: string, res: ExecResult, canvas
   }, canvasId);
 }
 
+/**
+ * Premium upgrades in a run: only a run someone started by pressing Run gets the ones that apply on
+ * their own (premium reranking for its document questions), and only when the canvas owner's plan
+ * includes them. Monitor and onboarding runs are scheduled work and stay on the free methods.
+ */
+function premiumForRun<T>(run: { ownerId: string; trigger: string }, fn: () => Promise<T>): Promise<T> {
+  return run.trigger === "manual" ? premiumScopeById(run.ownerId, { auto: RUN_PREMIUM }, fn) : fn();
+}
+const RUN_PREMIUM = ["edge.rerank"];
+
 async function startNode(runId: number, nodeId: string): Promise<NodeState> {
   const run = await loadRun(runId);
   const graph = run.graph as Graph;
@@ -197,7 +208,7 @@ async function startNode(runId: number, nodeId: string): Promise<NodeState> {
   if (blocked) { await setStep(runId, nodeId, { status: "skipped", summary: blocked, finishedAt: new Date() }, run.canvasId); return { status: "skipped" }; }
   await setStep(runId, nodeId, { status: "running", startedAt: new Date(), step: NODE[node.type].steps[0]?.id ?? "" }, run.canvasId);
   try {
-    const res = await runAsUser(run.ownerId, () => exec.start(ctx));
+    const res = await runAsUser(run.ownerId, () => premiumForRun(run, () => exec.start(ctx)));
     if (isWait(res)) {
       await setStep(runId, nodeId, { status: "waiting", summary: res.summary ?? "Waiting for the ML service" }, run.canvasId);
       return { status: "wait", calls: res.calls, state: res.state, timeout: res.timeout };
@@ -220,7 +231,7 @@ async function finishNode(runId: number, nodeId: string, state: unknown, done: (
   const mlCost = done.reduce((s, d) => s + (d?.costUsd ?? 0), 0);
   for (const d of done) if (d) noteMlCost(d.costUsd);
   try {
-    const res = await runAsUser(run.ownerId, () => exec.finish!(ctx, state, done));
+    const res = await runAsUser(run.ownerId, () => premiumForRun(run, () => exec.finish!(ctx, state, done)));
     await saveResult(runId, nodeId, res, run.canvasId, mlCost);
     return { status: "done" };
   } catch (e) {

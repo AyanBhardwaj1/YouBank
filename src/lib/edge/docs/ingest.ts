@@ -7,11 +7,14 @@ import { failureMessage } from "@/lib/errors";
 import { sendJob } from "../infra/jobs";
 import { mlStatus, noteMlCost } from "../infra/ml";
 import { flushUsage } from "../infra/usage";
+import { inlineSteps, premiumReadFor, runPremiumRead } from "../premium/reading";
 import { setDoc } from "./store";
 import { finishIngest, startIngest } from "./uploads";
 
 async function inline(docId: number, deadline: number) {
   try {
+    const premium = await premiumReadFor(docId);
+    if (premium && (await runPremiumRead(docId, premium, inlineSteps(deadline))) === "done") return;
     const first = await startIngest(docId);
     if ("done" in first) return;
     while (Date.now() < deadline - 15_000) {

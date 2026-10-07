@@ -13,6 +13,7 @@ import { apiError, errorMessage } from "@/lib/client/errors";
 /** A JSON fetch whose failures throw an ApiError with a message safe to show (lib/client/errors). */
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(url, init);
+  // ApiError keeps the status, so a screen can tell a plan refusal (402) from a failure.
   if (!r.ok) throw await apiError(r);
   return (await r.json().catch(() => ({}))) as T;
 }

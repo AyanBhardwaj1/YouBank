@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { isPlanError, PlanNotice } from "@/components/billing/PlanNotice";
 import {
   CATEGORY_LABEL, LOST_STAGES, STAGE_BLURB, STAGE_LABEL, isStage, stagesFor,
   type Category, type Mode, type Stage,
@@ -194,7 +195,8 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
           No AI provider is configured, so the agent cannot read or draft. Add a key in <Link href="/app/settings" className="text-accent hover:underline">Settings</Link>.
         </div>
       )}
-      {(error || notice) && (
+      {/* A premium feature the plan lacks (Autopilot, campaigns, a second mailbox) shows its plan message with a link. */}
+      {error && isPlanError(error) ? <PlanNotice error={error} className="mt-4" /> : (error || notice) && (
         <div className={`mt-4 ctl border px-3 py-2 text-[12px] ${error ? "border-neg/40 bg-neg/5 text-neg" : "border-pos/40 bg-pos/5 text-pos"}`}>{error ?? notice}</div>
       )}
 

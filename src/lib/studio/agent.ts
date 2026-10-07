@@ -4,7 +4,7 @@
  * built cell by cell. After the run the model is audited and its data tables refreshed.
  */
 import { z } from "zod";
-import { runChat, type ChatMessage } from "@/lib/ai/agent";
+import { runChat, type AgentEvent, type ChatMessage } from "@/lib/ai/agent";
 import { def, type ToolDef } from "@/lib/ai/tools";
 import { loadUserContext } from "@/lib/ai/persona";
 import { runAsUser } from "@/lib/ai/usage";
@@ -644,7 +644,8 @@ How to work
 export type RunInput = {
   user: CurrentUser; docId: number; instruction: string;
   selection?: { sheet?: string; range?: string };
-  effort?: "fast" | "balanced" | "thorough";
+  /** "deep" is premium (studio.deep-build): the route checks the plan before the run starts. */
+  effort?: "fast" | "balanced" | "thorough" | "deep";
   history?: ChatMessage[];
   emit: (e: StudioStreamEvent) => void;
   signal?: AbortSignal;
@@ -659,38 +660,49 @@ async function runStudio(o: RunInput): Promise<void> {
   const runId = newId("run");
   const s = new Session(o.docId, docData(row), runId, await lastEventId(o.docId), o.emit);
   const ctx = await loadUserContext(o.user.id);
-  const effort = o.effort === "fast" ? "low" : o.effort === "thorough" ? "high" : undefined;
+  // A deep build: maximum effort, more steps, then a review pass that fixes what the audit finds.
+  const deep = o.effort === "deep";
+  const effort = o.effort === "fast" ? "low" : o.effort === "thorough" ? "high" : deep ? "xhigh" : undefined;
   await startRun(o.docId, o.user.id, runId, o.instruction, ctx.prefs?.model ?? "");
   let model = "", text = "", failed = "";
   let thinking = "", lastNote = 0;
   const started = Date.now();
-  const volatile = `Workbook and deck right now:\n${overview(s, o.selection)}`;
+  const emit = (e: AgentEvent) => {
+    if (e.type === "text") { text += e.text; o.emit({ t: "text", text: e.text }); }
+    else if (e.type === "thinking") {
+      thinking += e.text;
+      if (Date.now() - lastNote > 900 && thinking.trim().length > 40) { o.emit({ t: "note", text: thinking.trim().slice(-280) }); thinking = ""; lastNote = Date.now(); }
+    }
+    else if (e.type === "tool") o.emit({ t: "tool", name: e.name, status: e.status, summary: e.summary });
+    else if (e.type === "status") o.emit({ t: "note", text: e.text });
+    else if (e.type === "error") { failed = e.message; o.emit({ t: "error", message: e.message }); }
+    else if (e.type === "done") model = `${e.model}${e.effort ? ` · ${e.effort}` : ""}`;
+  };
+  const pass = (messages: ChatMessage[], maxTurns: number, deadline: number, volatile: string) => runChat({
+    messages,
+    context: { ticker: "", panels: [], persona: ctx.persona },
+    system: SYSTEM,
+    volatile,
+    feature: deep ? "studio.deep-build" : "studio",
+    prefs: ctx.prefs,
+    override: effort ? { effort } : undefined,
+    tools: ["search_companies", "get_xbrl_series", "search_filing", "read_filing", "get_trading_comps", "calc"],
+    extraTools: tools(s, o.user),
+    maxTurns, deadline, signal: o.signal, emit,
+  });
   try {
-    await runChat({
-      messages: [...(o.history ?? []).slice(-6), { role: "user", content: o.instruction }],
-      context: { ticker: "", panels: [], persona: ctx.persona },
-      system: SYSTEM,
-      volatile,
-      feature: "studio",
-      prefs: ctx.prefs,
-      override: effort ? { effort } : undefined,
-      tools: ["search_companies", "get_xbrl_series", "search_filing", "read_filing", "get_trading_comps", "calc"],
-      extraTools: tools(s, o.user),
-      maxTurns: 24,
-      deadline: started + 250_000,
-      signal: o.signal,
-      emit: (e) => {
-        if (e.type === "text") { text += e.text; o.emit({ t: "text", text: e.text }); }
-        else if (e.type === "thinking") {
-          thinking += e.text;
-          if (Date.now() - lastNote > 900 && thinking.trim().length > 40) { o.emit({ t: "note", text: thinking.trim().slice(-280) }); thinking = ""; lastNote = Date.now(); }
-        }
-        else if (e.type === "tool") o.emit({ t: "tool", name: e.name, status: e.status, summary: e.summary });
-        else if (e.type === "status") o.emit({ t: "note", text: e.text });
-        else if (e.type === "error") { failed = e.message; o.emit({ t: "error", message: e.message }); }
-        else if (e.type === "done") model = `${e.model}${e.effort ? ` · ${e.effort}` : ""}`;
-      },
-    });
+    await pass([...(o.history ?? []).slice(-6), { role: "user", content: o.instruction }], deep ? 40 : 24, started + (deep ? 210_000 : 250_000), `Workbook and deck right now:\n${overview(s, o.selection)}`);
+    // The review pass of a deep build: the audit's errors go back to the agent to fix, while time allows.
+    if (deep && !o.signal?.aborted && !failed && Date.now() < started + 225_000) {
+      await s.sync();
+      const errors = auditWorkbook(s.engine).filter((i) => i.severity === "error");
+      if (errors.length) {
+        o.emit({ t: "note", text: `Review pass: fixing ${errors.length} audit error${errors.length === 1 ? "" : "s"}` });
+        text += "\n";
+        const list = errors.slice(0, 12).map((i) => `- ${s.sheetName(i.sheet)}!${i.cell}: ${i.message.slice(0, 240)}`).join("\n");
+        await pass([{ role: "user", content: o.instruction }, { role: "assistant", content: text.slice(-4000) || "Built." }, { role: "user", content: `Review your work. The model audit found these errors:\n${list}\nFix each one in the workbook, run audit_model again, and finish with what you fixed.` }], 12, started + 275_000, `Workbook and deck right now:\n${overview(s, o.selection)}`);
+      }
+    }
     // Keep derived views current: data tables, then the health check.
     await s.sync();
     if (s.stats.cells > 0 && s.doc.workbook.order.some((id) => s.doc.workbook.sheets[id].sens?.length)) await s.commit(refreshSensitivities(s.doc, s.engine), "Refreshed data tables");

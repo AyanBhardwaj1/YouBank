@@ -7,6 +7,7 @@
  */
 import { useCallback, useState } from "react";
 import { onTabKeys, tabProps } from "../tabs";
+import { DriverForecast } from "./DriverForecast";
 import { MarketTab } from "./MarketTab";
 import { CompanyTab, PracticeTab, SavedList, TablesTab } from "./OtherTabs";
 
@@ -25,7 +26,7 @@ export function ScenariosView({ tickers }: { tickers: string[] }) {
         </div>
         <p className="text-[11.5px] text-muted">Synthetic data is labeled everywhere, with its recipe and seed.</p>
       </div>
-      {tab === "market" && <MarketTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} onSaved={saved} />}
+      {tab === "market" && <><MarketTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} onSaved={saved} /><DriverForecast /></>}
       {tab === "company" && <CompanyTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} onSaved={saved} />}
       {tab === "tables" && <TablesTab onSaved={saved} />}
       {tab === "practice" && <PracticeTab onSaved={saved} />}

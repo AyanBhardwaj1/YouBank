@@ -39,3 +39,34 @@ contract every premium feature follows.
    the Plan tab list the feature by themselves.
 2. Call `requireFeature(user, "<id>")` in the route that starts it, before any paid call.
 3. Wrap the control in `PremiumGate`, or put a `PremiumBadge` beside it.
+
+## Upgrades that apply on their own, and background work
+
+Some paid upgrades are not a separate action but a better way of doing one (premium reranking under a
+question, a premium reader for an upload the person chose). They reach code far below the route, so the
+route opens a **premium scope** (`src/lib/billing/use.ts`) and the code that could spend asks
+`premiumOn(id)`:
+
+- `premiumScope(user, { auto, require }, fn)`: `require` features were asked for (a 402 if the plan lacks
+  one, before anything runs); `auto` features are used when the plan has them and silently skipped
+  otherwise, so the free method runs.
+- Outside a scope `premiumOn` is always false. Crons, monitors, Inngest passes and prefetches never open
+  one, so they keep to the free methods without each job having to say so.
+- Work a person started that continues in the background (an upload read by Inngest, a canvas run they
+  pressed Run on, a GPU retraining they asked for) re-checks their plan by id (`canUseById`,
+  `premiumScopeById`) before it spends, and never retries a paid step on its own.
+- Edge's keyed upgrades (`src/lib/edge/premium.ts`) name their feature: `paidOn(upgrade)` is "the key is
+  set and the scope holds the feature". `requireReady(feature)` answers a plain 409 when a person asks for
+  one YouBank has not set up yet.
+
+## Showing a refusal
+
+`src/components/billing/PlanNotice.tsx` shows a failed request where it happened: a plan refusal (402, or
+`requireFeature`'s message) gets a lock and a "See plans" link; anything else is a plain error line.
+`isPlanError(e)` tells them apart. Fetch helpers keep the status on the error they throw.
+
+## What the premium work registered
+
+`src/lib/billing/features/premium.ts` lists each feature with `costPerUseUsd` and `perUse` (what one use
+is, so the price can be read). The README's "Premium features" section has the same list by plan and
+where each appears.

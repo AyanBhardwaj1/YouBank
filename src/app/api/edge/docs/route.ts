@@ -24,6 +24,8 @@ export async function GET() {
     const cols = {
       id: d.id, source: d.source, title: d.title, url: d.url, status: d.status, error: d.error, pages: d.pages, chunks: d.chunks, lang: d.lang, durationSec: d.durationSec, mime: d.mime, fileId: d.fileId,
       ownerId: d.ownerId, teamId: d.teamId, createdAt: d.createdAt, ticker: sql<string>`coalesce(${d.meta}->>'ticker', '')`, form: sql<string>`coalesce(${d.meta}->>'form', '')`,
+      // Which premium reader read it, or why the one asked for did not (see premium/reading.ts).
+      readBy: sql<string>`coalesce(${d.meta}->'readBy'->>'credit', '')`, premiumNote: sql<string>`coalesce(${d.meta}->>'premiumNote', '')`,
     };
     const teams = db.select({ id: schema.teamMembers.teamId }).from(schema.teamMembers).where(eq(schema.teamMembers.userId, user.id));
     const [, mine, filings, usage] = await Promise.all([
@@ -36,6 +38,7 @@ export async function GET() {
       id: r.id, source: r.source, title: r.title, url: r.url, status: r.status, // Rows written before errors were screened may hold a raw message.
       error: storedMessage(r.error, "Reading this document failed. Try adding it again."), pages: r.pages, chunks: r.chunks, lang: r.lang, durationSec: r.durationSec, mime: r.mime, fileId: r.fileId,
       ticker: r.ticker, form: r.form, createdAt: r.createdAt.toISOString(), mine: r.ownerId === user.id, shared: !!r.teamId, teamId: r.teamId,
+      ...(r.readBy ? { readBy: r.readBy } : {}), ...(r.premiumNote ? { premiumNote: r.premiumNote } : {}),
     });
     return NextResponse.json({ docs: mine.map(view), filings: filings.map(view), usage });
   });
