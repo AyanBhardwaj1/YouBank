@@ -5,7 +5,7 @@ description = "YouBank for desktop: the YouBank site with native extras, and a l
 authors = ["YouBank"]
 license = "UNLICENSED"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.85"
 
 [lib]
 name = "youbank_desktop_lib"
@@ -41,6 +41,14 @@ walkdir = "2"
 url = "2"
 gethostname = "0.5"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+# The meeting copilot: microphone and loopback capture, and which meeting apps are running.
+cpal = "0.18"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+# PulseAudio (and PipeWire through pipewire-pulse) lists each output's monitor source, which is how
+# system audio is recorded on Linux. A pure-Rust client: no libpulse needed to build.
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.18", features = ["pulseaudio"] }
 
 [profile.release]
 codegen-units = 1

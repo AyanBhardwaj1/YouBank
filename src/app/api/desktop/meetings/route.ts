@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { guardedDesktop } from "@/lib/desktop/auth";
 import { startDesktopMeeting } from "@/lib/meetings/pipeline";
+import { getMeetingSettings, saveMeetingSettings } from "@/lib/meetings/store";
+import { requireFeature } from "@/lib/billing/entitlements";
 import { meetingList, publicMeeting } from "@/lib/meetings/views";
 
 export const dynamic = "force-dynamic";
@@ -29,5 +31,18 @@ export async function POST(req: Request) {
       contactIds: body.contactIds, dealIds: body.dealIds,
     });
     return NextResponse.json({ meeting: publicMeeting(m) });
+  }, { device: "required" });
+}
+
+/**
+ * Save the copilot settings from the desktop app ("Never for Zoom" on an offer, the Meetings section):
+ * { settings }. The same settings as on the site; turning on the notetaker's auto-join needs its plan.
+ */
+export async function PUT(req: Request) {
+  return guardedDesktop(req, async (user) => {
+    const body = (await req.json().catch(() => null)) as { settings?: unknown } | null;
+    if (!body?.settings || typeof body.settings !== "object") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if ((body.settings as { autoJoin?: unknown }).autoJoin === true && !(await getMeetingSettings(user.id)).autoJoin) await requireFeature(user, "meetings.bot");
+    return NextResponse.json(await saveMeetingSettings(user.id, body.settings));
   }, { device: "required" });
 }

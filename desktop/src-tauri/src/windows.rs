@@ -1,5 +1,7 @@
-//! The three windows: `main` (the YouBank site, or the app's own start-up, sign-in and offline
-//! screens), `quickask` (the small floating ask window) and `agent` (the desktop agent's settings).
+//! The windows: `main` (the YouBank site, or the app's own start-up, sign-in and offline screens),
+//! `quickask` (the small floating ask window), `agent` (the desktop agent's settings), and for the
+//! meeting copilot `pill` (the always-on-top recording indicator, offer and consent prompt) and
+//! `copilot` (the live transcript, brief, suggestions and ask box during a meeting).
 //!
 //! The main window only ever shows the configured site, the sign-in pages it hands off to, or the
 //! app's own pages. Every other link opens in the person's browser. The site gets exactly the three
@@ -18,6 +20,8 @@ use url::Url;
 pub const MAIN: &str = "main";
 pub const QUICK: &str = "quickask";
 pub const AGENT: &str = "agent";
+pub const PILL: &str = "pill";
+pub const COPILOT: &str = "copilot";
 
 /// The commands the website may call: keep in step with capabilities/remote.json.
 const REMOTE_COMMANDS: [&str; 3] = ["allow-desktop-info", "allow-open-quick-ask", "allow-open-agent"];
@@ -293,6 +297,63 @@ pub fn open_agent(app: &AppHandle, section: Option<String>) {
     if let Some(s) = section {
         let _ = w.emit("agent://section", s);
     }
+}
+
+/// The meeting pill: small, frameless, on top of everything, in the top right corner of the main
+/// screen. It shows the offer, the consent step, or the recording with its timer and Stop button.
+pub fn show_pill(app: &AppHandle) {
+    let w = match app.get_webview_window(PILL) {
+        Some(w) => w,
+        None => {
+            let (width, height) = (400.0, 112.0);
+            let mut b = WebviewWindowBuilder::new(app, PILL, WebviewUrl::App("pill.html".into()))
+                .title("YouBank meeting copilot")
+                .inner_size(width, height)
+                .resizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .focused(false)
+                .visible(false);
+            if let Ok(Some(m)) = app.primary_monitor() {
+                let scale = m.scale_factor();
+                let (mw, my, mx) = (m.size().width as f64 / scale, m.position().y as f64 / scale, m.position().x as f64 / scale);
+                b = b.position(mx + mw - width - 18.0, my + 44.0);
+            }
+            match b.build() {
+                Ok(w) => w,
+                Err(e) => return log::warn!("meeting pill window: {e}"),
+            }
+        }
+    };
+    let _ = w.show();
+    let _ = w.emit("meeting://changed", ());
+}
+
+pub fn hide_pill(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(PILL) {
+        let _ = w.hide();
+    }
+}
+
+/// The copilot side window: the meeting's rolling transcript, what YouBank knows about the people in it,
+/// live suggestions (when switched on), and asking about it.
+pub fn open_copilot(app: &AppHandle) {
+    let w = match app.get_webview_window(COPILOT) {
+        Some(w) => w,
+        None => match WebviewWindowBuilder::new(app, COPILOT, WebviewUrl::App("copilot.html".into()))
+            .title("Meeting copilot")
+            .inner_size(420.0, 760.0)
+            .min_inner_size(340.0, 420.0)
+            .build()
+        {
+            Ok(w) => w,
+            Err(e) => return log::warn!("copilot window: {e}"),
+        },
+    };
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
 }
 
 #[cfg(test)]

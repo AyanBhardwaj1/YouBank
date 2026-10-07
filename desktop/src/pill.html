@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>YouBank meeting copilot</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* The meeting pill: always on top, small. It offers the copilot when a call starts, asks for consent
+       before recording, and while recording shows a red dot, the time and Stop. */
+    body { height: 100vh; overflow: hidden; background: var(--panel); }
+    #pill { height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 10px 12px;
+      border: 1px solid var(--line); cursor: grab; }
+    #pill p { margin: 0; font-size: 12px; }
+    .rec { width: 10px; height: 10px; border-radius: 50%; background: #e23440; flex: none; animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+    .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .btn { padding: 4px 10px; font-size: 12px; }
+    .note { color: var(--warn); }
+  </style>
+</head>
+<body>
+  <div id="pill" data-tauri-drag-region></div>
+  <script type="module" src="pill.js"></script>
+</body>
+</html>

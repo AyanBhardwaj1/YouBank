@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meeting copilot</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; }
+    header { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    main { flex: 1; overflow-y: auto; padding: 12px 14px 20px; }
+    section { margin-bottom: 16px; }
+    section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 6px; }
+    .line { font-size: 12.5px; margin: 0 0 6px; }
+    .seg { font-size: 12.5px; margin: 0 0 6px; }
+    .seg .who { font-weight: 600; margin-right: 6px; }
+    .seg .who.me { color: var(--accent); }
+    .seg .t { color: var(--muted); font-size: 10.5px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-size: 11.5px; margin: 0 4px 4px 0; }
+    .rec { width: 9px; height: 9px; border-radius: 50%; background: #e23440; display: inline-block; }
+    #transcript { max-height: 40vh; overflow-y: auto; }
+    ul.tight li { font-size: 12.5px; }
+  </style>
+</head>
+<body>
+  <header id="head"></header>
+  <main id="view"></main>
+  <script type="module" src="copilot.js"></script>
+</body>
+</html>

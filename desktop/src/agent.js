@@ -11,7 +11,7 @@ let progress = null; // { done, total, name }
 let docs = null; // Studio documents, once loaded
 const pending = {}; // per-row inline confirmations and answers
 
-const FREE_TIERS = { "desktop.folders": "Pro", "desktop.background_ai": "Pro", "desktop.office_agent": "Pro" };
+const FREE_TIERS = { "desktop.folders": "Pro", "desktop.background_ai": "Pro", "desktop.office_agent": "Pro", "meetings.live": "Pro", "meetings.bot": "Pro", "meetings.notes": "Pro" };
 
 const unlocked = (id) => !!st?.account?.unlocked?.includes(id);
 const premium = (id) => (unlocked(id) ? null : h("span", { class: "badge", title: "Part of a paid plan" }, FREE_TIERS[id] ?? "Pro"));
@@ -292,6 +292,7 @@ function alerts() {
     row("Edge findings and other alerts", "Big changes at the companies and places you watch, and the alerts you set up in the Newsroom.", n.alerts, (s, v) => { s.notifications.alerts = v; }),
     row("Questions from your email agent", "When it needs something only you know before it can finish a reply.", n.questions, (s, v) => { s.notifications.questions = v; }),
     row("News about deals in your pipeline", "A finding or filing about a company in a deal you are tracking.", n.deals, (s, v) => { s.notifications.deals = v; }),
+    row("Meeting notes ready", "Notes from the notetaker, or from a meeting recorded on another computer. Meetings recorded here always tell you.", n.meetings, (s, v) => { s.notifications.meetings = v; }),
     h("div", { class: "row", style: "margin-top: 10px" },
       h("span", { class: "grow" }, "Check every ",
         h("select", { onchange: (e) => save((s) => { s.notifications.everyMinutes = Number(e.target.value); }) },
@@ -331,6 +332,73 @@ function tasks() {
   return out;
 }
 
+/* ---------------- Meetings ---------------- */
+
+let meet = null; // meeting_state, with the site's copilot settings and recent meetings
+let meetDraft = null; // edits to the site's copilot settings, until saved
+
+const APPS = [["zoom", "Zoom"], ["teams", "Microsoft Teams"], ["meet", "Google Meet"], ["webex", "Webex"], ["slack", "Slack huddles"]];
+const STATUS = { joining: "Notetaker joining", live: "Recording", processing: "Writing notes", ready: "Notes ready", failed: "Failed", cancelled: "Stopped" };
+
+async function loadMeetings(fresh) {
+  if (fresh && st.connected) await invoke("meeting_refresh").catch((e) => toast(String(e), true));
+  meet = await invoke("meeting_state");
+  if (section === "meetings") render();
+}
+
+function meetings() {
+  const s = st.settings;
+  const out = [h("h1", null, "Meetings"), h("p", { class: "muted" }, "The meeting copilot listens to your calls and files what it learns into Relationships: a summary, decisions, action items, how each person came across, follow-up drafts, and proposed updates to your deals that you accept or reject.")];
+  if (!st.connected) return [...out, needConnect()];
+  if (!s.consents.meetings) {
+    return [...out, consent("meetings", "Before you turn this on", [
+      "Nothing is recorded until you start it. When a Zoom, Teams, Meet, Webex or Slack call begins, YouBank can offer to start; you choose.",
+      "Before each recording it reminds you that some places require everyone's consent to record a call, and offers a notice you can paste in the meeting chat.",
+      "While it records, the tray icon shows a red dot and a small window on top of your screen shows the time and a Stop button.",
+      "It records your microphone and, where the system allows, what your computer plays (the other side of the call). Audio goes to YouBank in pieces of about 30 seconds to be transcribed, and is deleted as soon as it is; YouBank never keeps it.",
+      "Capture and transcripts are free. Notes for the first few meetings each month are free; more, live suggestions during a call and the notetaker bot are part of the Pro plan.",
+      "Apps and words you choose are never recorded. Stop and delete throws a recording away.",
+    ], "Turn on the meeting copilot")];
+  }
+  if (!meet) { void loadMeetings(true); return [...out, h("p", { class: "muted" }, "Loading…")]; }
+  const m = s.meetings;
+  const server = meet.server ?? {};
+  const set = (k, v) => save((n) => { n.meetings[k] = v; });
+  out.push(h("div", { class: "panel stack" },
+    h("div", { class: "row wrap" }, h("span", { class: "grow" }, "Meeting copilot ", toggle(m.enabled, (v) => set("enabled", v))),
+      meet.session ? h("span", { class: "neg" }, "Recording now") : h("button", { class: "btn primary", disabled: !m.enabled, onclick: () => run("meeting_prompt", { platform: null, title: null }) }, "Start the copilot now")),
+    h("label", { class: "row" }, toggle(m.detect, (v) => set("detect", v)), "Notice meeting calls and offer to start"),
+    h("label", { class: "row" }, toggle(m.systemAudio, (v) => set("systemAudio", v)), "Record what my computer plays, not only my microphone (needed with headphones)"),
+    h("label", { class: "row" }, toggle(m.openCopilot, (v) => set("openCopilot", v)), "Open the copilot window when recording starts"),
+    h("label", { class: "row" }, toggle(m.keepAudio, (v) => set("keepAudio", v)), "Keep a copy of the audio on this computer (Documents/YouBank/Meetings)"),
+    server.capture === false ? h("p", { class: "small neg" }, "Transcription is not set up on this YouBank yet, so recording is not possible.") : null,
+    st.platform === "macos" ? h("p", { class: "small muted" }, "On macOS, recording what the computer plays needs macOS 14.2 or later; the first time, allow YouBank under System Settings → Privacy & Security → Screen & System Audio Recording.") : null));
+
+  const d = meetDraft ?? structuredClone(server.settings ?? {});
+  meetDraft = d;
+  const checks = (key, exclude = []) => h("div", { class: "row wrap" }, APPS.filter(([id]) => !exclude.includes(id)).map(([id, label]) => h("label", { class: "row small" },
+    h("input", { type: "checkbox", checked: (d[key] ?? []).includes(id), onchange: (e) => { d[key] = e.target.checked ? [...(d[key] ?? []), id] : (d[key] ?? []).filter((x) => x !== id); render(); } }), label)));
+  out.push(h("h2", { style: "margin-top: 18px" }, "Consent and rules"), h("div", { class: "panel stack" },
+    h("div", null, h("div", null, "Notice to paste in the meeting chat"), h("textarea", { rows: 3, style: "width: 100%; margin-top: 4px", oninput: (e) => { d.noticeText = e.target.value; } }, d.noticeText ?? "")),
+    h("div", null, h("div", null, "Never record"), checks("neverApps")),
+    h("div", null, h("div", null, "Never record meetings that mention (separated by commas)"),
+      h("input", { type: "text", style: "width: 100%; margin-top: 4px", value: (d.neverKeywords ?? []).join(", "), oninput: (e) => { d.neverKeywords = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); } })),
+    h("div", null, h("div", null, "Start without asking for"), h("p", { class: "small muted" }, "Off by default. The red dot and the Stop button still show. Only where you always have consent."), checks("autoStartApps", d.neverApps ?? [])),
+    h("div", { class: "row" }, h("button", { class: "btn primary", onclick: async () => { const r = await run("meeting_server_settings", { settings: d }, "Saved for all your computers."); if (r) { meetDraft = null; await loadMeetings(false); } } }, "Save"),
+      h("span", { class: "small muted" }, "These apply on every computer. Retention, notes and the notetaker are set on the site, in Relationships → Meetings."))));
+
+  const notes = server.notes;
+  out.push(h("h2", { style: "margin-top: 18px" }, "Recent meetings"), h("div", { class: "panel" },
+    notes ? h("p", { class: "small muted" }, notes.unlimited ? "Notes for every meeting on your plan." : `${Math.max(0, notes.free - notes.used)} of ${notes.free} free meeting notes left this month. `, notes.unlimited ? null : premium("meetings.notes")) : null,
+    (server.meetings ?? []).length
+      ? (server.meetings ?? []).slice(0, 12).map((x) => h("div", { class: "item" },
+        h("div", { class: "grow" }, h("strong", null, x.title || "Untitled meeting"), h("div", { class: "small muted" }, `${new Date(x.startedAt).toLocaleString()} · ${STATUS[x.status] ?? x.status}`)),
+        h("button", { class: "btn", onclick: () => invoke("open_site", { path: `/app/crm?tab=meetings&meeting=${x.id}` }) }, "Open notes")))
+      : h("p", { class: "muted" }, "No meetings yet."),
+    h("div", { class: "row", style: "margin-top: 8px" }, h("button", { class: "btn", onclick: () => loadMeetings(true) }, "Refresh"), h("button", { class: "btn", onclick: () => invoke("open_copilot") }, "Open the copilot window"))));
+  return out;
+}
+
 /* ---------------- App ---------------- */
 
 function app() {
@@ -362,7 +430,7 @@ function app() {
 
 /* ---------------- Shell ---------------- */
 
-const SECTIONS = { account, files, office, alerts, tasks, app };
+const SECTIONS = { account, files, office, alerts, tasks, meetings, app };
 
 function render() {
   if (!st) return;
@@ -386,6 +454,7 @@ listen("state://changed", refresh);
 listen("files://changed", () => { if (section === "files") render(); });
 listen("office://changed", () => { if (section === "office") render(); });
 listen("files://progress", (p) => { progress = p.done >= p.total ? null : p; if (section === "files") render(); });
+listen("meeting://changed", () => { if (section === "meetings") void loadMeetings(false); });
 listen("pair://done", (who) => { pairing = null; toast(`Connected${who ? ` as ${who}` : ""}.`); void refresh(); });
 listen("pair://expired", () => { pairing = null; toast("That code expired. Choose Connect for a new one.", true); render(); });
 listen("pair://failed", (m) => { pairing = null; toast(m, true); render(); });

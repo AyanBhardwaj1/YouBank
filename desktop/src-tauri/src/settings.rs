@@ -1,6 +1,6 @@
 //! The app's own settings, kept as JSON in the app's config folder. Everything that reaches beyond the
-//! window (folders, Office files, alerts, scheduled tasks) starts off and is switched on by the person,
-//! with a consent screen recorded in `consents`.
+//! window (folders, Office files, alerts, scheduled tasks, the meeting copilot) starts off and is
+//! switched on by the person, with a consent screen recorded in `consents`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -27,7 +27,8 @@ pub struct Settings {
     pub files: FilesSettings,
     pub office: OfficeSettings,
     pub tasks: Tasks,
-    /// What the person agreed to, and when (ISO time): "files", "office", "alerts", "tasks".
+    pub meetings: MeetingsSettings,
+    /// What the person agreed to, and when (ISO time): "files", "office", "alerts", "tasks", "meetings".
     pub consents: BTreeMap<String, String>,
 }
 
@@ -43,6 +44,7 @@ impl Default for Settings {
             files: FilesSettings::default(),
             office: OfficeSettings::default(),
             tasks: Tasks::default(),
+            meetings: MeetingsSettings::default(),
             consents: BTreeMap::new(),
         }
     }
@@ -54,19 +56,21 @@ pub struct Notifications {
     pub alerts: bool,
     pub questions: bool,
     pub deals: bool,
+    /// Meeting notes ready (from the notetaker, or a meeting captured on another computer).
+    pub meetings: bool,
     /// How often to check, in minutes (at least 2; the server limits it too).
     pub every_minutes: u32,
 }
 
 impl Default for Notifications {
     fn default() -> Self {
-        Self { alerts: false, questions: false, deals: false, every_minutes: 5 }
+        Self { alerts: false, questions: false, deals: false, meetings: false, every_minutes: 5 }
     }
 }
 
 impl Notifications {
     pub fn any(&self) -> bool {
-        self.alerts || self.questions || self.deals
+        self.alerts || self.questions || self.deals || self.meetings
     }
 }
 
@@ -93,6 +97,29 @@ pub struct OfficeSettings {
     pub folder: String,
     /// Push a linked workbook to Studio as soon as it is saved, instead of asking first.
     pub auto_push: bool,
+}
+
+/// What the meeting copilot does on this computer. The rest (consent notice, apps and words never to
+/// record, auto-start, retention, notes) is kept on YouBank so every computer follows it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MeetingsSettings {
+    /// The copilot may be used on this computer (its consent screen was accepted).
+    pub enabled: bool,
+    /// Notice Zoom, Teams, Meet, Webex and Slack huddles and offer to start.
+    pub detect: bool,
+    /// Record what the computer plays (the other side), not only the microphone.
+    pub system_audio: bool,
+    /// Keep a copy of the audio on this computer (Documents/YouBank/Meetings). YouBank never keeps it.
+    pub keep_audio: bool,
+    /// Open the copilot window when a recording starts.
+    pub open_copilot: bool,
+}
+
+impl Default for MeetingsSettings {
+    fn default() -> Self {
+        Self { enabled: false, detect: true, system_audio: true, keep_audio: false, open_copilot: false }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -241,7 +268,8 @@ mod tests {
     #[test]
     fn defaults_are_off() {
         let s = Settings::default();
-        assert!(!s.files.enabled && !s.office.enabled && !s.notifications.any());
+        assert!(!s.files.enabled && !s.office.enabled && !s.notifications.any() && !s.meetings.enabled);
+        assert!(s.meetings.detect && s.meetings.system_audio && !s.meetings.keep_audio);
         assert!(!s.tasks.edge_brief.on && !s.tasks.watch_check.on);
         assert!(s.close_to_tray);
     }

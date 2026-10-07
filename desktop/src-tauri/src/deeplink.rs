@@ -73,7 +73,9 @@ pub fn parse(raw: &str) -> Option<Link> {
         "news" => open("/app/news"),
         "crm" => open("/app/crm"),
         "settings" => open("/app/settings"),
-        "agent" => Some(Link::Agent(rest.first().filter(|s| ["account", "files", "office", "alerts", "tasks", "app"].contains(&s.as_str())).cloned())),
+        "agent" => {
+            Some(Link::Agent(rest.first().filter(|s| ["account", "files", "office", "alerts", "tasks", "meetings", "app"].contains(&s.as_str())).cloned()))
+        }
         "ask" => Some(Link::Ask(query("q").unwrap_or_default().chars().take(2000).collect())),
         "open" => Some(Link::Open(query("path").as_deref().and_then(safe_app_path).unwrap_or_else(|| "/app".into()))),
         _ => open("/app"),

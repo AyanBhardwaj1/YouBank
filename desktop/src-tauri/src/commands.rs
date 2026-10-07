@@ -5,7 +5,7 @@
 use crate::api::ApiError;
 use crate::settings::{Folder, Settings};
 use crate::state::{self, AppState};
-use crate::{alerts, ask, deeplink, files, office, pairing, tasks, updater, windows};
+use crate::{alerts, ask, deeplink, files, meetings, office, pairing, tasks, updater, windows};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, State};
@@ -36,7 +36,7 @@ pub fn open_quick_ask(app: AppHandle) {
 
 #[tauri::command]
 pub fn open_agent(app: AppHandle, section: Option<String>) {
-    let section = section.filter(|s| ["account", "files", "office", "alerts", "tasks", "app"].contains(&s.as_str()));
+    let section = section.filter(|s| ["account", "files", "office", "alerts", "tasks", "meetings", "app"].contains(&s.as_str()));
     windows::open_agent(&app, section);
 }
 
@@ -102,6 +102,9 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Res<Settings> 
             s.notifications.questions = false;
             s.notifications.deals = false;
         }
+        if !agreed("meetings") {
+            s.meetings.enabled = false;
+        }
         if !agreed("tasks") {
             s.tasks.morning_brief.on = false;
             s.tasks.autopilot_status.on = false;
@@ -127,10 +130,10 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Res<Settings> 
     Ok(next)
 }
 
-/// The person agreed to a consent screen ("files", "office", "alerts", "tasks"): record when, and switch it on.
+/// The person agreed to a consent screen ("files", "office", "alerts", "tasks", "meetings"): record when, and switch it on.
 #[tauri::command]
 pub fn accept_consent(app: AppHandle, what: String) -> Res<Settings> {
-    if !["files", "office", "alerts", "tasks"].contains(&what.as_str()) {
+    if !["files", "office", "alerts", "tasks", "meetings"].contains(&what.as_str()) {
         return Err("Unknown setting".into());
     }
     let state = app.state::<AppState>();
@@ -139,6 +142,7 @@ pub fn accept_consent(app: AppHandle, what: String) -> Res<Settings> {
         match what.as_str() {
             "files" => s.files.enabled = true,
             "office" => s.office.enabled = true,
+            "meetings" => s.meetings.enabled = true,
             _ => {}
         }
     })?;
@@ -420,6 +424,146 @@ pub async fn check_update(app: AppHandle) -> Res<Option<String>> {
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Res<()> {
     updater::install(&app).await
+}
+
+/* ---------------- The meeting copilot ---------------- */
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingView {
+    enabled: bool,
+    connected: bool,
+    session: Option<meetings::Session>,
+    prompt: Option<meetings::Prompt>,
+    /// The site's copilot settings, plan and recent meetings, as last fetched.
+    server: serde_json::Value,
+}
+
+#[tauri::command]
+pub fn meeting_state(app: AppHandle) -> MeetingView {
+    let state = app.state::<AppState>();
+    let session = state.meetings.session.lock().unwrap().clone();
+    let prompt = state.meetings.prompt.lock().unwrap().clone();
+    let server = state.meetings.server.lock().unwrap().0.clone();
+    MeetingView { enabled: state.settings().meetings.enabled, connected: state.connected(), session, prompt, server }
+}
+
+/// Show the consent step in the pill ("Start the copilot" from a page, or Start on an offer).
+#[tauri::command]
+pub fn meeting_prompt(app: AppHandle, platform: Option<String>, title: Option<String>) -> Res<()> {
+    let state = app.state::<AppState>();
+    if !state.settings().meetings.enabled {
+        windows::open_agent(&app, Some("meetings".into()));
+        return Err("Turn on the meeting copilot first.".into());
+    }
+    if state.meetings.session.lock().unwrap().is_some() {
+        windows::show_pill(&app);
+        return Ok(());
+    }
+    meetings::ask_consent(&app, platform.map(|p| (p, title.unwrap_or_default())));
+    Ok(())
+}
+
+/// Start recording, after the consent step.
+#[tauri::command]
+pub async fn meeting_start(app: AppHandle, args: meetings::StartArgs) -> Res<meetings::Session> {
+    meetings::start(&app, args).await
+}
+
+#[tauri::command]
+pub async fn meeting_stop(app: AppHandle, discard: bool) -> Res<()> {
+    meetings::stop(&app, discard).await
+}
+
+/// Not now (for this call), or never for this app.
+#[tauri::command]
+pub async fn meeting_dismiss(app: AppHandle, never: bool) -> Res<()> {
+    meetings::dismiss(&app, never).await
+}
+
+#[tauri::command]
+pub async fn meeting_refresh(app: AppHandle) -> Res<serde_json::Value> {
+    meetings::refresh(&app).await.map(|v| v.0).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn meeting_server_settings(app: AppHandle, settings: serde_json::Value) -> Res<serde_json::Value> {
+    meetings::save_server_settings(&app, settings).await
+}
+
+fn current_meeting(app: &AppHandle, id: Option<i64>) -> Res<i64> {
+    id.filter(|n| *n > 0)
+        .or_else(|| app.state::<AppState>().meetings.session.lock().unwrap().as_ref().map(|s| s.id))
+        .ok_or_else(|| "No meeting is being recorded.".to_string())
+}
+
+async fn call(app: &AppHandle, f: impl std::future::Future<Output = Result<serde_json::Value, ApiError>>) -> Res<serde_json::Value> {
+    f.await.inspect_err(|e| state::on_error(app, e)).map_err(|e| e.to_string())
+}
+
+/// Live suggestions on or off for the meeting being recorded (the server checks the plan).
+#[tauri::command]
+pub async fn meeting_live(app: AppHandle, on: bool) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, None)?;
+    let api = app.state::<AppState>().api();
+    call(&app, api.put(&format!("/api/desktop/meetings/{id}/live"), &serde_json::json!({ "on": on }))).await
+}
+
+#[tauri::command]
+pub async fn meeting_suggest(app: AppHandle) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, None)?;
+    let api = app.state::<AppState>().api();
+    call(&app, api.post(&format!("/api/desktop/meetings/{id}/live"), &serde_json::json!({}))).await
+}
+
+#[tauri::command]
+pub async fn meeting_brief(app: AppHandle, id: Option<i64>, fresh: Option<bool>) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, id)?;
+    let api = app.state::<AppState>().api();
+    call(&app, api.get(&format!("/api/desktop/meetings/{id}/brief{}", if fresh.unwrap_or(false) { "?fresh=1" } else { "" }))).await
+}
+
+#[tauri::command]
+pub async fn meeting_tail(app: AppHandle, id: Option<i64>) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, id)?;
+    let api = app.state::<AppState>().api();
+    call(&app, api.get(&format!("/api/desktop/meetings/{id}?tail=1"))).await
+}
+
+#[tauri::command]
+pub async fn meeting_ask(app: AppHandle, question: String, id: Option<i64>) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, id)?;
+    let api = app.state::<AppState>().api();
+    call(&app, api.post(&format!("/api/desktop/meetings/{id}/ask"), &serde_json::json!({ "question": question }))).await
+}
+
+#[tauri::command]
+pub async fn meeting_search(app: AppHandle, q: String) -> Res<serde_json::Value> {
+    let api = app.state::<AppState>().api();
+    let query = url::form_urlencoded::Serializer::new(String::new()).append_pair("q", q.trim()).finish();
+    call(&app, api.get(&format!("/api/desktop/meetings/search?{query}"))).await
+}
+
+/// Say who and what the meeting is about (picked contacts and deals), or rename it.
+#[tauri::command]
+pub async fn meeting_link(app: AppHandle, contact_ids: Vec<i64>, deal_ids: Vec<i64>, title: Option<String>) -> Res<serde_json::Value> {
+    let id = current_meeting(&app, None)?;
+    let api = app.state::<AppState>().api();
+    let mut body = serde_json::json!({ "contactIds": contact_ids, "dealIds": deal_ids });
+    if let Some(t) = title {
+        body["title"] = serde_json::Value::String(t);
+    }
+    call(&app, api.patch(&format!("/api/desktop/meetings/{id}"), &body)).await
+}
+
+#[tauri::command]
+pub fn open_copilot(app: AppHandle) {
+    windows::open_copilot(&app);
+}
+
+#[tauri::command]
+pub fn hide_pill(app: AppHandle) {
+    windows::hide_pill(&app);
 }
 
 /// Act on a youbank:// link (from the system, a second launch or the tray).
