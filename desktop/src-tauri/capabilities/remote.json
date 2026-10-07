@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "remote-site",
+  "description": "What the YouBank website may ask of the app when it is loaded in the main window: its version and whether it is connected, opening quick ask, and opening the desktop agent's settings. No file, shell, keychain or network access. A custom site address (settings or YOUBANK_URL) gets this same list at start-up (src/windows.rs).",
+  "windows": [
+    "main"
+  ],
+  "local": false,
+  "remote": {
+    "urls": [
+      "https://youbank-nu.vercel.app/*"
+    ]
+  },
+  "permissions": [
+    "allow-desktop-info",
+    "allow-open-quick-ask",
+    "allow-open-agent"
+  ]
+}

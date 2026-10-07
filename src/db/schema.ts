@@ -1366,3 +1366,58 @@ export const cryptoNotarizations = pgTable("crypto_notarizations", {
   confirmedAt: ts("confirmed_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("crypto_notarizations_user_tx_uq").on(t.userId, t.chain, t.txHash), index("crypto_notarizations_user_idx").on(t.userId, t.createdAt), index("crypto_notarizations_sha_idx").on(t.sha256)]);
+
+/* ---------------- The desktop app ---------------- */
+
+/**
+ * A desktop app asking to connect, the same device-code flow as the Office add-in: the app shows the
+ * code, the signed-in person approves it, and the app (holding the poll secret) collects its token once.
+ */
+export const desktopPairings = pgTable("desktop_pairings", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  pollHash: text("poll_hash").notNull(),
+  platform: text("platform").notNull().default(""), // windows | macos | linux
+  name: text("name").notNull().default(""),
+  userId: text("user_id"),
+  token: text("token"),
+  approvedAt: ts("approved_at"),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("desktop_pairings_code_uidx").on(t.code), uniqueIndex("desktop_pairings_poll_uidx").on(t.pollHash)]);
+
+/**
+ * A connected desktop app. Only the token's hash is stored; revoking cuts it off at once. `settings`
+ * holds which scheduled tasks the person turned on for this computer: the server refuses a scheduled
+ * task that spends AI money unless it is switched on here, whatever the app sends.
+ */
+export const desktopDevices = pgTable("desktop_devices", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  name: text("name").notNull().default(""),
+  platform: text("platform").notNull().default(""),
+  appVersion: text("app_version").notNull().default(""),
+  settings: jsonb("settings").$type<{ tasks?: Record<string, boolean> }>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastUsedAt: ts("last_used_at"),
+  revokedAt: ts("revoked_at"),
+}, (t) => [uniqueIndex("desktop_devices_token_uidx").on(t.tokenHash), index("desktop_devices_user_idx").on(t.userId)]);
+
+/**
+ * Local files a desktop app indexed into Edge documents. The path never leaves the computer: `pathKey`
+ * is a hash of it, so the server can tell "this file changed" from "a new file" without knowing where
+ * it lives. `sha256` is the content hash; an unchanged file is never uploaded twice.
+ */
+export const desktopFiles = pgTable("desktop_files", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  deviceId: integer("device_id").notNull(),
+  pathKey: text("path_key").notNull(),
+  name: text("name").notNull().default(""),
+  sha256: text("sha256").notNull(),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  docId: integer("doc_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("desktop_files_path_uidx").on(t.userId, t.deviceId, t.pathKey), index("desktop_files_user_sha_idx").on(t.userId, t.sha256)]);

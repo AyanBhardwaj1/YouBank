@@ -1,0 +1,173 @@
+# YouBank for desktop: build the installers for Windows, macOS (universal) and Linux and put them in a
+# draft GitHub Release, with the signed updater manifest (latest.json) when the update key is set.
+#
+#   Release:  git tag desktop-v0.2.0 && git push origin desktop-v0.2.0   (the version comes from the tag)
+#   Manually: Actions → Desktop → Run workflow (uses the version in desktop/src-tauri/tauri.conf.json)
+#
+# The draft release is published by hand after a look at it. Signing is optional; see desktop/README.md
+# for every secret. Without them the installers are unsigned and the app does not update itself.
+
+name: Desktop
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+
+# Read-only by default (pull requests, including from forks, run `check` with this); only the release
+# build, which never runs for a pull request, may write the draft release.
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Fast checks on pull requests that touch the app: formatting, lints, unit tests, the pages' scripts.
+  check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Linux libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev libssl-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Pages
+        run: node desktop/scripts/check-frontend.js
+      - name: Rust
+        working-directory: desktop/src-tauri
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+  build:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY || secrets.TAURI_UPDATER_PUBKEY }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev libssl-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - name: Install the Tauri CLI
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Version from the tag
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#desktop-v}"
+          node -e 'const f="desktop/src-tauri/tauri.conf.json",fs=require("fs"),c=JSON.parse(fs.readFileSync(f));c.version=process.argv[1];fs.writeFileSync(f,JSON.stringify(c,null,2)+"\n")' "$v"
+
+      # Windows code signing (optional): import the .pfx and sign with its thumbprint.
+      - name: Windows certificate
+        id: wincert
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $pw = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pw
+          "thumbprint=$($cert.Thumbprint)" >> $env:GITHUB_OUTPUT
+
+      # What this build adds to tauri.conf.json: the updater key and its artifacts when the signing key is
+      # set, and the Windows signing certificate when there is one.
+      - name: Build settings
+        shell: bash
+        env:
+          WIN_THUMBPRINT: ${{ steps.wincert.outputs.thumbprint }}
+        run: |
+          node -e '
+            const c = {};
+            const e = process.env;
+            if (e.TAURI_SIGNING_PRIVATE_KEY && e.TAURI_UPDATER_PUBKEY) {
+              c.bundle = { createUpdaterArtifacts: true };
+              c.plugins = { updater: { pubkey: e.TAURI_UPDATER_PUBKEY } };
+            } else {
+              console.log("No updater key: this build will not update itself.");
+            }
+            if (e.WIN_THUMBPRINT) {
+              c.bundle = { ...(c.bundle || {}), windows: { certificateThumbprint: e.WIN_THUMBPRINT, digestAlgorithm: "sha256", timestampUrl: "http://timestamp.digicert.com" } };
+            }
+            require("fs").writeFileSync("desktop/src-tauri/ci.conf.json", JSON.stringify(c, null, 2));
+          '
+          cat desktop/src-tauri/ci.conf.json
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing and notarization (optional); tauri imports the certificate itself.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: desktop
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }} --config ${{ github.workspace }}/desktop/src-tauri/ci.conf.json
+          tagName: ${{ startsWith(github.ref, 'refs/tags/desktop-v') && github.ref_name || 'desktop-v__VERSION__' }}
+          releaseName: YouBank for desktop __VERSION__
+          releaseBody: |
+            YouBank for Windows, macOS and Linux. Download from https://youbank-nu.vercel.app/download or pick your installer below:
+            - Windows: the .exe installer (or the .msi for IT deployment)
+            - macOS: the .dmg (one app for Apple silicon and Intel)
+            - Linux: the .AppImage, or the .deb for Ubuntu and Debian
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true

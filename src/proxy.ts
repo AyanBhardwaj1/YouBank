@@ -34,5 +34,5 @@ export default async function proxy(req: NextRequest, ...rest: unknown[]) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/onboarding/:path*", "/api/((?!auth/|cron/|health|market/health|office/pair/|inngest|billing/webhook$).*)"],
+  matcher: ["/app/:path*", "/onboarding/:path*", "/api/((?!auth/|cron/|health|market/health|office/pair/|desktop/pair/start|desktop/pair/poll|inngest|billing/webhook$).*)"],
 };

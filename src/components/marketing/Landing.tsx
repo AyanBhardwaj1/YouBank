@@ -515,6 +515,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             <span>Data: SEC EDGAR, Financial Modeling Prep, Y Combinator, a16z, Show HN, Wikipedia.</span>
             <span>Not investment advice. Figures are derived from public filings and may be restated.</span>
             <LegalLinks className="ml-auto" />
+            <Link href="/download" className="hover:text-fg">Desktop app</Link>
             <Link href="/sign-in" className="hover:text-fg">Sign in →</Link>
           </div>
           <p className="text-[10.5px] leading-relaxed">

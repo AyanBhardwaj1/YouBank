@@ -38,6 +38,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
    - [Teams and live collaboration](#teams-and-live-collaboration)
+   - [YouBank for desktop](#youbank-for-desktop)
    - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
@@ -1092,6 +1093,36 @@ Graduation offers appear at the top of the queue.
   - Presence is a heartbeat with a 25-second window.
   - A session shared with a team is open to that team; an unshared one stays with whoever started it.
 
+### YouBank for desktop
+
+A desktop app for Windows, macOS and Linux (Tauri v2, in `desktop/`; its own README covers building,
+releasing and signing). Download it from `/download`, which picks the installer for the visitor's system
+from the latest `desktop-v*` GitHub Release and says in plain words what the app may touch.
+
+- **The site in its own window**, with a tray menu, native notifications, `youbank://` links (a ticker, a
+  deal, a Studio document, a quick ask question), one instance at a time, a remembered window, an offline
+  screen that retries, and updates from GitHub Releases.
+- **Quick ask** from any app on a global hotkey (Ctrl+Shift+Space, ⌘⇧Space on a Mac): the terminal's
+  assistant in a small floating window, on the same daily AI allowance.
+- **A local agent**, each part off until the person agrees to a screen saying what it does:
+  - **Local files.** Folders of CIMs, models and memos become Edge documents. Files are fingerprinted on
+    the computer and only new or changed ones are uploaded; the server gets a hash of each path, never
+    the path. The first 25 files are free; more need Pro (`desktop.folders`).
+  - **Excel and PowerPoint.** Pull a Studio model as a real `.xlsx` (or a deck as `.pptx`); a saved
+    workbook goes back to Studio as one undoable change ("Synced from desktop: 14 cells"), through the
+    same diff as the Excel add-in, and is refused if Studio moved on meanwhile. AI edits to a local file
+    (Pro, `desktop.office_agent`) run the Studio agent and write the result back, keeping a backup.
+  - **Alerts.** Edge findings and other bell alerts, the email agent's questions and news about pipeline
+    deals, polled every few minutes (read only).
+  - **Scheduled tasks** from the tray: the morning brief and the email agent's status (free), the Edge
+    brief and watch checks (Pro, `desktop.background_ai`). An AI task runs on its schedule only if the
+    person switched it on for that computer; the server keeps its own copy of that switch and refuses
+    otherwise.
+- **Signing in** works like the Office add-in: the app shows a code, the person approves it at
+  `/desktop/connect`, and the app keeps a device token (`ybd_…`) in the system keychain. It works only on
+  `/api/desktop/**`. Connected computers are listed, and can be disconnected, in Settings → Desktop app.
+- **What the site may ask of the app** is fixed at three commands (its version, open quick ask, open the
+  agent's settings). The site cannot reach files, programs or the keychain through it.
 ### Premium features
 
 Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
@@ -1218,6 +1249,7 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| Desktop app | `desktop_pairings` (as for Office), `desktop_devices` (connected computers: the hashed token, system, app version, the scheduled-task switches, last use, revocation), `desktop_files` (each indexed local file: a hash of its path, its name, content hash and Edge document) |
 | Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
@@ -1236,6 +1268,7 @@ All tables are in `src/db/schema.ts`.
   - `0009_ai_usage`
   - `0010_contact_knowledge`
   - `0016_crypto`
+  - `0017_desktop`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1313,6 +1346,8 @@ bash scripts/preflight.sh                                         # everything t
 | `ADMIN_EMAILS` | no | Comma-separated administrators: every plan feature, no AI cap |
 | `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
+| `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar and the download page's release lookup |
+| `DESKTOP_RELEASE_REPO` | no | Where the desktop installers are released; default `AyanBhardwaj1/YouBank` |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
 | `ETH_RPC_URL`, `BASE_RPC_URL`, `ARBITRUM_RPC_URL`, `OPTIMISM_RPC_URL`, `POLYGON_RPC_URL`, `SOLANA_RPC_URL` | no | Crypto: node endpoints for balances and notarization checks; public endpoints by default |
 | `MEMPOOL_API_URL` | no | Crypto: a self-hosted mempool.space API; `https://mempool.space/api` by default |
@@ -1404,7 +1439,10 @@ bash scripts/preflight.sh                                         # everything t
    - Set the printed `STRIPE_*` lines in Vercel.
    - In the Stripe dashboard, switch on the customer portal and allow plan changes between these prices.
    - Run it first with a test key (`sk_test_...`, no `--live`) on a preview deployment.
-8. **Verify.**
+8. **The desktop app.** Apply `drizzle/0017_desktop.sql`, then push a tag `desktop-v<version>`: the
+   `Desktop` workflow builds the installers into a draft GitHub Release; publish it and `/download` offers
+   it. Signing and update keys are optional secrets, listed in `desktop/README.md`.
+9. **Verify.**
    - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
      the app serves but something is missing (the tables, a production setting, an optional service half
      set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
@@ -1437,6 +1475,8 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
+| Desktop app (15 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; the pages' scripts and that every command they call is registered and allowed |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
@@ -1640,11 +1680,14 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 ```
 YouBank/
+  .github/workflows/desktop.yml   builds the desktop installers into a draft GitHub Release
+  desktop/                 YouBank for desktop (Tauri v2): the Rust app in src-tauri/, its own pages in src/
   docs/                    product thinking, decisions, specs, market research
   drizzle/                 hand-written SQL migrations (0001–0008)
   neon/autopilot.ts        the five-minute heartbeat relay (Neon Function)
   scripts/                 tests, end-to-end runs, migrations, snapshot, themes, backfill, preflight
-  src/app/                 routes: marketing, /for/<role>, /onboarding, /app/*, /office/* (the add-in), /api/*
+  src/app/                 routes: marketing, /for/<role>, /download, /onboarding, /app/*, /office/* (the add-in),
+                           /desktop/connect, /api/*
   src/components/
     crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
                            agent settings, engine insights, mailbox bar
@@ -1664,6 +1707,8 @@ YouBank/
                            checkpoints, the brand check, reading printouts and data rooms
     office/                the add-in: pairing and tokens, the Excel and PowerPoint adapters, the
                            manifest, its API client
+    desktop/               the desktop app's server side: pairing and tokens, the alerts feed,
+                           scheduled tasks, local files, Office sync, the release lookup
     ai/                    models, config, agent (OpenAI Responses and Anthropic), data tools, prompts
     edgar/  fmp/  vc/      SEC EDGAR and XBRL, prices, startup directory and Form D
     crypto/                crypto data (CoinGecko, DefiLlama, mempool.space, public nodes, SEC frames),
