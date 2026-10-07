@@ -4,8 +4,8 @@ YouBank Edge ML service: Modal app ``youbank-edge-ml``.
 One authenticated HTTP entry point (``api``) dispatches to one Modal function per task,
 plus a ``status`` endpoint for async calls. Tasks:
 
-    health, geo.refine, geo.embed_change, docs.parse, docs.rerank, audio.transcribe,
-    graph.train, synth.tabular, synth.series, topics.map
+    health, geo.refine, geo.embed_change, docs.parse, docs.rerank, docs.verify, audio.transcribe,
+    graph.train, synth.tabular, synth.series, topics.map, odds.train, odds.score
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
 Large outputs go to Cloudflare R2 under ``ml/``; results carry the R2 key.
@@ -66,6 +66,8 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "geo.embed_change": ("geo_embed_change", 1.0, 2048, 300, 2),
     "docs.parse": ("docs_parse", 2.0, 4096, 900, 3),
     "docs.rerank": ("docs_rerank", 4.0, 2048, 120, 3),
+    # Calibrated Claims (E2): NLI entailment of a claim by each passage it cites.
+    "docs.verify": ("docs_verify", 2.0, 2048, 120, 3),
     "audio.transcribe": ("audio_transcribe", 4.0, 8192, 3600, 2),
     "graph.train": ("graph_train", 2.0, 4096, 1800, 1),
     # The same training on a GPU, wider and longer, only when a person asks for it (premium: edge.graph-gpu).
@@ -143,6 +145,11 @@ MODELS = {
     "silero": {"repo": "istupakov/silero-vad-onnx", "revision": "b3e3ee3cce4c11ceb63b1a0b229d916069c1ddf6", "license": "MIT"},
     "whisper": {"repo": "Systran/faster-whisper-small", "revision": "536b0662742c02347bc0e980a01041f333bce120",
                 "compute": "int8", "license": "MIT"},
+    # docs.verify: a DeBERTa-v3 NLI cross-encoder (Apache-2.0, MIT/Apache checkers only; Bespoke-MiniCheck-7B is
+    # non-commercial and kept out), as an ONNX export. The revision is resolved at build time and reported by
+    # `health`; pin it here to that commit after the first staging deploy.
+    "nli": {"repo": os.environ.get("EDGE_NLI_REPO", "Xenova/nli-deberta-v3-small"), "revision": os.environ.get("EDGE_NLI_REVISION", "main"),
+            "origin": "cross-encoder/nli-deberta-v3-small", "license": "Apache-2.0"},
     # docs.rerank
     "reranker": {"repo": "cross-encoder/ettin-reranker-32m-v1", "revision": "b33e5ceb5110773ea9cf5e00c9bedc83a8c2afdd",
                  "license": "Apache-2.0"},
@@ -155,6 +162,7 @@ PARAKEET_DIR = "/models/parakeet-tdt-0.6b-v2"
 SILERO_DIR = "/models/silero-vad"
 WHISPER_DIR = "/models/whisper-small"
 RERANK_DIR = "/models/ettin-reranker-32m"
+NLI_DIR = "/models/nli-deberta-v3-small"
 
 
 def _pin(*names: str) -> list[str]:
@@ -299,6 +307,19 @@ rerank_image = (
         f"s('{MODELS['reranker']['repo']}', revision='{MODELS['reranker']['revision']}', local_dir='{RERANK_DIR}', "
         "allow_patterns=['tokenizer.json', 'tokenizer_config.json', 'config.json', 'modules.json', '*_Pooling/*', "
         f"'*_Dense/*', '*_LayerNorm/*', '{RERANK_ONNX}'])\"",
+    )
+)
+
+# docs.verify: the NLI checker as ONNX (no torch), the same runtime as the reranker. The commit actually fetched is
+# written next to the model so `health` can report it.
+nli_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("onnxruntime", "tokenizers", "huggingface-hub"))
+    .run_commands(
+        "python -c \"from huggingface_hub import snapshot_download as s, HfApi; "
+        f"s('{MODELS['nli']['repo']}', revision='{MODELS['nli']['revision']}', local_dir='{NLI_DIR}', "
+        "allow_patterns=['tokenizer.json', 'tokenizer_config.json', 'config.json', 'onnx/model.onnx']); "
+        f"open('{NLI_DIR}/REVISION', 'w').write(HfApi().model_info('{MODELS['nli']['repo']}', revision='{MODELS['nli']['revision']}').sha)\"",
     )
 )
 
@@ -572,6 +593,7 @@ def _health(inp: dict) -> dict:
         "parakeet": f"{hf('parakeet')} ({MODELS['parakeet']['quantization']})",
         "whisper": f"{hf('whisper')} ({MODELS['whisper']['compute']})",
         "reranker": hf("reranker"),
+        "nli": f"{MODELS['nli']['repo']}@{MODELS['nli']['revision']}",
     }
     resources = {t: {"cpu": c, "memoryMiB": m, "timeout": s, "maxContainers": k} for t, (_, c, m, s, k) in TASKS.items()}
     return {"app": APP_NAME, "versions": versions, "tasks": list(TASKS), "models": models,
@@ -1793,6 +1815,84 @@ def _docs_rerank(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
+# docs.verify: NLI entailment for Calibrated Claims (E2). Input {"pairs": [{"premise", "hypothesis"}]} (a cited
+# passage with its header line, and the claim); output the entailment and contradiction probability of each, in
+# order. The label order is read from the model's own config, never assumed.
+# ---------------------------------------------------------------------------------------------
+NLI_MAX_PAIRS = 256
+NLI_BATCH = 16
+_NLI: dict = {}
+
+
+def _nli() -> dict:
+    if _NLI:
+        return _NLI
+    import onnxruntime as ort
+    from tokenizers import Tokenizer
+
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = _hw_threads(TASKS["docs.verify"][1])
+    so.inter_op_num_threads = 1
+    sess = ort.InferenceSession(f"{NLI_DIR}/onnx/model.onnx", so, providers=["CPUExecutionProvider"])
+    cfg = json.load(open(f"{NLI_DIR}/config.json"))
+    labels = {int(k): str(v).lower() for k, v in (cfg.get("id2label") or {}).items()}
+    find = lambda word: next((i for i, l in labels.items() if l.startswith(word)), None)  # noqa: E731
+    entail, contra = find("entail"), find("contra")
+    if entail is None:
+        raise RuntimeError(f"the NLI model's labels have no entailment class: {labels}")
+    tok = Tokenizer.from_file(f"{NLI_DIR}/tokenizer.json")
+    tok.no_padding()
+    try:
+        revision = open(f"{NLI_DIR}/REVISION").read().strip()
+    except OSError:
+        revision = MODELS["nli"]["revision"]
+    _NLI.update(sess=sess, tok=tok, entail=entail, contra=contra, inputs=[i.name for i in sess.get_inputs()],
+                output=sess.get_outputs()[0].name, pad=tok.token_to_id("[PAD]") or 0, revision=revision)
+    return _NLI
+
+
+def _docs_verify(inp: dict) -> dict:
+    import numpy as np
+
+    raw = inp.get("pairs")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("pairs must be a non-empty list of {premise, hypothesis}")
+    if len(raw) > NLI_MAX_PAIRS:
+        raise ValueError(f"at most {NLI_MAX_PAIRS} pairs per call (got {len(raw)})")
+    pairs = []
+    for i, p in enumerate(raw):
+        if not isinstance(p, dict) or not isinstance(p.get("premise"), str) or not isinstance(p.get("hypothesis"), str):
+            raise ValueError(f"pair {i} needs premise and hypothesis strings")
+        pairs.append((p["premise"][:4000], p["hypothesis"][:1000]))
+    m = _nli()
+    tok = m["tok"]
+    tok.enable_truncation(max_length=512, strategy="only_first")
+    enc = tok.encode_batch(pairs)
+    entail, contra = np.zeros(len(enc), np.float32), np.zeros(len(enc), np.float32)
+    order = sorted(range(len(enc)), key=lambda k: len(enc[k].ids))
+    for b in range(0, len(order), NLI_BATCH):
+        idx = order[b:b + NLI_BATCH]
+        width = max(len(enc[k].ids) for k in idx)
+        ids_arr = np.full((len(idx), width), m["pad"], np.int64)
+        mask = np.zeros((len(idx), width), np.int64)
+        types = np.zeros((len(idx), width), np.int64)
+        for row, k in enumerate(idx):
+            n = len(enc[k].ids)
+            ids_arr[row, :n] = enc[k].ids
+            mask[row, :n] = 1
+            types[row, :n] = enc[k].type_ids
+        feeds = {"input_ids": ids_arr, "attention_mask": mask, "token_type_ids": types}
+        logits = np.asarray(m["sess"].run([m["output"]], {k: v for k, v in feeds.items() if k in m["inputs"]})[0], np.float64)
+        z = np.exp(logits - logits.max(axis=1, keepdims=True))
+        prob = z / z.sum(axis=1, keepdims=True)
+        entail[idx] = prob[:, m["entail"]]
+        if m["contra"] is not None:
+            contra[idx] = prob[:, m["contra"]]
+    return {"entail": [round(float(v), 4) for v in entail], "contradict": [round(float(v), 4) for v in contra],
+            "model": f"{MODELS['nli']['repo']}@{m['revision'][:12]}"}
+
+
+# ---------------------------------------------------------------------------------------------
 # audio.transcribe: ffmpeg -> 16 kHz mono -> Parakeet TDT 0.6B v2 for English (int8 ONNX, Silero VAD segments,
 # word timestamps); faster-whisper small (int8) for other languages and whenever Parakeet fails.
 # ---------------------------------------------------------------------------------------------
@@ -2938,6 +3038,11 @@ def docs_rerank(req: dict) -> dict:
     return _execute("docs.rerank", req, _docs_rerank)
 
 
+@_task_function("docs.verify", nli_image, env=_threads(_hw_threads(TASKS["docs.verify"][1])))
+def docs_verify(req: dict) -> dict:
+    return _execute("docs.verify", req, _docs_verify)
+
+
 @_task_function("audio.transcribe", audio_image)
 def audio_transcribe(req: dict) -> dict:
     return _execute("audio.transcribe", req, _audio_transcribe)
@@ -2974,6 +3079,7 @@ TASK_FUNCTIONS = {
     "geo.embed_change": geo_embed_change,
     "docs.parse": docs_parse,
     "docs.rerank": docs_rerank,
+    "docs.verify": docs_verify,
     "audio.transcribe": audio_transcribe,
     "graph.train": graph_train,
     "graph.train.gpu": graph_train_gpu,

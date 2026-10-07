@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { UpgradeView } from "@/lib/edge/premium";
 import { useApi } from "./client";
 
-const MODULE_LABEL: Record<string, string> = { documents: "Documents", earth: "Earth", networks: "Networks", scenarios: "Scenarios", platform: "Platform" };
+const MODULE_LABEL: Record<string, string> = { documents: "Documents", earth: "Earth", networks: "Networks", scenarios: "Scenarios", deals: "Deals", pulse: "Pulse", platform: "Platform" };
 
 function Status({ u, admin }: { u: UpgradeView; admin: boolean }) {
   const [label, cls] = !u.ready

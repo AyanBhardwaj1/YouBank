@@ -5,6 +5,7 @@
  */
 import type { Kind } from "./catalog";
 import type { MarketResult } from "../scen/market";
+import type { ClaimSupport, VerifierInfo } from "../claims/types";
 
 export type Companies = { items: { ticker: string; name: string }[] };
 export type Places = { items: { key?: string; name: string; bbox: number[] }[] };
@@ -17,7 +18,11 @@ export type Ranking = { finding: string; subject: string; items: { name: string;
 export type GraphValue = { nodes: { id: number; name: string; kind: string; ticker?: string }[]; links: { s: number; d: number; kind: string }[] };
 export type Scenario = { id?: number; title: string; driver: string; synthetic: true; recipe: string; seed: number; horizon: number; paths: number; stats: { label: string; value: string }[]; fan?: { label: string; p5: number[]; p50: number[]; p95: number[] }[]; realism?: number };
 export type Table = { columns: { name: string; type: "num" | "cat" | "text" }[]; rows: (string | number | null)[][]; synthetic?: { recipe: string; seed: number; realism?: number }; title?: string };
-export type Memo = { title: string; markdown: string; sources: { n: number; label: string; url?: string }[] };
+export type Memo = {
+  title: string; markdown: string; sources: { n: number; label: string; url?: string }[];
+  /** Calibrated Claims on the memo's paragraphs (indicative: the verifier is calibrated on answer claims). */
+  paragraphs?: { text: string; cites: number[]; support?: ClaimSupport }[]; verifier?: VerifierInfo;
+};
 export type Signal = { metric: string; value: number; previous?: number | null; triggered: boolean; detail: string };
 export type FileValue = { name: string; key: string; bytes: number; url?: string };
 

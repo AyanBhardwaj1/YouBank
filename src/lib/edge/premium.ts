@@ -16,7 +16,7 @@ import { featureById } from "@/lib/billing/features";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { premiumOn } from "@/lib/billing/use";
 
-export type UpgradeModule = "earth" | "documents" | "networks" | "scenarios" | "platform";
+export type UpgradeModule = "earth" | "documents" | "networks" | "scenarios" | "deals" | "pulse" | "platform";
 
 export type Upgrade = {
   id: string;
@@ -78,6 +78,32 @@ export const UPGRADES: Upgrade[] = [
     cost: "Claude Sonnet 5.5 (the default) $2 in / $10 out per million tokens; Haiku 4.5 $1 / $5 with EDGE_CITATIONS_MODEL=claude-haiku-4-5. Quoted text is not billed as output.",
     needs: ["ANTHROPIC_API_KEY"], flag: { name: "EDGE_CITATIONS", value: "anthropic" },
     steps: ["Set ANTHROPIC_API_KEY and EDGE_CITATIONS=anthropic in Vercel and redeploy (optionally EDGE_CITATIONS_MODEL).", "People whose plan includes it see 'Exact-span citations' under Ask. Those answers come as a direct answer and cited points (citations cannot be combined with the table and timeline shapes)."],
+  },
+  {
+    id: "claims-crosscheck", module: "documents", name: "Second-provider claim check", built: true, feature: "edge.claims-crosscheck",
+    improves: "Each claim in an answer is judged again against its passages by the other provider's model (Claude when OpenAI wrote the answer, and the reverse); its verdict shows beside the calibrated support, and in Strict a claim it rejects is held back.",
+    cost: "About $0.03 an answer on Claude Sonnet 5.5 ($2 in / $10 out per million tokens); EDGE_CROSSCHECK_MODEL and EDGE_CROSSCHECK_OPENAI_MODEL change the models.",
+    needs: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"], steps: ["Set both OPENAI_API_KEY and ANTHROPIC_API_KEY in Vercel, so a second provider exists, and redeploy.", "People whose plan includes it see 'Cross-check with a second provider' under Ask; nothing is sent to the second provider unless they tick it."],
+  },
+  // Deals
+  {
+    id: "deals-reread", module: "deals", name: "Re-read a deal with the stronger model", built: true, feature: "edge.deals-reread",
+    improves: "One deal's merger documents re-read by a larger model (EDGE_REREAD_MODEL, gpt-5.6-sol by default), every term re-quoted and re-checked; the earlier reading is kept in the audit trail.",
+    cost: "About $0.24 a deal (40,000 tokens in at $4 and 4,000 out at $20 per million), on the OpenAI key Edge already has.",
+    needs: ["OPENAI_API_KEY"], steps: ["Optionally set EDGE_REREAD_MODEL. People whose plan includes it see 'Re-read with the stronger model' on a deal's page; nothing runs unless they press it."],
+  },
+  {
+    id: "deals-backfill", module: "deals", name: "Faster deal-database backfill", built: true,
+    improves: "Reads more past merger documents a day into the Precedent Engine's database (2015 onward). The backfill is shared platform data, read only while an administrator has it switched on (Settings, or POST /api/edge/deals/backfill).",
+    cost: "Small-model tokens: about $0.005-0.01 a deal. EDGE_BACKFILL_DAILY_USD sets the day's ceiling (default $0.50, about 50 deals), inside the app-wide AI caps.",
+    needs: ["EDGE_BACKFILL_DAILY_USD"], steps: ["Set EDGE_BACKFILL_DAILY_USD to the day's ceiling you accept (for example 5 for about 500 deals a day) and redeploy.", "Switch the backfill on from Edge, Deals, as an administrator; it resumes where it stopped."],
+  },
+  // Pulse
+  {
+    id: "patentsview", module: "pulse", name: "Patent counts (PatentsView)", built: true,
+    improves: "Adds patents granted and applications published each month to the Pulse, from USPTO's PatentsView (CC BY 4.0), matched to companies through the crosswalk.",
+    cost: "Free: a PatentsView API key (request one on the PatentSearch API page).",
+    needs: ["PATENTSVIEW_API_KEY"], steps: ["Request a key at search.patentsview.org (free), set PATENTSVIEW_API_KEY in Vercel and redeploy. The weekly Pulse then reads patent counts."],
   },
   // Earth
   {

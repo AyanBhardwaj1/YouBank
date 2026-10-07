@@ -49,7 +49,7 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
   const [run, setRun] = useState<{ steps: string[]; started: number } | null>(null);
   const [answer, setAnswer] = useState<DocAnswer | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [premium, setPremium] = useState({ model: false, citations: false });
+  const [premium, setPremium] = useState({ model: false, citations: false, crosscheck: false });
   const [each, setEach] = useState(false);
   const [batch, setBatch] = useState<BatchRow[] | null>(null);
   const abort = useRef<AbortController | null>(null);
@@ -186,6 +186,8 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
             <PremiumBadge feature="edge.answer-model" />
             <Toggle on={premium.citations} onClick={() => setPremium((p) => ({ ...p, citations: !p.citations }))}>Exact-span citations</Toggle>
             <PremiumBadge feature="edge.citations" />
+            <Toggle on={premium.crosscheck} onClick={() => setPremium((p) => ({ ...p, crosscheck: !p.crosscheck }))}>Cross-check with a second provider</Toggle>
+            <PremiumBadge feature="edge.claims-crosscheck" />
             {!scope && tickers.length >= 2 && <><Toggle on={each} onClick={() => setEach((v) => !v)}>Each company separately</Toggle><PremiumBadge feature="edge.batch-ask" /></>}
             {premium.citations && <span className="text-[11px] text-faint">Answers come as a direct answer and cited points.</span>}
             {each && !scope && tickers.length >= 2 && <span className="text-[11px] text-faint">Each company is answered from its own filings, two at a time.</span>}

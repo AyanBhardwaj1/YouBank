@@ -10,7 +10,7 @@ import { addUsage, withinFreeTier } from "./usage";
 
 export const mlReady = () => !!(process.env.EDGE_ML_URL?.trim() && process.env.EDGE_ML_SECRET?.trim());
 
-export type MlTask = "health" | "geo.refine" | "geo.embed_change" | "docs.parse" | "docs.rerank" | "audio.transcribe" | "graph.train" | "graph.train.gpu" | "synth.tabular" | "synth.series" | "topics.map";
+export type MlTask = "health" | "geo.refine" | "geo.embed_change" | "docs.parse" | "docs.rerank" | "docs.verify" | "audio.transcribe" | "graph.train" | "graph.train.gpu" | "synth.tabular" | "synth.series" | "topics.map" | "odds.train" | "odds.score";
 export type MlDone = { callId: string; task: MlTask; correlation: string; ok: boolean; result?: Record<string, unknown>; error?: string; seconds?: number; costUsd?: number };
 
 export class MlUnavailable extends Error {}

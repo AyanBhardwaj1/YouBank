@@ -19,6 +19,13 @@ import { closeAfter, resolveDeal, resolveXbrl, standingAtHorizon, worthLogging }
 import { MIN_SCORED, trackSummary } from "@/lib/edge/forecasts/track";
 import { anonymise } from "@/lib/edge/forecasts/ledger";
 import { normals, rng } from "@/lib/edge/scen/stats";
+import { checkNumbers, extractNumbers, sameNumber } from "@/lib/edge/claims/numbers";
+import { claimFeatures, entityAgreement, headerCompany, periodAgreement, periodsIn, reasonsOf } from "@/lib/edge/claims/features";
+import { rateAbove, strictThreshold, upperBound } from "@/lib/edge/claims/conformal";
+import { dotOf, fitCombiner, lineFor, strictFooter, supportOf, type Labelled } from "@/lib/edge/claims/combine";
+import { combiner, crosscheckModel } from "@/lib/edge/claims/verify";
+import { askWants } from "@/lib/edge/docs/answer";
+import { loadFixture } from "./eval-claims";
 import { EDGE_NEXT_FEATURES } from "@/lib/billing/features/edge-next";
 import { FEATURES } from "@/lib/billing/features";
 import { isPlanId, PLAN_ORDER } from "@/lib/billing/plans";
@@ -234,6 +241,74 @@ async function main() {
     const bad = trackSummary(p.map((pi, i) => ({ probability: 1 - pi, baseRate: 0.4, outcome: y[i] })));
     check("a model worse than the base rate is told so", /^Worse than simply stating the base rate/.test(bad.verdict), bad.verdict);
     check("the public record hides the company's name", anonymise("Energy Transfer LP (ET) announces an agreement to be acquired by 2027-10-01") === "A company announces an agreement to be acquired by 2027-10-01");
+  }
+
+  console.log("E2 Calibrated Claims: numbers, periods, companies");
+  {
+    const ns = extractNumbers("Revenue rose 12% to $1.2 billion in Q3 2025 from $1,071 million on March 4, 2024; margin up 150 bps; 3.5x leverage; 2,100 employees.");
+    check("numbers with units and scale; years, quarters and dates are not numbers", ns.map((n) => `${n.unit}:${n.value}`).join() === "pct:12,usd:1200000000,usd:1071000000,pct:1.5,x:3.5,count:2100", ns.map((n) => `${n.unit}:${n.value}`));
+    check("rounding as written: $1.2 billion is backed by $1,213 million, not by $1,300 million", sameNumber(extractNumbers("$1.2 billion")[0], { value: 1213e6, unit: "usd" }) && !sameNumber(extractNumbers("$1.2 billion")[0], { value: 1300e6, unit: "usd" }));
+    check("a table figure in millions backs a dollar claim", sameNumber(extractNumbers("$950 million")[0], { value: 950, unit: "count" }));
+    const up = checkNumbers("Volumes were up 12% on the year", ["Volumes were 112 MMcf/d against 100 MMcf/d a year ago."]);
+    check("\"up 12%\" is derived from 100 to 112", up.share === 1 && up.derived[0]?.how === "growth from 100 to 112", up);
+    const down = checkNumbers("Volumes fell 8% to 2.3 Bcf/d", ["Volumes were 2.3 Bcf/d, against 2.5 Bcf/d"]);
+    check("a fall is derived with its sign from the words", down.share === 1 && down.found === 1 && down.derived.length === 1, down);
+    const wrong = checkNumbers("Net debt was $4.4 billion", ["Net debt of $4.1 billion at year end."]);
+    check("a changed number is missing, named", wrong.share === 0 && wrong.missing[0] === "$4.4 billion");
+    check("a claim without numbers passes the number check", checkNumbers("The board approved the merger", ["x"]).share === 1 && checkNumbers("The board approved the merger", ["x"]).checked === 0);
+    check("periods: quarters by code and name, months ended, fiscal years", [...periodsIn("Q3 2025 and the second quarter of 2024; three months ended June 30, 2023; FY2022")].sort().join() === "2022,2023,2023Q2,2024,2024Q2,2025,2025Q3");
+    const hdr = "Halcyon Midstream LP (HLMS) · 10-Q · quarter ended June 30, 2025 · Management's discussion";
+    check("period agreement: same, different, none named, and a calendar quarter against a fiscal header", periodAgreement("revenue in the second quarter of 2025", [{ header: hdr, text: "" }]) === 1 && periodAgreement("revenue in 2024", [{ header: hdr, text: "" }]) === 0 && periodAgreement("revenue grew", [{ header: hdr, text: "" }]) === 0.5 && periodAgreement("in Q3 2025", [{ header: "X (X) · 10-K · year ended December 31, 2025", text: "" }]) === 1);
+    check("the header names its company and ticker", headerCompany(hdr).name === "Halcyon Midstream LP" && headerCompany(hdr).ticker === "HLMS");
+    const scope = [{ name: "Halcyon Midstream LP", ticker: "HLMS" }, { name: "Pecos Gathering Inc.", ticker: "PCGI" }];
+    check("entity agreement: the right company, another company, none named", entityAgreement("Halcyon Midstream's revenue", [{ header: hdr, text: "" }], scope) === 1 && entityAgreement("Pecos Gathering's revenue", [{ header: hdr, text: "" }], scope) === 0 && entityAgreement("Revenue grew", [{ header: hdr, text: "" }], scope) === 0.5 && entityAgreement("HLMS reported", [{ header: hdr, text: "" }], scope) === 1);
+    const f = claimFeatures({ text: "Halcyon Midstream's revenue was $1.2 billion in the second quarter of 2025.", cites: [{ text: "Revenue for the quarter was $1,213 million.", header: hdr, quote: "exact", rank: 1 }] }, scope);
+    check("a claim's features and reasons", f.features.quote === 1 && f.features.numbers === 1 && f.features.period === 1 && f.features.entity === 1 && Number.isNaN(f.features.nli) && reasonsOf(f.features, f.numbers)[0] === "quote exact", f.features);
+  }
+
+  console.log("E2 Calibrated Claims: the conformal line and the combiner");
+  {
+    check("Clopper-Pearson upper bounds: 0 of 59 is under 5%, 0 of 50 is not", upperBound(0, 59) < 0.05 && upperBound(0, 50) > 0.05 && upperBound(3, 3) === 1);
+    // Synthetic scores with known labels: support probability q drawn uniformly, label ~ Bernoulli(q).
+    let held = 0, trials = 0;
+    const alpha = 0.1;
+    for (let t = 0; t < 1000; t++) {
+      const u = rng(1000 + t);
+      // Most claims are supported, as in answers after the quote check: q skewed towards 1.
+      const draw = (n: number) => { const sc: number[] = [], lb: number[] = []; for (let i = 0; i < n; i++) { const q = Math.pow(u(), 0.25); sc.push(q); lb.push(u() < q ? 1 : 0); } return { sc, lb }; };
+      const cal = draw(400), test = draw(2000);
+      const tau = strictThreshold(cal.sc, cal.lb, alpha);
+      if (tau === null) continue;
+      trials++;
+      if (rateAbove(test.sc, test.lb, tau).rate <= alpha) held++;
+    }
+    check("on 1,000 resamples the unsupported share above the line is at most alpha in at least 95%", trials >= 700 && held / trials >= 0.95, { held, trials });
+    const tau = strictThreshold([0.99, 0.98, 0.97, 0.96, 0.95, 0.94, 0.93, 0.92, 0.6, 0.5, 0.4], [1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1], 0.4);
+    check("the walk starts once a line can pass and stops at the first failure", tau === 0.92, tau);
+    check("tied scores share one line: one failure among them blocks it, none does not", strictThreshold(Array(10).fill(0.9), [1, 1, 1, 1, 1, 1, 1, 1, 1, 0], 0.3) === null && strictThreshold(Array(10).fill(0.9), Array(10).fill(1), 0.3) === 0.9);
+    check("with too few claims there is no line", strictThreshold([0.9, 0.8], [1, 1], 0.05) === null);
+    const rows = loadFixture();
+    check("the calibration fixture has at least 300 labelled claims, both halves, both labels", rows.length >= 300 && rows.some((r) => r.split === "held") && rows.some((r) => !r.supported), rows.length);
+    const labelled: Labelled[] = rows.map((r) => ({ features: claimFeatures({ text: r.claim, analysis: r.analysis, cites: r.cites }, r.scope).features, supported: r.supported, split: r.split }));
+    const m = fitCombiner(labelled, ["quote", "rank", "numbers", "hasNumbers", "entity", "period", "agree", "analysis"], { name: "template", version: "test", claims: rows.length, supported: 0, fittedAt: "2026-10-07T00:00:00Z", note: "" }, "claims-test");
+    check("the combiner separates supported from unsupported on held-out claims (AUROC above 0.85)", m.quality.auroc > 0.85, m.quality);
+    check("isotonic keeps support monotone in the raw score", m.isotonic.y.every((v, i) => i === 0 || v >= m.isotonic.y[i - 1]));
+    const l5 = lineFor(m, 0.05);
+    check("the 5% line exists and its held-out rate is reported with an interval", !!l5 && l5.heldOut.n > 50 && l5.heldOut.ci !== null, l5);
+    const shipped = combiner();
+    check("the shipped combiner is the fixture's, without NLI until it has been fitted with it", shipped.set.claims === rows.length && !shipped.features.includes("nli") && /template/.test(shipped.set.name));
+    const p = supportOf(shipped, labelled[0].features);
+    check("a support probability is between 0 and 1, and the filter holds back exactly what is under the line", p >= 0 && p <= 1 && labelled.filter((r) => supportOf(shipped, r.features) >= (lineFor(shipped, 0.05)?.tau ?? 2)).every((r) => supportOf(shipped, r.features) >= lineFor(shipped, 0.05)!.tau!));
+    check("the Strict footer states the target, the held-out rate and the set", /^Shown claims meet a 5% unsupported-claim target\. On \d+ held-out claims, [\d.]+% \(90% CI/.test(strictFooter(shipped, 0.05)) && /template v1/.test(strictFooter(shipped, 0.05)), strictFooter(shipped, 0.05));
+    check("dots: green from 0.9, amber from 0.6, red below", dotOf(0.92) === "high" && dotOf(0.7) === "mid" && dotOf(0.3) === "low");
+    check("the cross-check is asked for only when ticked, after the other premium options", askWants({ crosscheck: true }).require.join() === "edge.claims-crosscheck" && askWants({ model: true, citations: true }).require.join() === "edge.answer-model,edge.citations");
+    const keep = { o: process.env.OPENAI_API_KEY, a: process.env.ANTHROPIC_API_KEY };
+    process.env.OPENAI_API_KEY = "x"; process.env.ANTHROPIC_API_KEY = "y";
+    check("the second provider is the other one", /^claude/.test(crosscheckModel("gpt-5.6-luna") ?? "") && /^gpt/.test(crosscheckModel("claude-sonnet-5-5") ?? ""));
+    delete process.env.ANTHROPIC_API_KEY;
+    check("without the other provider's key there is no cross-check", crosscheckModel("gpt-5.6-luna") === null);
+    if (keep.o === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = keep.o;
+    if (keep.a !== undefined) process.env.ANTHROPIC_API_KEY = keep.a;
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
