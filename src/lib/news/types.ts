@@ -1,4 +1,5 @@
 import type { ItemKind, Tag, Tier } from "./desks";
+import { siteUrl } from "@/lib/site";
 
 /** One thing a source reported, before it is stored and clustered. */
 export type RawItem = {
@@ -21,4 +22,4 @@ export type RawItem = {
 export type FetchResult = { status: "ok" | "not-modified" | "error"; items: RawItem[]; etag?: string; lastModified?: string; error?: string };
 
 /** The User-Agent for feeds and open pages, in the "compatible" form crawlers use (some publishers refuse bare bot strings), still naming YouBank and a contact page. */
-export const NEWS_UA = "Mozilla/5.0 (compatible; YouBankNews/1.0; +https://youbank-nu.vercel.app)";
+export const NEWS_UA = `Mozilla/5.0 (compatible; YouBankNews/1.0; +${siteUrl()})`;

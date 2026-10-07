@@ -25,6 +25,7 @@ import type { MarketResult } from "@/lib/edge/scen/market";
 import type { CompanyOverview, RankedPick } from "@/lib/edge/overview";
 import { networkUrl, radarUrl, simRequest, whatIfUrl } from "@/lib/edge/links";
 import type { Command } from "@/lib/functions";
+import { errorMessage } from "@/lib/client/errors";
 
 const EarthMap = dynamic(() => import("@/components/edge/EarthMap"), { ssr: false, loading: () => <div className="shimmer h-full w-full" /> });
 
@@ -117,7 +118,7 @@ export function EdgeScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
       if (d.watch) await api(`/api/edge/watches/${d.watch.id}`, { method: "DELETE" });
       else await post("/api/edge/watches", { kind: "company", ticker });
       q.reload();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const onMap = d.assets.plants + d.assets.pipelines > 0;
   return (
@@ -247,7 +248,7 @@ export function NetScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
 
   const build = async () => {
     setBuildError(null);
-    try { await post("/api/edge/graph/build", { ticker }); setBuilding(true); } catch (e) { setBuildError(e instanceof Error ? e.message : String(e)); }
+    try { await post("/api/edge/graph/build", { ticker }); setBuilding(true); } catch (e) { setBuildError(errorMessage(e)); }
   };
 
   if (missing) {
@@ -290,7 +291,7 @@ export function SimScreen({ ticker, arg }: { ticker: string; arg?: string }) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    post<{ id: number; status: string; result: MarketResult }>("/api/edge/scenarios", body).then(setRun).catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    post<{ id: number; status: string; result: MarketResult }>("/api/edge/scenarios", body).then(setRun).catch((e) => setError(errorMessage(e)));
   }, [body]);
 
   // While a refinement runs in the background, check back every few seconds.

@@ -8,6 +8,7 @@
  *   a quiet minute (STREAM_MODE=slow stretches both five times: the lever if database load spikes);
  * - the browser closes its stream while the tab is hidden and resumes from its last event on return.
  */
+import { describeFailure, logError } from "@/lib/errors";
 
 export const STREAM_LIFETIME_MS = 120_000;
 /** A comment line now and then, so proxies never see an idle connection and closed readers are noticed. */
@@ -72,10 +73,14 @@ export function touch(key: string) {
 export const followedCount = () => feeds.size;
 
 async function run<E extends { id: number }, X>(key: string, f: Feed<E, X>) {
+  let failing = false;
   while (f.subs.size > 0) {
     const since = Math.min(...[...f.subs].map((s) => s.cursor));
     let batch: Batch<E, X> = { events: [] };
-    try { batch = await f.load(since); } catch { /* a transient database error: the next poll retries */ }
+    // A transient database error: the next poll retries. The first failure of a streak is logged, so an
+    // outage that silently freezes every live view still shows up in the logs.
+    try { batch = await f.load(since); failing = false; }
+    catch (e) { if (!failing) { failing = true; logError(e, { where: `feed:${key.split(":")[0]}` }); } }
     if (batch.events.length) f.quietSince = Date.now();
     for (const s of f.subs) {
       // Someone who joined during this poll with an older cursor is served by the next one.
@@ -131,6 +136,20 @@ export function sseStream(req: Request, start: (frame: (id: number, type: string
     cancel() { finish(); },
   });
   return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no", Connection: "keep-alive" } });
+}
+
+/**
+ * The checks before a stream opens (who is asking, may they see this), as one plain-text answer:
+ * EventSource never reads a failed response's body, but a person opening the URL does. A permission
+ * failure keeps its own status and words; a database or auth outage is logged and answered as a 5xx
+ * with a reference, not mistaken for "Forbidden" (which would tell the browser to stop retrying).
+ */
+export async function streamGate(open: () => Promise<Response>): Promise<Response> {
+  try { return await open(); }
+  catch (e) {
+    const f = describeFailure(e, 403, "stream");
+    return new Response(f.message, { status: f.status, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
 }
 
 /** Where a stream resumes: the browser's Last-Event-ID on a reconnect, else ?since=, else the start. */

@@ -20,7 +20,7 @@ export function useAiSettings() {
   const statusNow = useSyncExternalStore(subscribe, () => statusCache, () => null);
   const catalogNow = useSyncExternalStore(subscribe, () => catalogCache, () => null);
   useEffect(() => {
-    if (!statusCache) fetch("/api/ai/status").then((r) => r.json()).then((s) => { statusCache = s; notify(); }).catch(() => {});
+    if (!statusCache) fetch("/api/ai/status").then((r) => (r.ok ? r.json() : null)).then((s) => { if (s && !("error" in s)) { statusCache = s; notify(); } }).catch(() => {});
     if (!catalogCache) fetch("/api/ai/models").then((r) => r.json()).then((c) => { if (c && Array.isArray(c.models)) { catalogCache = c; notify(); } }).catch(() => {});
   }, []);
   const settings: AiSettings = { model: statusNow?.model, effort: statusNow?.effort };

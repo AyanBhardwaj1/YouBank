@@ -4,11 +4,15 @@
  * The library: what Edge can read for this person. Uploads (a data room's PDFs, Word, Excel and
  * PowerPoint files, scans, email threads) and recordings are private to the uploader unless shared
  * with a team, kept until deleted, and counted against the beta quota shown at the top. Filings,
- * recordings by link and the person's workspace can be read in from here too.
+ * recordings by link and the person's workspace can be read in from here too. Premium readers
+ * (LlamaParse for hard PDFs, speaker labels for recordings) are chosen per upload or per document, with
+ * their plan badges; nothing goes to them unless the person picks them.
  */
 import { AlertCircle, FileAudio, FileText, Globe, Link2, Loader2, Mail, RotateCcw, Search, Trash2, Upload, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { confirmDialog } from "@/components/ui/Dialog";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { isPlanError, PlanNotice } from "@/components/billing/PlanNotice";
 import { Select } from "@/components/ui/Select";
 import { ago, api, post, useApi, useNow } from "@/components/news/client";
 import { clockOf } from "@/lib/edge/docs/text";
@@ -19,7 +23,10 @@ const ACCEPT = ".pdf,.docx,.xlsx,.xlsm,.pptx,.csv,.txt,.md,.html,.htm,.json,.eml
 const MAX_BYTES = 200 * 1024 * 1024;
 
 type Team = { id: number; name: string };
-type Upload = { key: string; name: string; bytes: number; progress: number; error?: string; done?: boolean };
+type Upload = { key: string; name: string; bytes: number; progress: number; error?: string; plan?: boolean; done?: boolean; note?: string };
+
+const isAudio = (d: Pick<LibDoc, "source" | "mime">) => d.source === "audio" || /^(audio|video)\//.test(d.mime);
+const isParseable = (d: Pick<LibDoc, "mime" | "title">) => /^(application\/pdf|image\/|application\/vnd\.openxmlformats-officedocument\.)/.test(d.mime) || /\.(pdf|png|jpe?g|tiff?|docx|pptx|xlsx)$/i.test(d.title);
 
 const STATUS_TEXT: Record<string, string> = { queued: "Waiting to be read", parsing: "Reading", indexing: "Indexing passages", failed: "Could not be read" };
 
@@ -50,7 +57,9 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; tone: "ok" | "err" } | null>(null);
+  const [note, setNote] = useState<{ text: string; tone: "ok" | "err"; error?: unknown } | null>(null);
+  const [readers, setReaders] = useState({ pdf: false, audio: false });
+  const [speakers, setSpeakers] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
   const [audioTitle, setAudioTitle] = useState("");
   const [secTickers, setSecTickers] = useState("");
@@ -73,10 +82,10 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
       setUploads((u) => [...u, { key, name: file.name, bytes: file.size, progress: 0 }]);
       if (file.size > MAX_BYTES) { set({ error: "Over 200 MB; split it or compress it first." }); continue; }
       try {
-        await uploadFile(file, { teamId, onProgress: (p) => set({ progress: p }) });
-        set({ progress: 1, done: true });
+        const r = await uploadFile(file, { teamId, onProgress: (p) => set({ progress: p }), premium: { ...(readers.pdf ? { pdf: "llamaparse" as const } : {}), ...(readers.audio ? { audio: "diarize" as const } : {}) } });
+        set({ progress: 1, done: !r.note, note: r.note });
         reload();
-      } catch (e) { set({ error: errorText(e) }); }
+      } catch (e) { set({ error: errorText(e), plan: isPlanError(e) }); }
     }
     setTimeout(() => setUploads((u) => u.filter((x) => !x.done)), 2500);
   };
@@ -84,7 +93,7 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
   const act = async (key: string, fn: () => Promise<string | void>) => {
     setBusy(key); setNote(null);
     try { const msg = await fn(); if (msg) setNote({ text: msg, tone: "ok" }); reload(); }
-    catch (e) { setNote({ text: errorText(e), tone: "err" }); }
+    catch (e) { setNote({ text: errorText(e), tone: "err", error: e }); }
     finally { setBusy(null); }
   };
 
@@ -92,6 +101,11 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
     const ok = await confirmDialog({ title: `Delete “${d.title}”?`, body: "Its file, passages, transcript and search index are removed for good. Answers you already have keep their quotes.", confirmLabel: "Delete", tone: "danger" });
     if (ok) await act(`del-${d.id}`, async () => { await api(`/api/edge/docs/${d.id}`, { method: "DELETE" }); });
   };
+
+  const reread = (d: LibDoc, method: "llamaparse" | "diarize") => act(`read-${d.id}`, async () => {
+    await post(`/api/edge/docs/${d.id}`, { with: method });
+    return method === "llamaparse" ? `Reading “${d.title}” again with LlamaParse.` : `Transcribing “${d.title}” again with speaker labels.`;
+  });
 
   const share = (d: LibDoc, value: string) => act(`share-${d.id}`, async () => {
     await api(`/api/edge/docs/${d.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ teamId: value ? Number(value) : null }) });
@@ -131,25 +145,32 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
           <div className="text-[11px] text-muted">PDF (scans and images too), Word, Excel and PowerPoint (.docx, .xlsx, .pptx), email (.eml, .msg), text and CSV; calls and recordings (MP3, M4A, WAV, MP4). Up to 200 MB each.</div>
           <input ref={input} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; void send(f); }} />
         </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px]">
+          <span className="text-muted">Premium readers for new uploads</span>
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={readers.pdf} onChange={(e) => setReaders((r) => ({ ...r, pdf: e.target.checked }))} className="accent-[var(--accent)]" />Read PDFs and scans with LlamaParse <PremiumBadge feature="edge.parse-llamaparse" /></label>
+          <label className="inline-flex items-center gap-1.5"><input type="checkbox" checked={readers.audio} onChange={(e) => setReaders((r) => ({ ...r, audio: e.target.checked }))} className="accent-[var(--accent)]" />Speaker labels for recordings <PremiumBadge feature="edge.transcribe-diarize" /></label>
+        </div>
         {uploads.length > 0 && (
           <ul className="space-y-1">
             {uploads.map((u) => (
               <li key={u.key} className="text-[11.5px]">
                 <div className="flex justify-between gap-2"><span className="truncate">{u.name}</span><span className={`num shrink-0 ${u.error ? "text-neg" : "text-muted"}`}>{u.error ? "failed" : u.done ? "uploaded, reading…" : `${Math.round(u.progress * 100)}% of ${fmtBytes(u.bytes)}`}</span></div>
-                {u.error ? <p className="text-[11px] text-neg">{u.error}</p> : <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-line-strong"><div className="h-full bg-accent transition-all" style={{ width: `${u.progress * 100}%` }} /></div>}
+                {u.error ? (u.plan ? <PlanNotice error={Object.assign(new Error(u.error), { status: 402 })} className="mt-0.5" /> : <p className="text-[11px] text-neg">{u.error}</p>) : <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-line-strong"><div className="h-full bg-accent transition-all" style={{ width: `${u.progress * 100}%` }} /></div>}
+                {u.note && <p className="mt-0.5 text-[11px] text-muted">{u.note}</p>}
               </li>
             ))}
           </ul>
         )}
 
         <div className="grid gap-3 border-t border-line pt-3 lg:grid-cols-3">
-          <form onSubmit={(e) => { e.preventDefault(); if (audioUrl.trim()) void act("audio", async () => { await post("/api/edge/audio", { url: audioUrl.trim(), title: audioTitle.trim() }); setAudioUrl(""); setAudioTitle(""); return "Importing the recording; it is transcribed with speakers and timestamps."; }); }} className="space-y-1.5">
+          <form onSubmit={(e) => { e.preventDefault(); if (audioUrl.trim()) void act("audio", async () => { const r = await post<{ note?: string }>("/api/edge/audio", { url: audioUrl.trim(), title: audioTitle.trim(), ...(speakers ? { speakers: true } : {}) }); setAudioUrl(""); setAudioTitle(""); return r.note ?? (speakers ? "Importing the recording; it is transcribed with speaker labels and timestamps." : "Importing the recording; it is transcribed with speakers and timestamps."); }); }} className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[12px] font-semibold"><Link2 className="h-3.5 w-3.5 text-accent" />A recording by link</div>
             <input value={audioUrl} onChange={(e) => setAudioUrl(e.target.value)} placeholder="Direct link to an MP3 or MP4 (a webcast, a podcast episode)" className="ctl w-full border border-line bg-bg px-2 py-1 text-[12px] outline-none placeholder:text-faint focus:border-accent/60" aria-label="Recording link" />
             <div className="flex gap-1.5">
               <input value={audioTitle} onChange={(e) => setAudioTitle(e.target.value)} placeholder="Title (optional)" className="ctl min-w-0 flex-1 border border-line bg-bg px-2 py-1 text-[12px] outline-none placeholder:text-faint focus:border-accent/60" aria-label="Recording title" />
               <button type="submit" disabled={!audioUrl.trim() || !!busy} className="ctl flex items-center gap-1 bg-accent px-2.5 py-1 text-[12px] font-semibold text-accent-fg disabled:opacity-50">{busy === "audio" && <Loader2 className="h-3 w-3 animate-spin" />}Import</button>
             </div>
+            <label className="flex items-center gap-1.5 text-[11px]"><input type="checkbox" checked={speakers} onChange={(e) => setSpeakers(e.target.checked)} className="accent-[var(--accent)]" />With speaker labels <PremiumBadge feature="edge.transcribe-diarize" /></label>
             <p className="text-[10.5px] text-faint">YouTube does not allow downloads; upload the file instead.</p>
           </form>
           <form onSubmit={(e) => { e.preventDefault(); const t = secTickers.toUpperCase().split(/[\s,;]+/).filter(Boolean); if (t.length) void act("sec", async () => { const r = await post<{ results: { indexed?: number; name?: string; error?: string }[] }>("/api/edge/docs", { kind: "sec", tickers: t, forms: secForms, months: 12 }); setSecTickers(""); return r.results.map((x, i) => (x.error ? `${t[i]}: ${x.error}` : `${x.name ?? t[i]}: ${x.indexed ?? 0} passages ready`)).join(" · "); }); }} className="space-y-1.5">
@@ -167,7 +188,7 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
             <button type="button" disabled={!!busy} onClick={() => void act("ws", async () => { const r = await post<{ indexed: number; docIds: number[] }>("/api/edge/docs", { kind: "workspace" }); return `${r.docIds.length} workspace items read (${r.indexed} passages).`; })} className="ctl flex items-center gap-1 border border-line px-2.5 py-1 text-[12px] hover:border-accent/50 disabled:opacity-50">{busy === "ws" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}Read my workspace</button>
           </div>
         </div>
-        {note && <p className={`text-[12px] ${note.tone === "err" ? "text-neg" : "text-pos"}`}>{note.text}</p>}
+        {note && (note.tone === "err" ? <PlanNotice error={note.error ?? note.text} /> : <p className="text-[12px] text-pos">{note.text}</p>)}
       </section>
 
       <section>
@@ -189,7 +210,9 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
                         : details(d)}
                     {now ? <span className="text-faint"> · {ago(d.createdAt, now)}</span> : null}
                     {!d.mine && <span className="text-faint"> · shared with you</span>}
+                    {d.readBy && d.status === "ready" && <span className="text-faint"> · {d.readBy}</span>}
                   </div>
+                  {d.premiumNote && <div className="text-[10.5px] text-faint">{d.premiumNote}</div>}
                 </div>
                 {d.mine && teamList.length > 0 && (d.source === "upload" || d.source === "audio") && (
                   <Select value={d.teamId ? String(d.teamId) : ""} onChange={(v) => void share(d, v)} aria-label="Sharing" className="ctl border border-line bg-bg px-2 py-0.5 text-left text-[11px]">
@@ -198,6 +221,11 @@ export function Library({ onAsk }: { onAsk: (docIds: number[], label: string) =>
                   </Select>
                 )}
                 {d.status === "ready" && <button type="button" onClick={() => onAsk([d.id], d.title)} className="ctl flex items-center gap-1 border border-line px-2 py-0.5 text-[11.5px] hover:border-accent/50"><Search className="h-3 w-3" />Ask</button>}
+                {d.mine && d.fileId && (d.status === "ready" || d.status === "failed") && (isAudio(d) || isParseable(d)) && (
+                  <button type="button" disabled={!!busy} onClick={() => void reread(d, isAudio(d) ? "diarize" : "llamaparse")} title={isAudio(d) ? "Transcribe again with speaker labels (OpenAI)" : "Read again with LlamaParse, for scans and tables"} className="ctl flex items-center gap-1 border border-line px-2 py-0.5 text-[11.5px] hover:border-accent/50">
+                    {busy === `read-${d.id}` ? <Loader2 className="h-3 w-3 animate-spin" /> : null}{isAudio(d) ? "Speaker labels" : "LlamaParse"} <PremiumBadge feature={isAudio(d) ? "edge.transcribe-diarize" : "edge.parse-llamaparse"} />
+                  </button>
+                )}
                 {d.status === "failed" && d.mine && d.fileId && <button type="button" disabled={!!busy} onClick={() => void act(`retry-${d.id}`, async () => { await post(`/api/edge/docs/${d.id}`, {}); })} className="ctl flex items-center gap-1 border border-line px-2 py-0.5 text-[11.5px] hover:border-accent/50"><RotateCcw className="h-3 w-3" />Try again</button>}
                 {d.mine && <button type="button" disabled={!!busy} onClick={() => void remove(d)} aria-label={`Delete ${d.title}`} className="ctl p-1 text-muted hover:text-neg">{busy === `del-${d.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}</button>}
               </li>

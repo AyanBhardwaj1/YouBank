@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireEdge } from "@/lib/edge/access";
+import { requireFeature } from "@/lib/billing/entitlements";
 import { upgradeOn } from "@/lib/edge/premium";
 import { planetThumb, validScene } from "@/lib/edge/premium/planet";
 import { rateLimit } from "@/lib/locks";
@@ -12,6 +13,8 @@ export async function GET(req: Request) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     if (!upgradeOn("planet")) return NextResponse.json({ off: true }, { status: 404 });
+    // Premium (edge.planet): set up for everyone, used by those whose plan includes it; nothing is asked of Planet otherwise.
+    await requireFeature(user, "edge.planet");
     const q = new URL(req.url).searchParams;
     const type = q.get("type") ?? "", id = q.get("id") ?? "";
     if (!validScene(type, id)) return NextResponse.json({ error: "Not a Planet scene." }, { status: 400 });

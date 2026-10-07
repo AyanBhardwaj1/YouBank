@@ -1,5 +1,7 @@
 "use client";
 
+import { readError } from "./errors";
+
 /** Read a text/event-stream response and call onEvent for each JSON `data:` line. Resolves when the stream ends. */
 export async function readSse(res: Response, onEvent: (ev: Record<string, unknown> & { type: string }) => void): Promise<void> {
   if (!res.body) return;
@@ -21,7 +23,7 @@ export async function readSse(res: Response, onEvent: (ev: Record<string, unknow
   }
 }
 
+/** A failed response's message, safe to show (see lib/client/errors). */
 export async function errorOf(res: Response): Promise<string> {
-  const j = await res.json().catch(() => ({}));
-  return (j as { error?: string }).error ?? `HTTP ${res.status}`;
+  return readError(res);
 }

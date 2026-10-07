@@ -39,7 +39,8 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       fetch(`/api/search?q=${encodeURIComponent(first)}`, { signal: ctrl.signal })
-        .then((r) => r.json()).then((rows: TickerRow[]) => setRemote(rows)).catch(() => {});
+        // Suggestions are a convenience: a failed search (signed out, rate limited) just offers none.
+        .then((r) => (r.ok ? r.json() : [])).then((rows: unknown) => setRemote(Array.isArray(rows) ? (rows as TickerRow[]) : [])).catch(() => {});
     }, 120);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [first, wantsSearch]);

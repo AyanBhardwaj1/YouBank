@@ -9,6 +9,7 @@ import { ArrowRight, FileSpreadsheet, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { Select } from "@/components/ui/Select";
 import { post, useApi } from "./client";
+import { errorMessage } from "@/lib/client/errors";
 
 type Docs = { docs: { id: number; title: string; mine: boolean }[] };
 
@@ -24,7 +25,7 @@ export function SendToStudio({ title, source, items }: { title: string; source: 
     try {
       const r = await post<{ url: string }>("/api/edge/pushes", { docId: target === "new" ? null : Number(target), title, source, items });
       setDone(r.url); setOpen(false);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   if (done) return <a href={done} className="inline-flex items-center gap-1 text-[11.5px] text-accent hover:underline">Waiting for review in Studio <ArrowRight className="h-3 w-3" /></a>;
   if (!open) return <button type="button" onClick={() => setOpen(true)} className="ctl inline-flex items-center gap-1.5 border border-line px-2.5 py-1 text-[11.5px] text-muted hover:border-accent/50 hover:text-fg"><FileSpreadsheet className="h-3.5 w-3.5" />Send to Studio</button>;
