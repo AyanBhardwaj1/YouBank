@@ -7,6 +7,7 @@
  *
  * Connecting a wallet only shares its address. YouBank never asks it to sign or send anything here.
  */
+import { errorMessage } from "@/lib/client/errors";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
@@ -50,7 +51,7 @@ export function Portfolio({ role }: { role: "own" | "watch" }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Could not load your wallets");
       setData(j as Loaded); setError(null);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not load your wallets"); } finally { setLoading(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setLoading(false); }
   }, [role]);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
   useEffect(() => {
@@ -62,7 +63,7 @@ export function Portfolio({ role }: { role: "own" | "watch" }) {
   const add = async (a: string, l: string, source: "pasted" | "connected" = "pasted") => {
     setBusy("add"); setError(null);
     try { await post({ action: "add", address: a, label: l, role, source }); setAddress(""); setLabel(""); await load(); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+    catch (e) { setError(errorMessage(e)); } finally { setBusy(null); }
   };
   const connect = async (name: string, get: () => Promise<string>) => {
     setBusy(name); setError(null);
@@ -191,7 +192,7 @@ function DeepButton({ address }: { address: string }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Deep analytics did not finish");
       setState({ busy: false, data: j as DeepView, open: true });
-    } catch (e) { setState({ busy: false, error: e instanceof Error ? e.message : "Deep analytics did not finish", open: true }); }
+    } catch (e) { setState({ busy: false, error: errorMessage(e), open: true }); }
   };
   return (
     <>

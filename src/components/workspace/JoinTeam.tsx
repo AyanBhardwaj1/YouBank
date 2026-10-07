@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { ROLE_LABEL, type TeamRole } from "@/lib/teams/roles";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 
 type Joined = { id: number; name: string; role: TeamRole; memberCount: number };
 
@@ -23,10 +24,10 @@ export function JoinTeam({ token, email }: { token: string; email: string }) {
     try {
       const res = await fetch("/api/teams/join", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token }) });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Could not join (${res.status})`);
+      if (!res.ok) throw new Error(messageFor(res.status, body).message);
       setJoined(body as Joined);
       router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   };
 

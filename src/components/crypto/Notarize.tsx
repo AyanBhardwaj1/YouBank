@@ -8,6 +8,7 @@
  * approve or decline, and pay the fee (a fraction of a cent on Base). YouBank stores the transaction
  * hash and confirms it by reading it back from the chain.
  */
+import { errorMessage } from "@/lib/client/errors";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Pill } from "@/components/terminal/kit";
@@ -47,7 +48,7 @@ export function Notarize() {
   const pickFile = async (f: File) => {
     setHashing(true); setError(null);
     try { setSubject({ sha256: await hashFile(f), subject: f.name.slice(0, 180), kind: "document" }); }
-    catch (e) { setError(e instanceof Error ? e.message : "Could not read that file"); } finally { setHashing(false); }
+    catch (e) { setError(errorMessage(e)); } finally { setHashing(false); }
   };
   const pickModel = async (id: number) => {
     setHashing(true); setError(null);
@@ -56,7 +57,7 @@ export function Notarize() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error ?? "Could not read that model");
       setSubject({ sha256: await sha256Hex(j.text as string), subject: `Studio: ${j.title} (${j.events} changes${j.truncated ? ", latest 5,000" : ""})`, kind: "studio", studioDocId: id, studioEventId: j.lastEventId });
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not read that model"); } finally { setHashing(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setHashing(false); }
   };
 
   const connect = async (w: EvmWallet) => {
@@ -155,7 +156,7 @@ function StudioCheck({ record }: { record: Record_ }) {
       if (!res.ok) throw new Error(j.error ?? "Could not read the model");
       const same = (await sha256Hex(j.text as string)) === record.sha256;
       setResult(same ? "Unchanged since it was notarized." : `Changed since it was notarized${j.lastEventId > (record.studioEventId ?? 0) ? " (edited after)" : ""}.`);
-    } catch (e) { setResult(e instanceof Error ? e.message : "Could not check"); }
+    } catch (e) { setResult(errorMessage(e)); }
   };
   return <div className="mt-0.5 text-[10.5px]"><button type="button" onClick={() => void check()} className="text-accent hover:underline">Is the model unchanged?</button>{result && <span className="ml-2 text-muted">{result}</span>}</div>;
 }

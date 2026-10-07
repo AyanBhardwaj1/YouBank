@@ -20,7 +20,7 @@ parts:
   and it all exports to Excel and PowerPoint. With the add-in it runs inside Excel and PowerPoint too:
   the agent writes into your own workbook live, and decks refresh from the model.
 
-Production: **https://youbank-nu.vercel.app** · Free while in beta.
+Production: **https://youbank-nu.vercel.app** until the custom domain is set (`NEXT_PUBLIC_SITE_URL`; see [docs/launch-billing.md](docs/launch-billing.md)) · Free while in beta.
 
 ## Contents
 
@@ -38,6 +38,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
    - [Teams and live collaboration](#teams-and-live-collaboration)
+   - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
 4. [Data model](#data-model)
@@ -49,9 +50,10 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
 10. [Testing](#testing)
 11. [Security, privacy and compliance](#security-privacy-and-compliance)
 12. [Research behind the product](#research-behind-the-product)
-13. [Roadmap](#roadmap)
-14. [Repository layout](#repository-layout)
-15. [Further docs](#further-docs)
+13. [Plans and billing](#plans-and-billing)
+14. [Roadmap](#roadmap)
+15. [Repository layout](#repository-layout)
+16. [Further docs](#further-docs)
 
 ---
 
@@ -400,7 +402,20 @@ names the model behind each number and gives a range. The crypto tools read free
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
 cost are recorded and shown in Settings. See [docs/research/ai-inference.md](docs/research/ai-inference.md).
 
+**Allowances.** Each person's model spend is capped per UTC day and per allowance month by their plan's AI
+allowance, from Free ($0.75 a day, $3 a month) to Enterprise ($30 a day, $130 a month per seat). The
+allowance month starts on the billing anniversary for subscribers and on the 1st otherwise; AI credit
+packs top it up.
+Administrators have no cap. Settings, under Plan, shows what has been used. At the cap, AI pauses and
+everything else keeps working. Prices and allowances: [Plans and billing](#plans-and-billing).
+
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
+
+**Deep research (Pro).** Tick "Deep research" under the chat box for a question that matters. The run
+starts with a short plan, uses up to 30 tool steps (against 10) at maximum reasoning effort on the
+flagship model (`AI_DEEP_MODEL` overrides it), checks each figure that drives the conclusion in a second
+source, and ends with a "Not verified" list. It runs only when ticked; a plan without it gets the plan
+message in the chat.
 
 ### Studio: live models and decks
 
@@ -423,7 +438,8 @@ that ticker.
   - an audit of the model, shown as a health strip;
   - a refresh of the data tables;
   - a short summary with cell references.
-- **Speed:** choose Fast, Balanced or Thorough.
+- **Speed:** choose Fast, Balanced or Thorough, or **Deep** (Pro): maximum reasoning, up to 40 steps,
+  then a review pass in which the agent is handed the audit's errors and fixes them before the run ends.
 - **Stop:** halts the agent between steps.
 - **Undo this run:** reverses everything the run did. Every single change, by the agent or a person, is
   in the History tab with its own undo.
@@ -671,6 +687,9 @@ A mailbox connects in one of two ways:
   - It uses the `gmail.readonly` and `gmail.send` scopes only.
   - Sync is incremental through Gmail's history API.
 
+**More than one mailbox** (a work and a personal address, or a shared deal inbox) is part of the Deal Team
+plan; the first mailbox is open to everyone. The check runs before a second address is stored.
+
 **Threading.**
 - Threads are keyed by Gmail's thread id where the server exposes it (`X-GM-THRID`). Otherwise the key is
   the root `Message-ID`, found from `References` and `In-Reply-To`.
@@ -757,6 +776,10 @@ honest reason to write. When there is not, it logs why. Each rule has a daily dr
 
 #### Campaigns
 
+Campaigns are part of the Deal Team plan: creating, launching, qualifying and drafting them, by hand or on
+the heartbeat and the nightly run (both skip campaigns for plans without them). Pausing, editing and
+archiving stay open, so nothing is stranded when a plan changes.
+
 Cold outreach, from lead list to follow-ups:
 
 - **Leads** come from the startup directory (filtered) or from a pasted list. Pasted leads without an email
@@ -811,6 +834,11 @@ your sending hours. Each person can turn the morning run off.
 
 Autopilot is **off by default**. When it is on, each kind of email has its own setting: **Off**, **Ask me** or
 **Autopilot**.
+
+Sending on its own is part of the Deal Team plan. Switching it on checks the plan, and the scheduler checks
+it again before every automatic send: if a plan no longer includes it, the master switch counts as off and
+anything already scheduled waits in the review queue with the reason. Reading, triage and drafts that wait
+for you stay open to every plan.
 
 | Kind of email | Default |
 |---|---|
@@ -1064,6 +1092,36 @@ Graduation offers appear at the top of the queue.
   - Presence is a heartbeat with a 25-second window.
   - A session shared with a team is open to that team; an unshared one stays with whoever started it.
 
+### Premium features
+
+Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
+data and models a key in the environment decides whether it can run at all. They spend money only when
+someone whose plan includes them uses them on purpose (a click, a ticked option); crons, monitors,
+prefetches and page loads always get the free method. Administrators (`ADMIN_EMAILS`) may use everything.
+Locked features stay visible with their plan badge, and trying one shows the plan's message in line with
+a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this list is
+`src/lib/billing/features/premium.ts`, with each feature's cost per use for the pricing model.
+
+| Feature | Plan | Where | What it adds |
+|---|---|---|---|
+| Premium reranking | Pro | Edge · Documents | Voyage rerank-3 (or Cohere Rerank 4) on every question, instead of the free reranker |
+| Stronger answer model | Pro | Edge · Ask, "Stronger model" | `EDGE_ANSWER_MODEL` (e.g. gpt-5.6-sol) writes that answer |
+| Exact-span citations | Pro | Edge · Ask, "Exact-span citations" | Anthropic Citations: quotes cut from the passages by the API |
+| Ask across companies | Pro | Edge · Ask, "Each company separately" | One question answered from each of up to six companies' filings, side by side |
+| Speaker-labelled transcripts | Pro | Edge · Library, on upload or per recording | OpenAI `gpt-4o-transcribe-diarize`; MP3 and WAV of any length, other formats to 24 MB |
+| Hard PDFs read by LlamaParse | Pro | Edge · Library, on upload or per document | LlamaParse v2 (agentic tier) with tables kept whole |
+| Sharper satellite imagery | Pro | Edge · a plant's panel | Planet's PlanetScope and SkySat scenes |
+| TimesFM forecasts | Pro | Edge · Scenarios, Driver forecasts | Google's TimesFM through BigQuery, beside the free drift forecast |
+| Flare volumes (Nightfire) | Enterprise | Edge · a plant's panel | VIIRS Nightfire flares with an estimated volume (licensed data) |
+| GPU retraining of the deal model | Enterprise | Edge · Networks | One retraining on a Modal T4, wider and longer (the weekly one stays on CPU) |
+| Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
+| Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
+| More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
+
+**Settings → Labs → Edge premium upgrades** lists each upgrade with whether YouBank has it switched on and
+whether your plan includes it; administrators also see its cost to us, the settings behind it (names only)
+and the steps to switch it on.
+
 ### Site, onboarding and styles
 
 - **The landing page (`/`)** includes:
@@ -1248,6 +1306,11 @@ bash scripts/preflight.sh                                         # everything t
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Gmail API connection via OAuth; the redirect defaults to `<origin>/api/crm/gmail/callback` |
 | `AUTOPILOT_SPOT_CHECK_RATE` | no | Overrides the spot-check rate (tests only) |
 | `NEWS_AI_BUDGET_USD` | no | The Newsroom's monthly AI cap; default `25` |
+| `AI_USER_DAILY_USD`, `AI_USER_MONTHLY_USD` | no | Replace every plan's daily and monthly AI allowance (the plans' own amounts are in `src/lib/billing/plans.ts`) |
+| `AI_GLOBAL_DAILY_USD` | no | Everyone's AI spend per UTC day; default `200` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | for billing | Stripe; without them the plan page shows prices and says billing isn't switched on |
+| `STRIPE_PRICE_PRO_MONTHLY`, `STRIPE_PRICE_PRO_YEARLY`, `STRIPE_PRICE_TEAM_MONTHLY`, `STRIPE_PRICE_TEAM_YEARLY`, `STRIPE_PRICE_ENTERPRISE_YEARLY` | for billing | Stripe price ids, printed by `scripts/stripe-setup.ts`; a plan without its id is shown but cannot be bought |
+| `ADMIN_EMAILS` | no | Comma-separated administrators: every plan feature, no AI cap |
 | `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
@@ -1258,7 +1321,20 @@ bash scripts/preflight.sh                                         # everything t
 | `COINGECKO_PRO_KEY`, `DEFILLAMA_API_KEY` | for Pro crypto data | Paid feeds, used only when an entitled person clicks "Pro data" |
 | `ALCHEMY_API_KEY`, `HELIUS_API_KEY` | for deep wallet analytics | Paid indexers (EVM, Solana), used only on a click |
 | `DUNE_API_KEY` | for Dune queries | Reads saved queries' latest results, only on a click |
+| `OVERPASS_URL` | no | The OpenStreetMap Overpass endpoint the 3D digital twin reads; default the public overpass-api.de |
+| `USGS_LIDAR_INDEX_URL` | no | The index of USGS lidar surveys for point clouds; default Hobu's `resources.geojson` on GitHub |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
+| `ADMIN_EMAILS` | no | Comma-separated administrators: every premium feature, and admin-only screens |
+| `AI_DEEP_MODEL` | no | The model for deep research; default the flagship of the person's provider |
+| `VOYAGE_API_KEY` or `COHERE_API_KEY` | for premium reranking | Paid rerankers (Pro and up) |
+| `EDGE_ANSWER_MODEL` | for the stronger answer model | e.g. `gpt-5.6-sol` |
+| `EDGE_CITATIONS=anthropic`, `ANTHROPIC_API_KEY`, `EDGE_CITATIONS_MODEL` | for exact-span citations | The model defaults to `claude-sonnet-5-5` |
+| `EDGE_TRANSCRIBE=openai`, `EDGE_TRANSCRIBE_MODEL` | for speaker labels | Uses `OPENAI_API_KEY`; the model defaults to `gpt-4o-transcribe-diarize` |
+| `LLAMA_CLOUD_API_KEY`, `LLAMAPARSE_TIER`, `LLAMA_CLOUD_BASE_URL` | for LlamaParse | Tier defaults to `agentic`; the base URL to `https://api.cloud.llamaindex.ai` (use the EU host for EU projects) |
+| `PLANET_API_KEY` | for Planet imagery | |
+| `NIGHTFIRE_USER`, `NIGHTFIRE_PASSWORD` | for Nightfire | An EOG account under its data licence; `NIGHTFIRE_CLIENT_SECRET`, `NIGHTFIRE_URL_TEMPLATE` and `NIGHTFIRE_TOKEN_URL` only if EOG changes its download client |
+| `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` | for TimesFM | A service account key with BigQuery Job User; `TIMESFM_MODEL` (default `TimesFM 2.5`), `BIGQUERY_LOCATION` (default `US`) |
+| `EDGE_ML_GPU=1` | for GPU retraining | After deploying the ML service's `graph.train.gpu` task |
 
 ---
 
@@ -1320,7 +1396,20 @@ bash scripts/preflight.sh                                         # everything t
      --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
    neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
    ```
-7. **Verify.**
+7. **Billing (Stripe).** Create the products and prices, and the webhook endpoint, from `PLANS`:
+   ```bash
+   STRIPE_SECRET_KEY=sk_live_... pnpm exec tsx scripts/stripe-setup.ts --live \
+     --webhook https://<your-domain>/api/billing/webhook
+   ```
+   - Set the printed `STRIPE_*` lines in Vercel.
+   - In the Stripe dashboard, switch on the customer portal and allow plan changes between these prices.
+   - Run it first with a test key (`sk_test_...`, no `--live`) on a preview deployment.
+8. **Verify.**
+   - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
+     the app serves but something is missing (the tables, a production setting, an optional service half
+     set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
+     the names of missing settings and which services are on need the cron secret
+     (`-H "Authorization: Bearer $CRON_SECRET"`) or an `ADMIN_EMAILS` session. No value is ever shown.
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
 
@@ -1337,14 +1426,18 @@ bash scripts/preflight.sh                                         # everything t
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
 | Crypto (122 tests) | `pnpm exec tsx scripts/test-crypto.ts` | Address checksums (EIP-55, Base58Check, Bech32 and Bech32m, Solana keys); notarization calldata, verification and canonical JSON; every API parser against fixtures (CoinGecko, DefiLlama, mempool.space, SEC frames, Etherscan, Alchemy, Dune); portfolio risk; valuation math; mining economics; the site data and popup escaping; Newsroom and directory converters; the four crypto Studio templates against the valuation math, the audit and their data tables |
+| Billing (65 tests) | `pnpm exec tsx scripts/test-billing.ts` (`--table` prints the cost model) | Every paid plan's margin at typical use against the target, the worst case at the full AI allowance, Free and Campus cost ceilings; AI caps by plan and their overrides; the monthly-allowance message; checkout requests; the row a Stripe subscription writes and stale cancellations; webhook signatures, tampering and replay |
+| Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
+| 3D maps (71 tests) | `pnpm exec tsx scripts/test-maps.ts` | The sun's position and light; procedural tank, stack, flame and tube meshes and the glTF writer; lidar octree selection under a budget and the point cloud wire format; terrain tiles; OpenStreetMap parsing; the digital twin's merging and flame placement; change, land-use and footprint cells; the layer registry; the maps plan features |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
+| Premium (56 tests) | `pnpm exec tsx scripts/test-premium.ts` | The feature registry (unique ids, plans, a cost for every metered feature, every keyed upgrade built and tied to a feature); the premium scope (nothing premium outside it, async propagation, 402 before work, the client's plan message); per-person and administrator views of the upgrades (no setting values); Citations' spans to claims; MP3 frames and WAV headers for cutting audio; diarized pieces in time; LlamaParse jobs and Markdown tables; Nightfire's CSV, grouping and volumes; weekly levels, the drift forecast and the TimesFM query |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
 | Studio (136 tests) | `pnpm exec tsx scripts/test-studio.ts` | Formula language and precedence; about 120 functions against Excel's documented results; number formats; the dependency graph, deep chains and iterative circularity; data tables and goal seek; every template; audit rules; banker formatting; edit operations with reference shifting; the linked deck and tie-out; .xlsx and .pptx round trips |
 | Studio end to end | `DATABASE_URL=<branch> pnpm exec tsx scripts/e2e-studio.ts` | With the live model: a valuation pack with a linked deck, a custom formula-linked sheet with a waterfall slide, a turned comment, undoing a run, and exports from the stored document |
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
 production.
@@ -1385,6 +1478,22 @@ production.
   address, on Base, shown by their wallet for them to approve. The server verifies it by reading the
   chain; it signs nothing.
 - Paid crypto APIs are called only when an entitled person clicks, never from a page load or a cron.
+**Errors.**
+- Nobody sees a raw error. A failure meant for people ("This draft was already sent", a permission or a
+  limit) is shown as written; anything that looks internal (SQL, a URL or a key, a stack trace, an HTML
+  error page, a provider's or a parser's own text) becomes "Something went wrong on our side (ref …)",
+  and the full error is logged as one JSON line under that reference (and sent to Sentry when
+  `SENTRY_DSN` is set). One rule decides, in `src/lib/error-text.ts`, shared by the server
+  (`src/lib/errors.ts`) and the browser (`src/lib/client/errors.ts`), which also screens whatever reaches
+  it some other way (a proxy's HTML page, an empty 500, "Failed to fetch") and falls back to a plain line
+  by status: sign in again (401), plan needed (402), no access (403), not found (404), a limit (429),
+  our side (5xx), offline.
+- Streams (the AI chat, workflows, Studio's agent, document answers) end with a screened message, never a
+  dropped connection; errors stored for later (a canvas step, a document's reading, a run) are screened
+  before they are written.
+- A crashed screen shows a plain message, the reference (Next's digest, also in the log line) and Try
+  again and Home. Each workspace has its own boundary, so the navigation stays; a tab left open across a
+  deploy is told to reload.
 
 **Scheduled endpoints.**
 - Cron and heartbeat endpoints require bearer secrets.
@@ -1445,15 +1554,57 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Trust has to be earned and measured.** Recent work shows a model's self-graded confidence is poorly
   calibrated. That is why autonomy is certified on the person's own decisions, with exact bounds and
   anytime-valid demotion.
-- **Pricing belongs in the $30–$300 per seat per month band.** The planned plans are below; nothing is
-  billed during the beta.
+- **Pricing started in the $30–$300 per seat per month band.** The cost model in
+  [docs/pricing.md](docs/pricing.md) moved it: model time is most of what YouBank costs, so the prices
+  below keep at least 70% of the monthly price (65% of the yearly one) at typical use and stay positive even
+  for someone who uses the whole AI allowance. See [Plans and billing](#plans-and-billing).
 
-| Plan | Price | For |
-|---|---|---|
-| Campus | Free with a .edu address | Students: the full terminal and data, AI workflows with a monthly allowance, a recruiting pack |
-| Pro | $39 a month, or $29 billed yearly | Individuals: higher limits, the relationships agent and one mailbox |
-| Deal Team | $149 per seat a month, three seats minimum | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces |
-| Enterprise | From $249 per seat a month, yearly | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+---
+
+## Plans and billing
+
+| Plan | Price | AI allowance per seat | For |
+|---|---|---|---|
+| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Campus | Free with a .edu address | $2 a day, $10 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
+| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox |
+| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces, assignable seats |
+| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+
+- **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
+  dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
+  - `src/lib/billing/costs.ts` holds the same model in code.
+  - `scripts/test-billing.ts` fails if a price, a cost or a new premium feature breaks the margin target.
+- **Premium features.** Premium features are listed in `src/lib/billing/features/`, one file per area,
+  each naming the least plan that includes it.
+  - Settings, under Plan, groups them by area and shows which are unlocked.
+  - The contract every premium feature follows is in [docs/premium.md](docs/premium.md).
+- **AI credit packs.** $10, $25 and $50 packs add $6, $15 and $32 of AI use, used only after the month's
+  allowance, oldest pack first; they never expire. Bought with a one-time Checkout on any plan.
+- **Allowance months** start on the billing anniversary for subscribers (and their seat holders) and on
+  the 1st (UTC) otherwise.
+- **Team seats.** The buyer of Deal Team or Enterprise holds one seat and gives the others to members of
+  a team they own or administer (Settings, under Plan). A seat count changed in the portal reaches
+  YouBank through the webhook, which takes back the newest seats beyond it.
+- **Billing is Stripe.**
+  - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
+    who already pays is sent to the portal; an open checkout for the same purchase is reused, others are
+    expired, and the create call carries an idempotency key, so nobody ends up with two subscriptions.
+  - `POST /api/billing/credits` starts a one-time Checkout for a credit pack.
+  - `POST /api/billing/portal` opens Stripe's billing portal (plan switches, seats, cancellation at period
+    end, card, invoices); `GET /api/billing/invoices` lists Stripe-hosted invoices and receipts.
+  - `GET|POST|DELETE /api/billing/seats` lists, gives and takes back seats.
+  - `POST /api/billing/webhook` checks Stripe's signature, then rewrites the person's `subscriptions` row
+    from the subscription as Stripe holds it now, grants packs once per payment intent, and takes back
+    refunded credits. Retried and out-of-order events change nothing extra.
+  - `POST /api/billing/confirm` stores what was bought as soon as someone is back from Checkout.
+  - `scripts/stripe-setup.ts` creates the products, prices, webhook endpoint and portal configuration
+    (`--live`, `--webhook`, `--tax`, `--dry-run`) and prints every variable to set.
+  - Without `STRIPE_SECRET_KEY`, the plan page shows the prices and says billing isn't switched on yet.
+- **Public pages.** `/pricing` (from `PLANS` and the packs), and draft `/terms`, `/privacy` and `/refunds`
+  marked for review by counsel.
+- **Launch day:** [docs/launch-billing.md](docs/launch-billing.md) is the step-by-step checklist.
+- **Nothing is billed during the beta** until the Stripe keys are set.
 
 ---
 
@@ -1479,8 +1630,9 @@ Three earlier research reports are behind the adaptive engine, the website and t
   - suggest new angles from what replies have in common.
 - **Company:**
   - SOC 2 Type I;
-  - properly licensed market data;
-  - billing for the plans above.
+  - properly licensed market data.
+- **Premium:** speaker labels for long M4A and MP4 recordings (needs cutting on the ML service); methane
+  cards per plan (today Carbon Mapper is a site licence and its cards are shared findings).
 
 ---
 
@@ -1527,6 +1679,8 @@ YouBank/
 | Doc | What |
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
+| [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
+| [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |

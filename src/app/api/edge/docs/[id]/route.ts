@@ -6,6 +6,8 @@ import { requireEdge } from "@/lib/edge/access";
 import { ingest } from "@/lib/edge/docs/ingest";
 import { deleteDoc } from "@/lib/edge/docs/store";
 import { myTeamIds } from "@/lib/teams/db";
+import { isPremiumRead, requestPremiumRead } from "@/lib/edge/premium/reading";
+import { rateLimit } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -40,12 +42,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   });
 }
 
-/** Read a failed upload again. */
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+/**
+ * Read an upload again: a failed one with the standard reader, or any one with a premium reader the
+ * person chose ({ with: "llamaparse" | "diarize" }), after checking their plan, the upgrade and the file
+ * (402, 409 or 400, with nothing spent).
+ */
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     const d = await ownDoc(user.id, Number((await ctx.params).id));
     if (!d?.fileId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const body = (await req.json().catch(() => null)) as { with?: string } | null;
+    if (body?.with !== undefined) {
+      if (!isPremiumRead(body.with)) return NextResponse.json({ error: "Pick a reader." }, { status: 400 });
+      if (["queued", "parsing", "indexing"].includes(d.status)) return NextResponse.json({ error: "This document is still being read; wait for it to finish." }, { status: 409 });
+      await rateLimit(`edge-premium-read:${user.id}`, 30, 3_600_000, "Many documents re-read this hour; try again later.");
+      await requestPremiumRead(user, d.id, body.with);
+    }
     return NextResponse.json({ status: await ingest(d.id) });
   });
 }

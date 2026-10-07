@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { useFeature } from "@/lib/client/plan";
 import {
   AUTONOMY_LABEL, AUTONOMY_LEVELS, AUTONOMY_SCOPES, SCOPE_HINT, SCOPE_LABEL,
   type AutopilotSettings, type AutonomyScope,
@@ -34,6 +36,7 @@ function Section({ title, icon, children, hint }: { title: string; icon: string;
 
 /** How the agent works for you: what it is for, what it may do on its own, what it knows, and how you write. */
 export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
+  const autopilotInPlan = useFeature("relationships.autopilot");
   const [s, setS] = useState<Settings | null>(null);
   const [domains, setDomains] = useState("");
   const [playbook, setPlaybook] = useState<Entry[]>([]);
@@ -118,9 +121,11 @@ export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
         <label className={`ctl flex items-start gap-3 border p-3 ${ap.enabled ? "border-accent/60 bg-accent-soft/40" : "border-line"} ${ap.regulated ? "opacity-50" : ""}`}>
           <input type="checkbox" checked={ap.enabled} disabled={ap.regulated} onChange={(e) => setAp({ enabled: e.target.checked })} className="mt-1" />
           <span className="text-[12.5px]">
-            <span className="font-semibold">{ap.enabled ? "Autopilot is on" : "Autopilot is off"}</span>
+            <span className="flex items-center gap-2 font-semibold">{ap.enabled ? "Autopilot is on" : "Autopilot is off"} <PremiumBadge feature="relationships.autopilot" /></span>
             <span className="block text-[11px] text-muted">
-              {ap.enabled
+              {ap.enabled && autopilotInPlan === false
+                ? "Your plan does not include Autopilot now, so nothing is sent on its own: drafts wait for you in the review queue, each with the reason."
+                : ap.enabled
                 ? "Emails set to Autopilot below are sent from your mailbox automatically, after the hold time and inside your sending hours. Switching this off stops everything at once."
                 : "Nothing is sent without you pressing Send, whatever the rows below say. The agent still reads, drafts and asks."}
             </span>

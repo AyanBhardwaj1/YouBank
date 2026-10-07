@@ -8,6 +8,7 @@ import type { FormDFiling } from "@/lib/vc/formd";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Select } from "@/components/ui/Select";
 import { useSubNav } from "@/lib/subnav";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 type Startup = {
   id: number; source: string; sourceId: string; name: string; oneLiner: string; description: string; website: string; url: string; logo: string; program: string; status: string;
@@ -37,17 +38,21 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { fetch("/api/ai/status").then((r) => r.json()).then(setAi).catch(() => null); }, []);
+  useEffect(() => { fetchJson<AiStatus>("/api/ai/status").then(setAi).catch(() => null); }, []);
   const loadFacets = useCallback(async () => {
-    try { const f = (await (await fetch("/api/vc/startups/facets")).json()) as Facets; setFacets(f); return f; }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); return null; }
+    try { const f = await fetchJson<Facets>("/api/vc/startups/facets"); setFacets(f); return f; }
+    catch (e) { setError(errorMessage(e)); return null; }
   }, []);
   useEffect(() => { const t = setTimeout(() => void loadFacets(), 0); return () => clearTimeout(t); }, [loadFacets]);
 
   const runSearch = useCallback((signal: AbortSignal) => {
     setLoading(true);
     const p = new URLSearchParams({ q, source, country, program, industry, hiring: hiring ? "1" : "", page: String(page), pageSize: "50" });
-    fetch(`/api/vc/startups?${p}`, { signal }).then((r) => r.json()).then((r) => { if (!("error" in r)) setResult(r); }).catch(() => { /* aborted */ }).finally(() => setLoading(false));
+    fetchJson<{ total: number; rows: Startup[] }>(`/api/vc/startups?${p}`, { signal })
+      .then((r) => { setResult(r); setError(null); })
+      // A newer search replaced this one: say nothing, and leave the spinner to it.
+      .catch((e) => { if (!isAbort(e)) setError(errorMessage(e)); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
   }, [q, source, country, program, industry, hiring, page]);
 
   useEffect(() => {
@@ -60,20 +65,17 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
     const query = [q, industry, country ? `in ${country}` : "", program ? `from ${program}` : ""].filter(Boolean).join(" ") || `${profile.sectors[0] || "software"} startups founded recently${country ? ` in ${country}` : ""}`;
     setDiscovering(true); setNotice(null); setError(null);
     try {
-      const r = await (await fetch("/api/vc/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, program }) })).json();
-      if ("error" in r) throw new Error(r.error);
+      const r = await fetchJson<{ written: number }>("/api/vc/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, program }) });
       setNotice(`Added ${r.written} startups from the web for "${query}"`);
       setSource("web"); setPage(1); await loadFacets();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setDiscovering(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setDiscovering(false); }
   };
 
   const searchFormD = async (name: string) => {
     setFormQ(name); setTab("formd"); setFormLoading(true); setFormRes(null); setError(null);
     try {
-      const r = await (await fetch(`/api/vc/formd?q=${encodeURIComponent(name)}`)).json();
-      if ("error" in r) throw new Error(r.error);
-      setFormRes(r);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setFormLoading(false); }
+      setFormRes(await fetchJson<{ total: number; filings: FormDFiling[] }>(`/api/vc/formd?q=${encodeURIComponent(name)}`));
+    } catch (e) { setError(errorMessage(e)); } finally { setFormLoading(false); }
   };
 
   const subject = selected ? `${selected.name} (${selected.program}${selected.website ? `, ${selected.website}` : ""})` : `Venture research · ${profile.specialty || "all stages"}`;

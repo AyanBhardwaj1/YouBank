@@ -5,6 +5,7 @@
  * exchange flows, whale cohorts, a protocol's users) into a sortable table, and download it as CSV.
  * Runs only on a click; the server checks the plan before calling Dune.
  */
+import { errorMessage } from "@/lib/client/errors";
 import { useState } from "react";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { DataTable } from "@/components/terminal/kit";
@@ -23,7 +24,7 @@ export function DunePanel() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Dune did not return results");
       setState({ busy: false, data: j as DuneResult });
-    } catch (e) { setState({ busy: false, error: e instanceof Error ? e.message : "Dune did not return results" }); }
+    } catch (e) { setState({ busy: false, error: errorMessage(e) }); }
   };
   const download = () => {
     const d = state.data;

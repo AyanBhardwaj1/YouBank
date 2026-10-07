@@ -4,7 +4,7 @@ YouBank Edge ML service: Modal app ``youbank-edge-ml``.
 One authenticated HTTP entry point (``api``) dispatches to one Modal function per task,
 plus a ``status`` endpoint for async calls. Tasks:
 
-    health, geo.refine, geo.embed_change, docs.parse, docs.rerank, audio.transcribe,
+    health, geo.refine, geo.embed_change, geo.footprints, docs.parse, docs.rerank, audio.transcribe,
     graph.train, synth.tabular, synth.series, topics.map
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
@@ -56,16 +56,21 @@ SECRET_KEYS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_
 # ---------------------------------------------------------------------------------------------
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEM_USD_PER_GIB_SECOND = 0.00000222
+# GPU tasks: Modal's GPU and its list price per second (T4 $0.59 an hour), added to the CPU and memory above.
+GPU_TASKS: dict[str, tuple[str, float]] = {"graph.train.gpu": ("T4", 0.59 / 3600)}
 
 # task name -> (Modal function name, CPU cores, memory MiB, timeout seconds, max containers)
 TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "health": ("health", 0.25, 512, 60, 1),
     "geo.refine": ("geo_refine", 2.0, 7168, 600, 2),  # all four models loaded (a fallback in a warm container): 6.4 GB
     "geo.embed_change": ("geo_embed_change", 1.0, 2048, 300, 2),
+    "geo.footprints": ("geo_footprints", 2.0, 7168, 600, 2),  # SAM 2.1 base+ automatic masks (SAM ViT-B as fallback)
     "docs.parse": ("docs_parse", 2.0, 4096, 900, 3),
     "docs.rerank": ("docs_rerank", 4.0, 2048, 120, 3),
     "audio.transcribe": ("audio_transcribe", 4.0, 8192, 3600, 2),
     "graph.train": ("graph_train", 2.0, 4096, 1800, 1),
+    # The same training on a GPU, wider and longer, only when a person asks for it (premium: edge.graph-gpu).
+    "graph.train.gpu": ("graph_train_gpu", 2.0, 8192, 1800, 1),
     "synth.tabular": ("synth_tabular", 2.0, 4096, 1800, 1),
     "synth.series": ("synth_series", 2.0, 4096, 1800, 1),
     "topics.map": ("topics_map", 2.0, 4096, 600, 1),
@@ -299,6 +304,9 @@ rerank_image = (
 )
 
 graph_image = _torch_image().pip_install(*_pin("torch-geometric", "scikit-learn", "boto3"))
+# The GPU variant: PyPI's torch wheel carries CUDA (the CPU index's does not).
+graph_gpu_image = modal.Image.debian_slim(python_version=PY).pip_install(
+    f"torch=={PINS['torch'].split('+')[0]}", *_pin("torch-geometric", "scikit-learn", "boto3"))
 
 synth_image = _torch_image().pip_install(*_pin("scikit-learn", "boto3"))
 
@@ -496,7 +504,7 @@ def _execute(task: str, req: dict, impl) -> dict:
 
     def envelope(ok: bool, result, error):
         seconds = round(time.monotonic() - started, 3)
-        cost = seconds * (cores * CPU_USD_PER_CORE_SECOND + gib * MEM_USD_PER_GIB_SECOND)
+        cost = seconds * (cores * CPU_USD_PER_CORE_SECOND + gib * MEM_USD_PER_GIB_SECOND + GPU_TASKS.get(task, ("", 0.0))[1])
         return {"ok": ok, "task": task, "result": _jsonable(result), "error": error, "seconds": seconds,
                 "costUsd": round(cost, 7), "callId": call_id}
 
@@ -534,10 +542,11 @@ def _execute(task: str, req: dict, impl) -> dict:
 
 def _task_function(task: str, image: modal.Image, env: dict | None = None):
     name, cpu, mem, timeout, max_containers = TASKS[task]
+    gpu = GPU_TASKS.get(task, (None, 0.0))[0]
     return app.function(
         name=name, image=image, cpu=cpu, memory=mem, timeout=timeout, secrets=[SECRET],
         max_containers=max_containers, scaledown_window=SCALEDOWN_SECONDS,
-        env={**_threads(cpu), **APP_ENV, **(env or {})},
+        env={**_threads(cpu), **APP_ENV, **(env or {})}, **({"gpu": gpu} if gpu else {}),
     )
 
 
@@ -1127,6 +1136,28 @@ def _aef_png(change, valid, scale: float = AEF_VMAX, max_side: int = 256, levels
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def _aef_cells(change, valid, n) -> dict | None:
+    """The change map averaged into about n x n cells (the 3D map extrudes them): mean change of the valid pixels in
+    each cell, -1 where a cell has fewer than a quarter of its pixels valid. Row 0 is the north edge. None when no
+    grid was asked for."""
+    import numpy as np
+
+    if n is None:
+        return None
+    n = max(8, min(64, int(n)))
+    h, w = change.shape
+    rows, cols = np.array_split(np.arange(h), min(n, h)), np.array_split(np.arange(w), min(n, w))
+    values = []
+    for r in rows:
+        for c in cols:
+            ok = valid[np.ix_(r, c)]
+            if ok.size == 0 or ok.mean() < 0.25:
+                values.append(-1.0)
+                continue
+            values.append(round(float(np.nanmean(change[np.ix_(r, c)][ok])), 4))
+    return {"width": len(cols), "height": len(rows), "values": values}
+
+
 def _geo_embed_change(inp: dict) -> dict:
     from concurrent.futures import ThreadPoolExecutor
 
@@ -1168,11 +1199,88 @@ def _geo_embed_change(inp: dict) -> dict:
              "p99": q(99), "max": round(float(vals.max()), 4) if vals.size else None,
              "above": {str(t): round(float((vals > t).mean()), 4) if vals.size else None for t in AEF_THRESHOLDS}}
     gt, h, w, crs = grid
+    out_grid = _aef_cells(change, valid, inp.get("grid"))
     return {"years": years, "bbox": bbox, "crs": crs, "shape": [h, w], "pixelMeters": round(abs(gt.a), 2),
+            **({"grid": out_grid} if out_grid else {}),
             "validFraction": round(float(valid.mean()), 4), "stats": stats,
             "png": _aef_png(change, valid), "pngScale": {"vmax": AEF_VMAX, "ramp": "inferno", "nodata": "transparent"},
             "tiles": {str(y): [t["key"] for t in ts] for y, ts in tiles.items()}, "readSeconds": round(t_read, 2),
             "source": "https://source.coop/tge-labs/aef", "license": "CC-BY-4.0", "attribution": AEF_ATTRIBUTION}
+
+
+# ---------------------------------------------------------------------------------------------
+# geo.footprints: Segment Anything's automatic masks over one aerial or satellite image -> outlines
+# ---------------------------------------------------------------------------------------------
+FOOTPRINT_MAX_SIDE = 1024  # images are scaled down to this before segmenting (SAM works at 1024 anyway)
+
+
+def _mask_generator(kind: str, points_per_side: int):
+    """SAM 2.1's automatic mask generator, or the original SAM's, over the already-loaded image model."""
+    model = _geo_model(kind)
+    if kind == "sam2":
+        from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+
+        return SAM2AutomaticMaskGenerator(model["sam"].model, points_per_side=points_per_side, points_per_batch=64,
+                                          pred_iou_thresh=0.8, stability_score_thresh=0.9, min_mask_region_area=0)
+    from segment_anything import SamAutomaticMaskGenerator
+
+    return SamAutomaticMaskGenerator(model["sam"].model, points_per_side=points_per_side, points_per_batch=64,
+                                     pred_iou_thresh=0.86, stability_score_thresh=0.92, min_mask_region_area=0)
+
+
+def _geo_footprints(inp: dict) -> dict:
+    """Outline everything in an image: tanks, buildings, pads, ponds. Input {"image": https URL, "bbox": [w, s, e, n]
+    (echoed back), "maxMasks": 400, "pointsPerSide": 24, "minAreaPx": 24}. Result {"polygons": [{"points": [[x, y],
+    ...] in the image's pixels, "areaPx", "score"}], "imageSize": [w, h], "model", "modelVersion", "timings"}. Masks
+    covering more than a fifth of the image (fields, the background) are left out."""
+    import numpy as np
+    from PIL import Image
+
+    url = inp.get("image")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("image must be an https URL of a PNG or JPEG")
+    max_masks = max(1, min(800, int(inp.get("maxMasks") or 400)))
+    pps = max(8, min(32, int(inp.get("pointsPerSide") or 24)))
+    min_area = max(4, int(inp.get("minAreaPx") or 24))
+    t0 = time.monotonic()
+    img = _fetch_png(url)
+    h0, w0 = img.shape[:2]
+    if max(h0, w0) > FOOTPRINT_MAX_SIDE:
+        k = FOOTPRINT_MAX_SIDE / max(h0, w0)
+        img = np.asarray(Image.fromarray(img).resize((max(1, round(w0 * k)), max(1, round(h0 * k))), Image.BILINEAR))
+    h, w = img.shape[:2]
+    t_fetch = time.monotonic() - t0
+    masks, name, fallback = None, None, None
+    for kind in ("sam2", "sam"):
+        try:
+            masks = _mask_generator(kind, pps).generate(img)
+            name = GEO_NAMES[kind]
+            break
+        except Exception as e:
+            traceback.print_exc()
+            fallback = _redact(f"{type(e).__name__}: {e}")[:300]
+    if masks is None:
+        raise RuntimeError(f"no segmentation model could run ({fallback})")
+    t_seg = time.monotonic() - t0 - t_fetch
+    keep = [m for m in masks if min_area <= int(m["area"]) <= 0.2 * h * w]
+    keep.sort(key=lambda m: float(m.get("predicted_iou", 0)) * float(m.get("stability_score", 0)), reverse=True)
+    sx, sy = w0 / w, h0 / h  # outlines in the original image's pixels
+    polys = []
+    for m in keep[:max_masks]:
+        seg = np.asarray(m["segmentation"]).astype(bool)
+        ys, xs = np.nonzero(seg)
+        if not len(xs):
+            continue
+        pts = _outline(seg, float(xs.mean()), float(ys.mean()), sx, sy)
+        if len(pts) >= 3:
+            polys.append({"points": pts, "areaPx": int(round(int(m["area"]) * sx * sy)),
+                          "score": round(float(m.get("predicted_iou", 0)), 4)})
+    out = {"polygons": polys, "imageSize": [w0, h0], "bbox": inp.get("bbox"), "model": name, "modelVersion": name,
+           "masks": len(masks), "kept": len(polys),
+           "timings": {"fetch": round(t_fetch, 2), "segment": round(t_seg, 2), "total": round(time.monotonic() - t0, 2)}}
+    if fallback and name != GEO_NAMES["sam2"]:
+        out["fallbacks"] = {"sam": fallback}
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -2021,6 +2129,11 @@ def _graph_train(inp: dict) -> dict:
     torch.set_num_threads(2)
     seed = int(inp.get("seed") or 0)
     torch.manual_seed(seed)
+    # On the GPU task the model trains on CUDA, wider and for longer (the caller sets hidden, epochs and the budget);
+    # everywhere else these are the CPU defaults, so the weekly retraining is unchanged.
+    dev = torch.device("cuda" if inp.get("gpu") and torch.cuda.is_available() else "cpu")
+    hidden = max(16, min(int(inp.get("hidden") or GRAPH_HIDDEN), 512))
+    budget_s = max(60.0, min(float(inp.get("budgetSeconds") or GRAPH_TRAIN_BUDGET), 1500.0))
     rng = np.random.default_rng(seed)
     top_k = max(1, min(int(inp.get("topK") or 20), 200))
     g = _load_json_ref(inp, "graphKey")
@@ -2084,7 +2197,10 @@ def _graph_train(inp: dict) -> dict:
 
     rel_keys = [f"f{j}" for j in range(len(edge_kinds))] + [f"r{j}" for j in range(len(edge_kinds))] + ["fD", "rD"]
     npair = len(kind_names) + 1  # common neighbours by kind of the shared node, plus a direct link
-    xt, kt = torch.from_numpy(Xs), torch.from_numpy(kind_idx)
+    xt, kt = torch.from_numpy(Xs).to(dev), torch.from_numpy(kind_idx).to(dev)
+
+    def T(a: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(np.asarray(a, np.int64)).to(dev)
 
     def ei(src: np.ndarray, dst: np.ndarray) -> torch.Tensor:
         return torch.from_numpy(np.stack([src, dst]).astype(np.int64)).reshape(2, -1)
@@ -2108,8 +2224,8 @@ def _graph_train(inp: dict) -> dict:
         A.data[:] = 1.0
         A_c = A[comp]
         B = [A_c[:, np.nonzero(kind_idx == k)[0]].tocsr() for k in range(len(kind_names))]
-        return {"eidx": eidx, "deg": torch.from_numpy(np.log1p(deg)), "B": B, "BT": [b.T.tocsr() for b in B],
-                "Acc": A_c[:, comp].tocsr()}
+        return {"eidx": {k: v.to(dev) for k, v in eidx.items()}, "deg": torch.from_numpy(np.log1p(deg)).to(dev), "B": B,
+                "BT": [b.T.tocsr() for b in B], "Acc": A_c[:, comp].tocsr()}
 
     def make_windows(idx: list) -> list:
         """Split time-ordered deals into up to GRAPH_MAX_WINDOWS windows after a 30 % warm-up of history:
@@ -2129,13 +2245,13 @@ def _graph_train(inp: dict) -> dict:
         ap, bp = cpos[a_nodes], cpos[b_nodes]
         cols = [np.log1p(np.asarray(b[ap].multiply(b[bp]).sum(1)).ravel()) for b in snap["B"]]
         cols.append(np.asarray(snap["Acc"][ap, bp]).ravel())
-        return torch.from_numpy(np.stack(cols, 1).astype(np.float32))
+        return torch.from_numpy(np.stack(cols, 1).astype(np.float32)).to(dev)
 
     def pair_block(snap: dict, rows_c: np.ndarray) -> torch.Tensor:
         """Pair features of company positions rows_c against every company: (r, C, npair). Symmetric."""
         cols = [np.log1p((b[rows_c] @ bt).toarray()) for b, bt in zip(snap["B"], snap["BT"])]
         cols.append(snap["Acc"][rows_c].toarray())
-        return torch.from_numpy(np.stack(cols, -1).astype(np.float32))
+        return torch.from_numpy(np.stack(cols, -1).astype(np.float32)).to(dev)
 
     class RelSAGE(nn.Module):
         """GraphSAGE with one mean-aggregating SAGEConv per relation (edge kind x direction, plus deals), node-kind
@@ -2144,7 +2260,7 @@ def _graph_train(inp: dict) -> dict:
 
         def __init__(self):
             super().__init__()
-            H = GRAPH_HIDDEN
+            H = hidden
             self.inp = nn.Linear(fdim + len(rel_keys), H)
             self.kind = nn.Embedding(len(kind_names), H)
             self.convs = nn.ModuleList([nn.ModuleDict({r: SAGEConv(H, H, aggr="mean", root_weight=False)
@@ -2178,19 +2294,19 @@ def _graph_train(inp: dict) -> dict:
         model.eval()
         with torch.no_grad():
             h = model.encode(snap)
-            hc = h[torch.from_numpy(comp)]
+            hc = h[T(comp)]
             HP, HQ = model.P(hc), model.Q(hc)
             wa, wb = model.wa(hc).squeeze(-1), model.wb(hc).squeeze(-1)
             out = []
             rows_c = cpos[np.asarray(rows_nodes, np.int64)]
             for s in range(0, len(rows_c), 256):
                 r = rows_c[s:s + 256]
-                rt = torch.from_numpy(r)
+                rt = T(r)
                 if as_target:
                     emb = HP[rt] @ HQ.T + wa[rt][:, None] + wb[None, :]
                 else:
                     emb = HQ[rt] @ HP.T + wb[rt][:, None] + wa[None, :]
-                out.append((emb + model.pair(pair_block(snap, r)).squeeze(-1)).numpy())
+                out.append((emb + model.pair(pair_block(snap, r)).squeeze(-1)).cpu().numpy())
         return np.concatenate(out) if out else np.zeros((0, C), np.float32)
 
     by_acq, by_tgt = {}, {}
@@ -2230,8 +2346,8 @@ def _graph_train(inp: dict) -> dict:
                               np.stack([comp[rng.integers(0, C, b.size)], b], 1)])
         return neg[neg[:, 0] != neg[:, 1]]
 
-    def fit(windows: list, epochs: int, budget: float = GRAPH_TRAIN_BUDGET):
-        model = RelSAGE()
+    def fit(windows: list, epochs: int, budget: float = budget_s):
+        model = RelSAGE().to(dev)
         opt = torch.optim.Adam(model.parameters(), lr=GRAPH_LR, weight_decay=GRAPH_WEIGHT_DECAY)
         t0, ep = time.monotonic(), 0
         for ep in range(1, epochs + 1):
@@ -2240,8 +2356,8 @@ def _graph_train(inp: dict) -> dict:
                 snap, sup, pf_sup = windows[wi]
                 h = model.encode(snap)
                 neg = negatives(sup)
-                pos_logit = model.score(h, torch.from_numpy(sup[:, 0]), torch.from_numpy(sup[:, 1]), pf_sup)
-                neg_logit = model.score(h, torch.from_numpy(neg[:, 0]), torch.from_numpy(neg[:, 1]),
+                pos_logit = model.score(h, T(sup[:, 0]), T(sup[:, 1]), pf_sup)
+                neg_logit = model.score(h, T(neg[:, 0]), T(neg[:, 1]),
                                         pair_feats(snap, neg[:, 0], neg[:, 1]))
                 loss = (F.binary_cross_entropy_with_logits(pos_logit, torch.ones_like(pos_logit))
                         + F.binary_cross_entropy_with_logits(neg_logit, torch.zeros_like(neg_logit)))
@@ -2307,9 +2423,9 @@ def _graph_train(inp: dict) -> dict:
     version = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     model_key, pred_key = f"ml/models/gnn-{version}.pt", f"ml/predictions/{version}.json"
     buf = io.BytesIO()
-    torch.save({"state_dict": model.state_dict(), "version": version, "nodeIds": ids, "kinds": kind_names,
+    torch.save({"state_dict": {k: v.cpu() for k, v in model.state_dict().items()}, "version": version, "nodeIds": ids, "kinds": kind_names,
                 "edgeKinds": edge_kinds, "relations": rel_keys, "featMean": f_mean.tolist(), "featStd": f_std.tolist(),
-                "config": {"hidden": GRAPH_HIDDEN, "layers": GRAPH_LAYERS, "rank": GRAPH_RANK, "features": fdim,
+                "config": {"hidden": hidden, "layers": GRAPH_LAYERS, "rank": GRAPH_RANK, "features": fdim,
                            "pairFeatures": npair, "epochs": epochs_final}}, buf)
     _r2_put(model_key, buf.getvalue(), "application/octet-stream")
     _put_json(pred_key, {"version": version, "topK": top_k, "splitDate": split, "acquirers": acquirers,
@@ -2317,6 +2433,7 @@ def _graph_train(inp: dict) -> dict:
     info = {"splitDate": split, "nodes": N, "companies": int(C), "edges": len(E), "edgeKinds": edge_kinds,
             "deals": len(D), "trainDeals": len(pre_idx), "testDeals": int(len(test_pairs)), "droppedDeals": dropped,
             "windows": len(pre_windows), "epochs": epochs, "epochsRun": [epochs_bt, epochs_final],
+            "device": dev.type, "hidden": hidden,
             "trainSeconds": round(time.monotonic() - t_start, 1)}
     return {"version": version, "modelKey": model_key, "predictionsKey": pred_key,
             "metrics": {"gnn": gnn_metrics, "baseline": base_metrics}, "info": info}
@@ -2911,6 +3028,11 @@ def geo_embed_change(req: dict) -> dict:
     return _execute("geo.embed_change", req, _geo_embed_change)
 
 
+@_task_function("geo.footprints", geo_image, env={**GDAL_ENV, **_threads(_hw_threads(TASKS["geo.footprints"][1]))})
+def geo_footprints(req: dict) -> dict:
+    return _execute("geo.footprints", req, _geo_footprints)
+
+
 @_task_function("docs.parse", docs_image, env={"OMP_THREAD_LIMIT": "1"})
 def docs_parse(req: dict) -> dict:
     return _execute("docs.parse", req, _docs_parse)
@@ -2929,6 +3051,11 @@ def audio_transcribe(req: dict) -> dict:
 @_task_function("graph.train", graph_image)
 def graph_train(req: dict) -> dict:
     return _execute("graph.train", req, _graph_train)
+
+
+@_task_function("graph.train.gpu", graph_gpu_image)
+def graph_train_gpu(req: dict) -> dict:
+    return _execute("graph.train.gpu", req, lambda inp: _graph_train({**inp, "gpu": True}))
 
 
 @_task_function("synth.tabular", synth_image)
@@ -2950,10 +3077,12 @@ TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
     "geo.embed_change": geo_embed_change,
+    "geo.footprints": geo_footprints,
     "docs.parse": docs_parse,
     "docs.rerank": docs_rerank,
     "audio.transcribe": audio_transcribe,
     "graph.train": graph_train,
+    "graph.train.gpu": graph_train_gpu,
     "synth.tabular": synth_tabular,
     "synth.series": synth_series,
     "topics.map": topics_map,

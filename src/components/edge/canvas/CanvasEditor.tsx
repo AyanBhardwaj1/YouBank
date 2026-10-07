@@ -32,6 +32,7 @@ import { Modal, Sheet } from "./Overlays";
 import { Outputs } from "./Results";
 import { CanvasSkeleton } from "./Skeleton";
 import { useCanvas } from "./useCanvas";
+import { errorMessage } from "@/lib/client/errors";
 
 const nodeTypes = { module: ModuleNode };
 const MODULES: Module[] = ["source", "earth", "documents", "networks", "scenarios", "output"];
@@ -272,7 +273,7 @@ function Editor({ id }: { id: number }) {
   const { undo, redo, startRun, setNotice } = c;
   const run = useCallback(async () => {
     setBusy("run");
-    try { await startRun(); } catch (e) { setNotice(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+    try { await startRun(); } catch (e) { setNotice(errorMessage(e)); } finally { setBusy(null); }
   }, [setNotice, startRun]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -287,7 +288,7 @@ function Editor({ id }: { id: number }) {
 
   const act = async (name: string, f: () => Promise<unknown>) => {
     setBusy(name);
-    try { await f(); } catch (e) { c.setNotice(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
+    try { await f(); } catch (e) { c.setNotice(errorMessage(e)); } finally { setBusy(null); }
   };
 
   if (c.error) return <div className="p-6 text-[13px] text-neg">{c.error} <Link href="/app/edge?view=canvases" className="ml-2 text-accent hover:underline">Back to canvases</Link></div>;

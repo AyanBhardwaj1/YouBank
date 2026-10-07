@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 
 type Session = { id: number; title: string; kind: string; refId: string; teamId: number | null; status: string; ownerId: string; updatedAt: string };
 type Team = { id: number; name: string };
@@ -28,9 +29,9 @@ export function CollabList({ needsMigration, me, sessions, teams, tools }: {
         body: JSON.stringify({ kind: "tool", refId: toolId, title: tool?.title ?? "Shared session", teamId: teamId ? Number(teamId) : null }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Could not start a session (${res.status})`);
+      if (!res.ok) throw new Error(messageFor(res.status, body).message);
       router.push(`/app/collab/${(body as { id: number }).id}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
   };
 
   return (

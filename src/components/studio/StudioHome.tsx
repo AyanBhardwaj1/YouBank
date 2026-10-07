@@ -8,6 +8,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { STUDIO_ROLES } from "@/lib/studio/roles";
 import { TEMPLATES, type TemplateId } from "@/lib/studio/templates";
+import { errorMessage, fetchJson } from "@/lib/client/errors";
 
 type DocItem = { id: number; title: string; kind: string; ticker: string; updatedAt: string; sheets: number; slides: number; mine: boolean; teamId: number | null };
 
@@ -28,7 +29,8 @@ export function StudioHome() {
   const file = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    fetch("/api/studio").then((r) => r.json()).then((d) => setDocs(d.docs ?? [])).catch(() => setDocs([]));
+    // A failed list says so, rather than looking like "no models yet".
+    fetchJson<{ docs?: DocItem[] }>("/api/studio").then((d) => setDocs(d.docs ?? [])).catch((e) => { setDocs([]); setError(`Your models could not be listed. ${errorMessage(e)}`); });
   }, []);
 
   const ordered = [...role.templates, ...TEMPLATES.map((t) => t.id).filter((t) => !role.templates.includes(t))]
@@ -43,7 +45,7 @@ export function StudioHome() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not create the model");
       router.push(`/app/studio/${body.id}${extra.ask ? `?ask=${encodeURIComponent(String(extra.ask))}` : ""}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(null); }
+    } catch (e) { setError(errorMessage(e)); setBusy(null); }
   };
 
   const upload = async (f: File) => {
@@ -55,7 +57,7 @@ export function StudioHome() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Upload failed");
       router.push(`/app/studio/${body.id}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(null); }
+    } catch (e) { setError(errorMessage(e)); setBusy(null); }
   };
 
   const start = () => { if (ask.trim()) void create("blank", { title: ask.trim().slice(0, 80), ask: ask.trim() }); };

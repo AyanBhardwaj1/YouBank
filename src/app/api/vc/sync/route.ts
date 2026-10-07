@@ -3,6 +3,7 @@ import { cronAuthorized, isAdmin } from "@/lib/auth/admin";
 import { currentUser, unauthorized } from "@/lib/auth/user";
 import { lease } from "@/lib/locks";
 import { runSync, type SyncSource } from "@/lib/vc/sync";
+import { handled, logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -15,6 +16,10 @@ const SOURCES: SyncSource[] = ["yc", "a16z", "hn", "formd", "thiel", "defillama"
  * source at a time. The nightly cron (/api/cron/sync) keeps the directory fresh on its own.
  */
 export async function POST(req: Request) {
+  return handled(() => sync(req));
+}
+
+async function sync(req: Request) {
   if (!cronAuthorized(req)) {
     const user = await currentUser();
     if (!user) return unauthorized();
@@ -27,6 +32,6 @@ export async function POST(req: Request) {
   const release = await lease(`vc-sync:${source}`, 330_000);
   if (!release) return NextResponse.json({ error: `A ${source} sync is already running.` }, { status: 409 });
   try { return NextResponse.json(await runSync(source, days)); }
-  catch { return NextResponse.json({ error: `The ${source} sync failed. Try again later.` }, { status: 502 }); }
+  catch (e) { const ref = logError(e, { status: 502, where: `vc-sync:${source}` }); return NextResponse.json({ error: `The ${source} sync failed (ref ${ref}). Try again later.`, ref }, { status: 502 }); }
   finally { await release(); }
 }

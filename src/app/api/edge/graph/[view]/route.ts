@@ -11,6 +11,8 @@ import { companyMetrics, graphMetrics } from "@/lib/edge/graph/metrics";
 import { companyByTicker, graphSize, graphVersion, peopleOf } from "@/lib/edge/graph/store";
 import { scorecardText, withBaselines, type ModelMetrics } from "@/lib/edge/graph/train";
 import { sendJob } from "@/lib/edge/infra/jobs";
+import { requireFeature } from "@/lib/billing/entitlements";
+import { requireReady, upgradeOn } from "@/lib/edge/premium";
 import { draftIntro } from "@/lib/edge/intros";
 import { resolveTicker, searchTickers } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
@@ -45,6 +47,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ view: string }>
       const ready = models.find((m) => m.status === "ready");
       const m = ready ? await withBaselines(ready) : null;
       return NextResponse.json({
+        // Whether GPU retraining is set up, so the screen can offer it (premium: edge.graph-gpu).
+        gpu: upgradeOn("graph-gpu"),
         size, latest: models[0] ? { status: models[0].status, version: models[0].version, trainedAt: models[0].trainedAt.toISOString(), error: (models[0].metrics as ModelMetrics).error ?? null } : null,
         model: ready ? { version: ready.version, trainedAt: ready.trainedAt.toISOString(), metrics: m, acquirers: scorecardText(m, "acquirers"), targets: scorecardText(m, "targets") } : null,
       });
@@ -122,6 +126,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ view: string }
       if (!TICKER.test(ticker) || !Number.isInteger(index) || index < 0 || index > 20) return NextResponse.json({ error: "Pick a path." }, { status: 400 });
       await rateLimit(`edge-intro:${user.id}`, 20, 3_600_000, "Many intro requests this hour; try again later.");
       return NextResponse.json(await draftIntro(user, ticker, index));
+    }
+    if (view === "train-gpu") {
+      // Premium (edge.graph-gpu): a person whose plan includes it asks for one GPU retraining of the shared model.
+      // The weekly and event retraining stay on CPU; this never runs on a schedule.
+      await requireFeature(user, "edge.graph-gpu");
+      requireReady("edge.graph-gpu");
+      await rateLimit("edge-graph-gpu", 3, 86_400_000, "The deal model was retrained on a GPU recently; try again tomorrow.");
+      const sent = await sendJob("edge/graph.train", { reason: "gpu", gpu: true, by: user.id }, { id: `edge-graph-train-gpu-${Date.now()}` });
+      if (!sent.sent) return NextResponse.json({ error: `GPU retraining needs background jobs: ${sent.reason}` }, { status: 409 });
+      return NextResponse.json({ status: "training" });
     }
     if (view === "train" || view === "refresh") {
       if (!isAdmin(user)) return NextResponse.json({ error: "Only admins can rebuild the graph or retrain the model." }, { status: 403 });

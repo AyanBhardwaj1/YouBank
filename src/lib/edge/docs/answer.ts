@@ -16,7 +16,8 @@ import { webResearch } from "@/lib/ai/research";
 import { logError } from "@/lib/errors";
 import type { Answer, Citation } from "../canvas/values";
 import { EDGE_SMALL_MODEL, small } from "../models";
-import { upgradeOn } from "../premium";
+import { citedAnswer, claimsOf } from "../premium/citations";
+import { paidOn } from "../premium";
 import { clock } from "./chunk";
 import { quoteFound } from "./text";
 import { CONTEXT_CHARS, expand, neighbours, planQueries, quoteChunk, retrieve, type Block, type Hit } from "./retrieve";
@@ -24,7 +25,14 @@ import { indexFilings, indexNewsroom, workspaceDocs } from "./sources";
 import { readableDocs } from "./store";
 
 export type Scope = { tickers?: string[]; sources?: string[]; forms?: string[]; months?: number; docIds?: number[] };
-export type AskInput = { question: string; mode?: "strict" | "balanced"; form?: "auto" | "direct" | "table" | "timeline" | "memo"; scope: Scope };
+/** `premium` asks for paid upgrades on this question (the route checks the plan and opens the premium scope). */
+export type AskInput = { question: string; mode?: "strict" | "balanced"; form?: "auto" | "direct" | "table" | "timeline" | "memo"; scope: Scope; premium?: AskPremium };
+export type AskPremium = { model?: boolean; citations?: boolean };
+
+/** The premium features a question asks for, and the ones that apply on their own when the plan has them. Pure. */
+export function askWants(p: AskPremium | undefined): { auto: string[]; require: string[] } {
+  return { auto: ["edge.rerank"], require: [...(p?.model ? ["edge.answer-model"] : []), ...(p?.citations ? ["edge.citations"] : [])] };
+}
 /** How an answer was made: the search, any reranker, the models, how much it read, and the second look. */
 export type AnswerMethod = { search: string; reranker: string | null; selector: string; answerModel: string; contextTokens: number; secondPass: { claims: number; found: number; model: string } | null; transcription?: string[] };
 export type FullAnswer = Answer & {
@@ -50,8 +58,11 @@ const Written = z.object({
 
 export { quoteFound };
 
-/** The model that writes answers: EDGE_ANSWER_MODEL when that upgrade is on (see premium.ts), else the default. */
-export const answerModel = (): string | undefined => (upgradeOn("answer-model") ? process.env.EDGE_ANSWER_MODEL?.trim() || undefined : undefined);
+/**
+ * The model that writes answers: EDGE_ANSWER_MODEL when that upgrade is set up and the person asked for
+ * it on this question with a plan that includes it (see premium.ts), else the default.
+ */
+export const answerModel = (): string | undefined => (paidOn("answer-model") ? process.env.EDGE_ANSWER_MODEL?.trim() || undefined : undefined);
 
 /** The passages a question can use, gathering (indexing) sources in scope first. */
 async function gather(userId: string, s: Scope, deadline: number, progress?: (m: string) => Promise<void>): Promise<{ docIds: number[]; web: boolean }> {
@@ -183,14 +194,29 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
   const empty: FullAnswer = { question, mode, text: "", claims: [], citations: [], notFound: true, form: "direct", contradictions: [], web: webResult?.citations ?? [], scopeDocs: docIds.length, ...(found ? { method: found.method } : {}) };
   if (!passages.length) return save(userId, input, { ...empty, text: "Nothing in the documents in scope addresses this." });
 
-  await opts.progress?.("Writing the answer");
-  const numbered = passages.map((p, i) => `[${i + 1}] ${"web" in p ? p.title : blockLabel(p)}\n${p.text}`).join("\n\n");
-  const form = input.form && input.form !== "auto" ? `Answer as a ${input.form}.` : "Choose the answer's shape: a direct answer, a table (for comparisons and numbers across items), a timeline (for sequences of events) or a memo (for broad questions).";
-  const model = answerModel();
-  const r = await structured(Written, "edge-answer",
-    `You answer research questions for investment professionals using only the numbered passages. ${mode === "strict" ? "STRICT: every claim must quote the passage it rests on, word for word; if the passages do not answer the question, set notFound and say so plainly. Do not add knowledge from outside the passages." : "BALANCED: prefer quoted claims; you may add inference, but mark it as analysis."} Flag passages that contradict each other. Never invent numbers, names or dates.`,
-    `${form}\n\nQuestion: ${question}\n\nPassages:\n${numbered}`,
-    { maxTokens: 4000, timeoutMs: 150_000, ...(model ? { override: { model } } : {}) });
+  // With exact-span citations (premium, asked for on this question), the quotes are cut from the
+  // passages by the API; any failure there falls back to the standard writer below.
+  let r: { data: z.infer<typeof Written>; model: string } | null = null;
+  let cited = false;
+  if (paidOn("citations-anthropic")) {
+    await opts.progress?.("Writing the answer with exact citations");
+    try {
+      const c = await citedAnswer(question, passages.map((p) => ({ title: "web" in p ? p.title : blockLabel(p), text: p.text })), mode, Math.max(30_000, Math.min(150_000, deadline - Date.now() - 40_000)));
+      const { direct, claims } = claimsOf(c.pieces, mode);
+      r = { model: c.model, data: { notFound: c.notFound || (!claims.length && mode === "strict"), form: "direct", direct, claims: claims.map((x) => ({ text: x.text, analysis: x.analysis, cites: x.spans.map((sp) => ({ n: sp.passage + 1, quote: sp.quote })) })), table: null, timeline: null, contradictions: [] } };
+      cited = true;
+    } catch (e) { logError(e, { where: "edge-citations" }); }
+  }
+  if (!r) {
+    await opts.progress?.("Writing the answer");
+    const numbered = passages.map((p, i) => `[${i + 1}] ${"web" in p ? p.title : blockLabel(p)}\n${p.text}`).join("\n\n");
+    const form = input.form && input.form !== "auto" ? `Answer as a ${input.form}.` : "Choose the answer's shape: a direct answer, a table (for comparisons and numbers across items), a timeline (for sequences of events) or a memo (for broad questions).";
+    const model = answerModel();
+    r = await structured(Written, "edge-answer",
+      `You answer research questions for investment professionals using only the numbered passages. ${mode === "strict" ? "STRICT: every claim must quote the passage it rests on, word for word; if the passages do not answer the question, set notFound and say so plainly. Do not add knowledge from outside the passages." : "BALANCED: prefer quoted claims; you may add inference, but mark it as analysis."} Flag passages that contradict each other. Never invent numbers, names or dates.`,
+      `${form}\n\nQuestion: ${question}\n\nPassages:\n${numbered}`,
+      { maxTokens: 4000, timeoutMs: 150_000, ...(model ? { override: { model } } : {}) });
+  }
   await opts.progress?.("Checking every citation");
 
   // The check: each quote must be found in the passage it cites. A block's quote is credited to the
@@ -279,7 +305,7 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
   const method = [
     found?.method,
     blocks.length ? `read with their neighbouring passages (about ${Math.max(1, Math.round(contextTokens / 1000))}k tokens, up to ${Math.round(CONTEXT_CHARS / 4000)}k)` : "",
-    `answer by ${r.model}`,
+    cited ? `answer by ${r.model} with exact-span citations (Anthropic Citations)` : `answer by ${r.model}`,
     secondPass ? `a second reading by ${secondPass.model} found quotes for ${secondPass.found} of ${secondPass.claims} claim${secondPass.claims === 1 ? "" : "s"}` : "",
     ...transcription,
   ].filter(Boolean).join("; ");

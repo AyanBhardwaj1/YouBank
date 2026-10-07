@@ -16,6 +16,7 @@ import { marketValue } from "@/lib/edge/canvas/values";
 import { poll } from "../docs/client";
 import { SendToStudio } from "../SendToStudio";
 import { FanChart, Histogram, pct, RealismPanel, SyntheticTag } from "./parts";
+import { errorMessage } from "@/lib/client/errors";
 
 const FACTOR_NAME: Record<string, string> = { market: "Market", energy: "Oil & gas stocks", oil: "WTI", gas: "Henry Hub", rates: "10y yield" };
 /** A factor's move in its own terms: percent for prices, basis points for the yield. */
@@ -158,7 +159,7 @@ export function MarketTab({ suggest, onSaved }: { suggest: string[]; onSaved: ()
       if ((driver === "event" || driver === "tail") && picked) { body.shock = { ...picked.shock, reasoning: picked.reasoning, sources: picked.sources }; body.horizon = picked.horizon; body.title = `${driver === "tail" ? "AI-imagined: " : ""}${picked.title}`; }
       const r = await post<{ id: number; status: string; result: MarketResult }>("/api/edge/scenarios", body);
       setResult(r); onSaved();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const needsPick = (driver === "event" || driver === "tail") && !picked;
 

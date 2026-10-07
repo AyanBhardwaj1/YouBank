@@ -9,6 +9,7 @@ import type { AskInput, FullAnswer } from "@/lib/edge/docs/answer";
 import type { ChangeRow, DocCompare, Radar } from "@/lib/edge/docs/changes";
 import type { SpeakerTone, Turn } from "@/lib/edge/docs/tone";
 import type { TopicMap } from "@/lib/edge/docs/topics";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
 export type { AskInput, ChangeRow, DocCompare, Radar, SpeakerTone, TopicMap, Turn };
 
@@ -19,6 +20,8 @@ export type DocAnswer = Omit<FullAnswer, "citations"> & { answerId: number; cita
 export type LibDoc = {
   id: number; source: string; title: string; url: string; status: string; error: string; pages: number; chunks: number; lang: string;
   durationSec: number; mime: string; fileId: number | null; ticker: string; form: string; createdAt: string; mine: boolean; shared: boolean; teamId?: number | null;
+  /** The premium reader that read it, or why the one asked for did not run. */
+  readBy?: string; premiumNote?: string;
 };
 export type Library = { docs: LibDoc[]; filings: LibDoc[]; usage: { bytes: number; files: number; quotaBytes: number; quotaFiles: number } };
 
@@ -42,7 +45,7 @@ export const FORM_OPTIONS = ["10-K", "10-Q", "8-K", "DEF 14A", "S-4"];
 export const READING = new Set(["queued", "parsing", "indexing"]);
 
 export const fmtBytes = (b: number) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(1)} GB` : b >= 1024 ** 2 ? `${(b / 1024 ** 2).toFixed(b >= 100 * 1024 ** 2 ? 0 : 1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
-export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+export const errorText = (e: unknown) => errorMessage(e);
 
 /** The wait before the next check: `ms` while all is well, doubling with each failure in a row (5 s, 10 s, 20 s…), up to a minute. Pure, for tests. */
 export const pollDelay = (ms: number, failures: number) => Math.min(ms * 2 ** Math.min(failures, 8), Math.max(ms, 60_000));
@@ -83,10 +86,8 @@ export function warmReranker(): void {
   void fetch("/api/edge/ask/warm", { method: "POST", keepalive: true }).catch(() => undefined);
 }
 
-async function failure(res: Response): Promise<Error> {
-  const j = (await res.json().catch(() => ({}))) as { error?: string };
-  return new Error(j.error ?? `HTTP ${res.status}`);
-}
+/** A failed request as an ApiError carrying its status, so a 402 (a feature the plan lacks) can be shown with a link to the plans. */
+const failure = (res: Response): Promise<Error> => apiError(res);
 
 /** Ask the documents; `onProgress` hears each stage while sources are read and passages found. */
 export async function askStream(input: AskInput, onProgress: (message: string) => void, signal?: AbortSignal): Promise<DocAnswer> {
@@ -114,6 +115,33 @@ export async function askStream(input: AskInput, onProgress: (message: string) =
   throw new Error("The answer was cut off; try again.");
 }
 
+export type BatchEvent =
+  | { progress: { ticker: string; message: string } }
+  | { result: { ticker: string; answer: DocAnswer } }
+  | { failed: { ticker: string; error: string } }
+  | { skipped: { ticker: string } };
+
+/** Ask one question of several companies at once (premium); each event arrives as it happens. */
+export async function askBatchStream(input: { question: string; tickers: string[]; mode: string; forms: string[]; months: number; premium?: AskInput["premium"] }, onEvent: (e: BatchEvent) => void, signal?: AbortSignal): Promise<void> {
+  const res = await fetch("/api/edge/ask/batch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input), signal });
+  if (!res.ok || !res.body) throw await failure(res);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      try { onEvent(JSON.parse(line) as BatchEvent); } catch { /* a partial line */ }
+    }
+    if (done) return;
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, tries = 3, signal?: AbortSignal): Promise<T> {
   let last: unknown;
   for (let i = 0; i < tries; i++) {
@@ -127,7 +155,7 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 3, signal?: AbortSigna
  * Upload a file in parts (two at a time, each retried), then finish it so reading starts. The file is
  * private to the uploader unless `teamId` shares it.
  */
-export async function uploadFile(file: File, opts: { teamId?: number | null; onProgress?: (fraction: number) => void; signal?: AbortSignal } = {}): Promise<{ docId: number; status: string }> {
+export async function uploadFile(file: File, opts: { teamId?: number | null; onProgress?: (fraction: number) => void; signal?: AbortSignal; premium?: { pdf?: "llamaparse"; audio?: "diarize" } } = {}): Promise<{ docId: number; status: string; note?: string }> {
   const start = await fetch("/api/edge/files", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: file.name, mime: file.type, bytes: file.size, teamId: opts.teamId ?? null }), signal: opts.signal });
   if (!start.ok) throw await failure(start);
   const { fileId, parts, partBytes } = (await start.json()) as { fileId: number; parts: number; partBytes: number };
@@ -146,9 +174,9 @@ export async function uploadFile(file: File, opts: { teamId?: number | null; onP
   };
   await Promise.all([worker(), worker()]);
   const done = await withRetry(async () => {
-    const r = await fetch(`/api/edge/files/${fileId}/complete`, { method: "POST", signal: opts.signal });
+    const r = await fetch(`/api/edge/files/${fileId}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ premium: opts.premium ?? {} }), signal: opts.signal });
     if (!r.ok) throw await failure(r);
-    return (await r.json()) as { docId: number; status: string };
+    return (await r.json()) as { docId: number; status: string; note?: string };
   }, 2, opts.signal);
   return done;
 }
