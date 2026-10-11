@@ -64,10 +64,16 @@ export function useApi<T>(url: string | null, pollMs = 0, initial?: T, seededAt?
   return { data: state.data, error: state.error, loading: state.url !== url, reload };
 }
 
-/** The ranked feed, polled every minute. `fresh` holds stories that arrived after the first load. */
+/**
+ * How often open news views ask again. Stories arrive with the Newsroom pass every ten minutes, so a
+ * faster poll only re-sends the same feed (each about a megabyte from the database).
+ */
+export const NEWS_POLL_MS = 300_000;
+
+/** The ranked feed, polled every five minutes. `fresh` holds stories that arrived after the first load. */
 export function useFeed(params: Record<string, string | undefined | null>) {
   const url = `/api/news/feed?${qs(params)}`;
-  const { data, error, loading, reload } = useApi<FeedView>(url, 60_000);
+  const { data, error, loading, reload } = useApi<FeedView>(url, NEWS_POLL_MS);
   const seen = useRef<{ url: string; ids: Set<number> } | null>(null);
   const [fresh, setFresh] = useState<{ url: string; ids: Set<number> }>({ url: "", ids: new Set() });
   useEffect(() => {

@@ -1,23 +1,23 @@
 "use client";
 
-/** The bell in the top bar: alerts and briefs, the unread count, one click to the story. Polls every minute. */
+/** The bell in the top bar: alerts and briefs, the unread count, one click to the story. Polls every five minutes, and on opening. */
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Bell, BellRing, Newspaper } from "lucide-react";
 import { useState } from "react";
-import { ago, post, useApi, useNow } from "./client";
+import { ago, NEWS_POLL_MS, post, useApi, useNow } from "./client";
 
 type Item = { id: number; kind: string; title: string; body: string; url: string; urgent: boolean; at: string; read: boolean };
 
 export function NotificationBell() {
-  const { data, reload } = useApi<{ unread: number; items: Item[] }>("/api/news/notifications", 60_000);
+  const { data, reload } = useApi<{ unread: number; items: Item[] }>("/api/news/notifications", NEWS_POLL_MS);
   const [open, setOpen] = useState(false);
   const now = useNow();
   const unread = data?.unread ?? 0;
   const markAll = () => { void post("/api/news/notifications", { all: true }).then(reload); };
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="ctl relative flex items-center p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}>
+      <button type="button" onClick={() => { if (!open) reload(); setOpen(!open); }} className="ctl relative flex items-center p-1.5 text-muted hover:bg-elevated hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}>
         {unread ? <BellRing className="h-3.5 w-3.5 text-accent max-md:h-[18px] max-md:w-[18px]" /> : <Bell className="h-3.5 w-3.5 max-md:h-[18px] max-md:w-[18px]" />}
         {unread > 0 && <span className="num absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-accent px-0.5 text-[8.5px] font-bold text-accent-fg">{unread > 99 ? "99+" : unread}</span>}
       </button>

@@ -78,7 +78,8 @@ export async function alertsFor(userId: string, origin: string, now = new Date()
   if (!ctx?.prefs.alerts.enabled) return 0;
   const key = `news:alert-cursor:${userId}`;
   const cursor = Number(await cacheGet(key)) || now.getTime() - 3 * 3_600_000;
-  const fresh = (await recentClusters(Math.max(1, (now.getTime() - cursor) / 3_600_000 + 0.1), 400, 0.25)).filter((c) => c.updatedAt.getTime() > cursor).sort((a, b) => b.importance - a.importance);
+  // Just the window since the cursor, with six minutes to spare: a pass runs every ten minutes.
+  const fresh = (await recentClusters(Math.max(0.1, (now.getTime() - cursor) / 3_600_000 + 0.1), 400, 0.25)).filter((c) => c.updatedAt.getTime() > cursor).sort((a, b) => b.importance - a.importance);
   const items = await itemsOf(fresh.filter((c) => c.kinds.includes("filing")).map((c) => c.id));
   let sent = 0;
   const db = requireDb();

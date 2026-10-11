@@ -41,6 +41,9 @@ const INTERNAL: RegExp[] = [
   /Traceback \(most recent call last\)|File "[^"]+", line \d+/,
   // Provider errors quoted as written: "OpenAI API error 500: …", "Anthropic API error …", "Stripe…".
   /\b(OpenAI|Anthropic|Stripe|Resend|Twilio) API error\b|\bStripe\w*Error\b/i,
+  // A provider's billing limit, which tells our users to upgrade a plan that is ours ("Your account or
+  // project has exceeded the quota. Upgrade your plan to increase limits." from Neon, via Neon Auth too).
+  /\bexceeded (the|its|your) ([\w-]+ ){0,3}quota\b|\bUpgrade your plan to increase limits\b/i,
 ];
 
 /**

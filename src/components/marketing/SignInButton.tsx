@@ -3,6 +3,21 @@
 import { useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
 import { errorMessage } from "@/lib/client/errors";
+import { looksInternal, OUR_SIDE } from "@/lib/error-text";
+
+const UNAVAILABLE = "Sign-in is unavailable on our side right now. Try again in a few minutes.";
+
+/**
+ * What a failed sign-in says. The auth client answers failures as `{ error: { message, status } }`
+ * rather than throwing; one on the service's side (its database down or over a limit) reads as an
+ * outage, never as the provider's own words.
+ */
+function signInError(e: unknown): string {
+  const failure = (e ?? {}) as { status?: unknown; message?: unknown };
+  if (Number(failure.status) >= 500) return UNAVAILABLE;
+  if (e instanceof Error) { const m = errorMessage(e); return m.startsWith(OUR_SIDE) ? UNAVAILABLE : m; }
+  return typeof failure.message === "string" && failure.message.trim() && !looksInternal(failure.message) ? failure.message : UNAVAILABLE;
+}
 
 /** `next` is where a returning person lands; `newUser` where a first-time one does (onboarding, unless a flow must finish first). */
 export function SignInButton({ label = "Continue with Google", next = "/app", newUser = "/onboarding", className = "" }: { label?: string; next?: string; newUser?: string; className?: string }) {
@@ -12,9 +27,11 @@ export function SignInButton({ label = "Continue with Google", next = "/app", ne
     setBusy(true); setError(null);
     try {
       const authClient = await getAuthClient();
-      await authClient.signIn.social({ provider: "google", callbackURL: `${window.location.origin}${next}`, newUserCallbackURL: `${window.location.origin}${newUser}` });
+      const res = await authClient.signIn.social({ provider: "google", callbackURL: `${window.location.origin}${next}`, newUserCallbackURL: `${window.location.origin}${newUser}` });
+      // On success the browser is already on its way to Google; a failure comes back here.
+      if (res?.error) { setError(signInError(res.error)); setBusy(false); }
     } catch (e) {
-      setError(errorMessage(e));
+      setError(signInError(e));
       setBusy(false);
     }
   };

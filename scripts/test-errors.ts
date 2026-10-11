@@ -62,6 +62,8 @@ const NASTY: [string, string, string?][] = [
   ["an undici error", "UND_ERR_CONNECT_TIMEOUT"],
   ["a socket hang up", "socket hang up"],
   ["a syntax error by name", "Unexpected identifier 'foo'", "SyntaxError"],
+  ["Neon's quota error", "Your account or project has exceeded the quota. Upgrade your plan to increase limits."],
+  ["Neon's compute quota error", "Your project has exceeded the compute time quota."],
   ["a runaway message", "x".repeat(401)],
   ["an empty message", "   "],
 ];
