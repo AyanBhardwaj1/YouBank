@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "./server";
 import { runAsUser } from "@/lib/ai/usage";
@@ -9,11 +9,11 @@ import { errorResponse } from "@/lib/errors";
 export type CurrentUser = { id: string; email: string; name: string };
 
 /**
- * Neon Auth's session cookie. Without it there cannot be a session, so we can answer "signed out"
- * locally instead of paying an upstream round-trip. Matched on the suffix because the SDK prefixes
- * the name with `__Secure-` only where the browser will accept it.
+ * Better Auth's session cookie. Without it there cannot be a session, so we can answer "signed out"
+ * without a database read. Matched on the suffix because the library prefixes the name with
+ * `__Secure-` only where the browser will accept it.
  */
-const SESSION_COOKIE_SUFFIX = "neon-auth.session_token";
+const SESSION_COOKIE_SUFFIX = "better-auth.session_token";
 
 /**
  * The signed-in user, or null.
@@ -27,11 +27,12 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     // A dotted domain so locally-created users pass the same email validation as real ones.
     return { id: `dev-${process.env.YOUBANK_DEV_USER}`, email: `${process.env.YOUBANK_DEV_USER}@dev.local`, name: process.env.YOUBANK_DEV_USER };
   }
-  // Anonymous visitors carry no session cookie; skip the upstream call entirely.
+  // Anonymous visitors carry no session cookie; skip the lookup entirely.
   const jar = await cookies().catch(() => null);
   if (jar && !jar.getAll().some((c) => c.name.endsWith(SESSION_COOKIE_SUFFIX))) return null;
-  const { data } = await auth.getSession();
-  const u = data?.user;
+  // Answered from the signed cookie cache while it is fresh (SESSION_DATA_TTL), else from the database.
+  const session = await auth.api.getSession({ headers: await headers() });
+  const u = session?.user;
   return u ? { id: u.id, email: u.email ?? "", name: u.name ?? "" } : null;
 });
 

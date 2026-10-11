@@ -1,38 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { auth } from "@/lib/auth/server";
-import { logError } from "@/lib/errors";
-
-/** Built on the first request (see lib/auth/server: a missing auth setting must not fail the import). */
-let protect: ReturnType<typeof auth.middleware> | null = null;
+import { getSessionCookie } from "better-auth/cookies";
 
 /**
- * App pages: redirect unauthenticated visitors to sign-in.
+ * App pages: send visitors without a session cookie to sign-in, before rendering anything.
  *
- * API routes check sessions themselves and return 401, but they pass through here too, for one reason:
- * the short-lived signed session cookie is only re-minted here (and by the auth routes). Without it,
- * someone who keeps a page open, with the bell, the feed or the terminal polling, would make every
- * poll ask Neon Auth for their session once the cookie expired, and Neon Auth rate-limits those calls
- * from our servers (the load test signed people out that way). A sign-in redirect is never applied to
- * an API route. Stripe's webhook (`/api/billing/webhook`) carries no session and skips this entirely.
+ * Only the cookie's presence is checked here (no database read); every page and API route still checks
+ * the session itself (currentUser), so a stale or forged cookie gets no further than the page's own
+ * redirect or a 401. API routes are not matched: they answer 401 rather than redirect.
  */
-export default async function proxy(req: NextRequest, ...rest: unknown[]) {
+export default function proxy(req: NextRequest) {
   // Development-only bypass, mirrored in currentUser(); never active in production builds.
   if (process.env.NODE_ENV !== "production" && process.env.YOUBANK_DEV_USER) return NextResponse.next();
-  let res: NextResponse;
-  try {
-    protect ??= auth.middleware({ loginUrl: "/sign-in" });
-    res = (await (protect as unknown as (r: NextRequest, ...a: unknown[]) => Promise<Response>)(req, ...rest)) as NextResponse;
-  } catch (e) {
-    // Auth is misconfigured or not answering. Letting the request through is safe: every page and route
-    // checks the session itself, and their error handling shows a referenced message instead of the
-    // platform's bare 500 that a failed proxy would leave.
-    logError(e, { where: "proxy" });
-    return NextResponse.next();
-  }
-  if (req.nextUrl.pathname.startsWith("/api/") && res.headers.get("location")) return NextResponse.next();
-  return res;
+  if (getSessionCookie(req)) return NextResponse.next();
+  return NextResponse.redirect(new URL("/sign-in", req.url));
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/onboarding/:path*", "/api/((?!auth/|cron/|health|market/health|office/pair/|desktop/pair/start|desktop/pair/poll|inngest|billing/webhook$).*)"],
+  matcher: ["/app/:path*", "/onboarding/:path*"],
 };
