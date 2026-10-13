@@ -8,7 +8,7 @@ one of two ways, and everything after the audio is shared.
 | How | The desktop app records the microphone and what the computer plays | A participant joins the meeting link (Recall.ai) |
 | Started by | The person, after a consent prompt; or an app they set to start on its own | A click ("Send the notetaker to this meeting"), or an auto-join rule they switched on |
 | Speakers | "You" for certain (from the microphone levels); others labelled per 30-second chunk and named by the notes step | Each participant's name, from the meeting app |
-| Cost | Free (transcription: OpenAI about $0.36 an hour, or the ML service's free credits) | Premium, `meetings.bot`, about $0.65 an hour |
+| Cost | Free (transcription: OpenAI about $0.36 an hour, or the ML service's free credits) | Premium (Deal Team), `meetings.bot`, about $0.65 an hour, paid outside the AI allowance |
 
 ## The pieces
 

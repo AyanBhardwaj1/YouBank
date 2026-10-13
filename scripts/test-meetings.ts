@@ -257,7 +257,8 @@ function premium() {
   console.log("premium features");
   const ids = ["meetings.bot", "meetings.live", "meetings.notes"];
   check("all three are registered once", ids.every((id) => FEATURES.filter((f) => f.id === id).length === 1));
-  check("each is metered with an honest cost", ids.every((id) => { const f = featureById(id); return !!f && f.metered && (f.costPerUseUsd ?? 0) > 0 && f.minPlan === "pro"; }));
+  check("each is metered with an honest cost", ids.every((id) => { const f = featureById(id); return !!f && f.metered && (f.costPerUseUsd ?? 0) > 0 && f.minPlan === (id === "meetings.bot" ? "team" : "pro"); }));
+  check("model spend draws on the AI allowance; the bot, paid to Recall, does not", !featureById("meetings.bot")!.inAiAllowance && !!featureById("meetings.live")!.inAiAllowance && !!featureById("meetings.notes")!.inAiAllowance);
   check("the bot costs most per use, live suggestions least", (featureById("meetings.bot")!.costPerUseUsd ?? 0) > (featureById("meetings.notes")!.costPerUseUsd ?? 0) && (featureById("meetings.notes")!.costPerUseUsd ?? 0) > (featureById("meetings.live")!.costPerUseUsd ?? 0));
   check("a few notes a month stay free", MEETINGS_FREE_NOTES > 0 && featureById("meetings.notes")!.description.includes(String(MEETINGS_FREE_NOTES)));
 }

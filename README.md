@@ -1092,7 +1092,7 @@ a calendar plugs in, are in [docs/meetings.md](docs/meetings.md)). Two ways to l
   computer plays (WASAPI loopback, CoreAudio's tap on macOS 14.2+, the PulseAudio/PipeWire monitor on
   Linux; microphone only where that is not available), shows a red dot in the tray and a small pill with
   the time and Stop, and sends 30-second chunks to be transcribed. Audio is deleted once transcribed.
-- **The notetaker bot** (Pro, `meetings.bot`, about $0.65 an hour through Recall.ai): sent to a meeting
+- **The notetaker bot** (Deal Team, `meetings.bot`, about $0.65 an hour through Recall.ai): sent to a meeting
   link by a click, or by an auto-join rule the person switched on; it joins as a participant and its
   transcript names each speaker.
 

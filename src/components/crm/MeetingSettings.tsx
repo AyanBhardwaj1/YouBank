@@ -68,7 +68,7 @@ export function MeetingSettingsForm({ ctx, settings, botUnlocked, onSaved }: { c
           {check("Send it to calendar meetings on its own", s.autoJoin, (v) => setS({ ...s, autoJoin: v }),
             "Needs a connected calendar. It joins meetings with a link a few minutes before they start, except those your never-record settings cover. Billed per hour.",
             <PremiumBadge feature="meetings.bot" />)}
-          {s.autoJoin && !botUnlocked && <p className="text-[11px] text-neg">The notetaker is part of the Pro plan; saving this needs it.</p>}
+          {s.autoJoin && !botUnlocked && <p className="text-[11px] text-neg">The notetaker is part of the Deal Team plan; saving this needs it.</p>}
         </div>
       </div>
       <div className="mt-3 flex gap-2">

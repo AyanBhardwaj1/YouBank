@@ -12,14 +12,18 @@ export const MEETINGS_FREE_NOTES = 3;
  * within the normal daily AI allowance, and AI notes for the first few meetings each month. What follows
  * costs us money in proportion to use, so it needs a plan:
  * - the notetaker bot joins the call as a participant through Recall.ai, which bills per hour of
- *   recording ($0.50) plus its transcript ($0.15);
+ *   recording ($0.50) plus its transcript ($0.15). That is paid outside the AI ledger, so it adds to a
+ *   seat's cost on top of the AI allowance; at heavy use it would push Pro below the margin floor
+ *   (scripts/test-billing.ts), so it starts at Deal Team;
  * - live suggestions run a small model about once a minute while the person keeps them switched on
  *   during that meeting (roughly 4,000 tokens in, 600 out: $0.002 to $0.007 a minute by provider);
  * - meeting notes past the free monthly allowance: one larger-model pass over the whole transcript
  *   (about 15,000 tokens in and 5,000 out for an hour) that writes the summary, action items, signals
  *   and follow-up drafts.
  * Costs are rough per-use estimates for the pricing model, not quotes. Every route checks the plan
- * before it spends (`requireFeature`, or the monthly allowance for notes).
+ * before it spends (`requireFeature`, or the monthly allowance for notes). Live suggestions and notes
+ * are model calls recorded in the AI usage ledger, so they draw on the plan's AI allowance
+ * (`inAiAllowance`, docs/pricing.md); the bot is paid to Recall outside that ledger.
  */
 export const MEETINGS_FEATURES: PremiumFeature[] = [
   {
@@ -27,7 +31,7 @@ export const MEETINGS_FEATURES: PremiumFeature[] = [
     area: "relationships",
     name: "Meeting notetaker bot",
     description: "Send a notetaker to a Zoom, Teams or Meet link: it joins as a participant, records and transcribes with speaker names, and your notes follow. Billed per hour of meeting.",
-    minPlan: "pro",
+    minPlan: "team",
     metered: true,
     costPerUseUsd: 0.65,
   },
@@ -38,6 +42,7 @@ export const MEETINGS_FEATURES: PremiumFeature[] = [
     description: "While a meeting runs, suggested questions and facts about the people and companies in it, from Relationships and your research. On only while you switch it on for that meeting. Billed per minute.",
     minPlan: "pro",
     metered: true,
+    inAiAllowance: true,
     costPerUseUsd: 0.005,
   },
   {
@@ -47,6 +52,7 @@ export const MEETINGS_FEATURES: PremiumFeature[] = [
     description: `AI notes for every meeting: summary, decisions, action items with owners and dates, signals per person, follow-up drafts and proposed CRM updates. ${MEETINGS_FREE_NOTES} meetings a month are free.`,
     minPlan: "pro",
     metered: true,
+    inAiAllowance: true,
     costPerUseUsd: 0.1,
   },
 ];
