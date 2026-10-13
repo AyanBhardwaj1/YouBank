@@ -147,7 +147,7 @@ async function main() {
   check("pool sizes from the environment are bounded", poolSize("50", 6) === 20 && poolSize("abc", 6) === 6 && poolSize("0", 6) === 6 && poolSize("3", 6) === 3);
 
   console.log("environment check");
-  const good = { DATABASE_URL: "postgres://x", BETTER_AUTH_SECRET: "x".repeat(32), GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret", CRON_SECRET: "c", AUTOPILOT_SECRET: "a", EDGAR_USER_AGENT: "YouBank ops@example.com", EMAIL_TOKEN_SECRET: "e".repeat(16), OPENAI_API_KEY: "k" };
+  const good = { DATABASE_URL: "postgres://x", BETTER_AUTH_SECRET: "x".repeat(32), CRON_SECRET: "c", AUTOPILOT_SECRET: "a", EDGAR_USER_AGENT: "YouBank ops@example.com", EMAIL_TOKEN_SECRET: "e".repeat(16), OPENAI_API_KEY: "k" };
   const ok = checkEnv(good, true);
   check("a complete production environment passes", ok.missing.length === 0 && ok.invalid.length === 0, ok);
   const bad = checkEnv({ ...good, BETTER_AUTH_SECRET: "short", CRON_SECRET: "", OPENAI_API_KEY: "", CHAT_BUDGET_MS: "fast", YOUBANK_DEV_USER: "me" }, true);
