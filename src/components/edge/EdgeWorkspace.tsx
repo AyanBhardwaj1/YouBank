@@ -64,7 +64,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
   const watchedTickers = [...new Set((state?.watches ?? []).map((w) => w.target.ticker).filter((t): t is string => !!t))];
   return (
     <MotionConfig reducedMotion="user">
-    <div className="h-full overflow-auto">
+    <div className="scroll-touch h-full overflow-auto">
       <div className="mx-auto max-w-[1400px] px-4 py-4 md:px-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0">
@@ -78,7 +78,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
           {/* On a phone the seven views scroll sideways rather than push the page wider, fading at the edge to say there is more. */}
           <nav className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]" aria-label="Edge views">
             {VIEWS.map((v) => (
-              <button key={v.id} type="button" onClick={() => setView(v.id)} aria-current={view === v.id ? "page" : undefined} className={`relative shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] transition ${view === v.id ? "text-fg" : "text-muted hover:text-fg"}`}>
+              <button key={v.id} type="button" onClick={() => setView(v.id)} aria-current={view === v.id ? "page" : undefined} className={`relative shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] transition max-md:min-h-9 ${view === v.id ? "text-fg" : "text-muted hover:text-fg"}`}>
                 {view === v.id && <motion.span layoutId="edge-view" className="absolute inset-0 rounded-md bg-elevated" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
                 <span className="relative">{v.label}</span>
               </button>

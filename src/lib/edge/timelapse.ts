@@ -8,7 +8,8 @@ import { cropUrl } from "./sources/sentinel";
 
 const STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
 
-export type Frame = { date: string; month: string; cloud: number; url: string };
+/** One month: its clearest scene's date, cloud, crop URL and Sentinel-2 item id (the 3D change stack reads the scene again). */
+export type Frame = { date: string; month: string; cloud: number; url: string; scene: string };
 type Item = { id: string; bbox: number[]; properties: { datetime: string; "eo:cloud_cover"?: number } };
 
 /** One scene per month: the least cloudy of those that cover the whole box. Pure. */
@@ -38,5 +39,5 @@ export async function timelapse(bbox: Bbox, months = 24, size = 384): Promise<Fr
     id: i.id, date: i.properties.datetime.slice(0, 10), cloud: Number(i.properties["eo:cloud_cover"] ?? 100),
     covers: i.bbox[0] <= bbox[0] && i.bbox[1] <= bbox[1] && i.bbox[2] >= bbox[2] && i.bbox[3] >= bbox[3],
   })));
-  return picked.map((p) => ({ date: p.date, month: p.date.slice(0, 7), cloud: Math.round(p.cloud), url: cropUrl({ id: p.id, date: p.date, cloud: p.cloud }, bbox, size) }));
+  return picked.map((p) => ({ date: p.date, month: p.date.slice(0, 7), cloud: Math.round(p.cloud), url: cropUrl({ id: p.id, date: p.date, cloud: p.cloud }, bbox, size), scene: p.id }));
 }

@@ -22,6 +22,8 @@ export type PlanetScene = { id: string; type: PlanetType; acquired: string; clou
 
 const SEARCH = "https://api.planet.com/data/v1/quick-search";
 const TILES = "https://tiles.planet.com/data/v1/item-types";
+/** Planet's XYZ tile service for one item: {XYZ}/{item_type}/{item_id}/{z}/{x}/{y}.png. */
+const XYZ = "https://tiles.planet.com/data/v1";
 
 /** The quick-search body for a box: both item types, acquired in the `days` before `now`, cloud cover at most `maxCloud` (0 to 1). Pure. */
 export function planetSearchBody(bbox: Bbox, now: Date, days = 60, maxCloud = 0.2) {
@@ -77,6 +79,21 @@ export async function planetScenes(bbox: Bbox): Promise<PlanetScene[]> {
     if (!res.ok) throw Object.assign(new Error(res.status === 401 || res.status === 403 ? "Planet did not accept the key." : `Planet search answered ${res.status}`), { status: 502 });
     return planetScenesFrom((await res.json()) as { features?: Feature[] });
   });
+}
+
+/**
+ * Whether an XYZ tile address is one the 3D drape may ask for: whole numbers, zoom 12 to 18 (the drape's
+ * own source range, so a wide low-zoom tile never spends the area quota), inside the zoom's grid. Pure.
+ */
+export function validTile(z: number, x: number, y: number): boolean {
+  return [z, x, y].every(Number.isInteger) && z >= 12 && z <= 18 && x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z;
+}
+
+/** One 256 px XYZ tile of a scene (Planet's tile service), for draping it in 3D. Counts against the account's quota. */
+export async function planetTile(type: PlanetType, id: string, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; contentType: string }> {
+  const res = await fetch(`${XYZ}/${type}/${encodeURIComponent(id)}/${z}/${x}/${y}.png`, { headers: { authorization: planetAuth(key()) }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) throw Object.assign(new Error(`Planet tile answered ${res.status}`), { status: res.status === 404 ? 404 : 502 });
+  return { body: await res.arrayBuffer(), contentType: res.headers.get("content-type") ?? "image/png" };
 }
 
 /** A scene's thumbnail (512 px), as bytes and type. */

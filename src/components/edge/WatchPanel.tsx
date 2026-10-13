@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/Select";
 import { Ago } from "./Cards";
 import { onTabKeys, tabProps } from "./tabs";
 import { api, post, type EdgeState, type Watch } from "./client";
+import { errorMessage } from "@/lib/client/errors";
 
 export function WatchPanel({ state, onChanged }: { state: EdgeState; onChanged: () => void }) {
   const [kind, setKind] = useState<"company" | "place">("company");
@@ -31,16 +32,16 @@ export function WatchPanel({ state, onChanged }: { state: EdgeState; onChanged: 
       setNote({ tone: "ok", text: "Added. Edge is looking at its sites now; new finds appear in the feed within a minute or two." });
       onChanged();
     } catch (err) {
-      setNote({ tone: "err", text: err instanceof Error ? err.message : String(err) });
+      setNote({ tone: "err", text: errorMessage(err) });
     } finally { setBusy(null); }
   };
   const remove = async (w: Watch) => {
     setBusy(`rm-${w.id}`);
-    try { await api(`/api/edge/watches/${w.id}`, { method: "DELETE" }); onChanged(); } catch (err) { setNote({ tone: "err", text: err instanceof Error ? err.message : String(err) }); } finally { setBusy(null); }
+    try { await api(`/api/edge/watches/${w.id}`, { method: "DELETE" }); onChanged(); } catch (err) { setNote({ tone: "err", text: errorMessage(err) }); } finally { setBusy(null); }
   };
   const check = async (w: Watch) => {
     setBusy(`ck-${w.id}`); setNote(null);
-    try { await post(`/api/edge/watches/${w.id}`, {}); setNote({ tone: "ok", text: `Looking at ${w.label} now.` }); } catch (err) { setNote({ tone: "err", text: err instanceof Error ? err.message : String(err) }); } finally { setBusy(null); }
+    try { await post(`/api/edge/watches/${w.id}`, {}); setNote({ tone: "ok", text: `Looking at ${w.label} now.` }); } catch (err) { setNote({ tone: "err", text: errorMessage(err) }); } finally { setBusy(null); }
   };
 
   const row = (w: Watch) => (

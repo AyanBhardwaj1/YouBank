@@ -105,14 +105,14 @@ export function WhatIf({ state, initial }: { state: EdgeState; initial: { partie
                   <div key={k} className="rounded-md bg-elevated/60 px-2 py-2"><div className="text-[10.5px] uppercase tracking-wider text-muted">{k}</div><div className="num mt-0.5 text-[18px] font-semibold">{v}</div><div className="text-[10px] text-faint">{s}</div></div>
                 ))}
               </div>
-              <table className="mt-3 w-full text-[11.5px]">
+              <div className="table-scroll"><table className="mt-3 w-full text-[11.5px]">
                 <thead><tr className="text-left text-[10.5px] text-muted"><th className="py-1 font-medium">Company</th><th className="text-right font-medium">Plants</th><th className="text-right font-medium">MMcfd</th><th className="text-right font-medium">Pipe km</th></tr></thead>
                 <tbody>
                   {p.parties.map((x) => (
                     <tr key={x.key} className="border-t border-line"><td className="py-1"><span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ background: x.color }} />{x.label}</td><td className="text-right">{x.plants}</td><td className="text-right">{fmtNum(x.capacityMMcfd)}</td><td className="text-right">{fmtNum(x.pipelineKm)}</td></tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
               {p.parties.some((x) => !x.plants && x.pipelineKm < 1) && <p className="mt-2 flex items-start gap-1.5 text-[11px] text-accent"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> {p.parties.filter((x) => !x.plants && x.pipelineKm < 1).map((x) => x.label).join(", ")} {p.parties.filter((x) => !x.plants && x.pipelineKm < 1).length === 1 ? "has" : "have"} no mapped assets here, so the overlap is one-sided.</p>}
             </div>
             <div className="panel p-3 text-[12px]">
@@ -132,7 +132,7 @@ export function WhatIf({ state, initial }: { state: EdgeState; initial: { partie
           </div>
           <div className="panel overflow-x-auto p-3 xl:col-span-2">
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">Counties</div>
-            <table className="mt-1.5 w-full min-w-[640px] text-[11.5px]">
+            <div className="table-scroll"><table className="mt-1.5 w-full min-w-[640px] text-[11.5px]">
               <thead><tr className="text-left text-[10.5px] text-muted"><th className="py-1 font-medium">County</th><th className="font-medium">Who operates</th><th className="text-right font-medium">Their MMcfd</th><th className="text-right font-medium">County MMcfd</th><th className="text-right font-medium">HHI before</th><th className="text-right font-medium">After</th><th className="text-right font-medium">Change</th><th className="pl-2 font-medium">Screen</th></tr></thead>
               <tbody>
                 {p.counties.slice(0, 30).map((c) => (
@@ -148,7 +148,7 @@ export function WhatIf({ state, initial }: { state: EdgeState; initial: { partie
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
             <p className="mt-2 text-[10.5px] leading-relaxed text-faint">{p.method}. Sources: {p.sources.map((s) => `${s.name} (${s.license}; ${s.vintage})`).join("; ")}. A county is a rough market and plant capacities are from 2017, so read the screen as where to look, not a legal conclusion.</p>
           </div>
         </div>

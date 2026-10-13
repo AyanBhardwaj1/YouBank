@@ -2,6 +2,7 @@
 
 import {
   Upload,
+  Sun, Box, Orbit, Pause, Video, ScanSearch, Boxes, Satellite, LoaderCircle,
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, Briefcase, Building2, Calculator, Calendar, CheckSquare, ClipboardList, Coins, Compass,
   CreditCard, Database, DollarSign, FileSearch, FileSpreadsheet, FileText, Flame, Globe, GraduationCap, Handshake, Landmark, Layers, LineChart, ListChecks,
   Mail, Map, MessageSquare, Network, Percent, PieChart, Presentation, Radar, Receipt, Scale, ScrollText, Search, Shield, Sparkles, Split, Target, TrendingDown,
@@ -11,6 +12,7 @@ import {
 
 const MAP: Record<string, React.ComponentType<LucideProps>> = {
   Upload,
+  Sun, Box, Orbit, Pause, Video, ScanSearch, Boxes, Satellite, LoaderCircle, Loader: LoaderCircle,
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, Briefcase, Building2, Calculator, Calendar, CheckSquare, ClipboardList, Coins, Compass,
   CreditCard, Database, DollarSign, FileSearch, FileSpreadsheet, FileText, Flame, Globe, GraduationCap, Handshake, Landmark, Layers, LineChart, ListChecks,
   Mail, Map, MessageSquare, Network, Percent, PieChart, Presentation, Radar, Receipt, Scale, ScrollText, Search, Shield, Sparkles, Split, Target, TrendingDown,

@@ -49,10 +49,10 @@ export function Markdown({ text, sources, inline: inlineOnly = false }: { text: 
       const rows: string[][] = [];
       while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++].split("|").slice(1, -1).map((s) => s.trim()));
       out.push(
-        <table key={key++} className="my-1.5 w-full text-[11px]">
+        <div key={key++} className="table-scroll"><table className="my-1.5 w-full text-[11px]">
           <thead><tr className="border-b border-line text-[10px] uppercase tracking-wider text-muted">{header.map((h, j) => <th key={j} className={`py-0.5 font-normal ${j ? "pr-2 text-right" : "text-left"}`}>{h}</th>)}</tr></thead>
           <tbody>{rows.map((r, ri) => <tr key={ri} className="border-b border-line/40">{r.map((c, j) => <td key={j} className={`py-0.5 ${j ? "pr-2 text-right" : "text-left"}`}>{inline(c)}</td>)}</tr>)}</tbody>
-        </table>,
+        </table></div>,
       );
       continue;
     }

@@ -8,6 +8,7 @@ import type { FormDFiling } from "@/lib/vc/formd";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Select } from "@/components/ui/Select";
 import { useSubNav } from "@/lib/subnav";
+import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 
 type Startup = {
   id: number; source: string; sourceId: string; name: string; oneLiner: string; description: string; website: string; url: string; logo: string; program: string; status: string;
@@ -16,8 +17,8 @@ type Startup = {
 };
 type Facets = { sources: { source: string; n: number }[]; countries: { country: string; n: number }[]; programs: { program: string; n: number }[]; industries: { industry: string; n: number }[]; total: number; lastSync: string | null };
 
-const SOURCE_LABEL: Record<string, string> = { yc: "YC", a16z: "a16z", thiel: "Thiel", hn: "Show HN", formd: "Form D", web: "Web", user: "Added" };
-const SOURCE_STYLE: Record<string, string> = { yc: "bg-accent-soft text-accent", a16z: "bg-info/15 text-info", thiel: "bg-pos/15 text-pos", hn: "bg-elevated text-fg/80", formd: "bg-neg/10 text-neg", web: "bg-raised text-muted", user: "bg-raised text-muted" };
+const SOURCE_LABEL: Record<string, string> = { yc: "YC", a16z: "a16z", thiel: "Thiel", hn: "Show HN", formd: "Form D", web: "Web", user: "Added", defillama: "Crypto" };
+const SOURCE_STYLE: Record<string, string> = { yc: "bg-accent-soft text-accent", a16z: "bg-info/15 text-info", thiel: "bg-pos/15 text-pos", hn: "bg-elevated text-fg/80", formd: "bg-neg/10 text-neg", web: "bg-raised text-muted", user: "bg-raised text-muted", defillama: "bg-chart-emphasis/15 text-chart-emphasis" };
 
 export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const { profile } = useWorkspace();
@@ -36,18 +37,26 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const [formRes, setFormRes] = useState<{ total: number; filings: FormDFiling[] } | null>(null);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Below the three-pane width only some panes fit: a phone shows one at a time (list, details or the
+  // assistant), a tablet keeps the list and swaps details for the assistant. Picking a startup shows it.
+  const [view, setView] = useState<"list" | "detail" | "ai">("list");
+  const pick = (s: Startup) => { setSelected(s); setView("detail"); };
 
-  useEffect(() => { fetch("/api/ai/status").then((r) => r.json()).then(setAi).catch(() => null); }, []);
+  useEffect(() => { fetchJson<AiStatus>("/api/ai/status").then(setAi).catch(() => null); }, []);
   const loadFacets = useCallback(async () => {
-    try { const f = (await (await fetch("/api/vc/startups/facets")).json()) as Facets; setFacets(f); return f; }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); return null; }
+    try { const f = await fetchJson<Facets>("/api/vc/startups/facets"); setFacets(f); return f; }
+    catch (e) { setError(errorMessage(e)); return null; }
   }, []);
   useEffect(() => { const t = setTimeout(() => void loadFacets(), 0); return () => clearTimeout(t); }, [loadFacets]);
 
   const runSearch = useCallback((signal: AbortSignal) => {
     setLoading(true);
     const p = new URLSearchParams({ q, source, country, program, industry, hiring: hiring ? "1" : "", page: String(page), pageSize: "50" });
-    fetch(`/api/vc/startups?${p}`, { signal }).then((r) => r.json()).then((r) => { if (!("error" in r)) setResult(r); }).catch(() => { /* aborted */ }).finally(() => setLoading(false));
+    fetchJson<{ total: number; rows: Startup[] }>(`/api/vc/startups?${p}`, { signal })
+      .then((r) => { setResult(r); setError(null); })
+      // A newer search replaced this one: say nothing, and leave the spinner to it.
+      .catch((e) => { if (!isAbort(e)) setError(errorMessage(e)); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
   }, [q, source, country, program, industry, hiring, page]);
 
   useEffect(() => {
@@ -60,20 +69,17 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
     const query = [q, industry, country ? `in ${country}` : "", program ? `from ${program}` : ""].filter(Boolean).join(" ") || `${profile.sectors[0] || "software"} startups founded recently${country ? ` in ${country}` : ""}`;
     setDiscovering(true); setNotice(null); setError(null);
     try {
-      const r = await (await fetch("/api/vc/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, program }) })).json();
-      if ("error" in r) throw new Error(r.error);
+      const r = await fetchJson<{ written: number }>("/api/vc/discover", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query, program }) });
       setNotice(`Added ${r.written} startups from the web for "${query}"`);
       setSource("web"); setPage(1); await loadFacets();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setDiscovering(false); }
+    } catch (e) { setError(errorMessage(e)); } finally { setDiscovering(false); }
   };
 
   const searchFormD = async (name: string) => {
-    setFormQ(name); setTab("formd"); setFormLoading(true); setFormRes(null); setError(null);
+    setFormQ(name); setTab("formd"); setView("list"); setFormLoading(true); setFormRes(null); setError(null);
     try {
-      const r = await (await fetch(`/api/vc/formd?q=${encodeURIComponent(name)}`)).json();
-      if ("error" in r) throw new Error(r.error);
-      setFormRes(r);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setFormLoading(false); }
+      setFormRes(await fetchJson<{ total: number; filings: FormDFiling[] }>(`/api/vc/formd?q=${encodeURIComponent(name)}`));
+    } catch (e) { setError(errorMessage(e)); } finally { setFormLoading(false); }
   };
 
   const subject = selected ? `${selected.name} (${selected.program}${selected.website ? `, ${selected.website}` : ""})` : `Venture research · ${profile.specialty || "all stages"}`;
@@ -85,10 +91,22 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
     <button key={label} type="button" onClick={onClick} className={`rounded-full border px-2 py-0.5 text-[10.5px] ${active ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{label}{n !== undefined ? <span className="num ml-1 opacity-70">{n.toLocaleString()}</span> : null}</button>
   );
 
+  // On a tablet the list is always showing, so "list" means the details pane is the one beside it.
+  const paneTab = (v: typeof view, label: string, extra = "") => {
+    const on = view === v ? "bg-accent-soft font-medium text-accent" : v === "detail" && view === "list" ? "text-muted md:bg-accent-soft md:font-medium md:text-accent" : "text-muted";
+    return <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)} className={`min-h-10 min-w-0 flex-1 truncate ctl px-3 text-[13px] ${extra} ${on}`}>{label}</button>;
+  };
+
   return (
-    <div className="flex h-full min-h-0">
-      <aside className="flex w-[400px] shrink-0 flex-col border-r border-line bg-panel">
-        <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11px]">
+    <div className="flex h-full min-h-0 flex-col">
+      <div role="tablist" aria-label="Private markets panes" className="flex shrink-0 gap-1 border-b border-line bg-panel p-1.5 xl:hidden">
+        {paneTab("list", tab === "formd" ? "Private raises" : "Startups", "md:hidden")}
+        {paneTab("detail", selected ? selected.name : "Details")}
+        {paneTab("ai", "Ask AI")}
+      </div>
+    <div className="flex min-h-0 flex-1">
+      <aside className={`flex w-[400px] shrink-0 flex-col border-r border-line bg-panel max-xl:w-[320px] max-md:w-full max-md:border-r-0 ${view === "list" ? "" : "max-md:hidden"}`}>
+        <div className="flex items-center gap-1 border-b border-line px-2 py-1.5 text-[11px] max-md:[&>*]:min-h-9">
           <button type="button" onClick={() => setTab("directory")} className={`rounded px-2 py-1 ${tab === "directory" ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>Startup directory</button>
           <button type="button" onClick={() => setTab("formd")} className={`rounded px-2 py-1 ${tab === "formd" ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>Private raises</button>
           <Link href="/app/terminal" className="ml-auto rounded px-2 py-1 text-muted hover:text-fg">Public comps →</Link>
@@ -128,7 +146,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
             <ul className="min-h-0 flex-1 overflow-auto">
               {result?.rows.map((s) => (
                 <li key={s.id}>
-                  <button type="button" onClick={() => setSelected(s)} className={`flex w-full items-start gap-2 border-b border-line/50 px-3 py-2 text-left hover:bg-elevated ${selected?.id === s.id ? "bg-elevated" : ""}`}>
+                  <button type="button" onClick={() => pick(s)} className={`flex w-full items-start gap-2 border-b border-line/50 px-3 py-2 text-left hover:bg-elevated ${selected?.id === s.id ? "bg-elevated" : ""}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     {s.logo ? <img src={s.logo} alt="" className="mt-0.5 h-7 w-7 shrink-0 rounded bg-white/5 object-contain" /> : <span className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded text-[10px] font-semibold ${SOURCE_STYLE[s.source] ?? "bg-elevated"}`}>{s.name.slice(0, 1)}</span>}
                     <span className="min-w-0 flex-1">
@@ -182,7 +200,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
         )}
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col border-r border-line">
+      <section className={`flex min-w-0 flex-1 flex-col border-r border-line max-xl:border-r-0 ${view === "ai" ? "max-xl:hidden" : ""} ${view === "list" ? "max-md:hidden" : ""}`}>
         {selected ? (
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <div className="flex items-start gap-3">
@@ -235,9 +253,10 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
         )}
       </section>
 
-      <aside className="flex w-[420px] shrink-0 flex-col bg-panel">
+      <aside className={`w-[420px] shrink-0 flex-col bg-panel ${view === "ai" ? "flex max-xl:w-auto max-xl:min-w-0 max-xl:flex-1" : "hidden xl:flex"}`}>
         <AiScreen ticker="" ai={ai} openPanels={[]} subject={subject} prompts={prompts} />
       </aside>
+    </div>
     </div>
   );
 }

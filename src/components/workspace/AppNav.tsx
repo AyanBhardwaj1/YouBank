@@ -3,7 +3,12 @@
 /**
  * The top bar: the sidebar button, the features this person pinned (in their order, with or without
  * names), the page they are on when it is not pinned (one click pins it), then alerts, style and the
- * account menu. Everything else lives in the sidebar.
+ * account menu. Everything else lives in the sidebar. On a tablet the pinned features show as icons
+ * (names in their tooltips) so the bar fits.
+ *
+ * On a phone the bar slims down to the page's name, alerts, style and the account: the pinned features
+ * move to the tab bar at the bottom (MobileTabBar) and the sidebar to its "More" sheet. Controls grow to
+ * finger size there, and the bar keeps clear of the notch when the page is drawn edge to edge.
  */
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -27,7 +32,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
       className={`relative ctl flex items-center gap-1.5 whitespace-nowrap px-2 py-1 transition-colors ${active ? "text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
       {active && <motion.span layoutId="nav-active" className="absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
       <Icon name={f.icon} className="relative h-3.5 w-3.5 shrink-0" />
-      {!iconsOnly && <span className="relative hidden sm:inline">{f.label}</span>}
+      {!iconsOnly && <span className="relative hidden lg:inline">{f.label}</span>}
     </Link>
   );
   if (!temporary) return <motion.div layout="position" transition={{ type: "spring", stiffness: 520, damping: 42 }}>{link}</motion.div>;
@@ -58,18 +63,21 @@ export function AppNav({ email }: { email: string }) {
   const signOut = async () => { await (await getAuthClient()).signOut(); router.push("/"); router.refresh(); };
 
   return (
-    <div className="glass relative z-50 flex h-10 shrink-0 items-center gap-1.5 border-b border-line bg-bg/90 px-2 text-[11.5px]">
+    <div className="glass relative z-50 shrink-0 border-b border-line bg-bg/90 pt-safe px-safe">
+    <div className="flex h-12 items-center gap-1.5 px-2 text-[11.5px] md:h-10">
       <button type="button" onClick={() => nav.setOpen(!nav.open)} aria-expanded={nav.open} aria-label={nav.open ? "Close the sidebar" : "Open all features and workflows"}
         title={`${nav.open ? "Close" : "All features and workflows"} (⌘\\)`}
-        className={`ctl grid h-7 w-7 shrink-0 place-items-center transition-colors ${nav.open ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
+        className={`ctl hidden h-7 w-7 shrink-0 place-items-center transition-colors md:grid ${nav.open ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
         {nav.open ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
       </button>
-      <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5">
+      <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11 max-md:min-w-8" aria-label="YouBank home">
         <LogoMark size={18} id="nav" />
-        <span className="font-semibold tracking-tight"><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
+        <span className={`font-semibold tracking-tight ${current && current.id !== "home" ? "max-md:hidden" : ""}`}><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
       </Link>
+      {/* Phones: the page's name, as a native app's title bar has it. */}
+      {current && current.id !== "home" && <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-fg md:hidden">{current.label}</span>}
       <span className="hidden truncate text-muted 2xl:inline" title={`${ROLES[profile.role].label}: ${config.title}`}>· {config.title}</span>
-      <nav aria-label="Pinned features" className="ml-2 flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+      <nav aria-label="Pinned features" className="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex">
         {pinned.map((f) => <Tab key={f.id} f={f} active={current?.id === f.id} iconsOnly={iconsOnly} />)}
         <AnimatePresence>
           {unpinned && <Tab key={`open-${unpinned.id}`} f={unpinned} active iconsOnly={iconsOnly} temporary onPin={() => nav.update({ pinned: [...nav.prefs.pinned, unpinned.id] })} />}
@@ -79,20 +87,20 @@ export function AppNav({ email }: { email: string }) {
           <SlidersHorizontal className="h-3.5 w-3.5" />
         </button>
       </nav>
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
         {status?.configured && <span className="num hidden text-[10.5px] text-muted 2xl:inline" title={`Model ${status.model}, reasoning ${status.effort}`}>{status.label ?? status.model}</span>}
         <NotificationBell />
         <ThemeMenu nameClass="hidden 2xl:inline" />
         <div className="relative">
-          <button type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-haspopup="menu" title={email}
-            className="ctl flex items-center gap-1.5 border border-line px-1.5 py-1 text-muted hover:border-accent/50 hover:text-fg">
-            <span className="grid h-4 w-4 place-items-center rounded-full bg-accent-soft text-[9px] font-bold text-accent">{(profile.name || email || "?").slice(0, 1).toUpperCase()}</span>
+          <button type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-haspopup="menu" title={email} aria-label="Account"
+            className="ctl flex items-center gap-1.5 border border-line px-1.5 py-1 text-muted hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">
+            <span className="grid h-4 w-4 place-items-center rounded-full bg-accent-soft text-[9px] font-bold text-accent max-md:h-7 max-md:w-7 max-md:text-[12px]">{(profile.name || email || "?").slice(0, 1).toUpperCase()}</span>
             <span className="hidden max-w-[140px] truncate xl:inline">{email}</span>
           </button>
           {menu && (
             <>
               <button type="button" aria-label="Close menu" className="fixed inset-0 z-40 cursor-default" onClick={() => setMenu(false)} />
-              <div role="menu" className="rise float absolute right-0 z-50 mt-1.5 w-60 ctl border border-line-strong bg-raised p-1 text-[12px]">
+              <div role="menu" className="rise float absolute right-0 z-50 mt-1.5 w-60 ctl border border-line-strong bg-raised p-1 text-[12px] max-md:w-[min(280px,calc(100vw-16px))] max-md:text-[14px] [&_[role=menuitem]]:max-md:min-h-11">
                 <div className="px-2 py-1.5 text-[10.5px] text-muted">{ROLES[profile.role].label}{profile.specialty ? ` · ${profile.specialty}` : ""}<span className="block truncate text-faint">{email}</span></div>
                 <Link role="menuitem" href="/app/settings" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Settings" className="h-3.5 w-3.5" /> Settings and style</Link>
                 <button role="menuitem" type="button" onClick={() => { setMenu(false); nav.customize(); }} className="flex w-full items-center gap-2 ctl px-2 py-1.5 text-left hover:bg-elevated"><SlidersHorizontal className="h-3.5 w-3.5" /> Customize the top bar</button>
@@ -105,6 +113,7 @@ export function AppNav({ email }: { email: string }) {
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

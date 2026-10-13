@@ -4,13 +4,21 @@
  * Ask: a question over a chosen scope (companies' filings, the person's uploads and recordings, their
  * workspace, the Newsroom archive, the live web), strict or balanced, in the answer shape that fits.
  * Progress streams while sources are read and passages found; earlier questions stay one click away.
+ * Premium options (a stronger model, exact-span citations, one question across several companies) show
+ * with their plan badge for everyone; the server decides, and a plan without them gets its message in
+ * line with a link to the plans.
  */
 import { Check, CircleStop, History, Loader2, Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { PremiumBadge } from "@/components/billing/Premium";
+import { PlanNotice } from "@/components/billing/PlanNotice";
 import { Select } from "@/components/ui/Select";
 import { ago, api, useApi, useNow } from "@/components/news/client";
 import { AnswerView } from "./AnswerView";
-import { askStream, errorText, FORM_OPTIONS, SOURCE_OPTIONS, warmReranker, type DocAnswer, type ViewTarget } from "./client";
+import { askBatchStream, askStream, directOf, FORM_OPTIONS, SOURCE_OPTIONS, warmReranker, type DocAnswer, type ViewTarget } from "./client";
+
+/** One company's answer in a comparison across companies. */
+type BatchRow = { ticker: string; state: "waiting" | "reading" | "done" | "failed" | "skipped"; message?: string; answer?: DocAnswer; error?: string };
 
 type Recent = { answers: { id: number; question: string; mode: string; createdAt: string; notFound: boolean }[] };
 export type AskScope = { docIds: number[]; label: string } | null;
@@ -40,7 +48,10 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
   const [form, setForm] = useState("auto");
   const [run, setRun] = useState<{ steps: string[]; started: number } | null>(null);
   const [answer, setAnswer] = useState<DocAnswer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [premium, setPremium] = useState({ model: false, citations: false });
+  const [each, setEach] = useState(false);
+  const [batch, setBatch] = useState<BatchRow[] | null>(null);
   const abort = useRef<AbortController | null>(null);
   const recent = useApi<Recent>("/api/edge/answers");
   const reloadRecent = recent.reload;
@@ -52,7 +63,7 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
   useEffect(() => {
     if (!openAnswer) return;
     let live = true;
-    api<DocAnswer>(`/api/edge/answers/${openAnswer}`).then((a) => { if (live) setAnswer(a); }).catch((e) => { if (live) setError(errorText(e)); });
+    api<DocAnswer>(`/api/edge/answers/${openAnswer}`).then((a) => { if (live) setAnswer(a); }).catch((e) => { if (live) setError(e); });
     return () => { live = false; };
   }, [openAnswer]);
 
@@ -67,18 +78,41 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
     if (!q || run) return;
     const pending = tickerText.trim() ? [...new Set([...tickers, ...tickerText.toUpperCase().split(/[\s,;]+/).filter((t) => /^[A-Z][A-Z0-9.\-]{0,9}$/.test(t))])].slice(0, 6) : tickers;
     if (tickerText.trim()) { setTickers(pending); setTickerText(""); }
-    setError(null); setAnswer(null);
-    setRun({ steps: ["Gathering the documents in scope"], started: Date.now() });
+    setError(null); setAnswer(null); setBatch(null);
     abort.current = new AbortController();
+    if (each && !scope && pending.length >= 2) {
+      // Each company separately (premium): rows fill in as their answers arrive.
+      const rows = new Map<string, BatchRow>(pending.map((t) => [t, { ticker: t, state: "waiting" }]));
+      const show = () => setBatch([...rows.values()]);
+      const patch = (t: string, p: Partial<BatchRow>) => { const r = rows.get(t); if (r) { rows.set(t, { ...r, ...p }); show(); } };
+      show();
+      setRun({ steps: [`Asking ${pending.length} companies, two at a time`], started: Date.now() });
+      try {
+        await askBatchStream({ question: q, tickers: pending, mode, forms, months: Number(months), premium }, (e) => {
+          if ("progress" in e) patch(e.progress.ticker, { state: "reading", message: e.progress.message });
+          else if ("result" in e) patch(e.result.ticker, { state: "done", answer: e.result.answer });
+          else if ("failed" in e) patch(e.failed.ticker, { state: "failed", error: e.failed.error });
+          else if ("skipped" in e) patch(e.skipped.ticker, { state: "skipped" });
+        }, abort.current.signal);
+        reloadRecent();
+      } catch (e) {
+        if ((e as { name?: string }).name !== "AbortError") { setError(e); setBatch(null); }
+      } finally {
+        setRun(null);
+        abort.current = null;
+      }
+      return;
+    }
+    setRun({ steps: ["Gathering the documents in scope"], started: Date.now() });
     try {
       const a = await askStream({
-        question: q, mode, form: form as "auto",
+        question: q, mode, form: form as "auto", premium,
         scope: scope ? { docIds: scope.docIds, sources: ["uploads"] } : { tickers: pending, sources, forms, months: Number(months) },
       }, (m) => setRun((r) => (r && r.steps[r.steps.length - 1] !== m ? { ...r, steps: [...r.steps, m] } : r)), abort.current.signal);
       setAnswer(a);
       reloadRecent();
     } catch (e) {
-      if ((e as { name?: string }).name !== "AbortError") setError(errorText(e));
+      if ((e as { name?: string }).name !== "AbortError") setError(e);
     } finally {
       setRun(null);
       abort.current = null;
@@ -146,6 +180,16 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
               </Select>
             </span>
           </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+            <span className="w-[76px] shrink-0 text-muted">Premium</span>
+            <Toggle on={premium.model} onClick={() => setPremium((p) => ({ ...p, model: !p.model }))}>Stronger model</Toggle>
+            <PremiumBadge feature="edge.answer-model" />
+            <Toggle on={premium.citations} onClick={() => setPremium((p) => ({ ...p, citations: !p.citations }))}>Exact-span citations</Toggle>
+            <PremiumBadge feature="edge.citations" />
+            {!scope && tickers.length >= 2 && <><Toggle on={each} onClick={() => setEach((v) => !v)}>Each company separately</Toggle><PremiumBadge feature="edge.batch-ask" /></>}
+            {premium.citations && <span className="text-[11px] text-faint">Answers come as a direct answer and cited points.</span>}
+            {each && !scope && tickers.length >= 2 && <span className="text-[11px] text-faint">Each company is answered from its own filings, two at a time.</span>}
+          </div>
           {!question && !answer && !run && <div className="flex flex-wrap gap-1.5">{EXAMPLES.slice(1).map((x) => <button key={x} type="button" onClick={() => setQuestion(x)} className="rounded-full border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg">{x}</button>)}</div>}
         </form>
 
@@ -162,7 +206,27 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
             <p className="mt-2 text-[11px] text-faint">Reading a company&apos;s filings for the first time takes a minute or two; later questions are quicker.</p>
           </div>
         )}
-        {error && <p className="text-[12.5px] text-neg">{error}</p>}
+        {!!error && <PlanNotice error={error} />}
+        {batch && (
+          <div className="panel divide-y divide-line" aria-live="polite">
+            {batch.map((b) => (
+              <div key={b.ticker} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2 text-[12.5px]">
+                <span className="num w-[64px] shrink-0 font-semibold">{b.ticker}</span>
+                <div className="min-w-0 flex-1">
+                  {b.state === "done" && b.answer ? (
+                    <>
+                      <p className="leading-snug">{b.answer.notFound ? <span className="text-muted">Not found in its filings.</span> : directOf(b.answer)}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{b.answer.claims.length} cited claim{b.answer.claims.length === 1 ? "" : "s"} from {new Set(b.answer.citations.map((c) => c.docId)).size} document{new Set(b.answer.citations.map((c) => c.docId)).size === 1 ? "" : "s"}</p>
+                    </>
+                  ) : b.state === "failed" ? <p className="text-neg">{b.error}</p>
+                    : b.state === "skipped" ? <p className="text-muted">Not reached in this run; ask again for this company.</p>
+                      : <p className="flex items-center gap-1.5 text-muted"><Loader2 className="h-3 w-3 animate-spin" />{b.message ?? "Waiting its turn"}</p>}
+                </div>
+                {b.answer && <button type="button" onClick={() => setAnswer(b.answer!)} className="text-[11.5px] text-accent hover:underline">Open</button>}
+              </div>
+            ))}
+          </div>
+        )}
         {answer && <AnswerView a={answer} onCite={onCite} />}
       </div>
 
@@ -172,7 +236,7 @@ export function AskPanel({ onCite, scope, clearScope, suggestTickers, openAnswer
           <ul className="space-y-1">
             {recent.data.answers.map((r) => (
               <li key={r.id}>
-                <button type="button" onClick={() => { setError(null); api<DocAnswer>(`/api/edge/answers/${r.id}`).then(setAnswer).catch((e) => setError(errorText(e))); }} className={`w-full rounded-md border px-2 py-1.5 text-left transition hover:border-accent/50 ${answer?.answerId === r.id ? "border-accent/50 bg-accent-soft/30" : "border-line"}`}>
+                <button type="button" onClick={() => { setError(null); api<DocAnswer>(`/api/edge/answers/${r.id}`).then(setAnswer).catch((e) => setError(e)); }} className={`w-full rounded-md border px-2 py-1.5 text-left transition hover:border-accent/50 ${answer?.answerId === r.id ? "border-accent/50 bg-accent-soft/30" : "border-line"}`}>
                   <div className="line-clamp-2 text-[12px]">{r.question}</div>
                   <div className="mt-0.5 text-[10.5px] text-muted">{r.mode === "strict" ? "Strict" : "Balanced"}{r.notFound ? " · not found" : ""}{now ? ` · ${ago(r.createdAt, now)}` : ""}</div>
                 </button>

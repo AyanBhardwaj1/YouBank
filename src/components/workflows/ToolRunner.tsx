@@ -9,6 +9,7 @@ import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
+import { errorMessage, safeText } from "@/lib/client/errors";
 import { useCompany } from "@/lib/client/companies";
 import { useCollabSession } from "@/lib/client/collab";
 import type { Source } from "@/components/terminal/Markdown";
@@ -62,7 +63,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   // Calculators compute live.
   const calc = useMemo(() => {
     if (tool.kind !== "calc") return null;
-    try { return { output: tool.compute(inputs), error: null as string | null }; } catch (e) { return { output: null, error: e instanceof Error ? e.message : String(e) }; }
+    try { return { output: tool.compute(inputs), error: null as string | null }; } catch (e) { return { output: null, error: errorMessage(e) }; }
   }, [tool, inputs]);
 
   useEffect(() => {
@@ -76,7 +77,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
       const row = await r.json();
       const parsed = OutputSchema.safeParse(row.output);
       if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setError(errorMessage(e)); }
   }, []);
 
   useEffect(() => { if (!runId) return; const t = setTimeout(() => void loadRun(runId), 0); return () => clearTimeout(t); }, [runId, loadRun]);
@@ -90,27 +91,32 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
     try {
       const res = await fetch("/api/tools/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: tool.id, inputs, model: settings.model, effort: settings.effort }) });
       if (!res.ok) throw new Error(await errorOf(res));
+      // A stream that ends without its output (the function was stopped, the connection dropped) must
+      // say so, rather than leave the panel empty with no explanation.
+      let ended = false;
       await readSse(res, (ev) => {
         if (ev.type === "tool") setEvents((es) => { const next = [...es]; if (ev.status === "start") next.push({ name: String(ev.name), status: "start", summary: ev.summary as string }); else { const k = next.findLastIndex((t) => t.name === ev.name && t.status === "start"); if (k >= 0) next[k] = { ...next[k], status: "end", summary: (ev.summary as string) || next[k].summary }; } return next; });
         else if (ev.type === "thinking") setThinking((t) => t + String(ev.text));
         else if (ev.type === "progress") setProgress((p) => p + Number(ev.chars ?? 0));
-        else if (ev.type === "error") setError(String(ev.message));
+        else if (ev.type === "error") { ended = true; setError(safeText(ev.message)); }
         else if (ev.type === "output") {
+          ended = true;
           if (ev.output) { setOutput(ev.output as WorkflowOutput); setSources((ev.sources as Source[]) ?? []); }
-          if (ev.error) setError(String(ev.error));
+          if (ev.error) setError(safeText(ev.error));
           setMeta({ model: ev.model as string, durationMs: ev.durationMs as number, runId: ev.runId as number | null });
         }
       });
+      if (!ended) setError("The run stopped before it finished. Try again; if it keeps happening, try a faster model or effort.");
       refreshRuns();
       setTimeout(() => outRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { setError(errorMessage(e)); }
     finally { setBusy(false); }
   };
 
   const saveCalc = async () => {
     if (!calc?.output) return;
     try { const r = await fetch("/api/tools/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ toolId: tool.id, inputs, output: calc.output }) }); if (!r.ok) throw new Error(await errorOf(r)); setStatus("Saved to your library"); refreshRuns(); setTimeout(() => setStatus(null), 2500); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    catch (e) { setError(errorMessage(e)); }
   };
 
   const shown = tool.kind === "calc" ? calc?.output ?? null : output;
@@ -153,7 +159,9 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
               </span>
             ))}
           </span>
-          <span className="text-[11px] text-muted">Everyone here edits the same inputs.</span>
+          {collab.error
+            ? <span role="alert" className="text-[11px] text-neg">{collab.error}</span>
+            : <span className="text-[11px] text-muted">Everyone here edits the same inputs.</span>}
         </div>
       )}
 
@@ -206,9 +214,9 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
                 <div className="text-[15px] font-semibold">{shown.title}</div>
                 <div className="flex items-center gap-1.5 text-[11px] text-muted">
                   {meta.model && <span className="num">{meta.model}{meta.durationMs ? ` · ${(meta.durationMs / 1000).toFixed(0)}s` : ""}</span>}
-                  <button type="button" onClick={copy} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Copy as markdown"><Icon name="Copy" className="h-3 w-3" /></button>
-                  <button type="button" onClick={download} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Download .md"><Icon name="Download" className="h-3 w-3" /></button>
-                  {!compact && <Link href={`/app/terminal?ticker=${encodeURIComponent(String(inputs.ticker ?? ""))}&fn=AI`} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Discuss in the AI panel"><Icon name="MessageSquare" className="h-3 w-3" /></Link>}
+                  <button type="button" onClick={copy} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Copy as markdown" aria-label="Copy as markdown"><Icon name="Copy" className="h-3 w-3" /></button>
+                  <button type="button" onClick={download} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Download .md" aria-label="Download as markdown"><Icon name="Download" className="h-3 w-3" /></button>
+                  {!compact && <Link href={`/app/terminal?ticker=${encodeURIComponent(String(inputs.ticker ?? ""))}&fn=AI`} className="ctl border border-line px-2 py-0.5 hover:border-accent/50 hover:text-fg" title="Discuss in the AI panel" aria-label="Discuss in the AI panel"><Icon name="MessageSquare" className="h-3 w-3" /></Link>}
                 </div>
               </div>
               <OutputBlocks output={shown} sources={sources} compact={compact} />

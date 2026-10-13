@@ -14,6 +14,7 @@ import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 import { EdgeUpgrades } from "@/components/edge/Upgrades";
+import { PlanSettings } from "@/components/billing/PlanSettings";
 import { DesktopSettings } from "@/components/desktop/DesktopConnect";
 
 const TABS = [
@@ -21,6 +22,7 @@ const TABS = [
   { id: "ai", label: "AI model", icon: "Cpu" },
   { id: "news", label: "News and alerts", icon: "Newspaper" },
   { id: "desk", label: "My desk", icon: "Layout" },
+  { id: "plan", label: "Plan", icon: "CreditCard" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
   { id: "desktop", label: "Desktop app", icon: "Download" },
@@ -64,6 +66,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
 
         {tab === "news" && <NewsSettings />}
 
+        {tab === "plan" && <PlanSettings />}
         {tab === "desktop" && <DesktopSettings />}
 
         {tab === "ai" && (
@@ -80,7 +83,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
               </div>
             )}
             <div className="mt-4"><ModelPicker value={{ model: settings.model ?? prefs.model, effort: settings.effort ?? prefs.effort }} onChange={setSettings} /></div>
-            <AiUsage routing={routing} onRouting={(v) => { setRouting(v); void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: { routing: v } }) }); }} />
+            <AiUsage routing={routing} onRouting={(v) => { setRouting(v); void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ai: { routing: v } }) }).catch(() => undefined); }} />
           </section>
         )}
 
@@ -120,7 +123,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
             <div className="panel flex flex-wrap items-start justify-between gap-4 p-4">
               <div className="min-w-0 max-w-[62ch]">
                 <div className="flex items-center gap-2 text-[13.5px] font-semibold">Edge <span className="rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-accent">Beta</span>{edgeOn && <span className="text-[11px] font-normal text-pos">On</span>}</div>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change and flaring at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, cited answers across filings, calls and data rooms, the relationship graph with likely buyers and targets, and labeled synthetic scenarios, all in one feed of what changed, each finding with its sources and an audit trail. Up to five watches each; its AI use counts toward your daily AI limit.</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change and flaring at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, cited answers across filings, calls and data rooms, the relationship graph with likely buyers and targets, and labeled synthetic scenarios, all in one feed of what changed, each finding with its sources and an audit trail. Up to five watches each; its AI use counts toward your plan&apos;s AI allowance.</p>
                 {edgeOn && <Link href="/app/edge" className="mt-2 inline-block text-[12px] text-accent hover:underline">Open Edge</Link>}
               </div>
               <BetaToggle on={edgeOn} />

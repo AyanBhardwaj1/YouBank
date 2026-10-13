@@ -457,6 +457,75 @@ polished.
 - **Not done:** true 3D change detection needs paid data (see Known limits). That covers stockpile
   volumes, tank fill from shadows, and the height of new construction.
 
+### What the 3D maps and geospatial AI release adds (2026-10-05)
+
+Engine: MapLibre GL 5 for the globe, terrain, sky, buildings and draped imagery, with deck.gl 9
+(`@deck.gl/mesh-layers` for procedural models, `PointCloudLayer` for lidar) drawn inside MapLibre's own
+WebGL2 context. CesiumJS was considered and not used: it would add a second engine and a second
+graphics context, and its best terrain and buildings need an ion token. Everything below is free data.
+
+- **Globe, terrain and light** (free; `EarthMap.tsx`, `map3d/maplibre.ts`, `src/lib/edge/geo3d/sun.ts`).
+  - A globe button shows the whole Earth with its atmosphere; it turns flat again as you zoom in.
+  - Terrain from AWS Terrain Tiles (Terrarium), relief ×1, ×2 or ×4, hillshade lit from the sun.
+  - A sun button sets the hour (local solar time): the sun's position (the SunCalc/NOAA formula) lights
+    buildings and models, turns the hillshade, and colours the sky for day, dusk and night.
+  - An orbit button turns the camera about the centre; fly-tos arc out and in.
+  - OpenStreetMap buildings (OpenFreeMap vector tiles) stand at their mapped heights in 3D.
+  - Phones and devices that report little memory start in a lighter 2.5D mode: tilt and buildings,
+    the terrain one tap away ("Flat" under Relief), fewer pixels and tiles. Without WebGL2 the map
+    and its buildings still work; deck.gl models and point clouds are off, and the map says so.
+- **Flares** (free). This week's flaring findings burn on their plants in 3D: a stack with an
+  animated flame sized and coloured by the radiant heat VIIRS measured (still for people who ask for
+  less motion), larger than life far out and true size from zoom 14.
+- **Digital twin** (free; `twin.ts`, `/api/edge/twin`, `map3d/SiteTwin.tsx`). From any plant or
+  finding:
+  - the ground from the same terrain tiles (a 64 × 64 grid, so models stand on the drawn ground);
+  - storage tanks, towers and stacks measured by USGS lidar (`site3d.ts`), merged with what
+    OpenStreetMap's mappers drew (Overpass): tanks with tagged sizes, flare stacks, chimneys, mine
+    shafts, data centres (raised to their height) and mines and quarries (outlined; the terrain shows
+    the pit);
+  - EIA and OpenStreetMap pipelines as tubes following the ground (drawn 2.4 m thick);
+  - the newest NAIP aerial photo draped on the ground, and the plant's flaring of the last six weeks as
+    a flame on the nearest mapped stack, else the tallest measured tower, else where the heat was seen;
+  - every model says whether its size was measured, tagged or estimated. Kept a week per place (an
+    hour when a source did not answer).
+  - Export: the terrain, tanks, stacks and pipelines as a glTF (.glb) file, built in the browser.
+- **Lidar point cloud** (Pro: `maps.lidar`; `sources/lidar.ts`, `geo3d/ept.ts`, `/api/edge/lidar`).
+  - USGS 3DEP's public Entwine Point Tile copies on AWS (`s3://usgs-lidar-public`), the newest survey
+    with points at the site (Hobu's index of the bucket).
+  - The octree is read level by level for a 1.2 km box under a budget of 120,000 to 800,000 points;
+    the last level that does not fit whole is read from the centre out. LAZ is decompressed on the
+    server with laz-perf (WebAssembly), cut to the box, noise dropped, and sent in passes of up to
+    200,000 points (int16 offsets at 5 cm, about 1.4 MB a pass), so a coarse site appears at once.
+  - The cloud is lined up on its ground returns (lidar and terrain tiles can sit on different vertical
+    datums), coloured by class, height or intensity.
+  - Measured: a Permian site read 350,000 points in two passes of under half a second each.
+- **Scene analysis in 3D** (`scene.ts`, `/api/edge/scene`). Each turns imagery into extruded cells:
+  - This change in 3D (free): a ground-change finding's own mask in 80 m cells.
+  - Land use (Pro: `maps.scene`): Impact Observatory's annual 10 m land-use maps (a deep-learning
+    classification of Sentinel-2), the newest year against five years before; cells that became
+    built or bare ground stand taller.
+  - Change month by month (Pro: `maps.scene`): the clearest Sentinel-2 image of every other month for
+    two years compared with the first, each month a layer above the last, with a slider: a 3D
+    time-lapse in which new ground rises as a column from the month it appeared.
+  - AI change (Pro, metered: `maps.ai-change`): AlphaEarth embeddings of two years on the ML service
+    (`geo.embed_change`, now with a `grid` output).
+  - Footprints (Pro, metered: `maps.footprints`): Segment Anything 2.1's automatic masks over the
+    NAIP photo (Sentinel-2 outside the US) on the ML service (`geo.footprints`, new), sorted into
+    tanks, buildings and pads by shape and raised to estimated heights.
+  - ML analyses start a job and are polled; a place's result is kept a month, so asking twice costs once.
+- **Imagery in 3D.**
+  - Two years of Sentinel-2 draped on the terrain, month by month (free, 384 px).
+  - Record a 3D video (Pro: `maps.export`): the same at 1,024 px while the camera orbits, saved as WebM.
+  - Planet imagery in 3D (Deal Team, metered: `maps.planet-drape`): the newest PlanetScope or SkySat
+    scene's tiles draped over the site, through `/api/edge/planet/tile` so the key stays on the server.
+- **The layer registry** (`map3d/layers.ts`). Every deck.gl layer is one entry in `MAP_LAYERS`: its
+  label, plan feature, whether it animates, when it has data, how it builds and what a click says.
+  A new kind of site adds an entry and puts its data in `scene.extra`; EarthMap needs no change.
+- **Plans.** The premium entries are in `src/lib/billing/features/maps.ts`, checked with
+  `requireFeature` in each route before work starts and shown with `PremiumBadge` and `PremiumGate`.
+  Nothing paid runs from a cron, a prefetch or a page load.
+
 ### What the October upgrade round adds (2026-10-01)
 
 Everything here is free to run. Paid upgrades are built behind switches and stay off; administrators
@@ -595,3 +664,10 @@ synthetic scenes.
   - Measuring 3D change itself needs sub-metre imagery or repeated lidar, which are not free. That
     covers stockpile volumes, tank fill levels and construction height.
   - Pipeline profiles follow EIA's drawn line, which only approximates the route.
+- **3D maps and twins.**
+  - The twin's heights are as of the lidar survey (often 2018 or 2019 in the Permian) and the photo's
+    flight; OpenStreetMap is as complete as its mappers made it, and untagged sizes are estimates.
+  - Overpass is a shared free service; when it is busy a twin opens without mapped features and says so.
+  - Point clouds cover the United States only (3DEP). Footprints outside the US come from 10 m
+    Sentinel-2, which finds pads and ponds, not buildings.
+  - Recording a video needs MediaRecorder (Chrome, Edge, Firefox; recent Safari).
