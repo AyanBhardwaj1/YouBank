@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/user";
-import { SignInButton } from "@/components/marketing/SignInButton";
+import { GOOGLE_SIGNIN, SignInButton } from "@/components/marketing/SignInButton";
+import { EmailSignIn } from "@/components/marketing/EmailSignIn";
 import { ROLES, ROLE_IDS } from "@/lib/roles";
 import { Logo } from "@/components/brand/Logo";
 
 export const metadata = { title: "Sign in" };
 
-export default async function SignIn() {
-  if (await currentUser()) redirect("/app");
+export default async function SignIn({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  // Only a path on this site: "/app/crm", never "//elsewhere.com" or a full address.
+  const asked = (await searchParams).next ?? "";
+  const next = /^\/(?![/\\])/.test(asked) ? asked : "/app";
+  if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -20,8 +24,10 @@ export default async function SignIn() {
           <Logo size={26} />
         </Link>
         <h1 className="mt-5 text-[20px] font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-1 text-[12.5px] text-muted">Google only, for now. Your watchlists, sheets, saved runs, model and style preferences are kept on your account.</p>
-        <SignInButton className="mt-5" />
+        <p className="mt-1 text-[12.5px] text-muted">Your watchlists, sheets, saved runs, model and style preferences are kept on your account.</p>
+        {GOOGLE_SIGNIN && <SignInButton next={next} className="mt-5" />}
+        {GOOGLE_SIGNIN && <div className="mt-4 text-center text-[10.5px] uppercase tracking-wider text-muted">or with email</div>}
+        <EmailSignIn next={next} className={GOOGLE_SIGNIN ? "mt-3" : "mt-5"} />
         <div className="mt-6 border-t border-line pt-4">
           <div className="text-[10.5px] uppercase tracking-wider text-muted">You will be asked what you do</div>
           <div className="mt-2 flex flex-wrap gap-1.5">

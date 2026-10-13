@@ -1308,7 +1308,7 @@ All tables are in `src/db/schema.ts`.
 | Styling | Tailwind CSS v4 with design tokens, 14 generated themes, motion, lucide-react icons |
 | Database | Supabase Postgres (free plan) through `postgres` (postgres.js) and Supavisor's transaction pooler |
 | ORM | Drizzle ORM 0.45, drizzle-kit |
-| Auth | Better Auth 1.6 (self-hosted) with Google sign-in; tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications` |
+| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications` |
 | AI | OpenAI Responses API (`openai` 7), Anthropic Messages API (`@anthropic-ai/sdk`), zod 4 for structured output |
 | Mail | imapflow (IMAP), nodemailer (SMTP), mailparser (MIME), Gmail REST API |
 | Data | SEC EDGAR (submissions, XBRL company facts, full-text search), Financial Modeling Prep, Y Combinator, a16z, Thiel Fellows, Show HN |
@@ -1353,7 +1353,7 @@ bash scripts/preflight.sh                                         # everything t
 | `DATABASE_URL` | yes | Supabase transaction pooler URI (Connect → Transaction pooler, port 6543) |
 | `DATABASE_URL_UNPOOLED` | for schema pushes | Supabase session pooler URI (port 5432); `drizzle-kit push` and `scripts/apply-sql.mts` need a session connection |
 | `BETTER_AUTH_SECRET` | yes | Signs session cookies and encrypts stored OAuth tokens (`openssl rand -base64 48`) |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | yes | Google OAuth client (Web); redirect URI `<site>/api/auth/callback/google` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_SIGNIN=1` | no | Google sign-in alongside email and password: an OAuth client (Web) with redirect URI `<site>/api/auth/callback/google`; all three or none |
 | `BETTER_AUTH_URL` | no | Sign-in's base address when it is not `NEXT_PUBLIC_SITE_URL` (local development) |
 | `AUTH_SESSION_DATA_TTL` | no | Seconds the session cookie is trusted before a database read (default 900) |
 | `AI_PROVIDER` | yes | `openai` or `anthropic` |

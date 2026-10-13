@@ -7,7 +7,7 @@ import { normaliseSiteUrl, resolveSiteUrl } from "./site";
 type Env = Record<string, string | undefined>;
 
 /** Without these the app does not work at all. */
-export const REQUIRED = ["DATABASE_URL", "BETTER_AUTH_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+export const REQUIRED = ["DATABASE_URL", "BETTER_AUTH_SECRET"];
 /** Needed in production for a feature (crons, SEC, AI, mail, the heartbeat). */
 const PRODUCTION = ["CRON_SECRET", "AUTOPILOT_SECRET", "EDGAR_USER_AGENT", "EMAIL_TOKEN_SECRET"];
 /** Optional, but must be numbers when set. */
@@ -16,6 +16,7 @@ const NUMERIC = ["AI_USER_DAILY_USD", "AI_USER_MONTHLY_USD", "AI_GLOBAL_DAILY_US
 const GROUPS: [string, string[]][] = [
   ["Cloudflare R2", ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"]],
   ["Inngest", ["INNGEST_EVENT_KEY", "INNGEST_SIGNING_KEY"]],
+  ["Google sign-in", ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "NEXT_PUBLIC_GOOGLE_SIGNIN"]],
   ["the Modal ML service", ["EDGE_ML_URL", "EDGE_ML_SECRET"]],
 ];
 

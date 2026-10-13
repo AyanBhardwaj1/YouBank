@@ -11,11 +11,13 @@ import { siteUrl } from "@/lib/site";
  */
 export const SESSION_DATA_TTL = Math.min(Math.max(Number(process.env.AUTH_SESSION_DATA_TTL) || 900, 60), 3_600);
 
+/** Whether Google sign-in is offered: only with both halves of an OAuth client. */
+export const googleEnabled = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
 function build() {
   const secret = process.env.BETTER_AUTH_SECRET;
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  if (!secret || !clientId || !clientSecret) throw new Error("Sign-in is not configured: BETTER_AUTH_SECRET, GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set");
+  if (!secret) throw new Error("Sign-in is not configured: BETTER_AUTH_SECRET must be set");
+  const clientId = process.env.GOOGLE_CLIENT_ID, clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   return betterAuth({
     // Google sends people back here, so it must be the address registered with the OAuth client.
     baseURL: process.env.BETTER_AUTH_URL || siteUrl(),
@@ -24,7 +26,10 @@ function build() {
       provider: "pg",
       schema: { user: schema.authUsers, session: schema.authSessions, account: schema.authAccounts, verification: schema.authVerifications },
     }),
-    socialProviders: { google: { clientId, clientSecret, prompt: "select_account" } },
+    // Email and password always; Google when its OAuth client is set. With no mail sender yet there is
+    // no emailed reset: an admin resets a forgotten password.
+    emailAndPassword: { enabled: true, minPasswordLength: 10, maxPasswordLength: 128, autoSignIn: true },
+    socialProviders: clientId && clientSecret ? { google: { clientId, clientSecret, prompt: "select_account" } } : {},
     session: { cookieCache: { enabled: true, maxAge: SESSION_DATA_TTL } },
     account: { encryptOAuthTokens: true },
     // Lets server actions and route handlers set the refreshed session cookie through next/headers.
