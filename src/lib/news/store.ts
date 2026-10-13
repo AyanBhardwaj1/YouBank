@@ -3,7 +3,7 @@
  * interactive transactions): items insert once by key, a story's figures are recomputed from its
  * items rather than incremented, and retention deletes by age.
  */
-import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { amountIn, importanceOf, readWords, type Category } from "./classify";
 import { cosine as cosineOf, figures, mergeCentroid, packVector, sharesFigure, unpackVector, type ClusterCand } from "./cluster";
@@ -77,7 +77,10 @@ export async function clusterCandidates(hours = 60): Promise<ClusterCand[]> {
   const titles = new Map<number, string[]>();
   const ids = rows.filter((r) => r.kinds.some((k) => k !== "filing")).map((r) => r.id);
   for (let k = 0; k < ids.length; k += 1000) {
-    const t = await requireDb().select({ c: schema.newsItems.clusterId, title: schema.newsItems.title }).from(schema.newsItems).where(inArray(schema.newsItems.clusterId, ids.slice(k, k + 1000)));
+    // The six latest per story, cut in the database so a story with many outlets sends six rows, not all.
+    const ranked = requireDb().select({ c: schema.newsItems.clusterId, title: schema.newsItems.title, n: sql<number>`row_number() over (partition by ${schema.newsItems.clusterId} order by ${schema.newsItems.publishedAt} desc)`.as("n") })
+      .from(schema.newsItems).where(inArray(schema.newsItems.clusterId, ids.slice(k, k + 1000))).as("ranked");
+    const t = await requireDb().select({ c: ranked.c, title: ranked.title }).from(ranked).where(lte(ranked.n, 6));
     for (const r of t) if (r.c !== null) { const l = titles.get(r.c) ?? []; if (l.length < 6) l.push(r.title); titles.set(r.c, l); }
   }
   return rows.map((r) => ({ id: r.id, headline: r.headline, centroid: unpackVector(r.centroid), tickers: r.tickers, category: r.category, kinds: r.kinds, lastAt: r.updatedAt.getTime(), titles: titles.get(r.id) ?? [] }));
@@ -114,11 +117,15 @@ const KIND_RANK: Record<string, number> = { article: 3, research: 3, gov: 2, rel
  * press over wires and filings, earliest first), outlets counted once each, tags and tickers merged,
  * importance re-scored unless a model has scored it, and the centroid of member embeddings.
  */
-export async function refreshCluster(clusterId: number): Promise<ClusterRow | null> {
+export async function refreshCluster(clusterId: number) {
   const db = requireDb();
-  const items = await db.select().from(schema.newsItems).where(eq(schema.newsItems.clusterId, clusterId));
+  const it = schema.newsItems, cl = schema.newsClusters;
+  // Only what the recount uses: not the items' links and snippets, nor the story's summary.
+  const items = await db.select({ key: it.key, title: it.title, source: it.source, kind: it.kind, meta: it.meta, publishedAt: it.publishedAt, desks: it.desks, tickers: it.tickers, embedding: it.embedding })
+    .from(it).where(eq(it.clusterId, clusterId));
   if (!items.length) return null;
-  const [c] = await db.select().from(schema.newsClusters).where(eq(schema.newsClusters.id, clusterId));
+  const [c] = await db.select({ enrichedAt: cl.enrichedAt, category: cl.category, desks: cl.desks, tickers: cl.tickers, importance: cl.importance, updatedAt: cl.updatedAt, centroid: cl.centroid })
+    .from(cl).where(eq(cl.id, clusterId));
   if (!c) return null;
   const ranked = [...items].sort((a, b) => TIER_RANK(b.meta.tier) - TIER_RANK(a.meta.tier) || (KIND_RANK[b.kind] ?? 0) - (KIND_RANK[a.kind] ?? 0) || a.publishedAt.getTime() - b.publishedAt.getTime());
   const lead = ranked[0];
@@ -141,14 +148,14 @@ export async function refreshCluster(clusterId: number): Promise<ClusterRow | nu
     firstSeenAt: new Date(Math.min(...items.map((i) => i.publishedAt.getTime()))),
     updatedAt: new Date(Math.max(...items.map((i) => i.publishedAt.getTime()), c.updatedAt.getTime())),
     centroid: centroid ? packVector(centroid) : c.centroid,
-  }).where(eq(schema.newsClusters.id, clusterId)).returning();
+  }).where(eq(schema.newsClusters.id, clusterId)).returning({ headline: cl.headline, tickers: cl.tickers, category: cl.category, kinds: cl.kinds, updatedAt: cl.updatedAt });
   return updated ?? null;
 }
 
 /** Stories worth a model's reading: important enough, and new or grown since last read. */
 export async function clustersToEnrich(limit: number, minImportance = 0.42): Promise<ClusterRow[]> {
   const since = new Date(Date.now() - 36 * 3_600_000);
-  return requireDb().select().from(schema.newsClusters)
+  return requireDb().select({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` }).from(schema.newsClusters)
     .where(and(gte(schema.newsClusters.updatedAt, since), gte(schema.newsClusters.importance, minImportance), or(
       isNull(schema.newsClusters.enrichedAt),
       // A failed reading is retried after half an hour (enrich.ts gives up after three tries).

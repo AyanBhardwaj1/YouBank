@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crm" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "crm" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -41,6 +41,10 @@ export const FEATURES: NavFeature[] = [
     links: [tab("/app/vc", "tab", "directory", "Startup directory", true), tab("/app/vc", "tab", "formd", "Private raises")],
   },
   {
+    id: "crypto", href: "/app/crypto", label: "Crypto", icon: "Coins", blurb: "Tokens, DeFi, crypto deals, a read-only portfolio and on-chain records",
+    links: [tab("/app/crypto", "tab", "markets", "Markets", true), tab("/app/crypto", "tab", "defi", "DeFi"), tab("/app/crypto", "tab", "rounds", "Rounds"), tab("/app/crypto", "tab", "portfolio", "Portfolio"), tab("/app/crypto", "tab", "notarize", "Notarize"), tab("/app/crypto", "tab", "map", "Mining map")],
+  },
+  {
     id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, pipeline and follow-ups",
     links: [
       tab("/app/crm", "tab", "drafts", "Review queue", true), tab("/app/crm", "tab", "inbox", "Inbox"), tab("/app/crm", "tab", "pipeline", "Pipeline"),
@@ -56,6 +60,7 @@ export const FEATURES: NavFeature[] = [
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
       tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desktop", "Desktop app"),
     ],
   },
 ];

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { PlanId } from "@/lib/billing/plans";
 
-export type ClientEntitlements = { plan: PlanId; admin: boolean; status: string; features: string[] };
+export type ClientEntitlements = { plan: PlanId; admin: boolean; status: string; features: string[]; anchor?: string | null; seat?: { owner: string | null; team: string | null } | null };
 
 /** One request per page load, shared by every badge and gate on the page. */
 let pending: Promise<ClientEntitlements | null> | null = null;

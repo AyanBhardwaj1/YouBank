@@ -3,6 +3,7 @@ import { requireDb, schema } from "@/db";
 import { currentUser } from "@/lib/auth/user";
 import { getObject, partKey, partsForRange, PART_BYTES } from "@/lib/edge/infra/r2";
 import { myTeamIds } from "@/lib/teams/db";
+import { describeFailure, logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,9 +13,15 @@ export const maxDuration = 60;
  * Supports byte ranges, read from the 4 MB parts that hold them.
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  try { return await serve(req, ctx); }
+  catch (e) { const f = describeFailure(e, 500, "edge-file-raw"); return new Response(f.message, { status: f.status }); }
+}
+
+async function serve(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
   if (!user) return new Response("Sign in required", { status: 401 });
   const id = Number((await ctx.params).id);
+  if (!Number.isInteger(id) || id <= 0) return new Response("Not found", { status: 404 });
   const [f] = await requireDb().select().from(schema.edgeFiles).where(eq(schema.edgeFiles.id, id));
   if (!f || (f.ownerId !== user.id && !(f.teamId && (await myTeamIds(user.id)).includes(f.teamId)))) return new Response("Not found", { status: 404 });
   const size = Number(f.bytes);
@@ -32,7 +39,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           controller.enqueue(new Uint8Array(await res.arrayBuffer()));
         }
         controller.close();
-      } catch (e) { controller.error(e); }
+      } catch (e) {
+        // Headers are gone by now, so the viewer sees a cut-off file; the reason goes to the log.
+        logError(e, { where: "edge-file-raw-stream" });
+        controller.error(new Error("The file could not be read"));
+      }
     },
   });
   const headers: Record<string, string> = {

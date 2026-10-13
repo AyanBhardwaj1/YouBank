@@ -52,7 +52,7 @@ export function Block({ b, sources }: { b: OutputBlock; sources: Source[] }) {
       return (
         <div>
           <Title text={b.title} />
-          <div className="overflow-auto ctl border border-line">
+          <div className="table-scroll overflow-auto ctl border border-line">
             <table className="w-full whitespace-nowrap text-[11.5px]">
               <thead className="bg-elevated/70 text-[10.5px] uppercase tracking-wider text-muted">
                 <tr>{b.columns.map((c, i) => <th key={i} className={`px-2 py-1.5 font-normal ${i === 0 ? "text-left" : "text-right"}`}>{c}</th>)}</tr>

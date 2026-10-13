@@ -105,11 +105,12 @@ export async function sendDigests(deadline: number, opts: { anyHour?: boolean } 
   for (const p of pending) {
     if (Date.now() > deadline) break;
     try {
+      // Whether it is this person's hour first: the run is hourly, so most runs read nothing else.
+      const ctx = await readerFor(p.user_id).catch(() => null);
+      if (!opts.anyHour && !digestDue(ctx?.prefs.brief, new Date())) continue;
       const ids = p.subjects.map((s) => Number(s.replace(/^detection:/, ""))).filter(Number.isInteger);
       const found = ids.length ? (await db.select().from(schema.edgeDetections).where(and(inArray(schema.edgeDetections.id, ids), gte(schema.edgeDetections.detectedAt, new Date(Date.now() - 30 * 86_400_000)))))
         .sort((a, b) => b.magnitude * b.confidence - a.magnitude * a.confidence).slice(0, 6) : [];
-      const ctx = await readerFor(p.user_id).catch(() => null);
-      if (!opts.anyHour && !digestDue(ctx?.prefs.brief, new Date())) continue;
       if (found.length) {
         const mail = digestEmail(found, origin, dateLabel);
         const ch = ctx?.prefs.brief.enabled ? ctx.prefs.brief.channels : [];

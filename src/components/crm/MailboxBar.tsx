@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { PremiumBadge } from "@/components/billing/Premium";
 import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -87,7 +88,7 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
         <span className="flex items-center gap-2">
           {info?.oauth && <a href="/api/crm/gmail/connect" className={btn.ghost}>Sign in with Google</a>}
           {info?.configurable
-            ? <button type="button" onClick={() => setConnecting(connecting ? null : BLANK)} className={accounts.length ? btn.ghost : btn.primary}>{accounts.length ? "Add a mailbox" : "Connect a mailbox"}</button>
+            ? <span className="flex items-center gap-1.5"><button type="button" onClick={() => setConnecting(connecting ? null : BLANK)} className={accounts.length ? btn.ghost : btn.primary}>{accounts.length ? "Add a mailbox" : "Connect a mailbox"}</button>{accounts.length > 0 && <PremiumBadge feature="relationships.extra-mailboxes" />}</span>
             : <span className="text-[11px] text-muted">Connecting a mailbox needs EMAIL_TOKEN_SECRET on the server.</span>}
         </span>
       </div>

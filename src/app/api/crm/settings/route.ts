@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { mailboxAddresses } from "@/lib/crm/db";
 import { getSettings, internalDomains, saveSettings } from "@/lib/crm/settings";
+import { requireFeature } from "@/lib/billing/entitlements";
+import { AUTOPILOT } from "@/lib/crm/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,8 @@ export async function PUT(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    // Switching Autopilot on is premium (relationships.autopilot): a plan without it gets a 402 to show in line.
+    if ((body.autopilot as { enabled?: unknown } | undefined)?.enabled === true && !(await getSettings(user.id)).autopilot.enabled) await requireFeature(user, AUTOPILOT);
     return NextResponse.json(await saveSettings(user.id, {
       instructions: body.instructions as string | undefined, knowledge: body.knowledge as string | undefined, voice: body.voice as string | undefined,
       followUpDays: body.followUpDays as number | undefined, staleDealDays: body.staleDealDays as number | undefined, nightly: body.nightly as boolean | undefined,

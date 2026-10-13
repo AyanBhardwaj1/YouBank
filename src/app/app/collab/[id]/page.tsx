@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/user";
 import { requireSession } from "@/lib/collab/db";
+import { describeFailure } from "@/lib/errors";
 import { metaById } from "@/lib/workflows/catalog";
 import { SessionRunner } from "./SessionRunner";
 import type { Inputs } from "@/lib/workflows/types";
@@ -26,7 +27,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   catch (e) {
     return (
       <Shell>
-        <p className="text-[12px] text-neg">{e instanceof Error ? e.message : "You cannot open that session."}</p>
+        <p className="text-[12px] text-neg">{describeFailure(e, 403, "collab-session-page").message}</p>
       </Shell>
     );
   }

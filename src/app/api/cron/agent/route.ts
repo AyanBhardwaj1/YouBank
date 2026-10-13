@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { secretsMatch } from "@/lib/crm/crypto";
 import { nightlyUsers, runAgent } from "@/lib/crm/run";
 import { runAsUser } from "@/lib/ai/usage";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, handled } from "@/lib/errors";
 import { pool, poolSize } from "@/lib/pool";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,10 @@ export async function GET(req: Request) {
   if (!secret || !secretsMatch(req.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+  return handled(() => nightly());
+}
+
+async function nightly() {
   const deadline = Date.now() + 270_000;
   const results = await pool(await nightlyUsers(), poolSize(process.env.AGENT_POOL, 4), async (userId): Promise<{ userId: string; drafted?: number; suggestions?: number; errors?: number; error?: string }> => {
     try {

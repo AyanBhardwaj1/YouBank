@@ -1,15 +1,18 @@
 import { DAY, edgarJson } from "./client";
-import { cacheJson } from "@/lib/cache";
 import type { TickerRow } from "../types";
 
 type Raw = Record<string, { cik_str: number; ticker: string; title: string }>;
 
 let mapPromise: Promise<Map<string, TickerRow>> | null = null;
 
-/** Ticker -> { cik (10 digits), ticker, name } from SEC's company_tickers.json, cached one day. */
+/**
+ * Ticker -> { cik (10 digits), ticker, name } from SEC's company_tickers.json, kept a day per instance.
+ * Fetched from SEC, not the shared kv cache: the file is about 1 MB, and reading it from Postgres on
+ * every new instance was a large share of the database's network transfer.
+ */
 export function tickerMap(): Promise<Map<string, TickerRow>> {
   if (!mapPromise) {
-    mapPromise = cacheJson<Raw>("edgar:company_tickers", DAY, () => edgarJson<Raw>("https://www.sec.gov/files/company_tickers.json", "company_tickers.json", DAY)).then((raw) => {
+    mapPromise = edgarJson<Raw>("https://www.sec.gov/files/company_tickers.json", "company_tickers.json", DAY).then((raw) => {
       const m = new Map<string, TickerRow>();
       for (const r of Object.values(raw)) {
         m.set(r.ticker.toUpperCase(), { cik: String(r.cik_str).padStart(10, "0"), ticker: r.ticker.toUpperCase(), name: r.title });

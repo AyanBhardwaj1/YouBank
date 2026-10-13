@@ -15,6 +15,7 @@ import { alertsFor, newsUsers } from "./alerts";
 import { audioSlot, makeBriefing } from "./audio";
 import { followUpdates, pruneFollows } from "./follow";
 import { briefSlot, deskBrief, forYou } from "./brief";
+import { allow } from "./budget";
 import { bestCluster, embed } from "./cluster";
 import { briefEmail, briefSlack, emailSelf, pushToUser, slackPost } from "./deliver";
 import { FEEDS, FILING_FORMS, allDesks, type Desk } from "./desks";
@@ -27,9 +28,11 @@ import { federalRegisterUrl, fetchFederalRegister } from "./sources/gov";
 import { fetchRadar } from "./sources/radar";
 import { warmRadars } from "./radar";
 import { fetchRss } from "./sources/rss";
+import { fetchCryptoSignals } from "@/lib/crypto/news";
 import { researchDesk } from "./sources/research";
 import { assignItems, clusterCandidates, clustersToEnrich, createCluster, feedStates, insertItems, itemsOf, mergeDuplicates, prune, recentClusters, refreshCluster, saveFeedState, setEmbeddings, unclusteredItems } from "./store";
 import type { FetchResult } from "./types";
+import { failureMessage } from "@/lib/errors";
 
 type Source = { url: string; kind: string; everyMin: number; priority: number; run: (state: { etag?: string; lastModified?: string }) => Promise<FetchResult> };
 
@@ -42,6 +45,8 @@ export function sources(): Source[] {
     { url: federalRegisterUrl(), kind: "gov", everyMin: 180, priority: 2, run: () => fetchFederalRegister() },
     { url: "gdelt:rotation", kind: "gdelt", everyMin: 15, priority: 2, run: () => fetchGdelt() },
     { url: "radar:weekly", kind: "radar", everyMin: 360, priority: 3, run: () => fetchRadar() },
+    // Crypto rounds, unlocks and SEC filings on crypto holdings (src/lib/crypto/news.ts), free sources only.
+    { url: "crypto:signals", kind: "crypto", everyMin: 180, priority: 3, run: () => fetchCryptoSignals() },
   ];
 }
 
@@ -77,11 +82,11 @@ async function ingest(deadline: number, report: TickReport) {
  * that gained a second source are recomputed.
  */
 async function clusterNew(deadline: number, report: TickReport) {
-  let cands = await clusterCandidates();
   const BATCH = 400;
-  while (Date.now() < deadline) {
-    const batch = await unclusteredItems(BATCH);
-    if (!batch.length) break;
+  let batch = await unclusteredItems(BATCH);
+  // The open stories (a few MB with their vectors and headlines) are read only when there is something to place.
+  let cands = batch.length ? await clusterCandidates() : [];
+  while (batch.length && Date.now() < deadline) {
     const vecs = await embed(batch.map((i) => i.title)).catch(() => null);
     if (vecs) await setEmbeddings(batch.map((i, k) => ({ id: i.id, vec: vecs[k] }))).catch(() => undefined);
     const pending = new Map<number, { lead: (typeof batch)[number]; vec: Float32Array | null; members: number[] }>();
@@ -118,10 +123,13 @@ async function clusterNew(deadline: number, report: TickReport) {
       if (c) cands = cands.map((x) => (x.id === id ? { ...x, headline: c.headline, tickers: c.tickers, category: c.category, kinds: c.kinds, lastAt: c.updatedAt.getTime() } : x));
     });
     if (batch.length < BATCH) break;
+    batch = await unclusteredItems(BATCH);
   }
 }
 
 async function enrichTop(deadline: number, report: TickReport) {
+  // With the month's budget spent, the same stories and their items would be read every pass for nothing.
+  if (!(await allow("essential"))) return;
   const todo = await clustersToEnrich(24);
   const items = await itemsOf(todo.map((c) => c.id));
   await pool(todo, 4, deadline, async (c) => {
@@ -147,15 +155,20 @@ async function briefs(users: string[], origin: string, deadline: number, report:
     const [exists] = await requireDb().select({ id: schema.newsBriefs.id }).from(schema.newsBriefs).where(and(eq(schema.newsBriefs.desk, desk.id), eq(schema.newsBriefs.kind, "morning"), eq(schema.newsBriefs.slot, slot)));
     if (!exists) { await deskBrief(desk, { slot }).catch((e) => report.errors.push(`brief ${desk.id}: ${e instanceof Error ? e.message.slice(0, 80) : e}`)); report.briefs++; }
   }
-  const recent = await recentClusters(30, 600, 0.2);
+  // Read only when someone's brief actually goes out, not on every pass of the morning.
+  let recent: Awaited<ReturnType<typeof recentClusters>> | null = null;
   for (const u of users) {
     if (Date.now() > deadline) return;
     const ctx = await readerFor(u).catch(() => null);
     if (!ctx?.prefs.brief.enabled) continue;
     const due = briefDue(now, ctx.prefs);
     if (!due.due) continue;
+    // Once today's brief is out, nothing more is read for this person until tomorrow.
+    const [sent] = await requireDb().select({ id: schema.newsNotifications.id }).from(schema.newsNotifications).where(and(eq(schema.newsNotifications.userId, u), eq(schema.newsNotifications.key, `brief:${due.date}`)));
+    if (sent) continue;
     const brief = await deskBrief(ctx.desk).catch(() => null);
     if (!brief?.items.length) continue;
+    recent ??= await recentClusters(30, 600, 0.2);
     const mine = forYou(ctx.reader, recent, 5);
     const [row] = await requireDb().insert(schema.newsNotifications).values({
       userId: u, key: `brief:${due.date}`, kind: "brief", title: `${brief.deskLabel} brief: ${brief.title}`, body: brief.intro || brief.items[0]?.headline || "", url: "/app/news?view=brief",
@@ -168,7 +181,7 @@ async function briefs(users: string[], origin: string, deadline: number, report:
         if (ch === "email") delivered.email = await emailSelf(u, origin, briefEmail(brief, mine.map((m) => ({ id: m.id, headline: m.headline, reasons: m.reasons })), origin, dateLabel)).then(() => new Date().toISOString());
         if (ch === "push") delivered.push = String(await pushToUser(u, { title: row.title, body: row.body.slice(0, 180), url: row.url, tag: row.key }));
         if (ch === "slack" && ctx.prefs.slack) { const s = briefSlack(brief, origin); await slackPost(ctx.prefs.slack, s.text, s.blocks); delivered.slack = new Date().toISOString(); }
-      } catch (e) { delivered[ch] = `error: ${e instanceof Error ? e.message.slice(0, 120) : "failed"}`; }
+      } catch (e) { delivered[ch] = `error: ${failureMessage(e, `news-brief-${ch}`).slice(0, 160)}`; }
     }
     if (Object.keys(delivered).length) await requireDb().update(schema.newsNotifications).set({ delivered }).where(eq(schema.newsNotifications.id, row.id));
     report.delivered++;
@@ -241,7 +254,8 @@ export async function tick(origin: string, budgetMs = 250_000): Promise<TickRepo
     await ingest(at(0.3), report).catch((e) => report.errors.push(`ingest: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
     await clusterNew(until(0.52, 0.18), report).catch((e) => report.errors.push(`cluster: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
     await enrichTop(until(0.7, 0.14), report).catch((e) => report.errors.push(`enrich: ${e instanceof Error ? e.message.slice(0, 120) : e}`));
-    report.merged = await mergeDuplicates().catch((e) => { report.errors.push(`merge: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return 0; });
+    // Stories can only have become duplicates if this pass placed items or read stories.
+    if (report.clustered || report.enriched) report.merged = await mergeDuplicates().catch((e) => { report.errors.push(`merge: ${e instanceof Error ? e.message.slice(0, 120) : e}`); return 0; });
     const users = await newsUsers().catch(() => [] as string[]);
     const alertsEnd = until(0.8, 0.06);
     for (const u of users) { if (Date.now() > alertsEnd) break; report.alerts += await alertsFor(u, origin).catch(() => 0); }

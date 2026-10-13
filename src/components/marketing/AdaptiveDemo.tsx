@@ -143,7 +143,7 @@ function Outreach() {
         <h4 className="text-[13px] font-semibold">Four ways to open a cold email, one simulated audience</h4>
         <span className="num text-[11.5px] text-muted">{sent} sent · {replies} replies{sent ? ` · an even split would expect about ${even.toFixed(1)}` : ""}</span>
       </div>
-      <table className="mt-3 w-full font-sans text-[12px]">
+      <div className="table-scroll"><table className="mt-3 w-full font-sans text-[12px]">
         <thead>
           <tr className="text-left text-[10.5px] text-muted">
             <th className="pb-1 font-normal">Opening</th><th className="pb-1 font-normal">Emails sent (Thompson sampling decides)</th>
@@ -169,7 +169,7 @@ function Outreach() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => send(50)} className="ctl bg-fg px-2.5 py-1 text-[11.5px] font-semibold text-bg">Send 50 emails</button>
         <button type="button" onClick={() => send(500)} className="ctl border border-line px-2.5 py-1 text-[11.5px]">Send 500</button>

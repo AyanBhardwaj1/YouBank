@@ -6,12 +6,12 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 
 | Part | Where | What it holds or does |
 |---|---|---|
-| Pages and API | The Next.js app on Vercel (Hobby, functions in `cle1`) | `/app/edge`, `/story/[slug]`, the Terminal, Newsroom, Studio and CRM hooks; `/api/edge/*`. The maps are MapLibre; the Networks map's 3D arcs are deck.gl, loaded only when 3D is switched on |
+| Pages and API | The Next.js app on Vercel (Hobby, functions in `cle1`) | `/app/edge`, `/story/[slug]`, the Terminal, Newsroom, Studio and CRM hooks; `/api/edge/*`. The maps are MapLibre (globe, terrain, buildings); 3D models, flares, point clouds and scene analyses are deck.gl drawn inside MapLibre's WebGL2 context, from the layer registry in `src/components/edge/map3d/layers.ts` and loaded only when one has data; the Networks map's 3D arcs are deck.gl too |
 | Database | Neon Postgres with PostGIS and pgvector | the `edge_*` tables below; signals in `crm_signals`; alerts in `news_notifications` |
 | Files | Cloudflare R2, through `aws4fetch` (`src/lib/edge/infra/r2.ts`) | uploads (in 4 MB parts), transcripts, parsed documents, graph exports and models, factor history, large scenario results, exports |
 | Background jobs | Inngest (`src/lib/edge/functions.ts`, served at `/api/inngest`) | canvas runs, monitors, the digest, document reading, the graph, scenario refinement |
-| ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine` (Prithvi-EO-2.0, SAM 2.1, older pair as fallback), `geo.embed_change` (AlphaEarth embeddings), `docs.parse`, `docs.rerank` (ettin-reranker-32m), `audio.transcribe` (Parakeet for English, Whisper otherwise), `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `health`. Deploys go to a staging copy (`EDGE_ML_APP=youbank-edge-ml-staging`) and its smoke test first; see `ml/README.md` |
-| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2, Sentinel-1 radar, NAIP and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, NASA FIRMS heat detections, the New Mexico OCD (C-115B waste reports, well permits), the Texas RRC map service, AWS Terrain Tiles for the 3D map, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
+| ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine` (Prithvi-EO-2.0, SAM 2.1, older pair as fallback), `geo.embed_change` (AlphaEarth embeddings, with a grid for the 3D map), `geo.footprints` (SAM 2.1 automatic masks), `docs.parse`, `docs.rerank` (ettin-reranker-32m), `audio.transcribe` (Parakeet for English, Whisper otherwise), `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `health`. Deploys go to a staging copy (`EDGE_ML_APP=youbank-edge-ml-staging`) and its smoke test first; see `ml/README.md` |
+| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2, Sentinel-1 radar, NAIP and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, NASA FIRMS heat detections, the New Mexico OCD (C-115B waste reports, well permits), the Texas RRC map service, AWS Terrain Tiles for the 3D map, USGS 3DEP lidar point clouds (Entwine on AWS Open Data), OpenStreetMap through Overpass and OpenFreeMap, Impact Observatory land use, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
 | Language models | the app's OpenAI/Anthropic setup, under the AI spend caps | answers, memos, card text, intro drafts |
 
 ## Code map (`src/lib/edge/`)
@@ -19,7 +19,8 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Area | Files |
 |---|---|
 | Access and the beta | `access.ts` (`requireEdge`, prefs, limits), `onboard.ts` (first canvas) |
-| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `terrain.ts` (elevation and its analyses), `ground.ts` (terrain for findings and assets), `site3d.ts` (sites in 3D), `timelapse.ts`, `flares.ts`, `radar.ts`, `permits.ts`, `sources/` (EIA, Sentinel-2 and -1, FIRMS, NM OCD, NM wells, Texas RRC) |
+| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `terrain.ts` (elevation and its analyses), `ground.ts` (terrain for findings and assets), `site3d.ts` (sites in 3D), `timelapse.ts`, `flares.ts`, `radar.ts`, `permits.ts`, `sources/` (EIA, Sentinel-2 and -1, FIRMS, NM OCD, NM wells, Texas RRC, USGS lidar points, OpenStreetMap) |
+| 3D maps and geospatial AI | `twin.ts` (digital twins), `scene.ts` (scene analyses), `place.ts` (a request's place), `geo3d/` (sun, procedural meshes, glTF, lidar octree and wire format, terrain tiles, twin export); client side `src/components/edge/map3d/` (the layer registry, MapLibre helpers, deck.gl loading, controls, the twin panel) |
 | Watches, feed, alerts | `watches.ts`, `feed.ts`, `state.ts` (the person's Edge, for the API and the page), `brief.ts`, `notify.ts`, `alerts.ts`, `digest.ts`, `crm.ts`, `provenance.ts` |
 | Documents | `docs/` (ingest, `html.ts` and chunking, retrieval with keyword, meaning and rerank steps, answers with the second reading, change radar, topics, filing watch) |
 | Networks | `graph/` (parse, ingest, store, algorithms, `metrics.ts` (influence, communities, brokers), `backtest.ts` (fair baselines), deals, training, findings, jobs) |
@@ -107,13 +108,15 @@ At a limit, runs queue or fall back:
   `youbank-edge` holds the R2 keys, `R2_BUCKET`, `INNGEST_EVENT_KEY` and `EDGE_ML_SECRET`, so the
   service reads and writes R2 and posts `edge/ml.done` itself.
 - **Links in emails:** `YOUBANK_URL`, or Vercel's production URL.
+- **3D maps (optional):** `OVERPASS_URL` (default the public overpass-api.de; set a mirror or your own
+  instance for heavy use) and `USGS_LIDAR_INDEX_URL` (default Hobu's index of the USGS lidar bucket on GitHub).
 
 Values live in `.env.local` (not committed), the Vercel project's environment, and the Modal secret.
 
 ## Operations
 
 - **Checks:** `bash scripts/preflight.sh`. It runs typecheck, lint, every test suite (Edge: 440+
-  checks in `scripts/test-edge.ts`) and the build. Retrieval quality: `scripts/eval-docs.ts` against
+  checks in `scripts/test-edge.ts`; 3D maps: 71 in `scripts/test-maps.ts`) and the build. Retrieval quality: `scripts/eval-docs.ts` against
   the test branch (read-only).
 - **Deploy the app:** merge to `main`, then `vercel --prod --yes`.
 - **After any change to `functions.ts`:** re-sync Inngest with

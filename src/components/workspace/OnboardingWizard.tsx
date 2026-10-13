@@ -8,6 +8,7 @@ import { ThemeThumb } from "@/components/theme/ThemePicker";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
+import { apiError, errorMessage } from "@/lib/client/errors";
 
 type Draft = Profile;
 const EMPTY: Draft = { role: "banker", specialty: "", seniority: "", firmType: "", firmName: "", firmTicker: "", sectors: [], goals: "" };
@@ -33,11 +34,11 @@ export function OnboardingWizard({ initial, userName }: { initial: Partial<Profi
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/profile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(d) });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      if (!res.ok) throw await apiError(res);
       await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: themeId }) }).catch(() => {});
       router.push("/app");
       router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(false); }
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
   };
 
   const Chip = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
@@ -155,8 +156,9 @@ export function OnboardingWizard({ initial, userName }: { initial: Partial<Profi
       )}
 
       {error && <div className="mt-4 text-[12px] text-neg">{error}</div>}
-      <div className="mt-8 flex items-center justify-between">
-        <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className="text-[12px] text-muted hover:text-fg disabled:opacity-40">← Back</button>
+      {/* On a phone the step buttons stay pinned to the bottom edge, so Continue is never a long scroll away. */}
+      <div className="glass mt-8 flex items-center justify-between max-md:sticky max-md:bottom-0 max-md:z-10 max-md:-mx-6 max-md:border-t max-md:border-line max-md:bg-bg/90 max-md:px-6 max-md:pt-3 max-md:pb-[calc(12px+var(--safe-b))] max-md:[&>button]:min-h-11">
+        <button type="button" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0} className="text-[12px] text-muted hover:text-fg disabled:opacity-40 max-md:px-2">← Back</button>
         {step < steps.length - 1 ? (
           <button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canNext} className="ctl bg-accent px-4 py-2 text-[13px] font-semibold text-accent-fg transition hover:brightness-110 disabled:opacity-40">Continue</button>
         ) : (

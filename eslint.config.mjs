@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The desktop app (Tauri): its own small frontend and Rust, built and linted on its own.
+    "desktop/**",
   ]),
 ]);
 

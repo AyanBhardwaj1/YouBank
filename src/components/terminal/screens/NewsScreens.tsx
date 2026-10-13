@@ -9,7 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import type { Command } from "@/lib/functions";
 import type { FeedView, StoryCard as Story } from "@/lib/news/views";
-import { MotionContext, useApi, useNow, useSparks } from "@/components/news/client";
+import { MotionContext, NEWS_POLL_MS, useApi, useNow, useSparks } from "@/components/news/client";
 import { StoryCard } from "@/components/news/StoryCard";
 import { StoryBody } from "@/components/news/StoryReader";
 
@@ -38,7 +38,7 @@ function Rows({ stories, loading, empty }: { stories: Story[]; loading: boolean;
 }
 
 export function TopScreen() {
-  const { data, loading, error } = useApi<FeedView>("/api/news/feed?limit=80", 60_000);
+  const { data, loading, error } = useApi<FeedView>("/api/news/feed?limit=80", NEWS_POLL_MS);
   return <Rows stories={data?.stories ?? []} loading={loading} empty={error ?? "No stories for your desk yet. They arrive every ten minutes."} />;
 }
 
