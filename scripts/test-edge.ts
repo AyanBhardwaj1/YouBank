@@ -44,6 +44,7 @@ import { linkCounts, linkSentence, officerTitle, ringFlag, sentence, stakeShare 
 import { adamicAdarFrom, adjacencyByKind, baselineBacktest, bootstrapInterval, midRank, summarize } from "@/lib/edge/graph/backtest";
 import { entityList } from "@/components/edge/net/ForceGraph";
 import { UPGRADES, upgradeOn, upgradesReport } from "@/lib/edge/premium";
+import { withFeatures } from "@/lib/billing/use";
 import { poll, pollDelay } from "@/components/edge/docs/client";
 import { applySelect, going, mergeRun, sameData } from "@/lib/edge/canvas/view";
 import type { RunView, StepView } from "@/lib/edge/canvas/engine";
@@ -1161,11 +1162,14 @@ async function main() {
     check("reranked ids go best first; unscored ones keep their search order after them", orderByScores(cand, [{ id: 3, score: 0.9 }, { id: 1, score: 0.2 }, { id: 3, score: 0.1 }, { id: 99, score: 1 }])?.join() === "3,1,2,4" && orderByScores(cand, []) === null);
     check("the selection reads the reranker's best and the search's own best", mergeForSelection([9, 8, 7, 6, 5], [1, 9, 2, 3], 5, 2).join() === "9,8,7,1,6" && mergeForSelection([1, 2], [2, 1], 30).join() === "1,2");
     const env = (vars: Record<string, string | undefined>, fn: () => void) => { const old = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]])); for (const [k, x] of Object.entries(vars)) { if (x === undefined) delete process.env[k]; else process.env[k] = x; } try { fn(); } finally { for (const [k, x] of Object.entries(old)) { if (x === undefined) delete process.env[k]; else process.env[k] = x; } } };
-    env({ VOYAGE_API_KEY: "v", COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("a Voyage key wins, then Cohere, then the free reranker", rerankProvider() === "voyage"));
-    env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("Cohere is used when Voyage is not set", rerankProvider() === "cohere"));
+    // Paid rerankers run only inside a premium scope holding edge.rerank (a person whose plan includes it asked).
+    const paid = <T,>(fn: () => T) => withFeatures(["edge.rerank", "edge.answer-model"], fn);
+    env({ VOYAGE_API_KEY: "v", COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("a Voyage key wins, then Cohere, then the free reranker", paid(rerankProvider) === "voyage"));
+    env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("Cohere is used when Voyage is not set", paid(rerankProvider) === "cohere"));
+    env({ VOYAGE_API_KEY: "v", COHERE_API_KEY: "c", EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("outside a premium scope (background work, a plan without it) the free reranker answers even with paid keys", rerankProvider() === "ml" && withFeatures([], rerankProvider) === "ml"));
     env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: undefined, EDGE_ML_URL: "https://ml", EDGE_ML_SECRET: "s" }, () => check("the ML service's reranker is the free default", rerankProvider() === "ml"));
     env({ VOYAGE_API_KEY: undefined, COHERE_API_KEY: undefined, EDGE_ML_URL: undefined, EDGE_ML_SECRET: undefined }, () => check("with nothing set there is no reranker", rerankProvider() === null));
-    env({ OPENAI_API_KEY: "k", EDGE_ANSWER_MODEL: " gpt-5.6-sol " }, () => check("EDGE_ANSWER_MODEL picks the answer model when that upgrade is on", answerModel() === "gpt-5.6-sol"));
+    env({ OPENAI_API_KEY: "k", EDGE_ANSWER_MODEL: " gpt-5.6-sol " }, () => check("EDGE_ANSWER_MODEL picks the answer model when that upgrade is on and the person asked for it", paid(answerModel) === "gpt-5.6-sol" && answerModel() === undefined));
     env({ OPENAI_API_KEY: "k", EDGE_ANSWER_MODEL: undefined }, () => check("without it the default answers", answerModel() === undefined));
 
     console.log("documents: retrieval eval");

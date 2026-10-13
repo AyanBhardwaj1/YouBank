@@ -2,7 +2,7 @@
 Smoke test for the deployed ``youbank-edge-ml`` app (or a copy of it, such as the staging app).
 
     ml/.venv/bin/modal run ml/smoke.py                          # every task (cold then warm), HTTP checks, cleanup
-    ml/.venv/bin/modal run ml/smoke.py --only geo.refine,docs.parse
+    ml/.venv/bin/modal run ml/smoke.py --only geo.refine,geo.footprints,docs.parse
     ml/.venv/bin/modal run ml/smoke.py --no-http                # skip the HTTP/Inngest checks
     ml/.venv/bin/modal run ml/smoke.py --report-path report.json  # also write the full JSON report
     ml/.venv/bin/modal run ml/smoke.py --target youbank-edge-ml-staging   # test the staging copy
@@ -621,7 +621,10 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         # the extra call forces the fallback pair (Prithvi-EO-1.0 + SAM ViT-B)
         ("geo.refine", "geo_refine", GEO_INPUT, [{**GEO_INPUT, "legacy": True, "name": "legacy pair"}]),
         ("geo.embed_change", "geo_embed_change", EMBED_INPUT,
-         [{"bbox": GOLDSMITH_BBOX, "years": [2024, 2025], "name": "goldsmith (quiet)"}]),
+         [{"bbox": GOLDSMITH_BBOX, "years": [2024, 2025], "name": "goldsmith (quiet)"},
+          {**EMBED_INPUT, "grid": 40, "name": "with the 3D map's grid"}]),
+        # the 3D map's footprint tracing; Sentinel-2 at 512 px finds the ponds and pads, not buildings
+        ("geo.footprints", "geo_footprints", {"image": crop_url(ORLA_AFTER), "bbox": ORLA_BBOX, "maxMasks": 200}, []),
         ("docs.parse", "docs_parse", fx["docs"]["text.pdf"], [v for k, v in fx["docs"].items() if k != "text.pdf"]),
         ("docs.rerank", "docs_rerank", rerank_input(), []),
         # English goes to Parakeet; French must go to Whisper; engine=whisper forces the fallback

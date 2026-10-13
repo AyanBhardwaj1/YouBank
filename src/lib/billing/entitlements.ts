@@ -1,9 +1,10 @@
 /**
  * Who may use what. Server only.
  *
- * A person's plan comes from their `subscriptions` row (written by billing); without one it is Campus for
- * a .edu address and Free otherwise. Administrators (ADMIN_EMAILS) are treated as Enterprise. A
- * subscription that has lapsed (canceled, unpaid) falls back to the free plan.
+ * A person's plan comes from their `subscriptions` row (written by billing) or a Deal Team or Enterprise
+ * seat someone else's subscription gives them (./seats), whichever is higher; without either it is Campus
+ * for a .edu address and Free otherwise. Administrators (ADMIN_EMAILS) are treated as Enterprise. A
+ * subscription that has lapsed (canceled, unpaid) falls back to the free plan, for its seat holders too.
  *
  * Routes that start a premium feature call `requireFeature` before doing any paid work; the error it
  * throws carries status 402 and a plain message, so `guarded()` shows it to the person as written.
@@ -14,7 +15,8 @@ import { db, schema } from "@/db";
 import { isAdmin } from "@/lib/auth/admin";
 import type { CurrentUser } from "@/lib/auth/user";
 import { featureById, FEATURES } from "./features";
-import { isPlanId, planAtLeast, PLANS, type PlanId } from "./plans";
+import { isPlanId, LIVE_STATUSES, planAtLeast, PLANS, type PlanId } from "./plans";
+import { heldSeat } from "./seats";
 
 export type Entitlements = {
   plan: PlanId;
@@ -22,27 +24,63 @@ export type Entitlements = {
   status: string;
   /** Ids of the premium features this person may use. */
   features: string[];
+  /**
+   * The billing anchor (ISO) the AI allowance resets on, monthly: the owner's for an assigned seat, else the
+   * person's own subscription's (kept after it ends, so the period does not jump). Null means the calendar month.
+   */
+  anchor: string | null;
+  /** Set when the plan comes from a seat on someone else's subscription. */
+  seat: { owner: string | null; team: string | null } | null;
 };
 
-const LIVE = new Set(["active", "trialing", "past_due"]);
+const LIVE = new Set(LIVE_STATUSES);
 
 const isCampusEmail = (email: string) => /\.edu$/i.test(email.trim().split("@")[1] ?? "");
+
+type OwnRow = { plan: string; status: string; billingAnchor?: Date | null };
+
+/**
+ * The person's own subscription row. Reads the billing anchor too, but falls back to the columns from
+ * drizzle/0015 when 0022 has not been applied yet, so a deploy that lands before the migration keeps
+ * everyone's plan.
+ */
+async function ownRow(userId: string): Promise<OwnRow | null> {
+  if (!db) return null;
+  const t = schema.subscriptions;
+  const where = eq(t.userId, userId);
+  const [row] = await db.select({ plan: t.plan, status: t.status, billingAnchor: t.billingAnchor }).from(t).where(where)
+    .catch(() => db!.select({ plan: t.plan, status: t.status }).from(t).where(where))
+    .catch(() => []);
+  return row ?? null;
+}
 
 /** This person's plan and what it unlocks; one lookup per request. */
 export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> => {
   const admin = isAdmin(user);
   let plan: PlanId = isCampusEmail(user.email) ? "campus" : "free";
   let status = "none";
-  if (db) {
-    const [row] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.userId, user.id)).catch(() => []);
-    if (row) {
-      status = row.status;
-      if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) plan = row.plan;
+  let anchor: Date | null = null;
+  const row = await ownRow(user.id);
+  if (row) {
+    status = row.status;
+    // The anniversary outlives the subscription: a plan that ends (at its period's end, as cancellations
+    // do) starts a fresh allowance month on Free. Falling back to the calendar month instead would count
+    // the paid period's spend against Free's allowance and draw the difference from the person's credits.
+    anchor = row.billingAnchor ?? null;
+    if (LIVE.has(row.status) && isPlanId(row.plan) && planAtLeast(row.plan, plan)) plan = row.plan;
+  }
+  let seat: Entitlements["seat"] = null;
+  if (db && !planAtLeast(plan, "enterprise")) {
+    const held = await heldSeat(user.id).catch(() => null);
+    if (held && planAtLeast(held.plan, plan) && held.plan !== plan) {
+      plan = held.plan;
+      anchor = held.anchor;
+      seat = { owner: held.ownerEmail, team: held.teamName };
     }
   }
   if (admin) plan = "enterprise";
   const features = FEATURES.filter((f) => admin || planAtLeast(plan, f.minPlan)).map((f) => f.id);
-  return { plan, admin, status, features };
+  return { plan, admin, status, features, anchor: anchor ? anchor.toISOString() : null, seat };
 });
 
 export async function canUse(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<boolean> {

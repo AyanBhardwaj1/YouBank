@@ -13,6 +13,8 @@ import { useAiSettings } from "@/components/ai/ModelPicker";
 import { HelpOverlay } from "./HelpOverlay";
 import { prefetchFunction, recordSkill } from "./kit";
 import { useSubNav } from "@/lib/subnav";
+import { Sheet } from "@/components/ui/Sheet";
+import { Icon } from "@/components/ui/Icon";
 
 export type OpenPanel = Command & { id: number; openedAt?: number };
 export type AiStatus = { configured: boolean; provider: string; model: string; reason?: string; label?: string };
@@ -42,6 +44,8 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
   const [maximized, setMaximized] = useState<number | null>(null);
   const [clock, setClock] = useState("");
   const [help, setHelp] = useState(false);
+  // Below the wide layout the rail (watchlist, shortcuts, tools) is a sheet behind the header's list button.
+  const [rail, setRail] = useState(false);
   const { status } = useAiSettings();
   const nextId = useRef(100);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +109,11 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
       <Rail activeTicker={activeTicker} panels={panels} onRun={run} aiLabel={aiLabel} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="glass flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
+        <header className="glass flex h-11 shrink-0 items-center gap-3 border-b border-line bg-panel px-3 max-md:h-14 max-md:gap-2 max-md:px-2">
+          <button type="button" onClick={() => setRail(true)} aria-label="Watchlist, shortcuts and tools" title="Watchlist"
+            className="grid h-8 w-8 shrink-0 place-items-center ctl border border-line text-muted hover:text-fg lg:hidden max-md:h-10 max-md:w-10">
+            <Icon name="List" className="h-4 w-4" />
+          </button>
           <CommandBar ref={inputRef} activeTicker={activeTicker} onRun={run} />
           <div className="num hidden items-center gap-3 text-[11px] text-muted md:flex">
             <span className="flex items-center gap-1.5"><span className="pulse-ring h-1.5 w-1.5 rounded-full bg-pos" /> Live</span>
@@ -114,7 +122,7 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
           </div>
         </header>
 
-        <nav className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-panel/80 px-3">
+        <nav className="no-scrollbar flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-line bg-panel/80 px-3 max-md:h-12 max-md:px-2">
           <div className="mr-3 flex items-center gap-2 border-r border-line pr-3">
             <span className="num text-[13px] font-semibold text-accent">{activeTicker}</span>
             {active && <span className="hidden max-w-[220px] truncate text-muted lg:inline">{active.name}</span>}
@@ -133,7 +141,7 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
             const isOpen = panels.some((p) => p.fn === code && (!needsTicker(code) || p.ticker === activeTicker));
             return (
               <button key={code} type="button" title={FUNCTIONS[code].hint} onClick={() => openFn(code)} onMouseEnter={() => prefetchFunction(code, activeTicker)}
-                className={`num ctl px-2 py-1 text-[11px] font-semibold tracking-wider transition-colors focus:outline-none focus:ring-1 focus:ring-accent ${
+                className={`num ctl shrink-0 px-2 py-1 text-[11px] font-semibold tracking-wider transition-colors focus:outline-none focus:ring-1 focus:ring-accent max-md:min-h-9 max-md:px-2.5 ${
                   isOpen ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
                 {code}
               </button>
@@ -165,6 +173,9 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
 
         <Tape />
       </div>
+      <Sheet open={rail} onClose={() => setRail(false)} title="Watchlist" size="full" padded={false}>
+        <Rail variant="sheet" activeTicker={activeTicker} panels={panels} onRun={run} aiLabel={aiLabel} onPicked={() => setRail(false)} onHelp={() => { setRail(false); setHelp(true); }} />
+      </Sheet>
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
     </div>
   );

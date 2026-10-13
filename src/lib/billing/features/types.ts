@@ -25,4 +25,12 @@ export type PremiumFeature = {
   metered: boolean;
   /** Rough cost to us per use in US dollars, for the pricing model; 0 when not metered. */
   costPerUseUsd?: number;
+  /**
+   * Whether its spend is recorded in the AI usage ledger and so counts against the plan's AI allowance
+   * (and credits). Such spend is capped by the allowance, so the pricing model counts it inside the AI
+   * budget rather than on top of it. Costs paid outside the ledger (imagery, GPU time) leave this unset.
+   */
+  inAiAllowance?: boolean;
+  /** What one use is, for reading `costPerUseUsd` (e.g. "an hour-long call at $0.006 a minute"). */
+  perUse?: string;
 };

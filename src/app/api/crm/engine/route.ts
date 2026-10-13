@@ -3,6 +3,8 @@ import { guarded } from "@/lib/auth/user";
 import { AUTONOMY_SCOPES, type AutonomyScope } from "@/lib/crm/autopilot-rules";
 import { engineOverview, resetDemotion } from "@/lib/crm/engine";
 import { getSettings, saveSettings } from "@/lib/crm/settings";
+import { requireFeature } from "@/lib/billing/entitlements";
+import { AUTOPILOT } from "@/lib/crm/plan";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,8 @@ export async function POST(req: Request) {
     const settings = await getSettings(user.id);
     const scope = body.scope as AutonomyScope;
     if (settings.autopilot.regulated) return NextResponse.json({ error: "Regulated mode is on, so autopilot cannot be switched on." }, { status: 400 });
+    // Graduating puts a kind of email on Autopilot and switches it on: premium (relationships.autopilot), as in Settings.
+    await requireFeature(user, AUTOPILOT);
     const next = await saveSettings(user.id, { autopilot: { ...settings.autopilot, enabled: true, autonomy: { ...settings.autopilot.autonomy, [scope]: "auto" } } });
     await resetDemotion(user.id, scope);
     return NextResponse.json({ ok: true, autopilot: next.autopilot });

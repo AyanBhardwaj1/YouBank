@@ -9,6 +9,7 @@ import { Check, Loader2, Radar, X } from "lucide-react";
 import { useState } from "react";
 import { post, useApi } from "@/components/news/client";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { errorMessage } from "@/lib/client/errors";
 
 type Pending = { id: number; title: string; kind: string; source: string; createdAt: string; mine: boolean; text: string; sheets: string[]; slides: string[] };
 
@@ -25,7 +26,7 @@ export function EdgePushes({ docId, onAccepted }: { docId: number; onAccepted?: 
       const r = await post<{ status: string; label?: string }>(`/api/edge/pushes/${id}`, { action });
       if (r.status === "accepted") onAccepted?.(r.label ?? "Added from Edge");
       reload();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); reload(); } finally { setBusy(null); }
+    } catch (e) { setError(errorMessage(e)); reload(); } finally { setBusy(null); }
   };
   return (
     <div className="border-b border-line bg-accent-soft/20 px-3 py-2 text-[11.5px]">

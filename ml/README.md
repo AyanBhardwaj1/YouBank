@@ -65,7 +65,7 @@ Every output is written under `ml/`:
 | topics.map | `ml/topics/<hash>.json` |
 
 Keys are content-addressed (same input and options, same key); graph versions are UTC timestamps
-(`20260930T215443Z`). `geo.refine`, `geo.embed_change` and `docs.rerank` write nothing; their results come back inline.
+(`20260930T215443Z`). `geo.refine`, `geo.embed_change`, `geo.footprints` and `docs.rerank` write nothing; their results come back inline.
 
 Results are plain JSON: numpy values are converted inside the task container (before 2026-10-01 a numpy float in
 `geo.refine`'s result could not be unpickled by the numpy-free `api`/`status` containers, so that task's sync and
@@ -175,6 +175,27 @@ pixel above 0.3. Over eight years every site drifts (median change about 0.08-0.
 (`above`, `p99`) rather than the mean, and compare like with like (same gap in years). The annual embeddings stop at
 2025 (an annual composite, so a change late in a year shows only partly); `geo.refine`'s Sentinel-2 check covers
 recent months.
+
+**For the 3D map.** Add `"grid": n` (8 to 64) and the result also carries
+`"grid": {"width", "height", "values": [...]}`: the change averaged into about n × n cells, row 0 at the north edge,
+`-1` where under a quarter of a cell's pixels are valid. The Edge map (`src/lib/edge/scene.ts`, the AI change
+feature) starts the task asynchronously with `grid: 40` and extrudes the cells.
+
+### `geo.footprints`: outline everything in an image (SAM automatic masks)
+Input `{"image": "https://...png|jpg", "bbox": [w, s, e, n], "maxMasks": 400, "pointsPerSide": 24, "minAreaPx": 24}`.
+`bbox` is only echoed back. The image (scaled to at most 1,024 px a side) goes through SAM 2.1 Hiera base+'s automatic
+mask generator (a grid of `pointsPerSide`² prompts, IoU ≥ 0.8, stability ≥ 0.9); if SAM 2.1 cannot load, the
+original SAM ViT-B's generator runs instead (`fallbacks.sam` says why). Masks over a fifth of the image (fields,
+background) or under `minAreaPx` are dropped, the rest ranked by predicted IoU × stability, and each is outlined with
+OpenCV (at most 40 points, in the original image's pixels).
+
+Result `{"polygons": [{"points": [[x, y], ...], "areaPx", "score"}], "imageSize": [w, h], "bbox", "model",
+"modelVersion", "masks", "kept", "timings": {"fetch", "segment", "total"}}`. Nothing is written to R2.
+
+The Edge map (the footprint detection feature) sends the twin's NAIP aerial photograph (1,024 px over 1.6 km, about
+1.6 m a pixel) in the United States, else a 512 px Sentinel-2 crop (pads and ponds only), always asynchronously, and
+sorts the outlines into tanks, buildings and pads by shape (`footprintShapes` in `src/lib/edge/scene.ts`). Same image
+and resources as `geo.refine` (2 cores, 7 GiB); expect 30 to 90 s warm on CPU.
 
 ### `docs.parse`: any document to pages of text and tables
 Input `{"key" | "parts", "mime", "name", "ocr": "auto" | "force" | "off", "ocrLang"?: "eng" | "eng+fra" ...}`.
@@ -325,6 +346,7 @@ CPU only, no GPUs, no warm pools (`min_containers` unset), containers stop 60 s 
 | api / status / health | 0.25 | 0.5 GiB | 3900 / 60 / 60 s | 2 / 1 / 1 | 0.016 |
 | geo_refine | 2 | 7 GiB | 600 s | 2 | 0.150 |
 | geo_embed_change | 1 | 2 GiB | 300 s | 2 | 0.063 |
+| geo_footprints | 2 | 7 GiB | 600 s | 2 | 0.150 |
 | docs_parse | 2 | 4 GiB | 900 s | 3 | 0.126 |
 | docs_rerank | 4 | 2 GiB | 120 s | 3 | 0.205 |
 | audio_transcribe | 4 | 8 GiB | 3600 s | 2 | 0.253 |
@@ -405,6 +427,7 @@ Weights are baked in at build time (no downloads on cold start), each at a pinne
 | geo.refine | SAM 2.1 Hiera base+ | `dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt` (SHA-256 checked); code `facebookresearch/sam2@2b90b9f` | Apache-2.0 |
 | geo.refine (fallback) | Prithvi-EO-1.0-100M | `ibm-nasa-geospatial/Prithvi-EO-1.0-100M@f3a9ea7a1723` | Apache-2.0 |
 | geo.refine (fallback) | Segment Anything ViT-B | `sam_vit_b_01ec64.pth` (MD5 prefix and SHA-256 checked) | Apache-2.0 |
+| geo.footprints | SAM 2.1 Hiera base+, SAM ViT-B as fallback (the geo.refine weights, same image) | as geo.refine | Apache-2.0 |
 | geo.embed_change | AlphaEarth annual embeddings (data, read at call time; index baked in) | `source.coop/tge-labs/aef` v1 | CC-BY-4.0 |
 | docs.rerank | Ettin reranker 32M (fp32 ONNX) | `cross-encoder/ettin-reranker-32m-v1@b33e5ceb5110` | Apache-2.0 |
 | audio.transcribe | Parakeet TDT 0.6B v2 (int8 ONNX) | `istupakov/parakeet-tdt-0.6b-v2-onnx@0bbb45a33658`, from `nvidia/parakeet-tdt-0.6b-v2` | CC-BY-4.0 |

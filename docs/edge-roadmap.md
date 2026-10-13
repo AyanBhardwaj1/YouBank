@@ -2,9 +2,14 @@
 
 Prices and licences were checked on 30 September 2026 against providers' pricing pages, model cards and
 licence files. Every paid upgrade below costs nothing until its setting is added in Vercel; the code
-falls back to the free method without it. Administrators see the same list, live, in
-**Settings → Labs → Edge upgrades**, with which settings are present (names only, never values).
-The registry behind that list is `src/lib/edge/premium.ts`.
+falls back to the free method without it. Since the plans round (October 2026) a setting is necessary but
+not enough: each paid upgrade is also a premium feature (`src/lib/billing/features/premium.ts`), used only
+by people whose plan includes it (and administrators), and only in work they start. Scheduled work (the
+daily pass, monitors, the weekly retraining) never opens the premium scope, so it stays on the free
+methods even with every key set (see [premium.md](premium.md)). Everyone with Edge sees the list in
+**Settings → Labs → Edge premium upgrades** with their plan's status; administrators also see which
+settings are present (names only, never values) and the steps. The registry behind that list is
+`src/lib/edge/premium.ts`.
 
 ## 1. Shipped in this round (all free)
 
@@ -23,32 +28,39 @@ The full list is in `docs/edge-spec.md` under "What the October upgrade round ad
 
 ## 2. Paid upgrades that are ready: set the key and redeploy
 
-| Upgrade | Module | What gets better | Cost | Turn on |
-|---|---|---|---|---|
-| Voyage rerank-3 | Documents | A cross-encoder reranks about 100 fused candidates before the model picks the passages it quotes. Published finance tests show reranking as the largest single retrieval gain (FinanceBench hybrid F1 37.6 → 44.1 with headers plus a reranker). | $0.05 per million tokens (rerank-3-lite $0.02). The first 200M tokens are free. Without a card on file the limit is 3 requests a minute, and opting out of training needs a card. At 1,000 questions a month (about 100 passages of 400 tokens each) that is about 40M tokens: inside the free allowance. | `VOYAGE_API_KEY` |
-| Cohere Rerank 4 | Documents | The same step with Cohere, used only when Voyage is not set. | $2.00–2.50 per 1,000 searches. Trial keys may not be used in production. | `COHERE_API_KEY` |
-| A larger answer model | Documents | Harder multi-period questions answered by a stronger model (for example `gpt-5.6-sol`). | On the existing OpenAI key: gpt-5.6-sol is $4 in / $20 out per million tokens, about 10–20× the default per answer. The daily AI spend caps still apply. | `EDGE_ANSWER_MODEL=gpt-5.6-sol` |
-| Planet imagery | Earth | Site panels list PlanetScope (3 m, daily) and SkySat (50 cm) scenes with thumbnails, to check a Sentinel-2 change at a finer scale. | Search and thumbnails come with any Planet account. Buying scenes: PlanetScope about $2.25/km² (250 km² minimum), SkySat archive $6/km² (25 km² minimum), new SkySat captures $12–40/km². | `PLANET_API_KEY` |
-| FIRMS archive | Earth | Each plant's flaring record is filled back 12 weeks once, so the first flaring cards already say whether a flare is new or chronic. | Free (a NASA FIRMS MAP_KEY, email only). | `FIRMS_MAP_KEY` |
-| Carbon Mapper methane | Earth | Methane plumes from Tanager and EMIT near watched plants, with kg/h and uncertainty (about 1,100 Permian plumes since 2025). | Reading is free, but the licence is non-commercial: YouBank needs a commercial agreement (price on request). | `CARBON_MAPPER_LICENSED=1` (exactly 1; nothing is read from Carbon Mapper otherwise) |
-| A larger ML budget | Platform | More satellite checks, parsing and training a month before Edge falls back to built-in methods. | Modal CPU $0.047 per core-hour beyond the $30 monthly credit. | `EDGE_MODAL_MONTHLY_USD` (default 25) |
-| More document storage | Platform | Room for many more uploaded documents. | Neon paid plan, billed by use (neon.com/pricing). Neon's free plan stops at 512 MB a branch; Edge stops itself at 180 MB of document text. | Upgrade Neon, then `EDGE_DOCS_DB_MB` |
+The plan column is the least plan that may use it (administrators may use all). Platform settings (a free
+key, a budget, a site licence) apply to everyone.
+
+| Upgrade | Module | Plan | What gets better | Cost | Turn on |
+|---|---|---|---|---|---|
+| Voyage rerank-3 | Documents | Pro | A cross-encoder reranks about 100 fused candidates before the model picks the passages it quotes. Published finance tests show reranking as the largest single retrieval gain (FinanceBench hybrid F1 37.6 → 44.1 with headers plus a reranker). | $0.05 per million tokens (rerank-3-lite $0.02). The first 200M tokens are free. Without a card on file the limit is 3 requests a minute, and opting out of training needs a card. At 1,000 questions a month (about 100 passages of 400 tokens each) that is about 40M tokens: inside the free allowance. | `VOYAGE_API_KEY` |
+| Cohere Rerank 4 | Documents | Pro | The same step with Cohere, used only when Voyage is not set. | $2.00–2.50 per 1,000 searches. Trial keys may not be used in production. | `COHERE_API_KEY` |
+| A larger answer model | Documents | Pro (ticked per question) | Harder multi-period questions answered by a stronger model (for example `gpt-5.6-sol`). | On the existing OpenAI key: gpt-5.6-sol is $4 in / $20 out per million tokens, about 10–20× the default per answer. The daily AI spend caps still apply. | `EDGE_ANSWER_MODEL=gpt-5.6-sol` |
+| Planet imagery | Earth | Pro | Site panels list PlanetScope (3 m, daily) and SkySat (50 cm) scenes with thumbnails, to check a Sentinel-2 change at a finer scale. | Search and thumbnails come with any Planet account. Buying scenes: PlanetScope about $2.25/km² (250 km² minimum), SkySat archive $6/km² (25 km² minimum), new SkySat captures $12–40/km². | `PLANET_API_KEY` |
+| FIRMS archive | Earth | Platform | Each plant's flaring record is filled back 12 weeks once, so the first flaring cards already say whether a flare is new or chronic. | Free (a NASA FIRMS MAP_KEY, email only). | `FIRMS_MAP_KEY` |
+| Carbon Mapper methane | Earth | Platform (site licence) | Methane plumes from Tanager and EMIT near watched plants, with kg/h and uncertainty (about 1,100 Permian plumes since 2025). | Reading is free, but the licence is non-commercial: YouBank needs a commercial agreement (price on request). | `CARBON_MAPPER_LICENSED=1` (exactly 1; nothing is read from Carbon Mapper otherwise) |
+| A larger ML budget | Platform | Platform | More satellite checks, parsing and training a month before Edge falls back to built-in methods. | Modal CPU $0.047 per core-hour beyond the $30 monthly credit. | `EDGE_MODAL_MONTHLY_USD` (default 25) |
+| More document storage | Platform | Platform | Room for many more uploaded documents. | Neon paid plan, billed by use (neon.com/pricing). Neon's free plan stops at 512 MB a branch; Edge stops itself at 180 MB of document text. | Upgrade Neon, then `EDGE_DOCS_DB_MB` |
+| Speaker-labelled transcripts (OpenAI `gpt-4o-transcribe-diarize`) | Documents | Pro (chosen per recording) | Who said what on earnings calls. Pieces of 12 MB (MP3 cut on frames, WAV on samples, other formats up to 24 MB whole), `diarized_json` with automatic chunking, then one small-model pass names each piece's voices consistently and scores tone. | $0.006 a minute (an hour-long call about $0.36). | `EDGE_TRANSCRIBE=openai` (uses `OPENAI_API_KEY`) |
+| LlamaParse for hard PDFs | Documents | Pro (chosen per document) | Scans, CIMs and table-heavy data rooms read by API v2's agentic tier; Markdown pages become headings, paragraphs and whole tables. | 10 credits a page on the agentic tier, $1.25 per 1,000 credits after 10,000 free a month (a 50-page CIM about $0.63). | `LLAMA_CLOUD_API_KEY` (optionally `LLAMAPARSE_TIER`) |
+| Anthropic Citations | Documents | Pro (ticked per question) | Each passage goes as a plain-text document with citations on; the answer's quotes are exact spans the API cuts, mapped back to the stored passage and still checked. Direct answer and cited points (no table or timeline: citations cannot be combined with structured output). Falls back to the standard writer on any failure. | Sonnet 5.5 $2 / $10 per million tokens (default), Haiku 4.5 $1 / $5; quoted text is not billed as output. | `ANTHROPIC_API_KEY`, `EDGE_CITATIONS=anthropic` (optionally `EDGE_CITATIONS_MODEL`) |
+| EOG Nightfire volumes | Earth | Enterprise | A plant's flares in the last week of nightly VIIRS Nightfire files (over 1,200 K, within 2 km), with radiant heat and a volume by EOG's calibration (0.0274 bcm a year per MW), read only when asked and cached a week per night. | Signed licence; commercial users pay a negotiated yearly fee. | `NIGHTFIRE_USER`, `NIGHTFIRE_PASSWORD` |
+| GPU training for the deal model | Networks | Enterprise | One retraining on request on the ML service's `graph.train.gpu` task (Modal T4): hidden width 128, up to 120 passes, 20 minutes. Weekly and event retraining stay on CPU. | T4 $0.59/h; a run is about 15 minutes. | Redeploy `ml/edge_ml.py`, then `EDGE_ML_GPU=1` |
+| TimesFM forecasts | Scenarios | Pro | The drivers (market, oil and gas stocks, WTI, Henry Hub, the 10-year) forecast 4 to 52 weeks ahead by BigQuery's `AI.FORECAST` on ten years of weekly levels, with a 10-90% band, beside the free drift-and-volatility forecast. | BigQuery ML prediction at $6.25 per TiB, 10 MB minimum: about $0.0001 a forecast. | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` (optionally `TIMESFM_MODEL`, `BIGQUERY_LOCATION`) |
 
 ## 3. Paid upgrades that are planned (code not yet written)
 
+Speaker labels, LlamaParse, Anthropic Citations, Nightfire, GPU training and TimesFM moved to section 2 in
+the plans round.
+
 | Upgrade | Module | What gets better | Cost | What it takes |
 |---|---|---|---|---|
-| Speaker-labelled transcripts (OpenAI `gpt-4o-transcribe-diarize`) | Documents | Who said what on earnings calls, so tone and quotes read by speaker. Today: Whisper small, no speakers. | $0.006 a minute (an hour-long call about $0.36) on the existing OpenAI key. | Split audio into 25 MB pieces, map diarized segments to turns; `EDGE_TRANSCRIBE=openai`. About 1 day. |
-| LlamaParse for hard PDFs | Documents | Scanned and table-heavy data-room PDFs read with layout and tables intact. | 10,000 credits a month free, then $1.25 per 1,000 credits. | Route PDFs the built-in parser flags as hard; `LLAMA_CLOUD_API_KEY`. About 1 day. |
-| Mistral OCR 4.1 | Documents | The same, for scans. | $4 per 1,000 pages. | `MISTRAL_API_KEY`. Half a day once LlamaParse's path exists. |
-| Anthropic Citations | Documents | Quotes returned as exact spans of the source by the model itself. | Haiku 4.5 $1 / $5; Sonnet 5.5 $2 / $10 per million tokens; quoted text is not billed as output. Cannot be combined with structured output. | An answer path through the Messages API; `ANTHROPIC_API_KEY`, `EDGE_CITATIONS=anthropic`. 2–3 days. |
+| Mistral OCR 4.1 | Documents | Scans, as LlamaParse does. | $4 per 1,000 pages. | `MISTRAL_API_KEY`. Half a day now that LlamaParse's path (premium/reading.ts) exists. |
 | voyage-context-4 or voyage-4 embeddings | Documents | Contextual embeddings without an LLM call per passage; +3–8 nDCG expected on finance retrieval (FinMTEB: 3-small 0.664, voyage-3-large 0.746). | $0.02–0.12 per million tokens, 200M free. | Re-embed every passage (dimensions change: a migration). Test after the reranker. |
 | Modal GPU for documents and speech | Documents | Qwen3-Reranker-4B (MTEB-R 69.8 vs 61.8), PaddleOCR-VL 1.6 (OmniDocBench 96.3), pyannote speaker labels. | T4 $0.59/h, L4 $0.80/h; a short T4 run per document or call. | GPU variants of the ML tasks; `EDGE_ML_GPU=1`. pyannote also needs a free Hugging Face token (`HF_TOKEN`) after accepting its terms. |
-| EOG Nightfire volumes | Earth | Flared gas volume per flare, not just radiant heat. | Signed licence; commercial users pay a negotiated yearly fee. | Read the nightly files and attach volumes to flaring cards. |
 | Umbra or ICEYE radar spotlight | Earth | 25 cm–1 m radar that can read floating-roof tank fill. | Umbra $675 (1 m) to $3,250 (25 cm) per 5×5 km image. | Per-order adapter; only for named sites. |
 | Pléiades Neo | Earth | 30 cm optical archive. | About $22.50/km² archive, 5 km² minimum. | Order adapter. |
 | GHGSat, Kayrros, Kpler, Vortexa, Spire AIS | Earth | Facility methane, flows and ships. | Enterprise quotes only. | Contracts first. |
-| TimesFM 3.0 via BigQuery | Scenarios | Forecasts from the top-ranked time-series model (its open weights are non-commercial). | BigQuery rates. | A BigQuery adapter beside the free Chronos-2 path. |
 | Prior Labs TabPFN 2.5+ | Scenarios | Stronger small-table models. | Prior Labs Pro / Max / on-prem; prices not published. | Only if the free TabICLv2 path falls short. |
 | NVIDIA Kumo Relational | Networks | A relational foundation model for link prediction. | Free only for prototyping; production NVIDIA AI Enterprise about $4,500 per GPU a year. A September 2026 forum thread reports it missing from NVIDIA's catalog. | Not recommended now. |
 | Vercel Pro and a Neon paid plan | Platform | Commercial use, higher function limits, and the 512 MB storage ceiling gone (see `docs/launch-readiness.md`). | Vercel Pro $20 a seat a month; Neon by use. | Account changes only. |
@@ -116,3 +128,11 @@ Research notes from this round are summarised above; the main sources:
     is the next step).
   - Existing documents keep their old passages until re-read.
   - Duplicate graph entities for some holders (for example two BlackRock nodes) split their stakes.
+- **2026-10-05, plans round.** Every paid upgrade became a premium feature, used only by people whose plan
+  includes it and only in work they start (`src/lib/billing/use.ts`); the planned paid upgrades were built
+  (speaker labels, LlamaParse, Anthropic Citations, Nightfire, GPU training, TimesFM) with the free path
+  kept beside each. Open follow-ups:
+  - speaker labels for M4A and MP4 recordings over 24 MB (cutting them needs ffmpeg on the ML service);
+  - the GPU training task runs the same code as the CPU one on CUDA; it has not yet been run on Modal;
+  - Nightfire's file paths and sign-in follow EOG's published download script and are overridable by
+    setting; check them against the licence's own instructions when the account is issued.

@@ -33,14 +33,14 @@ export function AiUsage({ routing, onRouting }: { routing: boolean; onRouting: (
         <p className="mt-1 text-[11px] text-muted">At list prices. Cached input costs a tenth of fresh input, which is why prompts are arranged so the stable part comes first.</p>
         {!u ? <p className="mt-2 text-[11.5px] text-muted">Loading…</p> : u.total.calls === 0 ? <p className="mt-2 text-[11.5px] text-muted">No AI calls yet.</p> : (
           <div className="mt-2 grid gap-3 md:grid-cols-2">
-            <table className="w-full text-[11.5px]">
+            <div className="table-scroll"><table className="w-full text-[11.5px]">
               <thead className="text-[10px] uppercase tracking-wider text-muted"><tr><th className="py-1 text-left font-normal">Feature</th><th className="py-1 text-right font-normal">Calls</th><th className="py-1 text-right font-normal">Cost</th></tr></thead>
               <tbody>{u.byFeature.map((r) => <tr key={r.feature} className="border-t border-line"><td className="py-1">{label(r.feature)}</td><td className="num py-1 text-right">{r.calls}</td><td className="num py-1 text-right">{usd(r.cost)}</td></tr>)}</tbody>
-            </table>
-            <table className="w-full text-[11.5px]">
+            </table></div>
+            <div className="table-scroll"><table className="w-full text-[11.5px]">
               <thead className="text-[10px] uppercase tracking-wider text-muted"><tr><th className="py-1 text-left font-normal">Model</th><th className="py-1 text-right font-normal">Calls</th><th className="py-1 text-right font-normal">Cached</th><th className="py-1 text-right font-normal">Cost</th></tr></thead>
               <tbody>{u.byModel.map((r) => <tr key={r.model} className="border-t border-line"><td className="py-1">{r.model}</td><td className="num py-1 text-right">{r.calls}</td><td className="num py-1 text-right">{r.input ? `${((r.cached / r.input) * 100).toFixed(0)}%` : "n/a"}</td><td className="num py-1 text-right">{usd(r.cost)}</td></tr>)}</tbody>
-            </table>
+            </table></div>
           </div>
         )}
       </div>

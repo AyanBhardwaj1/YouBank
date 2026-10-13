@@ -20,7 +20,7 @@ import { edgarFetch } from "@/lib/edgar/client";
 import { getCompanyFacts, instantAt, latestEnd, ltmAt, pickConcept } from "@/lib/edgar/facts";
 import { filingUrl, getSubmissions } from "@/lib/edgar/submissions";
 import { tickerByName } from "@/lib/edgar/tickers";
-import { logError } from "@/lib/errors";
+import { failureMessage } from "@/lib/errors";
 import { filingTextCached } from "../docs/changes";
 import { quoteFound } from "../docs/text";
 import { small } from "../models";
@@ -70,7 +70,7 @@ export async function ingestCompany(cikIn: string, deadline: number): Promise<In
   const time = () => Date.now() < deadline - 20_000;
   const step = async (name: string, fn: () => Promise<number | void>) => {
     if (!time()) return false;
-    try { const n = await fn(); if (typeof n === "number") out.added[name] = n; } catch (e) { out.errors.push(`${name}: ${(e as Error).message}`.slice(0, 200)); logError(e, { where: `edge-graph-${name}` }); }
+    try { const n = await fn(); if (typeof n === "number") out.added[name] = n; } catch (e) { out.errors.push(`${name}: ${failureMessage(e, `edge-graph-${name}`)}`.slice(0, 200)); }
     return true;
   };
 
@@ -273,7 +273,7 @@ export async function ingestMany(ciks: string[], deadline: number): Promise<{ re
       const res = await ingestCompany(ciks[i], deadline);
       results.push(res);
       if (!res.done) break; // ran out of time partway: finish this one next time
-    } catch (e) { logError(e, { where: "edge-graph-ingest" }); results.push({ cik: ciks[i], nodeId: 0, name: "", added: {}, done: true, errors: [String((e as Error).message).slice(0, 200)] }); }
+    } catch (e) { results.push({ cik: ciks[i], nodeId: 0, name: "", added: {}, done: true, errors: [failureMessage(e, "edge-graph-ingest").slice(0, 200)] }); }
   }
   return { results, left: ciks.slice(i) };
 }

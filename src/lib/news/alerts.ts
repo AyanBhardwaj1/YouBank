@@ -20,6 +20,7 @@ import { inQuietHours } from "./prefs";
 import { normCompany, type NetworkPerson } from "./rank";
 import { readerFor, type ReaderContext } from "./reader";
 import { itemsOf, recentClusters, type ClusterRow } from "./store";
+import { failureMessage } from "@/lib/errors";
 
 const URGENT_ITEMS = ["1.03", "2.04", "4.02", "5.01"];
 
@@ -64,7 +65,7 @@ export async function deliverAlert(ctx: ReaderContext, n: { key: string; title: 
   const out: Record<string, string> = {};
   const quiet = inQuietHours(new Date(), ctx.prefs) && !n.urgent;
   const ch = ctx.prefs.alerts.channels;
-  const attempt = async (name: string, f: () => Promise<unknown>) => { try { const r = await f(); out[name] = typeof r === "number" && r === 0 ? "no device" : new Date().toISOString(); } catch (e) { out[name] = `error: ${e instanceof Error ? e.message.slice(0, 120) : "failed"}`; } };
+  const attempt = async (name: string, f: () => Promise<unknown>) => { try { const r = await f(); out[name] = typeof r === "number" && r === 0 ? "no device" : new Date().toISOString(); } catch (e) { out[name] = `error: ${failureMessage(e, `news-alert-${name}`).slice(0, 160)}`; } };
   if (ch.includes("push") && !quiet) await attempt("push", () => pushToUser(ctx.userId, { title: n.title, body: n.body.slice(0, 180), url: n.url, tag: n.key, urgent: n.urgent }));
   if (ch.includes("slack") && ctx.prefs.slack && !quiet) await attempt("slack", () => slackPost(ctx.prefs.slack!, `${n.urgent ? ":rotating_light: " : ""}*${n.title}*\n${n.reasons.join(" · ")}\n${n.body.slice(0, 300)}\n<${origin}${n.url}|Open in YouBank>`));
   if (ch.includes("email") && n.urgent) await attempt("email", () => emailSelf(ctx.userId, origin, alertEmail(n, origin)));
@@ -77,7 +78,8 @@ export async function alertsFor(userId: string, origin: string, now = new Date()
   if (!ctx?.prefs.alerts.enabled) return 0;
   const key = `news:alert-cursor:${userId}`;
   const cursor = Number(await cacheGet(key)) || now.getTime() - 3 * 3_600_000;
-  const fresh = (await recentClusters(Math.max(1, (now.getTime() - cursor) / 3_600_000 + 0.1), 400, 0.25)).filter((c) => c.updatedAt.getTime() > cursor).sort((a, b) => b.importance - a.importance);
+  // Just the window since the cursor, with six minutes to spare: a pass runs every ten minutes.
+  const fresh = (await recentClusters(Math.max(0.1, (now.getTime() - cursor) / 3_600_000 + 0.1), 400, 0.25)).filter((c) => c.updatedAt.getTime() > cursor).sort((a, b) => b.importance - a.importance);
   const items = await itemsOf(fresh.filter((c) => c.kinds.includes("filing")).map((c) => c.id));
   let sent = 0;
   const db = requireDb();
