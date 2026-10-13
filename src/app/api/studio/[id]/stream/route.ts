@@ -1,5 +1,5 @@
 import { currentUser } from "@/lib/auth/user";
-import { follow, resumeFrom, sseStream } from "@/lib/realtime/feed";
+import { follow, resumeFrom, sseStream, streamGate } from "@/lib/realtime/feed";
 import { changesSince, docFeed, requireDocAccess } from "@/lib/studio/db";
 
 export const dynamic = "force-dynamic";
@@ -12,11 +12,15 @@ export const maxDuration = 150;
  * Connections on one document share a poll whose pace follows activity (see lib/realtime/feed).
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  return streamGate(() => open(req, ctx));
+}
+
+async function open(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
   if (!user) return new Response("Sign in required", { status: 401 });
   const id = Number((await ctx.params).id);
   if (!Number.isInteger(id) || id <= 0) return new Response("bad id", { status: 400 });
-  try { await requireDocAccess(user, id); } catch { return new Response("Forbidden", { status: 403 }); }
+  await requireDocAccess(user, id);
   let cursor = resumeFrom(req);
   return sseStream(req, (frame) => follow(docFeed(id), cursor, async (since) => ({ events: await changesSince(id, since) }), ({ events }) => {
     for (const e of events) {

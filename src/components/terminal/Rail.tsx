@@ -13,14 +13,20 @@ import { LogoMark } from "@/components/brand/Logo";
 const shortName = (name: string) =>
   name.replace(/,?\s+(Inc\.?|N\.V\.|Technologies Inc\.?|Corp\.?|plc|Holdings)$/i, "").replace(/ Technologies$/, "").trim();
 
-export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: string; panels: OpenPanel[]; onRun: (c: Command) => void; aiLabel: string }) {
+/**
+ * The terminal's left rail: watchlist, market shortcuts, tools and open panels. Beside the panels on a
+ * wide screen; below that it is the "Watchlist" sheet (`variant="sheet"`), which closes after a pick.
+ */
+export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "aside", onPicked, onHelp }: { activeTicker: string; panels: OpenPanel[]; onRun: (c: Command) => void; aiLabel: string; variant?: "aside" | "sheet"; onPicked?: () => void; onHelp?: () => void }) {
   const { config, profile } = useWorkspace();
+  const sheet = variant === "sheet";
+  const onRun = (c: Command) => { run(c); onPicked?.(); };
   const tools = catalogFor(profile).slice(0, 5);
   const watchlist = config.watchlist;
   const { data } = useCompanies(watchlist);
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-panel lg:flex">
-      <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+    <aside className={sheet ? "flex flex-col text-[13px] [&_li>button]:min-h-11" : "hidden w-60 shrink-0 flex-col border-r border-line bg-panel lg:flex"}>
+      <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${sheet ? "hidden" : ""}`}>
         <LogoMark size={22} id="rail" />
         <div className="leading-tight">
           <div className="text-[13px] font-semibold tracking-tight"><span className="text-fg">You</span><span className="text-accent">Bank</span></div>
@@ -29,7 +35,7 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
       </div>
 
       <div className="px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">Watchlist</div>
-      <ul className="min-h-0 flex-1 overflow-auto">
+      <ul className={sheet ? "" : "min-h-0 flex-1 overflow-auto"}>
         {watchlist.map((t) => {
           const c = data[t];
           const active = t === activeTicker;
@@ -62,7 +68,7 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
       <div className="flex flex-wrap gap-1 px-2 pb-2">
         {(["WEI", "GC", "ECO", "SECT", "EQS", "LEARN"] as FunctionCode[]).map((f) => (
           <button key={f} type="button" title={FUNCTIONS[f].hint} onClick={() => onRun({ ticker: "", fn: f, via: "click" })}
-            className="num ctl border border-line px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:border-accent/50 hover:text-accent">{f}</button>
+            className={`num ctl border border-line px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:border-accent/50 hover:text-accent ${sheet ? "min-h-10 min-w-14 px-3" : ""}`}>{f}</button>
         ))}
       </div>
 
@@ -83,7 +89,7 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
       </ul>
 
       <div className="border-t border-line px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">Open panels</div>
-      <ul className="max-h-24 overflow-auto px-2 pb-2">
+      <ul className={`overflow-auto px-2 pb-2 ${sheet ? "" : "max-h-24"}`}>
         {panels.length === 0 && <li className="px-1 text-muted">None</li>}
         {panels.map((p) => (
           <li key={p.id} className="flex items-center gap-2 px-1 py-0.5 text-[11px]">
@@ -97,7 +103,9 @@ export function Rail({ activeTicker, panels, onRun, aiLabel }: { activeTicker: s
       <div className="border-t border-line px-3 py-2 text-[10px] text-muted">
         <div className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-pos" /> SEC EDGAR · live prices</div>
         <div className="flex items-center gap-1.5 truncate" title={aiLabel}><span className="h-1.5 w-1.5 rounded-full bg-faint" /> {aiLabel}</div>
-        <div className="mt-1 text-faint">Press ? for commands</div>
+        {sheet && onHelp
+          ? <button type="button" onClick={onHelp} className="mt-2 min-h-10 w-full ctl border border-line text-[12px] text-fg">Commands and functions</button>
+          : <div className="mt-1 text-faint">Press ? for commands</div>}
       </div>
     </aside>
   );

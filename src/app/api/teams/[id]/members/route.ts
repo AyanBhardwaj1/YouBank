@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { inviteMember, membership, removeMember, requireTeam, setMemberRole } from "@/lib/teams/db";
 import { isTeamRole } from "@/lib/teams/roles";
+import { siteLink } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const role = isTeamRole(body?.role) ? body.role : "member";
     if (!email) return NextResponse.json({ error: "An email address is required" }, { status: 400 });
     const invite = await inviteMember(id, email, role, user.email || user.name || user.id);
-    const origin = new URL(req.url).origin;
-    return NextResponse.json({ ...invite, role, url: `${origin}/app/team/join?token=${invite.token}` }, { status: 201 });
+    return NextResponse.json({ ...invite, role, url: siteLink(`/app/team/join?token=${invite.token}`) }, { status: 201 });
   });
 }
 

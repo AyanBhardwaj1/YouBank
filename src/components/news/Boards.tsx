@@ -142,7 +142,7 @@ export function DealTracker({ data, onOpenCluster, limit }: { data: DealsData; o
   };
   if (!rows.length) return <p className="text-[11.5px] text-muted">No deals parsed yet. Announcements appear here as the Newsroom reads them.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div className="table-scroll overflow-x-auto">
       <table className="w-full text-[11.5px]">
         <thead><tr className="text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1.5 pr-3 font-medium">Date</th><th className="pr-3 font-medium">Deal</th><th className="pr-3 font-medium">Type</th><th className="pr-3 text-right font-medium">Value</th><th className="pr-3 text-right font-medium">Premium</th><th className="text-right font-medium">EV/EBITDA</th></tr></thead>
         <tbody>{rows.map((d) => (

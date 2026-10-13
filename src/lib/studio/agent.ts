@@ -417,7 +417,7 @@ function tools(s: Session, user: CurrentUser): ToolDef[] {
     def({
       name: "build_model",
       description: `Add a complete, formula-driven model from SEC data in one step, on new sheets: ${TEMPLATES.filter((t) => t.id !== "blank").map((t) => `${t.id} (${t.blurb})`).join("; ")}. valuation and lbo also build a linked deck when with_deck is true. Prefer this to building a standard model by hand.`,
-      schema: z.object({ template: z.enum(["dcf", "comps", "valuation", "lbo", "merger", "cap_table"]), ticker: z.string().optional(), peers: z.array(z.string()).optional(), acquirer: z.string().optional().describe("merger: the acquirer's ticker"), with_deck: z.boolean().optional() }),
+      schema: z.object({ template: z.enum(["dcf", "comps", "valuation", "lbo", "merger", "cap_table", "token_multiples", "token_dcf", "staking_yield", "crypto_comps"]), ticker: z.string().optional().describe("A company ticker, or for the crypto templates a token symbol or CoinGecko id"), peers: z.array(z.string()).optional(), acquirer: z.string().optional().describe("merger: the acquirer's ticker"), with_deck: z.boolean().optional() }),
       run: (i) => guard(async () => {
         const b = await buildTemplate(i.template as TemplateId, { ticker: i.ticker, peers: i.peers, acquirer: i.acquirer }, s.doc);
         const patches: Patch[] = b.sheets.map((sheet) => ({ op: "sheet_add" as const, sheet }));

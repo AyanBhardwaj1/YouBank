@@ -11,7 +11,7 @@ import { edgarFetch } from "@/lib/edgar/client";
 import { htmlToText } from "@/lib/edgar/filingText";
 import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
-import { logError } from "@/lib/errors";
+import { failureMessage, logError } from "@/lib/errors";
 import { putObject, r2Ready } from "../infra/r2";
 import { passagesFromPages, passagesFromParts, type Part } from "./chunk";
 import { partsFromHtml } from "./html";
@@ -80,8 +80,7 @@ export async function indexFilings(ticker: string, forms: string[], months: numb
       await setDoc(doc.id, { lang: "en", meta: { ...doc.meta, textKey: r2Ready() ? `docs/sec/${f.accession}.txt` : "" } });
       docIds.push(doc.id); indexed++;
     } catch (e) {
-      logError(e, { where: "edge-index-filing" });
-      await setDoc(doc.id, { status: "failed", error: String((e as Error).message ?? e).slice(0, 300) });
+      await setDoc(doc.id, { status: "failed", error: failureMessage(e, "edge-index-filing").slice(0, 300) });
     }
   }
   return { docIds, indexed, name: t.name };

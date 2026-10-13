@@ -7,11 +7,11 @@ import { myTeams } from "@/lib/teams/db";
 import { catalogFor } from "@/lib/workflows/catalog";
 import type { Profile, RoleId } from "@/lib/roles";
 import { CollabList } from "@/components/collab/CollabList";
+// Drizzle keeps Postgres's "relation does not exist" on the error's cause, so the check lives in lib/errors.
+import { isMissingTable } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Shared sessions" };
-
-const isMissingTable = (e: unknown) => /relation .* does not exist|undefined_table/i.test(e instanceof Error ? e.message : String(e));
 
 export default async function CollabPage() {
   const user = await currentUser();

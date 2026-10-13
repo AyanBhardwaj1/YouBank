@@ -11,7 +11,7 @@ import { simpleParser } from "mailparser";
 import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
-import { logError } from "@/lib/errors";
+import { logError, looksInternal, storedMessage } from "@/lib/errors";
 import { getBytes, getJson, listKeys, partKey, PART_BYTES, putObject, r2Ready, readParts } from "../infra/r2";
 import { withinFreeTier } from "../infra/usage";
 import { MlUnavailable, mlReady, mlStart, type MlDone } from "../infra/ml";
@@ -216,7 +216,12 @@ export function transcriptionOf(r: { engine?: unknown; model?: unknown; fallback
 /** Finish reading from the ML task's answer: passages, embeddings, and what the document is. */
 export async function finishIngest(docId: number, done: MlDone | null): Promise<void> {
   if (!done) { await setDoc(docId, { status: "failed", error: "The ML service did not answer in time; try again." }); return; }
-  if (!done.ok || !done.result) { await setDoc(docId, { status: "failed", error: (done.error ?? "Could not read this file").slice(0, 300) }); return; }
+  if (!done.ok || !done.result) {
+    // The ML service's own error (often a Python traceback) goes to the log; the page gets a plain line.
+    if (done.error && looksInternal(done.error)) logError(new Error(done.error.slice(0, 2_000)), { where: "edge-doc-ml" });
+    await setDoc(docId, { status: "failed", error: storedMessage(done.error ?? "Could not read this file", "This file could not be read. Try again, or try another copy of it.").slice(0, 300) });
+    return;
+  }
   const [doc] = await requireDb().select().from(schema.edgeDocs).where(eq(schema.edgeDocs.id, docId));
   if (!doc) return;
   const key = String(done.result.key ?? "");

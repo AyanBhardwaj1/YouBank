@@ -9,8 +9,25 @@ import { createNeonAuth } from "@neondatabase/auth/next/server";
  */
 const SESSION_DATA_TTL = Math.min(Math.max(Number(process.env.NEON_AUTH_SESSION_DATA_TTL) || 900, 60), 3_600);
 
-/** Server-side Neon Auth (managed Better Auth): handler, middleware, and session access. */
-export const auth = createNeonAuth({
-  baseUrl: process.env.NEON_AUTH_BASE_URL!,
-  cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET!, sessionDataTtl: SESSION_DATA_TTL },
+type NeonAuth = ReturnType<typeof createNeonAuth>;
+let instance: NeonAuth | null = null;
+
+/**
+ * Server-side Neon Auth (managed Better Auth): handler, middleware, and session access.
+ *
+ * Built on first use, not at import: the SDK throws when its settings are missing, and at import that
+ * would fail every module that touches the session (every API route, the proxy) before any of them could
+ * answer, leaving bare 500 pages and a health check that cannot report the missing setting. Built
+ * lazily, the error is thrown from the call, where guarded() and the error pages turn it into a
+ * referenced "our side" message and /api/health names the setting.
+ */
+export const auth: NeonAuth = new Proxy({} as NeonAuth, {
+  get(_target, prop) {
+    instance ??= createNeonAuth({
+      baseUrl: process.env.NEON_AUTH_BASE_URL!,
+      cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET!, sessionDataTtl: SESSION_DATA_TTL },
+    });
+    const value = Reflect.get(instance, prop, instance) as unknown;
+    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(instance) : value;
+  },
 });

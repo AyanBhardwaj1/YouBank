@@ -109,25 +109,25 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
             </div>
             <nav className="flex items-center gap-0.5" aria-label="Newsroom views">
               {(["today", "deals", "radar", "saved"] as View[]).map((v) => (
-                <button key={v} type="button" onClick={() => setView(v)} className={`relative rounded-md px-2.5 py-1 text-[12px] capitalize transition ${view === v ? "text-fg" : "text-muted hover:text-fg"}`}>
+                <button key={v} type="button" onClick={() => setView(v)} className={`relative rounded-md px-2.5 py-1 text-[12px] capitalize transition max-md:min-h-9 max-md:px-3 ${view === v ? "text-fg" : "text-muted hover:text-fg"}`}>
                   {view === v && <motion.span layoutId="nr-tab" className="absolute inset-0 rounded-md bg-elevated" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
                   <span className="relative">{v === "today" ? "Today" : v}</span>
                 </button>
               ))}
             </nav>
-            <form onSubmit={(e) => { e.preventDefault(); setQuery((q) => ({ ...q, applied: q.typed.trim() })); setView("today"); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1">
+            <form onSubmit={(e) => { e.preventDefault(); setQuery((q) => ({ ...q, applied: q.typed.trim() })); setView("today"); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1 max-md:order-last max-md:ml-0 max-md:min-h-10 max-md:w-full max-md:px-3.5">
               <Search className="h-3.5 w-3.5 text-muted" />
-              <input ref={searchRef} value={query.typed} onChange={(e) => { const t = e.target.value; setQuery((q) => ({ typed: t, applied: t ? q.applied : "" })); }} placeholder="Search stories  /" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint md:w-56" />
+              <input ref={searchRef} value={query.typed} onChange={(e) => { const t = e.target.value; setQuery((q) => ({ typed: t, applied: t ? q.applied : "" })); }} placeholder="Search stories  /" aria-label="Search stories" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint max-md:min-w-0 max-md:flex-1 md:w-56" />
             </form>
             <div className="flex items-center gap-0.5 rounded-full border border-line p-0.5" role="radiogroup" aria-label="Edition">
               {(Object.keys(EDITIONS) as EditionId[]).map((e) => (
                 <button key={e} type="button" role="radio" aria-checked={!advanced && edition === e} onClick={() => chooseEdition(e)} title={`${EDITIONS[e].label}: ${EDITIONS[e].blurb}`}
-                  className={`relative flex items-center gap-1 rounded-full px-2 py-1 text-[11px] transition ${!advanced && edition === e ? "text-accent-fg" : "text-muted hover:text-fg"}`}>
+                  className={`relative flex items-center gap-1 rounded-full px-2 py-1 text-[11px] transition max-md:min-h-9 max-md:px-2.5 ${!advanced && edition === e ? "text-accent-fg" : "text-muted hover:text-fg"}`}>
                   {!advanced && edition === e && <motion.span layoutId="nr-edition" className="absolute inset-0 rounded-full bg-accent" transition={{ type: "spring", stiffness: 500, damping: 34 }} />}
                   <span className="relative flex items-center gap-1">{EDITION_ICON[e]}<span className="hidden lg:inline">{EDITIONS[e].label}</span></span>
                 </button>
               ))}
-              <button type="button" onClick={() => setShowAdvanced((v) => !v)} className={`rounded-full px-2 py-1 text-[11px] ${advanced ? "text-accent" : "text-muted hover:text-fg"}`} title="Mix any look with any layout" aria-expanded={showAdvanced}><SlidersHorizontal className="h-3.5 w-3.5" /></button>
+              <button type="button" onClick={() => setShowAdvanced((v) => !v)} aria-label="Mix any look with any layout" className={`rounded-full px-2 py-1 text-[11px] max-md:min-h-9 max-md:px-2.5 ${advanced ? "text-accent" : "text-muted hover:text-fg"}`} title="Mix any look with any layout" aria-expanded={showAdvanced}><SlidersHorizontal className="h-3.5 w-3.5" /></button>
             </div>
           </div>
           <AnimatePresence>
@@ -144,7 +144,7 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
             )}
           </AnimatePresence>
           {view === "today" && cats.length > 0 && (
-            <div className="-mx-1 mt-2 flex gap-1 overflow-x-auto px-1 pb-0.5">
+            <div className="no-scrollbar -mx-1 mt-2 flex gap-1 overflow-x-auto px-1 pb-0.5 max-md:[&>button]:py-1.5">
               <button type="button" onClick={() => setCategory("")} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${!category ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>All</button>
               {cats.map((c) => <button key={c} type="button" onClick={() => setCategory(category === c ? "" : c)} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{CATEGORY_LABEL[c]} <span className="num text-faint">{counts[c]}</span></button>)}
               {query.applied && <button type="button" onClick={() => setQuery({ typed: "", applied: "" })} className="shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-fg">“{query.applied}” ×</button>}
@@ -152,7 +152,7 @@ export function Newsroom({ initialView = "today", initialStory = null }: { initi
           )}
         </header>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="scroll-touch min-h-0 flex-1 overflow-y-auto">
           {feed.error && !data && <div className="p-8 text-center text-[12.5px] text-neg">{feed.error}</div>}
           {!data && !feed.error && <div className="mx-auto max-w-[1100px] space-y-3 p-6">{[0, 1, 2, 3, 4].map((i) => <div key={i} className="shimmer h-20 rounded-[var(--nr-radius)]" style={{ animationDelay: `${i * 80}ms` }} />)}</div>}
           {data && (

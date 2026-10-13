@@ -1,11 +1,15 @@
 import { withinRate } from "@/lib/locks";
 import { startPairing } from "@/lib/office/auth";
-import { errorResponse } from "@/lib/errors";
+import { errorResponse, handled } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
 /** The add-in asks to connect: a code to show the person, and a secret only the add-in holds to collect its token. */
 export async function POST(req: Request) {
+  return handled(() => start(req));
+}
+
+async function start(req: Request) {
   const body = (await req.json().catch(() => null)) as { host?: string } | null;
   const host = body?.host === "PowerPoint" ? "PowerPoint" : body?.host === "Excel" ? "Excel" : "Office";
   // Anyone can call this, so one caller gets a few codes a minute and cannot use up everyone's.

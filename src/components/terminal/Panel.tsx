@@ -61,6 +61,17 @@ const GeoScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.Ge
 const NetScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.NetScreen), { loading: ScreenLoading });
 const SimScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.SimScreen), { loading: ScreenLoading });
 const AskScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.AskScreen), { loading: ScreenLoading });
+const CrypScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.CrypScreen), { loading: ScreenLoading });
+const TokenScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.TokenScreen), { loading: ScreenLoading });
+const DefiScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.DefiScreen), { loading: ScreenLoading });
+const StblScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.StblScreen), { loading: ScreenLoading });
+const YldScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.YldScreen), { loading: ScreenLoading });
+const BtcnScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.BtcnScreen), { loading: ScreenLoading });
+const RaiseScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.RaiseScreen), { loading: ScreenLoading });
+const UnlkScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.UnlkScreen), { loading: ScreenLoading });
+const TrsyScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.TrsyScreen), { loading: ScreenLoading });
+const RwaScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.RwaScreen), { loading: ScreenLoading });
+const WalletScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.WalletScreen), { loading: ScreenLoading });
 
 type Props = {
   panel: OpenPanel;
@@ -121,6 +132,17 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "NET": return <NetScreen ticker={t} onRun={onRun} />;
       case "SIM": return <SimScreen ticker={t} arg={panel.arg} />;
       case "ASK": return <AskScreen ticker={t} arg={panel.arg} />;
+      case "CRYP": return <CrypScreen onRun={onRun} />;
+      case "TOKEN": return <TokenScreen onRun={onRun} arg={panel.arg} />;
+      case "DEFI": return <DefiScreen onRun={onRun} />;
+      case "STBL": return <StblScreen onRun={onRun} />;
+      case "YLD": return <YldScreen onRun={onRun} />;
+      case "BTCN": return <BtcnScreen onRun={onRun} />;
+      case "RAISE": return <RaiseScreen onRun={onRun} />;
+      case "UNLK": return <UnlkScreen onRun={onRun} />;
+      case "TRSY": return <TrsyScreen onRun={onRun} />;
+      case "RWA": return <RwaScreen onRun={onRun} />;
+      case "WALLET": return <WalletScreen onRun={onRun} arg={panel.arg} />;
     }
     if (loading) return <Loading ticker={t} />;
     if (error || !company) return <ErrorState ticker={t} error={error ?? "No data"} />;
@@ -133,24 +155,24 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
     }
   })();
 
-  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
+  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK" || panel.fn === "TOKEN" || panel.fn === "WALLET") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">
-      <header className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-elevated/70 px-2.5">
+      <header className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-elevated/70 px-2.5 max-md:h-11">
         <div className="flex min-w-0 items-center gap-2">
           <span className="ctl bg-accent-soft px-1.5 py-0.5 text-[10.5px] font-semibold tracking-wider text-accent">{panel.fn}</span>
           {needsTicker(panel.fn) && panel.fn !== "TOOLS" && t && <span className="num font-semibold text-fg">{t}</span>}
           <span className="truncate text-muted" title={title}>{title}</span>
           {company?.ltm.periodEnd && NEEDS_COMPANY.has(panel.fn) && <span className="num hidden text-[10px] text-faint xl:inline">LTM {company.ltm.periodEnd}</span>}
         </div>
-        <div className="flex items-center gap-0.5 text-muted opacity-60 transition-opacity group-hover:opacity-100">
+        <div className="hover-reveal flex items-center gap-0.5 text-muted opacity-60 transition-opacity group-hover:opacity-100">
           <button type="button" onClick={onToggleMax} aria-label={maximized ? "Restore panel" : "Maximize panel"} title={maximized ? "Restore" : "Maximize"}
-            className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-fg">{maximized ? "⤡" : "⤢"}</button>
-          <button type="button" onClick={onClose} aria-label="Close panel" title="Close" className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-neg">×</button>
+            className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-fg max-md:h-10 max-md:w-10 max-md:text-[16px]">{maximized ? "⤡" : "⤢"}</button>
+          <button type="button" onClick={onClose} aria-label="Close panel" title="Close" className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-neg max-md:h-10 max-md:w-10 max-md:text-[18px]">×</button>
         </div>
       </header>
-      <div className="@container min-h-0 flex-1 overflow-auto">{body}</div>
+      <div className="@container scroll-touch min-h-0 flex-1 overflow-auto">{body}</div>
     </section>
   );
 }

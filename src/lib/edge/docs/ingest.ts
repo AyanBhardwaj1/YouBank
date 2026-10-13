@@ -3,7 +3,7 @@
  * otherwise in this request's remaining time (polling the ML service instead of waiting on its event).
  */
 import { after } from "next/server";
-import { logError } from "@/lib/errors";
+import { failureMessage } from "@/lib/errors";
 import { sendJob } from "../infra/jobs";
 import { mlStatus, noteMlCost } from "../infra/ml";
 import { flushUsage } from "../infra/usage";
@@ -24,8 +24,7 @@ async function inline(docId: number, deadline: number) {
     }
     await setDoc(docId, { status: "failed", error: "Reading took longer than this request allows; it will work once background jobs are available." });
   } catch (e) {
-    logError(e, { where: "edge-ingest-inline" });
-    await setDoc(docId, { status: "failed", error: String((e as Error).message ?? e).slice(0, 300) });
+    await setDoc(docId, { status: "failed", error: failureMessage(e, "edge-ingest-inline").slice(0, 300) });
   } finally {
     await flushUsage().catch(() => undefined);
   }

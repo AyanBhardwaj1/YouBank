@@ -8,36 +8,16 @@
  * when SENTRY_DSN is set):
  * - database driver errors: Drizzle puts the SQL and its parameter values in the message;
  * - network and SDK failures;
- * - any message with SQL, a URL, a stack frame, a secret's name or runaway length.
+ * - any message with SQL, a URL, a stack frame, a secret's name, an HTML page or runaway length
+ *   (the patterns are in lib/error-text, shared with the browser).
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { aiUser } from "@/lib/ai/context";
+import { looksInternal, OUR_SIDE, TOO_SLOW } from "@/lib/error-text";
 
-export const OUR_SIDE = "Something went wrong on our side";
-export const TOO_SLOW = "A data source took too long to answer. Try again in a moment.";
-
-const INTERNAL: RegExp[] = [
-  // Drizzle: "Failed query: <SQL>\nparams: <values>".
-  /^Failed query:/i,
-  // Postgres and its drivers.
-  /relation "[^"]*" does not exist|column "[^"]*" does not exist|violates [\w-]+ constraint|duplicate key value|syntax error at or near|invalid input syntax for|value too long for type|null value in column|current transaction is aborted|canceling statement|terminating connection|too many connections|NeonDbError|DrizzleQueryError|PostgresError/i,
-  // Network and runtime failures, and programming errors.
-  /\b(ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|EPIPE|EHOSTUNREACH|UND_ERR_\w+)\b|fetch failed|socket hang up/i,
-  /Cannot read propert|is not a function|is not defined|undefined \(reading|Unexpected token|JSON at position|is not valid JSON/i,
-  // URLs (endpoints, keys in query strings), secrets' names, stack frames, dumped JSON.
-  /https?:\/\//i,
-  /\b[A-Z][A-Z0-9_]*_(KEY|SECRET|TOKEN|URL|PASSWORD|DSN)\b/,
-  /\n\s+at\s|\bat\s+\S+\s+\(\S+:\d+:\d+\)/,
-  /^\s*[[{]/,
-];
-
-/** Whether a message is unsafe to show as written. Pure, for tests. */
-export function looksInternal(message: string, name = ""): boolean {
-  if (!message.trim() || message.length > 400) return true;
-  if (/DrizzleQueryError|NeonDbError|PostgresError/.test(name)) return true;
-  return INTERNAL.some((r) => r.test(message));
-}
+// The patterns live in a dependency-free module so the browser applies the same rule (lib/client/errors).
+export { looksInternal, OUR_SIDE, TOO_SLOW };
 
 const statusOf = (e: unknown): number | null => {
   const s = (e as { status?: unknown } | null)?.status;
@@ -65,6 +45,8 @@ export function logError(e: unknown, ctx: { status?: number; where?: string } = 
   const cause = (err as { cause?: unknown }).cause;
   console.error(JSON.stringify({
     level: "error", ref, status: ctx.status ?? null, where: ctx.where ?? null, user: userTag(aiUser()),
+    // Next's digest is what an error page shows as its reference, so a person's report finds this line.
+    digest: (e as { digest?: unknown } | null)?.digest ?? null,
     name: err.name, message: err.message.slice(0, 2_000), code: (e as { code?: unknown })?.code ?? null,
     cause: cause instanceof Error ? cause.message.slice(0, 500) : cause ? String(cause).slice(0, 500) : null,
     stack: err.stack?.split("\n").slice(1, 7).map((l) => l.trim()).join(" | ") ?? null,
@@ -81,15 +63,58 @@ export function logError(e: unknown, ctx: { status?: number; where?: string } = 
 export function describeFailure(e: unknown, fallbackStatus = 500, where?: string): { status: number; message: string; ref?: string } {
   const raw = e instanceof Error ? e.message : String(e ?? "");
   const internal = looksInternal(raw, e instanceof Error ? e.name : "");
-  const status = statusOf(e) ?? (isTimeout(e) ? 504 : internal ? 500 : fallbackStatus);
+  // An upstream's own 4xx (a provider's 401 for a bad key, 400 for a bad request) is our failure, not
+  // the person's: answering 401 would read as "your session ended" and 400 as "you sent something wrong".
+  const own = statusOf(e);
+  const status = internal ? (own !== null && own >= 500 ? own : isTimeout(e) ? 504 : 500) : own ?? (isTimeout(e) ? 504 : fallbackStatus);
   const ref = status >= 500 || internal ? logError(e, { status, where }) : undefined;
   return { status, message: publicMessage(e, ref), ...(ref ? { ref } : {}) };
+}
+
+/**
+ * The text to store or stream for a failure a person will see later (a run's status, a document's
+ * error, an event in a stream): their own message when it is safe, else the "our side" line with a
+ * reference whose details are logged here.
+ */
+export function failureMessage(e: unknown, where: string): string {
+  return describeFailure(e, 500, where).message;
+}
+
+/**
+ * Text already stored (by older code, or an upstream we quote) as it may be shown now: kept when it
+ * reads as written for people, else replaced by `fallback`. For rows written before failureMessage.
+ */
+export function storedMessage(text: string | null | undefined, fallback = `${OUR_SIDE}. Try again.`): string {
+  if (!text) return "";
+  return looksInternal(text) ? fallback : text;
+}
+
+/**
+ * Whether a database error says a table is missing (migrations not yet applied). Drizzle wraps the
+ * driver's error as "Failed query: …" and keeps Postgres's own text and code (42P01) on `cause`, so the
+ * message alone never matches.
+ */
+export function isMissingTable(e: unknown): boolean {
+  for (let x: unknown = e, i = 0; x && i < 4; x = (x as { cause?: unknown }).cause, i++) {
+    if ((x as { code?: unknown }).code === "42P01") return true;
+    const m = x instanceof Error ? x.message : typeof x === "string" ? x : "";
+    if (/relation "?[^"\s]*"? does not exist|undefined_table/i.test(m)) return true;
+  }
+  return false;
 }
 
 /** The JSON response for an error (see describeFailure). */
 export function errorResponse(e: unknown, fallbackStatus = 500, extra: Record<string, unknown> = {}): Response {
   const f = describeFailure(e, fallbackStatus);
   return Response.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), ...extra }, { status: f.status });
+}
+
+/**
+ * A route body with no guarded() around it (cron, streams, public endpoints): anything it throws is
+ * answered as errorResponse, never as the platform's bare 500.
+ */
+export async function handled(fn: () => Promise<Response>, fallbackStatus = 500): Promise<Response> {
+  try { return await fn(); } catch (e) { return errorResponse(e, fallbackStatus); }
 }
 
 /** A minimal Sentry client (the envelope endpoint, no SDK): only when SENTRY_DSN is set, sent after the response. */

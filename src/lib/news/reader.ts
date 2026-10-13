@@ -38,7 +38,7 @@ export async function readerFor(userId: string): Promise<ReaderContext | null> {
   const profile = profileOf(p);
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const prefs = normalizeNewsPrefs(extra.news, profile);
-  // Contacts change slowly; the feed polls every minute. Five minutes of reuse per instance.
-  const parts = readerFromParts(profile, prefs, await memo(`news:network:${userId}`, 300_000, () => networkOf(userId)).catch(() => new Map()));
+  // Contacts change slowly, and every news pass and feed poll asks: an hour of reuse per instance.
+  const parts = readerFromParts(profile, prefs, await memo(`news:network:${userId}`, 3_600_000, () => networkOf(userId)).catch(() => new Map()));
   return { userId, email: p.email, name: p.name, profile, prefs, extra, ...parts };
 }

@@ -79,7 +79,7 @@ export function EngineInsights({ ctx }: { ctx: PanelCtx }) {
     <div>
       <h4 className="text-[12px] font-semibold">{title}</h4>
       <p className="text-[10.5px] text-muted">{note}</p>
-      <table className="mt-1.5 w-full font-sans text-[11.5px]">
+      <div className="table-scroll"><table className="mt-1.5 w-full font-sans text-[11.5px]">
         <thead><tr className="text-left text-[10px] text-muted"><th className="pb-1 pr-2 font-normal">Choice</th><th className="pb-1 pr-2 font-normal">Settled</th><th className="pb-1 pr-2 font-normal">Replies</th><th className="pb-1 pr-2 font-normal">Opt-outs</th><th className="w-[34%] pb-1 font-normal">Estimated reply rate (90% interval)</th><th className="pb-1 text-right font-normal">Chance it is best</th></tr></thead>
         <tbody>
           {rows.map((a) => (
@@ -93,7 +93,7 @@ export function EngineInsights({ ctx }: { ctx: PanelCtx }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 

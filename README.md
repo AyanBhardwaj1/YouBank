@@ -20,7 +20,7 @@ parts:
   and it all exports to Excel and PowerPoint. With the add-in it runs inside Excel and PowerPoint too:
   the agent writes into your own workbook live, and decks refresh from the model.
 
-Production: **https://youbank-nu.vercel.app** · Free while in beta.
+Production: **https://youbank-nu.vercel.app** until the custom domain is set (`NEXT_PUBLIC_SITE_URL`; see [docs/launch-billing.md](docs/launch-billing.md)) · Free while in beta.
 
 ## Contents
 
@@ -30,6 +30,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Tools](#tools)
    - [Company and filing data](#company-and-filing-data)
    - [Private markets](#private-markets)
+   - [Crypto](#crypto)
    - [Newsroom](#newsroom)
    - [AI assistant](#ai-assistant)
    - [Studio: live models and decks](#studio-live-models-and-decks)
@@ -37,6 +38,7 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
    - [Teams and live collaboration](#teams-and-live-collaboration)
+   - [YouBank for desktop](#youbank-for-desktop)
    - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
@@ -49,9 +51,10 @@ Production: **https://youbank-nu.vercel.app** · Free while in beta.
 10. [Testing](#testing)
 11. [Security, privacy and compliance](#security-privacy-and-compliance)
 12. [Research behind the product](#research-behind-the-product)
-13. [Roadmap](#roadmap)
-14. [Repository layout](#repository-layout)
-15. [Further docs](#further-docs)
+13. [Plans and billing](#plans-and-billing)
+14. [Roadmap](#roadmap)
+15. [Repository layout](#repository-layout)
+16. [Further docs](#further-docs)
 
 ---
 
@@ -133,6 +136,18 @@ functions take a ticker (`SNOW WACC`); market functions do not (`ECO`); a few ta
 | `ECO` | Inflation, jobs, growth and rates, with three-month outlooks | Damped trend, conformal intervals, the Sahm rule |
 | `EQS` | A screener over every SEC filer, in plain English | A small model turns words into filters you can edit |
 | `PORT` | Portfolio risk: risk shares, correlations, a year of outcomes | Covariance attribution, bootstrap |
+
+**Crypto** (no ticker needed; free public data, see [Crypto](#crypto))
+
+| Function | What it shows | Models |
+|---|---|---|
+| `CRYP` | The largest tokens, total market cap, bitcoin dominance, DeFi value locked, stablecoin supply | |
+| `TOKEN <token>` | One token: price, supply and float, volatility, drawdown, its protocol's fees, revenue and holders' revenue, valuation multiples, the next unlock | Beta and correlation to bitcoin |
+| `DEFI` / `STBL` / `YLD` | Value locked by chain, category and protocol with fees and revenue; stablecoin supply and net flows; the largest yield pools | |
+| `BTCN` | Bitcoin fees, mempool, hashrate, the next difficulty adjustment, pools | Hashprice, breakeven power price |
+| `RAISE` / `UNLK` / `TRSY` | Crypto venture rounds and lead investors; token unlocks in the next 60 days; companies' crypto at fair value from SEC filings | |
+| `RWA` | Tokenized treasuries, private credit, commodities and real estate | |
+| `WALLET <address>` | Read-only balances and risk of any address (0x…, name.eth, Bitcoin, Solana) | Historical-simulation VaR |
 
 **Workspace:** `LEARN` (your mastery of each function, what to learn next, quick quizzes), `PG` (peer
 groups), `TOOLS` and `TOOL <id>`.
@@ -226,11 +241,69 @@ How to add tools: [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.m
 - SEC Form D
 - AI web discovery
 
-It also lists Form D raises with amounts and officers.
+It also lists Form D raises with amounts and officers, and crypto projects from DefiLlama's raises
+database (one entry per project, with every disclosed round, its investors and the total raised).
 
 A nightly job (`/api/cron/sync`, 06:00 UTC) refreshes the directory:
 - Show HN and Form D, for the last three days;
-- the YC, a16z and Thiel lists.
+- the YC, a16z and Thiel lists;
+- crypto rounds from DefiLlama's free API.
+
+### Crypto
+
+`/app/crypto` (and the terminal's crypto functions) covers crypto research, crypto deals, a read-only
+portfolio and on-chain records. **Nothing in YouBank holds a key, trades, swaps or moves funds.** The
+only thing ever sent to a chain is a transaction the person signs in their own wallet (notarizing), and
+the server only reads it back.
+
+**Research (free).** Every figure cites its source under "Models and sources".
+- Tokens: prices, market cap, FDV, float, supply and a year of history from **CoinGecko**'s public API
+  (cached minutes; an optional free demo key raises its limits).
+- DeFi: value locked by chain, category and protocol, fees, revenue and holders' revenue, stablecoin
+  supply and flows, and pool yields from **DefiLlama**. A token's page joins the two: market cap and
+  FDV over annualised fees, revenue and holders' revenue.
+- Bitcoin: fees, mempool, hashrate, difficulty, pools and mining economics (hashprice, the power price
+  at which a machine breaks even) from **mempool.space**.
+- Tokenized real-world assets: DefiLlama's RWA categories sorted into treasuries (BUIDL, Ondo,
+  Franklin…), private credit (Maple, Centrifuge…), commodities and real estate.
+
+**Deal intelligence (free).**
+- Crypto venture rounds with lead investors, and token unlocks with their share of circulating supply
+  (DefiLlama).
+- Public companies' crypto treasuries: crypto assets at fair value from **SEC XBRL** frames
+  (`CryptoAssetFairValue`, current and noncurrent, under ASU 2023-08), newest quarter per company.
+- Whale and wallet tracking: a watchlist of any public addresses with balances and recent activity.
+
+**Portfolio.** Connect a wallet (EIP-6963 for MetaMask, Coinbase Wallet and others; the Wallet
+Standard for Phantom and other Solana wallets) or paste addresses: Ethereum, Base, Arbitrum,
+Optimism and Polygon (native coins and major tokens, read from public nodes in one multicall per
+chain), ENS names, Bitcoin and Solana. Holdings are priced and shown with profit and loss against what
+you say you paid, concentration (Herfindahl), stablecoin share, chain exposure, one-year volatility and
+one-day 95% value at risk at today's weights (historical simulation; crypto annualises over 365 days).
+
+**Notarizing on chain.** A deal document, or a Studio model's audit trail (every change, who made it and
+when, and a hash of the patches), is hashed with SHA-256 in the browser; the file never leaves the
+machine. The person's own wallet then sends a zero-value transaction to their own address on **Base**
+with the hash as readable calldata (`YouBank notary v1 sha256:<hash>`), costing a fraction of a cent.
+The server reads the transaction back from a Base node and marks it confirmed only if it is from that
+address, to itself, carries no value and records that hash. Anyone can check a file against any
+transaction, and a notarized Studio model can be checked for changes since.
+
+**Mining map.** Bitcoin mining sites and crypto data centres of the listed miners (Riot, MARA, Core
+Scientific, Cipher, IREN, Bitdeer, Hut 8, CleanSpark and others), from their filings through mid-2025,
+with stated capacity, an estimate of annual power use (85% load) and EIA's estimate that crypto mining
+used 0.6% to 2.3% of U.S. electricity in 2023. Locations are to the town. Sites being converted to AI
+and HPC are marked. It is a tab on `/app/crypto` and a layer (with its own button) on the Edge map;
+the layer is self-contained in `src/lib/crypto/map-layer.ts`, served as GeoJSON by `/api/crypto/sites`.
+
+**Premium** (registered in `src/lib/billing/features/crypto.ts`; each runs only on a click and the server
+checks the plan first):
+
+| Feature | Plan | What it does | Cost to us per use |
+|---|---|---|---|
+| Deep wallet analytics | Pro | Every token a wallet holds and its recent transfers and counterparties, from Alchemy (EVM) and Helius (Solana) | about $0.01 |
+| Pro crypto data | Pro | CoinGecko Pro and DefiLlama Pro on TOKEN, RAISE and UNLK | about $0.001 |
+| Dune queries | Deal Team | The latest results of any saved Dune query, sortable and exportable as CSV | about $0.05 |
 
 ### Newsroom
 
@@ -268,6 +341,9 @@ stories:
   - Media and telecom, real estate: FCC, HUD and FHFA rules in motion; networking and housing research.
   Built from public sources, cached a day and refreshed by the Newsroom pass; a source that does not
   answer keeps its last good lane.
+- **Crypto.** CoinDesk, The Block, Decrypt and Blockworks headlines; DefiLlama rounds of $5M and up and
+  token unlocks that add 1% or more to circulating supply; and 8-Ks about bitcoin or digital-asset
+  treasuries from EDGAR full-text search. All tagged with the crypto lens, so `NI CRYPTO` finds them.
 - **Research briefs.** Twice a day, a small model with web search looks for each active desk's stories
   that have no feed (Reuters, AP); a story is kept only if its page was retrieved and is recent.
 
@@ -301,7 +377,7 @@ close and implied multiples from SEC figures, and advisor league tables.
 You can switch the model and the reasoning depth (low, medium, high or xhigh) per run. The assistant streams
 its output, calls function tools, shows reasoning summaries, searches the web and returns structured output.
 
-**Twenty-one tools:**
+**Thirty-two tools:**
 
 | Tool | Tool | Tool |
 |---|---|---|
@@ -312,14 +388,27 @@ its output, calls function tools, shows reasoning summaries, searches the web an
 | `get_insider_transactions` | `calc` (exact arithmetic) | `get_price_risk` |
 | `get_credit_risk` | `get_earnings_quality` | `get_revenue_forecast` |
 | `get_cost_of_capital` | `get_macro_outlook` | `screen_companies` |
+| `get_crypto_market` | `get_token` | `get_defi_overview` |
+| `get_stablecoins` | `get_crypto_raises` | `get_token_unlocks` |
+| `get_crypto_treasuries` | `get_bitcoin_network` | `get_rwa_tokenization` |
+| `get_wallet_portfolio` | `token_valuation` | |
 
-The last seven are the terminal's models, so an answer about risk, credit, a forecast or the economy
-names the model behind each number and gives a range.
+The seven after `calc` are the terminal's models, so an answer about risk, credit, a forecast or the economy
+names the model behind each number and gives a range. The crypto tools read free public data
+(CoinGecko, DefiLlama, mempool.space, SEC XBRL, public nodes) and return source ids for every figure;
+`token_valuation` does fee-multiple, discounted token cash flow and staking-yield arithmetic exactly.
 
 **Cost.** Classification, extraction and summaries route to a small model (GPT-5.6 Luna or Claude Haiku
 4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
 cost are recorded and shown in Settings. See [docs/research/ai-inference.md](docs/research/ai-inference.md).
+
+**Allowances.** Each person's model spend is capped per UTC day and per allowance month by their plan's AI
+allowance, from Free ($0.75 a day, $3 a month) to Enterprise ($30 a day, $130 a month per seat). The
+allowance month starts on the billing anniversary for subscribers and on the 1st otherwise; AI credit
+packs top it up.
+Administrators have no cap. Settings, under Plan, shows what has been used. At the cap, AI pauses and
+everything else keeps working. Prices and allowances: [Plans and billing](#plans-and-billing).
 
 **Modes:** analyst, research, draft, critique, and coach (mock interviews).
 
@@ -360,6 +449,9 @@ that ticker.
 
 The grid is built to feel like Excel:
 - a formula bar and name box, selection by click, shift-click or drag, and Excel keyboard navigation;
+- on a touch screen: tap a cell to select it and tap it again (or double-tap) to edit in a bar docked
+  above the keyboard, with formula keys and arrows that save and step to the next cell without the
+  keyboard closing; drag the dot at the selection's corner to cover a range;
 - type-to-edit and F2, clearing with Delete, and undo with Cmd/Ctrl+Z;
 - copy and paste as tab-separated text, to and from Excel. Pasting within Studio adjusts relative
   references.
@@ -408,14 +500,22 @@ Each template is fully formula-driven and filled from SEC XBRL company facts and
 | LBO | Sources and uses; a debt schedule with a cash sweep and interest on average balances; IRR and MOIC; an entry × exit IRR data table. It uses adjusted EBITDA, with a take-private entry at a 25% premium, for listed companies |
 | Merger model | Accretion/dilution, breakeven synergies, and a live premium × stock-mix grid |
 | Cap table | A priced round, with the option-pool top-up solved in closed form |
+| Token multiples | A token's market cap and FDV over its annualised fees, revenue and holders' revenue, with the implied price from low, mid and high peer multiples |
+| Token DCF | Cash flow to tokenholders over 5 years with fading growth, a terminal value, and value per token on the supply expected after unlocks; a discount rate × terminal growth data table |
+| Staking yield | Nominal and real staking yield, the dilution of a holder who does not stake, and the value of fees to stakers; a staking ratio × issuance data table |
+| Crypto comps | Peer tokens (named, or the top fee earners in the token's category) on market cap and FDV over fees, revenue, holders' revenue and value locked, with quartiles and the implied price |
+
+The crypto templates take a token symbol or CoinGecko id in the ticker box and are filled from CoinGecko
+and DefiLlama (USD millions, supplies in millions of tokens); left blank, they open with illustrative
+inputs.
 
 #### The deck
 
 - Slides are 16:9. Their tables, charts, figures and football fields are **links into the model**, so a
   changed assumption flows to every page.
 - Charts come in column, bar, stacked, line, pie, waterfall and football-field forms.
-- You can edit titles and text, drag elements to move or resize them, reorder slides and comment on
-  them.
+- You can edit titles and text, drag elements to move or resize them (with a mouse or a finger), reorder
+  slides and comment on them. On a phone you swipe between slides, with the thumbnails in a strip below.
 - **Tie-out** checks the deck against the model. It flags:
   - broken links and error values;
   - tables typed in by hand;
@@ -996,6 +1096,36 @@ Graduation offers appear at the top of the queue.
   - Presence is a heartbeat with a 25-second window.
   - A session shared with a team is open to that team; an unshared one stays with whoever started it.
 
+### YouBank for desktop
+
+A desktop app for Windows, macOS and Linux (Tauri v2, in `desktop/`; its own README covers building,
+releasing and signing). Download it from `/download`, which picks the installer for the visitor's system
+from the latest `desktop-v*` GitHub Release and says in plain words what the app may touch.
+
+- **The site in its own window**, with a tray menu, native notifications, `youbank://` links (a ticker, a
+  deal, a Studio document, a quick ask question), one instance at a time, a remembered window, an offline
+  screen that retries, and updates from GitHub Releases.
+- **Quick ask** from any app on a global hotkey (Ctrl+Shift+Space, ⌘⇧Space on a Mac): the terminal's
+  assistant in a small floating window, on the same daily AI allowance.
+- **A local agent**, each part off until the person agrees to a screen saying what it does:
+  - **Local files.** Folders of CIMs, models and memos become Edge documents. Files are fingerprinted on
+    the computer and only new or changed ones are uploaded; the server gets a hash of each path, never
+    the path. The first 25 files are free; more need Pro (`desktop.folders`).
+  - **Excel and PowerPoint.** Pull a Studio model as a real `.xlsx` (or a deck as `.pptx`); a saved
+    workbook goes back to Studio as one undoable change ("Synced from desktop: 14 cells"), through the
+    same diff as the Excel add-in, and is refused if Studio moved on meanwhile. AI edits to a local file
+    (Pro, `desktop.office_agent`) run the Studio agent and write the result back, keeping a backup.
+  - **Alerts.** Edge findings and other bell alerts, the email agent's questions and news about pipeline
+    deals, polled every few minutes (read only).
+  - **Scheduled tasks** from the tray: the morning brief and the email agent's status (free), the Edge
+    brief and watch checks (Pro, `desktop.background_ai`). An AI task runs on its schedule only if the
+    person switched it on for that computer; the server keeps its own copy of that switch and refuses
+    otherwise.
+- **Signing in** works like the Office add-in: the app shows a code, the person approves it at
+  `/desktop/connect`, and the app keeps a device token (`ybd_…`) in the system keychain. It works only on
+  `/api/desktop/**`. Connected computers are listed, and can be disconnected, in Settings → Desktop app.
+- **What the site may ask of the app** is fixed at three commands (its version, open quick ask, open the
+  agent's settings). The site cannot reach files, programs or the keychain through it.
 ### Premium features
 
 Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
@@ -1045,7 +1175,8 @@ and the steps to switch it on.
   Components use design tokens only. `scripts/gen-themes.ts` regenerates `src/app/themes.css` from
   `src/lib/themes.ts`.
 - **The top bar and the sidebar.** Each person pins the features they use to the top bar, in their own
-  order, with names or icons only; the page they are on shows as a dashed tab when it is not pinned. The
+  order, with names or icons only (icons only on a tablet, so the bar fits); the page they are on shows as
+  a dashed tab when it is not pinned. The
   sidebar (the button at the left, or ⌘/Ctrl+\\) holds every feature, the workflows inside them
   (terminal functions, Newsroom views, Relationships tabs, settings) and the tools picked for their role,
   with search across all of it. It opens over the page or docks beside it. When a workflow's page is
@@ -1055,6 +1186,30 @@ and the steps to switch it on.
   dialogs (`src/components/ui/Dialog.tsx`) replace the browser's own: themed like everything else,
   animated, with keyboard support, search in long lists, and type-to-confirm for deletions that
   affect a whole team.
+- **On a phone, everything works.** Nothing is desktop-only; each screen is laid out again to fit.
+  - *Navigation.* The first four pinned features become a tab bar along the bottom edge, and **More**
+    opens the sidebar as a bottom sheet: the same search, features and workflows, at finger size, plus an
+    arrange view that shows which pins are tabs. The top bar slims to the page's name, alerts, style and
+    account. Pinning and arranging are one list for both, saved the same way.
+  - *Panels become sheets.* Side panels open as bottom sheets (`src/components/ui/Sheet.tsx`) that drag
+    down to close: the Studio agent (beside the sheet it writes, so you can watch), the terminal's
+    watchlist, what you pick on the Edge map, the Edge canvas block palette. Dialogs become bottom sheets.
+    Multi-pane screens become tabs: Private markets shows the list, a startup or the assistant one at a
+    time (a tablet keeps the list beside the other two).
+  - *Touch.* Controls are at least 40 to 44 px tall on a phone; small icon buttons get an invisible
+    44 px hit area (`.hit`); actions that appear on hover elsewhere are always shown on touch. Strips of
+    tabs and chips scroll sideways instead of wrapping into many lines. The Relationships pipeline is a
+    row of stages you swipe; a Newsroom story opens full screen and closes with a swipe to the right.
+  - *Text.* The desktop interface is deliberately dense; below 640 px every small text size steps up a
+    notch (body text at least 12 px), and text boxes are 16 px so iOS does not zoom into them.
+  - *Tables* scroll sideways inside their own box (`.table-scroll`), never the page, with the first column
+    pinned on a phone so each row keeps its name.
+  - *The keyboard and the notch.* `MobileViewport` publishes the height the on-screen keyboard covers as
+    `--kb`; the frame ends above it, bars and sheets ride on top of it, and the tab bar steps aside while
+    it is up. The page is drawn edge to edge (`viewport-fit=cover`) with the safe-area insets kept clear,
+    and the browser bar takes the style's background.
+  - *Smoothness.* Panes scroll with momentum and do not drag the page with them; every animation follows
+    the system's reduce-motion setting (`MotionPrefs`).
 
 ---
 
@@ -1122,6 +1277,8 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| Desktop app | `desktop_pairings` (as for Office), `desktop_devices` (connected computers: the hashed token, system, app version, the scheduled-task switches, last use, revocation), `desktop_files` (each indexed local file: a hash of its path, its name, content hash and Edge document) |
+| Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
 **Migrations.**
@@ -1138,6 +1295,8 @@ All tables are in `src/db/schema.ts`.
   - `0008_office`
   - `0009_ai_usage`
   - `0010_contact_knowledge`
+  - `0016_crypto`
+  - `0017_desktop`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1208,9 +1367,25 @@ bash scripts/preflight.sh                                         # everything t
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Gmail API connection via OAuth; the redirect defaults to `<origin>/api/crm/gmail/callback` |
 | `AUTOPILOT_SPOT_CHECK_RATE` | no | Overrides the spot-check rate (tests only) |
 | `NEWS_AI_BUDGET_USD` | no | The Newsroom's monthly AI cap; default `25` |
+| `AI_USER_DAILY_USD`, `AI_USER_MONTHLY_USD` | no | Replace every plan's daily and monthly AI allowance (the plans' own amounts are in `src/lib/billing/plans.ts`) |
+| `AI_GLOBAL_DAILY_USD` | no | Everyone's AI spend per UTC day; default `200` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | for billing | Stripe; without them the plan page shows prices and says billing isn't switched on |
+| `STRIPE_PRICE_PRO_MONTHLY`, `STRIPE_PRICE_PRO_YEARLY`, `STRIPE_PRICE_TEAM_MONTHLY`, `STRIPE_PRICE_TEAM_YEARLY`, `STRIPE_PRICE_ENTERPRISE_YEARLY` | for billing | Stripe price ids, printed by `scripts/stripe-setup.ts`; a plan without its id is shown but cannot be bought |
+| `ADMIN_EMAILS` | no | Comma-separated administrators: every plan feature, no AI cap |
 | `NEWS_RESEARCH_MODEL` | no | The model for research briefs; default `gpt-5.6-luna` |
 | `NEWS_VAPID_PUBLIC_KEY`, `NEWS_VAPID_PRIVATE_KEY`, `NEWS_VAPID_SUBJECT` | for browser push | Web Push keys (`npx web-push generate-vapid-keys`) and a `mailto:` contact |
+| `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar and the download page's release lookup |
+| `DESKTOP_RELEASE_REPO` | no | Where the desktop installers are released; default `AyanBhardwaj1/YouBank` |
 | `GITHUB_TOKEN` | no | Raises GitHub's rate limit for the tech radar |
+| `ETH_RPC_URL`, `BASE_RPC_URL`, `ARBITRUM_RPC_URL`, `OPTIMISM_RPC_URL`, `POLYGON_RPC_URL`, `SOLANA_RPC_URL` | no | Crypto: node endpoints for balances and notarization checks; public endpoints by default |
+| `MEMPOOL_API_URL` | no | Crypto: a self-hosted mempool.space API; `https://mempool.space/api` by default |
+| `COINGECKO_DEMO_KEY` | no | Crypto: CoinGecko's free demo key, which raises the keyless limits |
+| `ETHERSCAN_API_KEY` | no | Crypto: a free Etherscan key for recent wallet activity on Ethereum and Base |
+| `COINGECKO_PRO_KEY`, `DEFILLAMA_API_KEY` | for Pro crypto data | Paid feeds, used only when an entitled person clicks "Pro data" |
+| `ALCHEMY_API_KEY`, `HELIUS_API_KEY` | for deep wallet analytics | Paid indexers (EVM, Solana), used only on a click |
+| `DUNE_API_KEY` | for Dune queries | Reads saved queries' latest results, only on a click |
+| `OVERPASS_URL` | no | The OpenStreetMap Overpass endpoint the 3D digital twin reads; default the public overpass-api.de |
+| `USGS_LIDAR_INDEX_URL` | no | The index of USGS lidar surveys for point clouds; default Hobu's `resources.geojson` on GitHub |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
 | `ADMIN_EMAILS` | no | Comma-separated administrators: every premium feature, and admin-only screens |
 | `AI_DEEP_MODEL` | no | The model for deep research; default the flagship of the person's provider |
@@ -1284,7 +1459,23 @@ bash scripts/preflight.sh                                         # everything t
      --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
    neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
    ```
-7. **Verify.**
+7. **Billing (Stripe).** Create the products and prices, and the webhook endpoint, from `PLANS`:
+   ```bash
+   STRIPE_SECRET_KEY=sk_live_... pnpm exec tsx scripts/stripe-setup.ts --live \
+     --webhook https://<your-domain>/api/billing/webhook
+   ```
+   - Set the printed `STRIPE_*` lines in Vercel.
+   - In the Stripe dashboard, switch on the customer portal and allow plan changes between these prices.
+   - Run it first with a test key (`sk_test_...`, no `--live`) on a preview deployment.
+8. **The desktop app.** Apply `drizzle/0017_desktop.sql`, then push a tag `desktop-v<version>`: the
+   `Desktop` workflow builds the installers into a draft GitHub Release; publish it and `/download` offers
+   it. Signing and update keys are optional secrets, listed in `desktop/README.md`.
+9. **Verify.**
+   - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
+     the app serves but something is missing (the tables, a production setting, an optional service half
+     set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
+     the names of missing settings and which services are on need the cron secret
+     (`-H "Authorization: Bearer $CRON_SECRET"`) or an `ADMIN_EMAILS` session. No value is ever shown.
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
    - After five minutes, the Vercel logs should show `POST /api/cron/autopilot`.
 
@@ -1300,6 +1491,10 @@ bash scripts/preflight.sh                                         # everything t
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
+| Crypto (122 tests) | `pnpm exec tsx scripts/test-crypto.ts` | Address checksums (EIP-55, Base58Check, Bech32 and Bech32m, Solana keys); notarization calldata, verification and canonical JSON; every API parser against fixtures (CoinGecko, DefiLlama, mempool.space, SEC frames, Etherscan, Alchemy, Dune); portfolio risk; valuation math; mining economics; the site data and popup escaping; Newsroom and directory converters; the four crypto Studio templates against the valuation math, the audit and their data tables |
+| Billing (65 tests) | `pnpm exec tsx scripts/test-billing.ts` (`--table` prints the cost model) | Every paid plan's margin at typical use against the target, the worst case at the full AI allowance, Free and Campus cost ceilings; AI caps by plan and their overrides; the monthly-allowance message; checkout requests; the row a Stripe subscription writes and stale cancellations; webhook signatures, tampering and replay |
+| Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
+| 3D maps (71 tests) | `pnpm exec tsx scripts/test-maps.ts` | The sun's position and light; procedural tank, stack, flame and tube meshes and the glTF writer; lidar octree selection under a budget and the point cloud wire format; terrain tiles; OpenStreetMap parsing; the digital twin's merging and flame placement; change, land-use and footprint cells; the layer registry; the maps plan features |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Premium (56 tests) | `pnpm exec tsx scripts/test-premium.ts` | The feature registry (unique ids, plans, a cost for every metered feature, every keyed upgrade built and tied to a feature); the premium scope (nothing premium outside it, async propagation, 402 before work, the client's plan message); per-person and administrator views of the upgrades (no setting values); Citations' spans to claims; MP3 frames and WAV headers for cutting audio; diarized pieces in time; LlamaParse jobs and Markdown tables; Nightfire's CSV, grouping and volumes; weekly levels, the drift forecast and the TimesFM query |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
@@ -1308,7 +1503,9 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
+| Desktop app (15 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
 production.
@@ -1341,6 +1538,30 @@ production.
 - Every install is listed with its last use, and disconnecting one revokes its token at once.
 - Uploaded printouts and data-room files are read as content: the reviewer's marks are the only requests,
   and printed text is never followed as an instruction.
+
+**Crypto.**
+- YouBank never asks for, stores or uses a private key or seed phrase, and has no custody, trading or
+  transfer feature. Connecting a wallet shares its address only.
+- The one transaction it ever asks a wallet for is a notarization: zero value, to the person's own
+  address, on Base, shown by their wallet for them to approve. The server verifies it by reading the
+  chain; it signs nothing.
+- Paid crypto APIs are called only when an entitled person clicks, never from a page load or a cron.
+**Errors.**
+- Nobody sees a raw error. A failure meant for people ("This draft was already sent", a permission or a
+  limit) is shown as written; anything that looks internal (SQL, a URL or a key, a stack trace, an HTML
+  error page, a provider's or a parser's own text) becomes "Something went wrong on our side (ref …)",
+  and the full error is logged as one JSON line under that reference (and sent to Sentry when
+  `SENTRY_DSN` is set). One rule decides, in `src/lib/error-text.ts`, shared by the server
+  (`src/lib/errors.ts`) and the browser (`src/lib/client/errors.ts`), which also screens whatever reaches
+  it some other way (a proxy's HTML page, an empty 500, "Failed to fetch") and falls back to a plain line
+  by status: sign in again (401), plan needed (402), no access (403), not found (404), a limit (429),
+  our side (5xx), offline.
+- Streams (the AI chat, workflows, Studio's agent, document answers) end with a screened message, never a
+  dropped connection; errors stored for later (a canvas step, a document's reading, a run) are screened
+  before they are written.
+- A crashed screen shows a plain message, the reference (Next's digest, also in the log line) and Try
+  again and Home. Each workspace has its own boundary, so the navigation stays; a tab left open across a
+  deploy is told to reload.
 
 **Scheduled endpoints.**
 - Cron and heartbeat endpoints require bearer secrets.
@@ -1401,15 +1622,57 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Trust has to be earned and measured.** Recent work shows a model's self-graded confidence is poorly
   calibrated. That is why autonomy is certified on the person's own decisions, with exact bounds and
   anytime-valid demotion.
-- **Pricing belongs in the $30–$300 per seat per month band.** The planned plans are below; nothing is
-  billed during the beta.
+- **Pricing started in the $30–$300 per seat per month band.** The cost model in
+  [docs/pricing.md](docs/pricing.md) moved it: model time is most of what YouBank costs, so the prices
+  below keep at least 70% of the monthly price (65% of the yearly one) at typical use and stay positive even
+  for someone who uses the whole AI allowance. See [Plans and billing](#plans-and-billing).
 
-| Plan | Price | For |
-|---|---|---|
-| Campus | Free with a .edu address | Students: the full terminal and data, AI workflows with a monthly allowance, a recruiting pack |
-| Pro | $39 a month, or $29 billed yearly | Individuals: higher limits, the relationships agent and one mailbox |
-| Deal Team | $149 per seat a month, three seats minimum | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces |
-| Enterprise | From $249 per seat a month, yearly | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+---
+
+## Plans and billing
+
+| Plan | Price | AI allowance per seat | For |
+|---|---|---|---|
+| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Campus | Free with a .edu address | $2 a day, $10 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
+| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox |
+| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces, assignable seats |
+| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+
+- **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
+  dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
+  - `src/lib/billing/costs.ts` holds the same model in code.
+  - `scripts/test-billing.ts` fails if a price, a cost or a new premium feature breaks the margin target.
+- **Premium features.** Premium features are listed in `src/lib/billing/features/`, one file per area,
+  each naming the least plan that includes it.
+  - Settings, under Plan, groups them by area and shows which are unlocked.
+  - The contract every premium feature follows is in [docs/premium.md](docs/premium.md).
+- **AI credit packs.** $10, $25 and $50 packs add $6, $15 and $32 of AI use, used only after the month's
+  allowance, oldest pack first; they never expire. Bought with a one-time Checkout on any plan.
+- **Allowance months** start on the billing anniversary for subscribers (and their seat holders) and on
+  the 1st (UTC) otherwise.
+- **Team seats.** The buyer of Deal Team or Enterprise holds one seat and gives the others to members of
+  a team they own or administer (Settings, under Plan). A seat count changed in the portal reaches
+  YouBank through the webhook, which takes back the newest seats beyond it.
+- **Billing is Stripe.**
+  - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
+    who already pays is sent to the portal; an open checkout for the same purchase is reused, others are
+    expired, and the create call carries an idempotency key, so nobody ends up with two subscriptions.
+  - `POST /api/billing/credits` starts a one-time Checkout for a credit pack.
+  - `POST /api/billing/portal` opens Stripe's billing portal (plan switches, seats, cancellation at period
+    end, card, invoices); `GET /api/billing/invoices` lists Stripe-hosted invoices and receipts.
+  - `GET|POST|DELETE /api/billing/seats` lists, gives and takes back seats.
+  - `POST /api/billing/webhook` checks Stripe's signature, then rewrites the person's `subscriptions` row
+    from the subscription as Stripe holds it now, grants packs once per payment intent, and takes back
+    refunded credits. Retried and out-of-order events change nothing extra.
+  - `POST /api/billing/confirm` stores what was bought as soon as someone is back from Checkout.
+  - `scripts/stripe-setup.ts` creates the products, prices, webhook endpoint and portal configuration
+    (`--live`, `--webhook`, `--tax`, `--dry-run`) and prints every variable to set.
+  - Without `STRIPE_SECRET_KEY`, the plan page shows the prices and says billing isn't switched on yet.
+- **Public pages.** `/pricing` (from `PLANS` and the packs), and draft `/terms`, `/privacy` and `/refunds`
+  marked for review by counsel.
+- **Launch day:** [docs/launch-billing.md](docs/launch-billing.md) is the step-by-step checklist.
+- **Nothing is billed during the beta** until the Stripe keys are set.
 
 ---
 
@@ -1435,8 +1698,7 @@ Three earlier research reports are behind the adaptive engine, the website and t
   - suggest new angles from what replies have in common.
 - **Company:**
   - SOC 2 Type I;
-  - properly licensed market data;
-  - billing for the plans above.
+  - properly licensed market data.
 - **Premium:** speaker labels for long M4A and MP4 recordings (needs cutting on the ML service); methane
   cards per plan (today Carbon Mapper is a site licence and its cards are shared findings).
 
@@ -1446,18 +1708,23 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 ```
 YouBank/
+  .github/workflows/desktop.yml   builds the desktop installers into a draft GitHub Release
+  desktop/                 YouBank for desktop (Tauri v2): the Rust app in src-tauri/, its own pages in src/
   docs/                    product thinking, decisions, specs, market research
   drizzle/                 hand-written SQL migrations (0001–0008)
   neon/autopilot.ts        the five-minute heartbeat relay (Neon Function)
   scripts/                 tests, end-to-end runs, migrations, snapshot, themes, backfill, preflight
-  src/app/                 routes: marketing, /for/<role>, /onboarding, /app/*, /office/* (the add-in), /api/*
+  src/app/                 routes: marketing, /for/<role>, /download, /onboarding, /app/*, /office/* (the add-in),
+                           /desktop/connect, /api/*
   src/components/
     crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
                            agent settings, engine insights, mailbox bar
     studio/                Studio home, workspace, grid, deck view, slide charts, state hook
     office/                the add-in's task pane, and the connect and install pages
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
-    terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS)
+    terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS,
+                           and the crypto screens CRYP TOKEN DEFI STBL YLD BTCN RAISE UNLK TRSY RWA WALLET)
+    crypto/                the Crypto page, wallet connection, portfolio, notarizing, the mining map, Dune
     workflows/             tool gallery, runner, form, output blocks
     theme/  charts/  motion/  ui/
   src/db/schema.ts         every table
@@ -1468,8 +1735,13 @@ YouBank/
                            checkpoints, the brand check, reading printouts and data rooms
     office/                the add-in: pairing and tokens, the Excel and PowerPoint adapters, the
                            manifest, its API client
+    desktop/               the desktop app's server side: pairing and tokens, the alerts feed,
+                           scheduled tasks, local files, Office sync, the release lookup
     ai/                    models, config, agent (OpenAI Responses and Anthropic), data tools, prompts
     edgar/  fmp/  vc/      SEC EDGAR and XBRL, prices, startup directory and Form D
+    crypto/                crypto data (CoinGecko, DefiLlama, mempool.space, public nodes, SEC frames),
+                           addresses, portfolio risk, valuation, notarization, mining sites and the map
+                           layer, Newsroom signals, assistant tools
     workflows/             tool contract, prompt builder, registry, a pack per role
     teams/  collab/  auth/ teams and roles, live collaboration, sign-in
     themes.ts calc.ts roles.ts metrics.ts company.ts
@@ -1480,9 +1752,12 @@ YouBank/
 | Doc | What |
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
+| [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
+| [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
 | [docs/04-comps-engine-spec.md](docs/04-comps-engine-spec.md) | Comps engine spec |
 | [docs/01-tech-ma-personas.md](docs/01-tech-ma-personas.md) | The original persona study |
 | [docs/research/](docs/research/) | Market research behind the tool packs, plus the Studio competitive landscape and the analyst grunt-work study |
+| [docs/mobile/](docs/mobile/) | Before-and-after screenshots of the phone layouts |

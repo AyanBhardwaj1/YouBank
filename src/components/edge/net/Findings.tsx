@@ -11,6 +11,7 @@ import { useState } from "react";
 import { post, useApi } from "@/components/news/client";
 import { onTabKeys, tabProps } from "../tabs";
 import { type CompanyView, type Exposure, type Intros, type Owners, type Picks, type Prediction, type Step } from "./client";
+import { errorMessage } from "@/lib/client/errors";
 
 type Tab = "buyers" | "targets" | "intros" | "exposure" | "owners" | "flags" | "deals";
 const TABS: { id: Tab; label: string }[] = [{ id: "buyers", label: "Likely buyers" }, { id: "targets", label: "Likely targets" }, { id: "intros", label: "Warm intros" }, { id: "exposure", label: "Exposure" }, { id: "owners", label: "Who owns it" }, { id: "flags", label: "Red flags" }, { id: "deals", label: "Deals" }];
@@ -74,7 +75,7 @@ function IntroList({ ticker, name }: { ticker: string; name: string }) {
     try {
       const r = await post<{ to: string; scheduled: boolean; reasons: string[] }>("/api/edge/graph/intro", { ticker, index: i });
       setDrafted((d) => ({ ...d, [i]: { ok: true, text: r.scheduled ? `Written to ${r.to}; autopilot sends it after its hold, inside your sending hours.` : `Written to ${r.to}; it is waiting in your review queue.` } }));
-    } catch (e) { setDrafted((d) => ({ ...d, [i]: { ok: false, text: e instanceof Error ? e.message : String(e) } })); } finally { setDrafting(null); }
+    } catch (e) { setDrafted((d) => ({ ...d, [i]: { ok: false, text: errorMessage(e) } })); } finally { setDrafting(null); }
   };
   const draft = (i: number) => {
     const it = data!.items[i];
