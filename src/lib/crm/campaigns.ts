@@ -268,16 +268,18 @@ export async function prepareCampaign(userId: string, campaignId: number, deadli
   const steps = normalizeSteps(campaign.steps);
   const now = new Date();
 
-  const leads = await db.select().from(schema.crmCampaignLeads).where(and(
+  // Autopilot asks every five minutes, so the backlog is counted from narrow rows; the full leads and
+  // their earlier emails are read only for the ones drafted now.
+  const leads = await db.select({ id: schema.crmCampaignLeads.id, email: schema.crmCampaignLeads.email, step: schema.crmCampaignLeads.step }).from(schema.crmCampaignLeads).where(and(
     eq(schema.crmCampaignLeads.campaignId, campaignId),
     or(eq(schema.crmCampaignLeads.status, "qualified"), and(eq(schema.crmCampaignLeads.status, "active"), lte(schema.crmCampaignLeads.nextDueAt, now))),
   )).orderBy(desc(schema.crmCampaignLeads.fit));
 
   const leadIds = leads.map((l) => l.id);
-  const drafts = leadIds.length
-    ? await db.select().from(schema.crmDrafts).where(inArray(schema.crmDrafts.campaignLeadId, leadIds)).orderBy(asc(schema.crmDrafts.createdAt))
+  const pending = leadIds.length
+    ? await db.select({ campaignLeadId: schema.crmDrafts.campaignLeadId }).from(schema.crmDrafts).where(and(inArray(schema.crmDrafts.campaignLeadId, leadIds), eq(schema.crmDrafts.status, "pending")))
     : [];
-  const waiting = new Set(drafts.filter((d) => d.status === "pending").map((d) => d.campaignLeadId));
+  const waiting = new Set(pending.map((d) => d.campaignLeadId));
 
   const startOfDay = new Date(); startOfDay.setUTCHours(0, 0, 0, 0);
   const [{ n: today }] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDrafts)
@@ -290,16 +292,20 @@ export async function prepareCampaign(userId: string, campaignId: number, deadli
   const ready = due.filter((l) => l.email);
   out.capped = ready.length > room;
   if (ready.length === 0 || room === 0) return out;
+  const chosenIds = ready.slice(0, room).map((l) => l.id);
+  const chosen = await db.select().from(schema.crmCampaignLeads).where(inArray(schema.crmCampaignLeads.id, chosenIds)).orderBy(desc(schema.crmCampaignLeads.fit));
+  const sent = await db.select({ campaignLeadId: schema.crmDrafts.campaignLeadId, subject: schema.crmDrafts.subject, body: schema.crmDrafts.body }).from(schema.crmDrafts)
+    .where(and(inArray(schema.crmDrafts.campaignLeadId, chosenIds), eq(schema.crmDrafts.status, "sent"))).orderBy(asc(schema.crmDrafts.createdAt));
 
   const [ctx, settings, playbook] = await Promise.all([loadUserContext(userId), getSettings(userId), listPlaybook(userId)]);
   const [lessons, examples] = await Promise.all([lessonsFor(userId, "campaign"), ownExamples(userId, `${campaign.goal} ${campaign.instructions}`)]);
   const orders = [standingOrders(settings), lessons, examples].filter(Boolean).join("\n\n");
   const book = renderPlaybook(selectPlaybook(asEntries(playbook), `${campaign.goal} ${campaign.icp} ${campaign.instructions}`));
-  const threadIds = ready.map((l) => l.threadId).filter((x): x is number => x != null);
+  const threadIds = chosen.map((l) => l.threadId).filter((x): x is number => x != null);
   const threads = threadIds.length ? await db.select().from(schema.crmThreads).where(inArray(schema.crmThreads.id, threadIds)) : [];
 
-  const { errors } = await pool(ready.slice(0, room), 3, deadline, async (lead) => {
-    const earlier = drafts.filter((d) => d.campaignLeadId === lead.id && d.status === "sent").map((d) => ({ subject: d.subject, body: d.body }));
+  const { errors } = await pool(chosen, 3, deadline, async (lead) => {
+    const earlier = sent.filter((d) => d.campaignLeadId === lead.id).map((d) => ({ subject: d.subject, body: d.body }));
     const directory = await directoryRecord(lead.startupId);
     if (lead.step === 0 && !campaign.consentRegions && needsConsent(lead.email)) {
       await db.update(schema.crmCampaignLeads).set({ status: "disqualified", fitReason: "Skipped: cold email to this country usually needs prior consent (GDPR, CASL). Tick the consent box on the campaign if you have a lawful basis." })

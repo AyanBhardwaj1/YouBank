@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/user";
 import { encryptionReady } from "@/lib/crm/crypto";
 import { authUrl, googleConfig } from "@/lib/crm/gmail";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +12,13 @@ export const OAUTH_STATE_COOKIE = "yb-gmail-state";
 
 /** Start the Google consent flow. The state nonce is held in an httpOnly cookie and checked on return. */
 export async function GET(req: Request) {
-  const user = await currentUser();
   const origin = new URL(req.url).origin;
+  const user = await currentUser().catch((e) => { logError(e, { where: "gmail-connect-session" }); return null; });
   if (!user) return NextResponse.redirect(`${origin}/sign-in`);
   if (!encryptionReady()) {
-    return NextResponse.redirect(`${origin}/app/crm?error=${encodeURIComponent("EMAIL_TOKEN_SECRET is not set, so a mailbox cannot be connected safely.")}`);
+    // The setting's name is for the operator's log, not the page.
+    logError(new Error("EMAIL_TOKEN_SECRET is not set, so a mailbox cannot be connected"), { where: "gmail-connect" });
+    return NextResponse.redirect(`${origin}/app/crm?error=${encodeURIComponent("Mailbox connections are not set up on this server yet, so a mailbox cannot be connected safely.")}`);
   }
   let url: string;
   try {

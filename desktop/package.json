@@ -1,0 +1,19 @@
+{
+  "name": "youbank-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "YouBank for Windows, macOS and Linux (Tauri v2). See README.md.",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icons": "tauri icon ../src/app/icon.svg --fit contain -o src-tauri/icons",
+    "check:web": "node scripts/check-frontend.js",
+    "check:rust": "cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "type": "module"
+}

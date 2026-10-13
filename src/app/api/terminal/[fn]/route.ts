@@ -16,6 +16,8 @@ import { recordSkill, SKILLS, skillsView, type Evidence } from "@/lib/terminal/s
 import { analystView, dividendView, earningsView } from "@/lib/terminal/street";
 import { waccView } from "@/lib/terminal/wacc";
 import { describeFailure } from "@/lib/errors";
+// Crypto screens (CRYP, TOKEN, DEFI…) are served here too, so they share caching, errors and the AI read.
+import { CRYPTO_EXPLAIN, CRYPTO_TTL, cryptoCompute, isCryptoFn } from "@/lib/crypto/views";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -63,7 +65,9 @@ async function compute(fn: string, p: URLSearchParams, userId: string): Promise<
       const u = await universe();
       return { year: u.year, universe: u.rows.length, metrics: METRICS, rows: applyFilters(u.rows, filters.filter((f) => f.metric in METRICS), sortKey && sortKey in METRICS ? { metric: sortKey, desc: p.get("dir") !== "asc" } : undefined) };
     }
-    default: throw fail(`Unknown function ${fn}`, 404);
+    default:
+      if (isCryptoFn(fn)) return cryptoCompute(fn, p);
+      throw fail(`Unknown function ${fn}`, 404);
   }
 }
 
@@ -87,7 +91,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
       try { return { data: await compute(fn, params, user.id) }; } catch (error) { return { error }; }
     });
     const headers = sourceHeaders(run.providers, run.notes);
-    if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? 60}` } });
+    if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? CRYPTO_TTL[fn] ?? 60}` } });
     const e = run.value.error;
     // No feed has this company's prices: offer what research can find (price, range, beta) instead of nothing.
     if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {
@@ -132,7 +136,7 @@ const Quiz = z.object({
   explanation: z.string(),
 });
 
-const EXPLAIN_FNS: Record<string, string> = { price: "price, trend and risk analytics", credit: "credit models and implied rating", quality: "earnings-quality scores", forecast: "a revenue forecast with conformal intervals against the Street", debt: "a debt maturity ladder", earnings: "earnings surprises and reactions", analysts: "analyst ratings and targets", dividends: "dividend history and safety", wacc: "a cost of capital build with a Monte Carlo range", curve: "the Treasury yield curve", macro: "US economic outlooks", indices: "world equity indices", sectors: "sector performance", movers: "the day's movers", fx: "currencies", commodities: "commodities" };
+const EXPLAIN_FNS: Record<string, string> = { price: "price, trend and risk analytics", credit: "credit models and implied rating", quality: "earnings-quality scores", forecast: "a revenue forecast with conformal intervals against the Street", debt: "a debt maturity ladder", earnings: "earnings surprises and reactions", analysts: "analyst ratings and targets", dividends: "dividend history and safety", wacc: "a cost of capital build with a Monte Carlo range", curve: "the Treasury yield curve", macro: "US economic outlooks", indices: "world equity indices", sectors: "sector performance", movers: "the day's movers", fx: "currencies", commodities: "commodities", ...CRYPTO_EXPLAIN };
 
 /** Screens in plain English, portfolios, skill evidence, and short AI reads of a screen. */
 export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> }) {
@@ -172,7 +176,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
           const target = typeof body?.fn === "string" ? body.fn : "";
           if (!(target in EXPLAIN_FNS)) return NextResponse.json({ error: "Nothing to explain" }, { status: 400 });
           const params = new URLSearchParams();
-          for (const k of ["ticker", "erp", "beta"]) if (typeof body?.[k] === "string") params.set(k, body[k] as string);
+          for (const k of ["ticker", "erp", "beta", "q", "stable"]) if (typeof body?.[k] === "string") params.set(k, body[k] as string);
           const data = (await compute(target, params, user.id)) as Record<string, unknown>;
           // FRED series are display-only under their terms: the model sees the BLS and Treasury outlooks only.
           const safe = target === "macro" ? { ...data, series: undefined } : data;

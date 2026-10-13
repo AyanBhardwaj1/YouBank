@@ -6,7 +6,7 @@
  * behind all of it. Each sector's lanes are built from public sources (./sources.ts), cached for a
  * day, and kept fresh by the Newsroom pass, so opening a radar never waits on a government server.
  */
-import { cacheGet, cacheSet } from "@/lib/cache";
+import { cacheExpiry, cacheGet, cacheSet } from "@/lib/cache";
 import type { SectorKey } from "../desks";
 import * as S from "./sources";
 import type { RadarEntry } from "./sources";
@@ -110,6 +110,8 @@ export const isSectorRadar = (s: string): s is SectorRadarId => s in RADARS;
 export type RadarBuild = { builtAt: string; lanes: RadarLane[] };
 const KEY = (s: SectorRadarId) => `news:radar:v1:${s}`;
 const DAY = 86_400_000;
+/** How long a built radar is kept; its age is this less the time it has left. */
+const KEEP = 2 * DAY;
 
 /** Weight first, freshness second: a week-old approval still outranks yesterday's minor notice. Pure, for tests. */
 export function rankEntries(xs: RadarEntry[], now = Date.now()): RadarEntry[] {
@@ -128,7 +130,7 @@ export async function buildRadar(sector: SectorRadarId): Promise<RadarBuild> {
     return { ...lane, entries: last?.entries ?? [], status: last ? "ok" : "unavailable" };
   }));
   const build = { builtAt: new Date().toISOString(), lanes };
-  if (lanes.some((l) => l.status === "ok")) await cacheSet(KEY(sector), JSON.stringify(build), 2 * DAY).catch(() => undefined);
+  if (lanes.some((l) => l.status === "ok")) await cacheSet(KEY(sector), JSON.stringify(build), KEEP).catch(() => undefined);
   return build;
 }
 
@@ -144,9 +146,9 @@ export async function warmRadars(deadline: number, max = 2): Promise<number> {
   let n = 0;
   for (const s of Object.keys(RADARS) as SectorRadarId[]) {
     if (n >= max || Date.now() > deadline - 20_000) break;
-    const hit = await cacheGet(KEY(s)).catch(() => null);
-    let age = Infinity;
-    if (hit) { try { age = Date.now() - Date.parse((JSON.parse(hit) as RadarBuild).builtAt); } catch { /* stale */ } }
+    // The age from the cache's expiry alone, so checking does not download each radar (tens of KB).
+    const exp = await cacheExpiry(KEY(s)).catch(() => null);
+    const age = exp === null ? Infinity : KEEP - (exp - Date.now());
     if (age < 3 * 3_600_000) continue;
     await buildRadar(s).catch(() => null);
     n++;

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "YouBank",
+  "version": "0.1.0",
+  "identifier": "com.youbank.desktop",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost",
+      "freezePrototype": true,
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "dmg",
+      "app",
+      "appimage",
+      "deb"
+    ],
+    "createUpdaterArtifacts": false,
+    "category": "Finance",
+    "shortDescription": "YouBank for desktop",
+    "longDescription": "The YouBank financial research site in its own window, with quick ask from any app, native alerts, local files in your research and Studio models you edit in Excel.",
+    "copyright": "YouBank",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ],
+        "desktopTemplate": "linux/youbank.desktop"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "youbank"
+        ]
+      }
+    },
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://youbank-nu.vercel.app/api/desktop/update",
+        "https://github.com/AyanBhardwaj1/YouBank/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

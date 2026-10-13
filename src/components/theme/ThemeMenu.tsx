@@ -22,7 +22,7 @@ export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} title={`Style: ${theme.name}`} aria-label="Change style"
-        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg">
+        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10">
         <Icon name="Palette" className="h-3.5 w-3.5" />
         <span className={nameClass}>{theme.name}</span>
         <span className="flex gap-0.5">
@@ -30,8 +30,8 @@ export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: {
         </span>
       </button>
       {open && (
-        <div className={`rise float absolute z-50 mt-1.5 w-[440px] max-w-[88vw] ctl border border-line-strong bg-raised p-2 ${align === "right" ? "right-0" : "left-0"}`} onMouseLeave={() => preview(null)}>
-          <div className="mb-1.5 flex items-baseline justify-between px-1 text-[10.5px] uppercase tracking-wider text-muted"><span>Interface style</span><span className="normal-case tracking-normal">hover to preview</span></div>
+        <div className={`rise float absolute z-50 mt-1.5 w-[440px] max-w-[88vw] ctl border border-line-strong bg-raised p-2 max-md:fixed max-md:inset-x-2 max-md:top-[calc(var(--safe-t)+52px)] max-md:mt-0 max-md:w-auto max-md:max-w-none ${align === "right" ? "right-0" : "left-0"}`} onMouseLeave={() => preview(null)}>
+          <div className="mb-1.5 flex items-baseline justify-between px-1 text-[10.5px] uppercase tracking-wider text-muted"><span>Interface style</span><span className="normal-case tracking-normal max-md:hidden">hover to preview</span></div>
           <div className="grid max-h-[62vh] grid-cols-3 gap-1.5 overflow-auto sm:grid-cols-4">
             {THEMES.map((t) => (
               <button key={t.id} type="button" onMouseEnter={() => preview(t.id)} onFocus={() => preview(t.id)} onClick={() => { setTheme(t.id); setOpen(false); }}

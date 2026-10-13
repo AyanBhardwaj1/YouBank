@@ -7,13 +7,11 @@ import { requireDb, schema } from "@/db";
 import { logError } from "@/lib/errors";
 import { deliverAlert } from "@/lib/news/alerts";
 import { readerFor } from "@/lib/news/reader";
+import { siteUrl } from "@/lib/site";
 
-/** The address links in emails and Slack point at. */
+/** The address links in emails and Slack point at: the site's one setting (src/lib/site.ts). */
 export function appOrigin(): string {
-  const explicit = process.env.YOUBANK_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  const prod = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  return prod ? `https://${prod}` : "https://youbank-nu.vercel.app";
+  return siteUrl();
 }
 
 export type EdgeAlert = { subject: string; title: string; body: string; url: string; reasons: string[]; urgent?: boolean };

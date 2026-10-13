@@ -5,6 +5,7 @@ import { encryptionReady } from "@/lib/crm/crypto";
 import { MAIL_PRESETS } from "@/lib/crm/imap";
 import { rateLimit } from "@/lib/locks";
 import { errorResponse } from "@/lib/errors";
+import { requireMailboxRoom } from "@/lib/crm/plan";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
     } | null;
     if (!body?.email || !body.password) return NextResponse.json({ error: "Email and app password are required" }, { status: 400 });
     await rateLimit(`mail-connect:${user.id}`, 10, 3_600_000, "Too many connection attempts this hour. Check the settings and try again later.");
+    // A second mailbox is premium (relationships.extra-mailboxes); a plan without it gets a 402 to show in line.
+    await requireMailboxRoom(user, body.email);
     try {
       const account = await saveImapAccount(user.id, { ...body, email: body.email, password: body.password });
       return NextResponse.json(toSafe(account), { status: 201 });

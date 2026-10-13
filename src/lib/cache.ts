@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 
 /**
@@ -42,8 +42,30 @@ export async function cacheGet(key: string): Promise<string | null> {
   }
   if (db) {
     try {
-      const [row] = await db.select().from(schema.kvCache).where(eq(schema.kvCache.key, key));
-      if (row && row.expiresAt.getTime() > Date.now()) { remember(key, { exp: row.expiresAt.getTime(), value: row.value }); return row.value; }
+      // Expiry is checked in the query, so an expired value (up to MAX_DB_BYTES) is never transferred.
+      const [row] = await db.select({ value: schema.kvCache.value, expiresAt: schema.kvCache.expiresAt }).from(schema.kvCache)
+        .where(and(eq(schema.kvCache.key, key), gt(schema.kvCache.expiresAt, new Date())));
+      if (row) { remember(key, { exp: row.expiresAt.getTime(), value: row.value }); return row.value; }
+    } catch { /* db unavailable */ }
+  }
+  return null;
+}
+
+/** When a key expires (epoch ms), or null when it is missing or expired. Reads the expiry only, never the value. */
+export async function cacheExpiry(key: string): Promise<number | null> {
+  const m = mem.get(key);
+  if (m && m.exp > Date.now()) return m.exp;
+  if (DISK_OK) {
+    try {
+      const raw = JSON.parse(await readFile(path.join(DISK_DIR, safe(key)), "utf8")) as { exp: number };
+      if (raw.exp > Date.now()) return raw.exp;
+    } catch { /* miss */ }
+  }
+  if (db) {
+    try {
+      const [row] = await db.select({ expiresAt: schema.kvCache.expiresAt }).from(schema.kvCache)
+        .where(and(eq(schema.kvCache.key, key), gt(schema.kvCache.expiresAt, new Date())));
+      if (row) return row.expiresAt.getTime();
     } catch { /* db unavailable */ }
   }
   return null;

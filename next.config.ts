@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
   // multi-user collaboration flows get tested locally.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   poweredByHeader: false,
+  // laz-perf (lidar decompression, WebAssembly) is loaded from node_modules at run time, and its .wasm
+  // must travel with the point cloud route. The files are named by their real place in pnpm's store:
+  // node_modules/laz-perf is a symlink, and Vercel refuses a function whose files sit in a symlinked folder.
+  serverExternalPackages: ["laz-perf"],
+  outputFileTracingIncludes: { "/api/edge/lidar": ["./node_modules/.pnpm/laz-perf@*/node_modules/laz-perf/package.json", "./node_modules/.pnpm/laz-perf@*/node_modules/laz-perf/lib/node/**/*"] },
   experimental: {
     // `motion` ships a large barrel; lucide-react and the rest of our deps are optimized by default.
     optimizePackageImports: ["motion"],

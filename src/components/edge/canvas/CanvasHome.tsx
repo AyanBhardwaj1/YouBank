@@ -13,6 +13,7 @@ import { Icon } from "@/components/ui/Icon";
 import { MODULE_LABEL, NODE, type Module } from "@/lib/edge/canvas/catalog";
 import { ago, post, useApi, useNow } from "../client";
 import { MODULE_COLOR } from "./colors";
+import { errorMessage } from "@/lib/client/errors";
 
 type Summary = { id: number; title: string; description: string; template: string; teamId: number | null; parentId: number | null; branch: string; mine: boolean; updatedAt: string; nodeTypes: string[]; lastRun: { id: number; status: string; at: string } | null; monitor: { schedule: string; active: boolean } | null };
 type Home = { canvases: Summary[]; templates: { id: string; title: string; blurb: string; modules: Module[]; ready: boolean }[]; available: string[] };
@@ -39,7 +40,7 @@ export function CanvasHome() {
     try {
       const r = await post<{ canvas: { id: number }; dropped?: string[] }>("/api/edge/canvases", body);
       router.push(`/app/edge/canvas/${r.canvas.id}`);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); setBusy(null); }
+    } catch (e) { setError(errorMessage(e)); setBusy(null); }
   };
 
   const stories = useApi<{ stories: { slug: string; title: string; visibility: string; createdAt: string; url: string }[] }>("/api/edge/stories");

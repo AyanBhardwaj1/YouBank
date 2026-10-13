@@ -162,8 +162,14 @@ export function RolePage({ role, tools }: { role: RoleId; tools: ToolSummary[] }
               <Link key={id} href={`/for/${id}`} className={`ctl px-2 py-1 ${id === role ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{ROLES[id].short}</Link>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2"><ThemeMenu /><Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg">Sign in</Link></div>
+          <div className="ml-auto flex items-center gap-2"><ThemeMenu /><Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg max-md:flex max-md:min-h-10 max-md:items-center">Sign in</Link></div>
         </div>
+        {/* Phones: the other roles as one sideways-scrolling row under the bar, rather than hidden. */}
+        <nav aria-label="Roles" className="no-scrollbar flex gap-1.5 overflow-x-auto px-5 pb-2.5 text-[12.5px] md:hidden">
+          {ROLE_IDS.map((id) => (
+            <Link key={id} href={`/for/${id}`} aria-current={id === role ? "page" : undefined} className={`flex min-h-9 shrink-0 items-center rounded-full border px-3.5 ${id === role ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted active:bg-elevated"}`}>{ROLES[id].short}</Link>
+          ))}
+        </nav>
       </header>
 
       <section className="mx-auto max-w-[1240px] px-5 pb-8 pt-12">

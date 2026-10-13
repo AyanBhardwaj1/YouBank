@@ -1,6 +1,6 @@
 import type { Profile } from "./roles";
 
-export type FunctionGroup = "company" | "market" | "workspace" | "edge";
+export type FunctionGroup = "company" | "market" | "workspace" | "edge" | "crypto";
 type FnDef = { label: string; hint: string; group: FunctionGroup; /** Takes free text after the code, e.g. a screen in words. */ args?: boolean };
 
 /**
@@ -43,6 +43,18 @@ export const FUNCTIONS = {
   MA: { label: "M&A", hint: "Recent mergers and acquisitions", group: "market" },
   EQS: { label: "Screener", hint: "Screen every US filer, in plain English", group: "market", args: true },
   PORT: { label: "Portfolio risk", hint: "Risk of a whole book: PORT AAPL 40 MSFT 30 KO 30", group: "market", args: true },
+  // Crypto (src/components/terminal/screens/CryptoScreens.tsx): free public data, no ticker needed.
+  CRYP: { label: "Crypto markets", hint: "Largest tokens, market cap, bitcoin dominance, DeFi TVL, stablecoins", group: "crypto" },
+  TOKEN: { label: "Token", hint: "One token: price, supply, risk, fees and revenue, multiples, unlocks: TOKEN ETH", group: "crypto", args: true },
+  DEFI: { label: "DeFi", hint: "Value locked by chain, category and protocol; fees and revenue", group: "crypto" },
+  STBL: { label: "Stablecoins", hint: "Stablecoin supply and net flows, by coin and chain", group: "crypto" },
+  YLD: { label: "DeFi yields", hint: "The largest pools with base and reward APY", group: "crypto" },
+  BTCN: { label: "Bitcoin network", hint: "Fees, hashrate, difficulty, pools, mining economics", group: "crypto" },
+  RAISE: { label: "Crypto rounds", hint: "Crypto venture rounds, categories and lead investors", group: "crypto" },
+  UNLK: { label: "Token unlocks", hint: "Scheduled token unlocks in the next 60 days", group: "crypto" },
+  TRSY: { label: "Crypto treasuries", hint: "Public companies' crypto holdings, from SEC filings", group: "crypto" },
+  RWA: { label: "Tokenized assets", hint: "Tokenized treasuries, private credit and other real-world assets", group: "crypto" },
+  WALLET: { label: "Wallet", hint: "Read-only balances and risk of any address: WALLET name.eth", group: "crypto", args: true },
   LEARN: { label: "Learn", hint: "Your mastery of each function and what to learn next", group: "workspace" },
   PG: { label: "Peer groups", hint: "Saved peer groups", group: "workspace" },
   TOOLS: { label: "Tools", hint: "Workflows and calculators for your role", group: "workspace" },

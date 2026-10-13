@@ -16,6 +16,8 @@ import { sendDraft } from "./send";
 import { claimLock, getSettings, internalDomains, releaseLock, type SettingsRow } from "./settings";
 import { syncAccount, type SyncResult } from "./sync";
 import { describeFailure } from "@/lib/errors";
+import { AUTOPILOT, CAMPAIGNS, planAllows } from "./plan";
+import { PLANS } from "@/lib/billing/plans";
 
 /**
  * The autopilot: the part of the agent that acts on its own.
@@ -57,11 +59,17 @@ async function overrideFor(draft: DraftRow): Promise<string | null> {
   return null;
 }
 
+/** Why an automatic send waits when Autopilot is switched on but the plan does not include it. */
+const PLAN_HOLD = `Autopilot is not part of your plan now (it comes with ${PLANS.team.name})`;
+
 /** Everything autoSendVerdict needs to know about one draft, read fresh. */
 async function checkDraft(draft: DraftRow, settings: SettingsRow) {
   const db = requireDb();
   const scope = scopeOf(draft);
   const level = scope ? levelFor(settings.autopilot, scope, await overrideFor(draft)) : "approve";
+  // Autopilot is premium: without it in the plan, the switch counts as off and the draft waits for the person.
+  const planOk = await planAllows(draft.userId, AUTOPILOT);
+  const enabled = settings.autopilot.enabled && planOk;
   const [questions, contact, answering, autoSent] = await Promise.all([
     openQuestionsFor(draft.id),
     draft.contactId ? db.select({ optedOutAt: schema.crmContacts.optedOutAt }).from(schema.crmContacts).where(eq(schema.crmContacts.id, draft.contactId)).then((r) => r[0]) : null,
@@ -70,13 +78,17 @@ async function checkDraft(draft: DraftRow, settings: SettingsRow) {
       ? db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDrafts).where(and(eq(schema.crmDrafts.threadId, draft.threadId), eq(schema.crmDrafts.sentBy, "autopilot"), gte(schema.crmDrafts.sentAt, new Date(Date.now() - 86_400_000)))).then((r) => r[0]?.n ?? 0)
       : 0,
   ]);
-  const verdict = autoSendVerdict({
-    enabled: settings.autopilot.enabled, level, kind: draft.kind, confidence: draft.confidence, sensitive: draft.sensitive,
+  const checked = autoSendVerdict({
+    enabled, level, kind: draft.kind, confidence: draft.confidence, sensitive: draft.sensitive,
     openQuestions: draft.citations.length, needsInput: questions.length, body: draft.body, subject: draft.subject,
     recipients: draft.toAddresses.map((a) => a.address), recipientOptedOut: !!contact?.optedOutAt,
     replyingToAutomated: !!answering?.automated, autoSentInThread: autoSent,
   });
-  if (level === "auto" && settings.autopilot.enabled && verdict.ok) {
+  // The person switched Autopilot on, so "Autopilot is off" would mislead: say it is the plan.
+  const verdict = settings.autopilot.enabled && !planOk
+    ? { ...checked, reasons: checked.reasons.map((r) => (r === "Autopilot is off" ? PLAN_HOLD : r)) }
+    : checked;
+  if (level === "auto" && enabled && verdict.ok) {
     // Security: links, addresses and account numbers must come from the person, never from inbound text.
     const playbook = await listPlaybook(draft.userId);
     const approved = [settings.knowledge, settings.instructions, settings.signature, settings.about, ...playbook.map((p) => p.answer)].join("\n");
@@ -230,6 +242,15 @@ export async function sendDue(userId: string, origin: string, deadline: number):
     .orderBy(schema.crmDrafts.scheduledFor).limit(40);
   if (due.length === 0) return out;
 
+  // Automatic sends need Autopilot in the plan, checked before every send pass that has work: without
+  // it, what was scheduled waits for the person with the reason, and nothing goes out on its own.
+  if (!(await planAllows(userId, AUTOPILOT))) {
+    const held = await db.update(schema.crmDrafts).set({ scheduledFor: null, holdReason: `${PLAN_HOLD}, so this waits for you to send it.` })
+      .where(and(eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.status, "pending"), isNotNull(schema.crmDrafts.scheduledFor))).returning({ id: schema.crmDrafts.id });
+    out.held = held.length;
+    return out;
+  }
+
   const settings = await getSettings(userId);
   const ap = settings.autopilot;
   if (!ap.enabled) {
@@ -356,8 +377,10 @@ export async function tick(userId: string, origin: string, deadline: number): Pr
 
     if (Date.now() < deadline - 45_000) {
       const db = requireDb();
-      const live = await db.select({ id: schema.crmCampaigns.id }).from(schema.crmCampaigns)
+      const active = await db.select({ id: schema.crmCampaigns.id }).from(schema.crmCampaigns)
         .where(and(eq(schema.crmCampaigns.userId, userId), eq(schema.crmCampaigns.status, "active")));
+      // Campaign steps are drafted on the heartbeat only for plans that include campaigns.
+      const live = active.length && (await planAllows(userId, CAMPAIGNS)) ? active : [];
       for (const c of live) {
         if (Date.now() > deadline - 45_000) break;
         const r = await attempt("campaign", () => prepareCampaign(userId, c.id, deadline - 45_000));

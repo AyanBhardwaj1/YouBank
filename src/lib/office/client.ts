@@ -2,6 +2,8 @@
  * The add-in's side of the YouBank API: requests carry the device token (Office blocks the site's
  * cookies in its frames), large bodies are gzipped, and agent runs stream as newline-delimited JSON.
  */
+import { apiError } from "@/lib/client/errors";
+
 const TOKEN_KEY = "youbank.office.token";
 
 export const token = {
@@ -38,9 +40,8 @@ export async function request(path: string, init: { method?: string; json?: unkn
 
 export async function api<T>(path: string, init: Parameters<typeof request>[1] = {}): Promise<T> {
   const res = await request(path, init);
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((data as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
-  return data as T;
+  if (!res.ok) throw await apiError(res);
+  return (await res.json().catch(() => null)) as T;
 }
 
 /** Newline-delimited JSON events from a streaming response, as they arrive. */
@@ -57,10 +58,11 @@ export async function* ndjson<T>(res: Response): AsyncGenerator<T> {
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      if (line) yield JSON.parse(line) as T;
+      // A malformed line (a proxy's note, a cut-off write) is skipped rather than ending the run.
+      if (line) { try { yield JSON.parse(line) as T; } catch { /* skip */ } }
     }
   }
-  if (buf.trim()) yield JSON.parse(buf) as T;
+  if (buf.trim()) { try { yield JSON.parse(buf) as T; } catch { /* cut off */ } }
 }
 
 /**
