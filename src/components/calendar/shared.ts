@@ -5,6 +5,7 @@
  * the types the API returns, and time formatting on the person's own clock.
  */
 import type { Meeting } from "@/lib/calendar/meetings";
+import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { ianaZone, utcToWall, wallDay, wallToUtc, UTC_ZONE, type Zone } from "@/lib/calendar/tz";
 
 export type { Meeting };
@@ -13,12 +14,15 @@ export const browserTz = (): string => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
 };
 
-export async function calApi<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: { "content-type": "application/json", "x-timezone": browserTz(), ...(init?.headers ?? {}) } });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error((body as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
-  return body as T;
+/**
+ * fetchJson (src/lib/client/errors.ts) with the browser's zone attached. Failures reject with an
+ * ApiError whose message is safe to show; render caught errors with errorMessage(e).
+ */
+export function calApi<T>(url: string, init?: RequestInit): Promise<T> {
+  return fetchJson<T>(url, { ...init, headers: { "content-type": "application/json", "x-timezone": browserTz(), ...(init?.headers ?? {}) } });
 }
+
+export { errorMessage };
 
 export type ProviderId = "google" | "microsoft" | "caldav" | "ics";
 export type Account = { id: number; provider: ProviderId; address: string; displayName: string; status: string; lastError: string; lastSyncAt: string | null; host: string };

@@ -13,8 +13,9 @@ import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
+import { safeText } from "@/lib/client/errors";
 import { useFeature } from "@/lib/client/plan";
-import { browserTz, btn, calApi, colorOf, input, PROVIDER_LABEL, type Account, type Overview, type ProviderId } from "./shared";
+import { browserTz, btn, calApi, colorOf, input, PROVIDER_LABEL, type Account, type Overview, type ProviderId, errorMessage } from "./shared";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const BLANK_DAV = { preset: "icloud", serverUrl: "", username: "", password: "" };
@@ -35,13 +36,13 @@ export function CalendarSettings() {
   const [video, setVideo] = useState("");
   const multi = useFeature("calendar.multi_account");
 
-  const load = useCallback(() => calApi<Overview>("/api/calendar").then((o) => { setOv(o); setVideo(o.prefs.videoUrl); }, (e: Error) => setError(e.message)), []);
+  const load = useCallback(() => calApi<Overview>("/api/calendar").then((o) => { setOv(o); setVideo(o.prefs.videoUrl); }, (e: unknown) => setError(errorMessage(e))), []);
   useEffect(() => {
     void load().then(() => {
       // The OAuth callback comes back here with ?connected= or ?error=.
       const q = new URLSearchParams(window.location.search);
       if (q.get("connected")) setNotice(`Connected ${q.get("connected")}. Your calendars are syncing now.`);
-      if (q.get("error")) setError(q.get("error"));
+      if (q.get("error")) setError(safeText(q.get("error")));
     });
   }, [load]);
 
@@ -52,7 +53,7 @@ export function CalendarSettings() {
       if (msg) setNotice(msg);
       await load();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -122,7 +123,7 @@ export function CalendarSettings() {
                 <button type="button" onClick={() => disconnect(a)} disabled={!!busy} className={btn.danger}>Disconnect</button>
               </span>
             </div>
-            {a.lastError && <p className="mt-1 text-[11px] text-neg">{a.lastError.slice(0, 300)}</p>}
+            {a.lastError && <p className="mt-1 text-[11px] text-neg">{safeText(a.lastError).slice(0, 300)}</p>}
             <div className="mt-2 flex flex-col gap-1">
               {calendars.filter((c) => c.accountId === a.id).map((c) => (
                 <div key={c.id} className="flex flex-wrap items-center gap-2 text-[11.5px]">

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
 import { wallToUtc } from "@/lib/calendar/tz";
-import { browserTz, btn, calApi, fmt, input, zoneFor, type Meeting, type Overview } from "./shared";
+import { browserTz, btn, calApi, fmt, input, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
 
 export type SchedulePrefill = { title?: string; attendees?: { email: string; name?: string }[]; description?: string };
 type Slot = { start: string; end: string; label: string };
@@ -61,7 +61,7 @@ export function Scheduler({ open, onClose, onDone, prefill, reschedule }: {
       setSlots(r.slots); setLive(r.live);
       setPicked((p) => (p && r.slots.some((s) => s.start === p) ? p : r.slots[0]?.start ?? ""));
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -83,7 +83,7 @@ export function Scheduler({ open, onClose, onDone, prefill, reschedule }: {
       }
       if (o.calendars.some((c) => c.canWrite)) void findTimes(minutes);
       else setSlots([]);
-    }, (e: Error) => { if (alive) setError(e.message); });
+    }, (e: unknown) => { if (alive) setError(errorMessage(e)); });
     return () => { alive = false; };
     // Once per opening: the parent mounts this component afresh each time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,7 +121,7 @@ export function Scheduler({ open, onClose, onDone, prefill, reschedule }: {
       }
       onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(null);
     }

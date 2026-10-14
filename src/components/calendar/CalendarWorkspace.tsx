@@ -11,10 +11,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { safeText } from "@/lib/client/errors";
 import { useSubNav } from "@/lib/subnav";
 import { EventPanel } from "./EventPanel";
 import { Scheduler, type SchedulePrefill } from "./Scheduler";
-import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview } from "./shared";
+import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
 
 type View = "day" | "week" | "agenda";
 const VIEWS: { id: View; label: string }[] = [{ id: "day", label: "Day" }, { id: "week", label: "Week" }, { id: "agenda", label: "Agenda" }];
@@ -79,7 +80,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
     return { from: monday, to: dayStart(zone, monday, 7), days: 7 };
   }, [view, anchor, zone]);
 
-  const loadOverview = useCallback(() => calApi<Overview>("/api/calendar").then(setOv, (e: Error) => setError(e.message)), []);
+  const loadOverview = useCallback(() => calApi<Overview>("/api/calendar").then(setOv, (e: unknown) => setError(errorMessage(e))), []);
   useEffect(() => { if (!needsMigration) void loadOverview(); }, [needsMigration, loadOverview, tick]);
 
   const rangeKey = `${range.from}:${range.to}:${tick}`;
@@ -88,7 +89,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
     if (needsMigration) return;
     let live = true;
     calApi<{ meetings: Meeting[] }>(`/api/calendar/events?from=${new Date(range.from).toISOString()}&to=${new Date(range.to).toISOString()}`)
-      .then((r) => { if (live) setMeetings(r.meetings); }, (e: Error) => { if (live) setError(e.message); })
+      .then((r) => { if (live) setMeetings(r.meetings); }, (e: unknown) => { if (live) setError(errorMessage(e)); })
       .finally(() => { if (live) setLoadedKey(rangeKey); });
     return () => { live = false; };
   }, [range.from, range.to, needsMigration, rangeKey]);
@@ -101,9 +102,9 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
     try {
       const r = await calApi<{ results: { written: number; error?: string }[] }>("/api/calendar/sync", { method: "POST", body: "{}" });
       const failed = r.results.filter((x) => x.error);
-      say(failed.length ? `Synced, but ${failed.length} ${failed.length === 1 ? "account" : "accounts"} had a problem: ${failed[0].error}` : "Up to date.");
+      say(failed.length ? `Synced, but ${failed.length} ${failed.length === 1 ? "account" : "accounts"} had a problem: ${safeText(failed[0].error)}` : "Up to date.");
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -134,7 +135,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
       {(error || notice) && <div className={`mt-4 ctl border px-3 py-2 text-[12px] ${error ? "border-neg/40 bg-neg/5 text-neg" : "border-pos/40 bg-pos/5 text-pos"}`}>{error ?? notice}</div>}
       {reauth.map((a) => (
         <div key={a.id} className="mt-3 flex flex-wrap items-center gap-2 ctl border border-neg/40 bg-neg/5 px-3 py-2 text-[12px]">
-          <Icon name="AlertTriangle" className="h-3.5 w-3.5 text-neg" /> {a.address} needs reconnecting{a.lastError ? `: ${a.lastError.slice(0, 120)}` : "."}
+          <Icon name="AlertTriangle" className="h-3.5 w-3.5 text-neg" /> {a.address} needs reconnecting{a.lastError ? `: ${safeText(a.lastError).slice(0, 120)}` : "."}
           <Link href="/app/settings?tab=calendar" className={btn.primary}>Reconnect</Link>
         </div>
       ))}

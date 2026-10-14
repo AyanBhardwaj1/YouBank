@@ -15,7 +15,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import type { AiBrief, AssembledBrief } from "@/lib/calendar/briefs";
 import { useFeature } from "@/lib/client/plan";
-import { btn, calApi, fmt, relative, type Meeting } from "./shared";
+import { btn, calApi, fmt, relative, type Meeting, errorMessage } from "./shared";
 
 type BriefResponse = { assembled: AssembledBrief; ai: { content: AiBrief; createdAt: string; trigger: string } | null };
 
@@ -34,7 +34,7 @@ export function EventPanel({ meeting, tz, color, onClose, onMove, onChanged }: {
   useEffect(() => {
     // Keyed on the meeting by the parent, so a different meeting starts from fresh state.
     let live = true;
-    calApi<BriefResponse>(`/api/calendar/events/${meeting.id}/brief`).then((b) => { if (live) setBrief(b); }, (e: Error) => { if (live) setBriefError(e.message); });
+    calApi<BriefResponse>(`/api/calendar/events/${meeting.id}/brief`).then((b) => { if (live) setBrief(b); }, (e: unknown) => { if (live) setBriefError(errorMessage(e)); });
     return () => { live = false; };
   }, [meeting.id]);
 
@@ -44,7 +44,7 @@ export function EventPanel({ meeting, tz, color, onClose, onMove, onChanged }: {
       const r = await calApi<{ ai: BriefResponse["ai"] }>(`/api/calendar/events/${meeting.id}/brief`, { method: "POST" });
       setBrief((b) => (b ? { ...b, ai: r.ai } : b));
     } catch (e) {
-      setBriefError((e as Error).message);
+      setBriefError(errorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -64,7 +64,7 @@ export function EventPanel({ meeting, tz, color, onClose, onMove, onChanged }: {
       await calApi(`/api/calendar/events/${meeting.id}?scope=${series ? "series" : "instance"}&notify=1`, { method: "DELETE" });
       onChanged("Cancelled."); onClose();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally {
       setBusy(null);
     }
