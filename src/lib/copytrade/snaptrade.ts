@@ -48,9 +48,12 @@ export function signRequest(consumerKey: string, path: string, query: string, bo
 
 export type SnapUser = { userId: string; userSecret: string };
 
-/** A failure SnapTrade or the broker reported, with the HTTP status and their own words when they gave any. */
+/**
+ * A failure SnapTrade or the broker reported, with SnapTrade's HTTP status and their own words when they
+ * gave any. `status` is what the route answers (set by `call`); `httpStatus` is what SnapTrade said.
+ */
 export class SnapTradeError extends Error {
-  constructor(message: string, readonly status: number, readonly detail: string, readonly code: string | null) {
+  constructor(message: string, readonly httpStatus: number, readonly detail: string, readonly code: string | null) {
     super(message);
     this.name = "SnapTradeError";
   }

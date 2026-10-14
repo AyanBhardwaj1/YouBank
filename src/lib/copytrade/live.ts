@@ -20,7 +20,7 @@ import { approveBatch, clientOrderId, confirmationPhrase, type BatchRow, type Co
 import { checkAllowed, cleanCopy, getCopy } from "./portfolios";
 import { latestPrices } from "./prices";
 import { proposeOrders, type Proposal } from "./rebalance";
-import { FINAL_STATUSES, positionsOf, snaptrade, snaptradeReady, type SnapAccount, type SnapSymbol, type SnapUser, type TradeForm } from "./snaptrade";
+import { FINAL_STATUSES, positionsOf, snaptrade, snaptradeReady, SnapTradeError, type SnapAccount, type SnapSymbol, type SnapUser, type TradeForm } from "./snaptrade";
 
 type Person = Pick<CurrentUser, "id" | "email">;
 type Meta = { ip: string | null; userAgent: string | null };
@@ -67,10 +67,18 @@ export async function connectLink(user: Person, meta: Meta, reconnect?: string):
   return link.redirectURI;
 }
 
-/** Delete the person at SnapTrade (every connection, and the monthly charge) and pause their live copies. */
+/** SnapTrade has no such user (deleted already): the only failure after which our record can go. */
+const userGone = (e: unknown) => e instanceof SnapTradeError && (e.httpStatus === 404 || (e.httpStatus === 400 && /not (be )?found|does not exist|no such user/i.test(e.detail)));
+
+/**
+ * Delete the person at SnapTrade (every connection, and the monthly charge) and pause their live copies.
+ * Our record (the only copy of the user secret) is removed only once SnapTrade has deleted the user, or
+ * says it has none: removing it after any other failure would leave a connected, billed SnapTrade user
+ * that nothing could delete any more.
+ */
 export async function disconnect(user: Person, meta: Meta): Promise<void> {
   const u = await snapUser(user.id);
-  if (u) await snaptrade.deleteUser(u.userId).catch((e) => { if ((e as { status?: number }).status !== 400) throw e; });
+  if (u) await snaptrade.deleteUser(u.userId).catch((e) => { if (!userGone(e)) throw e; });
   const db = requireDb();
   await db.delete(schema.copyBrokers).where(eq(schema.copyBrokers.userId, user.id));
   await db.update(schema.copyPortfolios).set({ status: "paused", updatedAt: new Date() }).where(and(eq(schema.copyPortfolios.userId, user.id), eq(schema.copyPortfolios.mode, "live"), eq(schema.copyPortfolios.status, "active")));
