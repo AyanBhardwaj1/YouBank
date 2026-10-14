@@ -17,7 +17,7 @@ import { assignableSeats, assignError, seatPlan, seatsToTrim } from "@/lib/billi
 import { amountCents, envLines, packPrices, planPrices, portalConfig, webhookEvents, webhookUrl } from "@/lib/billing/setup";
 import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPackId, PACK_MARGIN_TARGET, packFees, packMargin, remainingByGrant, settledUse, splitSpend } from "@/lib/billing/packs";
-import { answersFor, costToServe, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
+import { answersFor, costToServe, FIXED, fixedMonthlyUsd, LEVELS, margin, MARGIN_TARGET, marginTable, meteredFeatures, PAYING_SEATS, PREMIUM_USES, UNITS, USAGE } from "@/lib/billing/costs";
 import { FEATURES } from "@/lib/billing/features";
 import { intervalsFor, PLAN_ORDER, PLANS, yearlySavingPct, type PlanId } from "@/lib/billing/plans";
 import { CHECKOUT_WINDOW_MS, checkoutKey, checkoutRequest, PACK_WINDOW_MS, grantFromSession, isDuplicate, packCheckoutKey, packPriceEnv, packRequest, planForPrice, planOpenSessions, priceEnv, resolveDuplicate, reversedShare, rowFromSubscription, sessionExpiry, shouldApply, WEBHOOK_EVENTS } from "@/lib/billing/stripe";
@@ -83,6 +83,20 @@ async function main() {
 
   console.log("premium features flow into the cost model");
   check("every metered premium feature states its cost per use or a flat monthly fee", FEATURES.every((f) => !f.metered || (f.costPerUseUsd ?? 0) > 0 || (f.flatMonthlyUsd ?? 0) > 0), FEATURES.filter((f) => f.metered && !f.costPerUseUsd && !f.flatMonthlyUsd).map((f) => f.id));
+  check("a flat monthly fee is only on a metered feature (the model skips unmetered ones)", FEATURES.every((f) => !f.flatMonthlyUsd || f.metered), FEATURES.filter((f) => f.flatMonthlyUsd && !f.metered).map((f) => f.id));
+  check("a perk that is not metered costs nothing", FEATURES.every((f) => f.metered || !(f.costPerUseUsd ?? 0)), FEATURES.filter((f) => !f.metered && f.costPerUseUsd).map((f) => f.id));
+  check("feature ids are unique across every area", new Set(FEATURES.map((f) => f.id)).size === FEATURES.length);
+  {
+    // Every area's file reaches the cost model: each registry list is spread into FEATURES.
+    const areas = ["premium", "maps", "crypto", "desktop", "meetings", "calendar", "news", "copytrade", "edge-next"];
+    const index = readFileSync(new URL("../src/lib/billing/features/index.ts", import.meta.url), "utf8");
+    check("every area's registry is spread into FEATURES (premium, maps, crypto, desktop, meetings, calendar, news, copytrade, edge-next)", areas.every((a) => new RegExp(`from "\\./${a}"`).test(index)) && (index.match(/\.\.\.[A-Z_]+_FEATURES/g) ?? []).length === areas.length);
+    // Spend outside the AI ledger is bounded by a server-side daily cap where a click can repeat it.
+    const eva = readFileSync(new URL("../src/app/api/edge/calls/[docId]/read/route.ts", import.meta.url), "utf8");
+    const lbo = readFileSync(new URL("../src/app/api/edge/scenarios/[id]/refine/route.ts", import.meta.url), "utf8");
+    check("Edge's GPU and Modal upgrades outside the AI ledger have daily caps (Eva-4B ten, LBO refine 25)", /edge-calls-eva:\$\{user\.id\}`, EVA_PER_DAY, 86_400_000/.test(eva) && /EVA_PER_DAY = 10/.test(eva) && /edge-lbo-refine-day:\$\{user\.id\}`, 25, 86_400_000/.test(lbo));
+  }
+  check("fixed bills include Edge's background passes (deal reading, Modal, Vercel and Neon, platform data)", ["deal database", "on Modal", "Vercel and Neon", "platform data"].every((k) => FIXED.some((f) => f.label.includes(k) && f.usdMonth > 0 && f.source.length > 0)));
   {
     const before = { pro: costToServe("pro", "typical").premium, free: costToServe("free", "typical").premium, ent: costToServe("enterprise", "heavy").premium };
     // Registered the way another area's file would: pushed into the shared list, nothing else edited.

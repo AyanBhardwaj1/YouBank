@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+/** Eva-4B reads a person may start a day (about $0.05 of GPU each, outside the AI allowance). */
+const EVA_PER_DAY = 10;
 
 /**
  * Read a call with Call Desk (E5): POST { ticker?, eva? }. Pairs each analyst question with management's
@@ -30,6 +32,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ docId: string 
     if (body.eva === true) {
       await requireFeature(user, "edge.calls-eva");
       requireReady("edge.calls-eva");
+      // GPU time is paid outside the AI ledger, so the allowance cannot bound it: a daily cap does (docs/pricing.md).
+      await rateLimit(`edge-calls-eva:${user.id}`, EVA_PER_DAY, 86_400_000, `${EVA_PER_DAY} Eva-4B reads today. The free classifier still reads every call.`);
       const view = await premiumScope(user, { require: ["edge.calls-eva"] }, () => readCall(user.id, docId, { ticker, eva: true }));
       return NextResponse.json(view);
     }

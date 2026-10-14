@@ -14,7 +14,7 @@ export const maxDuration = 300;
 
 /**
  * Refine a scenario in the background: a market scenario (ten thousand paths, or the diffusion model's), or an
- * LBO stress test (20,000 paths over up to seven years; premium edge.lbo-refine, about $0.01 of Modal CPU).
+ * LBO stress test (20,000 paths over up to seven years; premium edge.lbo-refine, about $0.005 of Modal CPU, at most 25 a day).
  */
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
@@ -26,6 +26,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
     if (s.kind === "lbo") {
       await requireFeature(user, "edge.lbo-refine");
       await rateLimit(`edge-lbo-refine:${user.id}`, 20, 3_600_000, "Twenty refines this hour; try again later.");
+      // Modal time is paid outside the AI ledger, so a daily cap bounds it (docs/pricing.md).
+      await rateLimit(`edge-lbo-refine-day:${user.id}`, 25, 86_400_000, "25 refines today; the 1,000-path preview still runs. Try again tomorrow.");
       const sent = await sendJob("edge/lbo.refine", { id, userId: user.id }, { id: `edge-lbo-refine-${id}-${Date.now()}` }).catch(() => ({ sent: false as const, reason: "" }));
       if (!sent.sent) {
         await updateScenario(id, { status: "refining" });

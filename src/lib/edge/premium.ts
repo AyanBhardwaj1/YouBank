@@ -149,7 +149,7 @@ export const UPGRADES: Upgrade[] = [
   {
     id: "calls-eva", module: "documents", name: "Eva-4B evasion ensemble", built: true, feature: "edge.calls-eva",
     improves: "Scores each earnings-call answer with the Eva-4B classifier (Apache-2.0 weights on Qwen3-4B) on a GPU and averages its probabilities with the free classifier's.",
-    cost: "Modal T4 $0.59/h: about 90 seconds a call with its cold start, about $0.03.",
+    cost: "Modal T4 $0.59/h with 2 cores and 16 GiB: about 3.5 minutes billed a call (the weights loading on a cold container, scoring and the idle tail), about $0.05; at most ten a day per person.",
     needs: ["EDGE_ML_URL", "EDGE_ML_SECRET"], flag: { name: "EDGE_CALLS_EVA", value: "1" },
     steps: ["Have counsel confirm that Eva-4B, whose training data came from licensed S&P Capital IQ transcripts, may be used commercially (docs/edge-next.md, open question 4). Until then leave it off.", "Redeploy the ML service (modal deploy ml/edge_ml.py) so its calls.evasion task exists, and smoke-test it on staging.", "Set EDGE_CALLS_EVA=1 in Vercel and redeploy. People whose plan includes it see 'Add Eva-4B' on Call Desk; it runs only when they press it."],
   },
@@ -157,14 +157,14 @@ export const UPGRADES: Upgrade[] = [
   {
     id: "lbo-refine", module: "scenarios", name: "LBO refine on the ML service", built: true, feature: "edge.lbo-refine",
     improves: "Runs an LBO stress test over 20,000 paths and up to seven years on the ML service (lbo.refine) instead of the 1,000-path preview; without the ML service the same refine runs in the background job.",
-    cost: "A few CPU minutes on Modal, about $0.01 a refine.",
+    cost: "About two minutes of two Modal CPU cores, start-up and idle tail included: about $0.005 a refine; at most 25 a day per person.",
     needs: [], steps: ["Redeploy the ML service (modal deploy ml/edge_ml.py) so its lbo.refine task exists; until then refines run in the Inngest job.", "People whose plan includes it see 'Refine: 20,000 paths' in the LBO lab."],
   },
   // Voice Analyst (E13)
   {
     id: "voice-realtime", module: "platform", name: "Live voice analyst", built: true, feature: "edge.voice-realtime",
     improves: "A real-time spoken conversation with Edge over WebRTC, with the same tools as hold-to-talk; the free path uses the browser's own speech recognition and voice.",
-    cost: "OpenAI's realtime model, about $0.06 to $0.11 a minute; sessions are capped at 10 minutes and 30 minutes a day per person.",
+    cost: "OpenAI's realtime model, about $0.06 to $0.11 a minute; sessions are capped at 10 minutes and three a day per person (30 minutes).",
     needs: ["OPENAI_API_KEY"], flag: { name: "EDGE_VOICE_REALTIME", value: "1" },
     steps: ["Set EDGE_VOICE_REALTIME=1 in Vercel (optionally EDGE_REALTIME_MODEL, default gpt-realtime-2.1) and redeploy.", "People whose plan includes it see 'Live conversation' in the voice sheet; a session key is minted only when they press it."],
   },
