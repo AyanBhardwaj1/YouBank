@@ -1695,6 +1695,10 @@ Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet
 
 ## Deploying
 
+The Vercel project is connected to this repository: every push to `main` (a merged pull request) deploys
+to production, and pull requests get preview deployments. Apply new migrations before or right after the
+deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays every `drizzle/*.sql`).
+
 1. **Environment.** Set the variables above in the Vercel project, not in `.env.local`.
 2. **Database.** Apply any new migration to production, then check for drift:
    ```bash
