@@ -1,14 +1,15 @@
 /**
- * One-time (re-runnable) setup of a Supabase project for YouBank. Run in two steps:
+ * One-time (re-runnable) setup of a new Postgres database for YouBank, on Neon or Supabase:
  *
- *   1. pnpm exec tsx scripts/supabase-setup.mts extensions
- *   2. DATABASE_URL_UNPOOLED=$SUPABASE_DB_SESSION_URL pnpm exec drizzle-kit push --force
- *   3. pnpm exec tsx scripts/supabase-setup.mts finish
+ *   1. pnpm exec tsx scripts/db-setup.mts extensions
+ *   2. pnpm exec drizzle-kit push --force          (DATABASE_URL_UNPOOLED: a direct/session connection)
+ *   3. pnpm exec tsx scripts/db-setup.mts finish
  *
- * Reads SUPABASE_DB_SESSION_URL (the session pooler, port 5432), and for `finish` also
- * NEXT_PUBLIC_SITE_URL and AUTOPILOT_SECRET. Prints no secret.
+ * Connects with DATABASE_URL_UNPOOLED (Neon's direct host, or Supabase's session pooler on port 5432).
+ * On Supabase (it has Vault), `finish` also needs NEXT_PUBLIC_SITE_URL and AUTOPILOT_SECRET for the
+ * heartbeats; on Neon the heartbeats are Neon Functions (neon/*.ts). Prints no secret.
  *
- * `extensions`: pgvector and PostGIS (in Supabase's `extensions` schema, which is on the search path),
+ * `extensions`: pgvector and PostGIS; on Supabase in its `extensions` schema (on the search path), with
  * pg_cron and pg_net for the heartbeats.
  * `finish`, after the schema push:
  * - replays drizzle/*.sql for what the schema file does not describe (GIN, GiST and HNSW indexes); the
@@ -16,30 +17,34 @@
  * - turns on row level security for every table in `public`: the app connects as the tables' owner,
  *   which RLS does not restrict, while Supabase's public Data API (anon key) then sees nothing;
  * - cuts any query off after 30 seconds (the role's statement_timeout);
- * - schedules the heartbeats that Neon Functions used to run: autopilot every five minutes, the
- *   Newsroom every ten, each a pg_net POST to the site with AUTOPILOT_SECRET read from Supabase Vault.
+ * - numbers new rows from 100,000,000 (see below);
+ * - on Supabase, schedules the heartbeats: autopilot every five minutes, the Newsroom every ten, each a
+ *   pg_net POST to the site with AUTOPILOT_SECRET read from Supabase Vault.
  */
 import postgres from "postgres";
 import { readdirSync, readFileSync } from "node:fs";
 
-const url = process.env.SUPABASE_DB_SESSION_URL;
-if (!url) throw new Error("Set SUPABASE_DB_SESSION_URL (Supabase → Connect → Session pooler) in .env.local");
+const url = process.env.DATABASE_URL_UNPOOLED;
+if (!url) throw new Error("Set DATABASE_URL_UNPOOLED (a direct or session connection to the new database)");
 const sql = postgres(url, { prepare: false, max: 1, onnotice: () => undefined });
 await sql`set statement_timeout = 0`;
+const [{ supabase }] = await sql`select exists (select 1 from pg_namespace where nspname = 'vault') as supabase`;
 
 const step = process.argv[2];
 
 if (step === "extensions") {
-  await sql`create extension if not exists vector with schema extensions`;
-  await sql`create extension if not exists postgis with schema extensions`;
-  await sql`create extension if not exists pg_cron with schema pg_catalog`;
-  await sql`create extension if not exists pg_net with schema extensions`;
+  if (supabase) {
+    await sql`create extension if not exists vector with schema extensions`;
+    await sql`create extension if not exists postgis with schema extensions`;
+    await sql`create extension if not exists pg_cron with schema pg_catalog`;
+    await sql`create extension if not exists pg_net with schema extensions`;
+  } else {
+    await sql`create extension if not exists vector`;
+    await sql`create extension if not exists postgis`;
+  }
   const ext = await sql`select extname, extversion from pg_extension where extname in ('vector', 'postgis', 'pg_cron', 'pg_net') order by 1`;
   console.log("extensions:", ext.map((e) => `${e.extname} ${e.extversion}`).join(", "));
 } else if (step === "finish") {
-  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
-  const secret = process.env.AUTOPILOT_SECRET;
-  if (!/^https:\/\//.test(site) || !secret) throw new Error("Set NEXT_PUBLIC_SITE_URL (https) and AUTOPILOT_SECRET");
 
   // Statements that may already exist after the push: duplicate table, object, column, index, schema.
   const EXISTS = new Set(["42P07", "42710", "42701", "42P06", "42P16"]);
@@ -66,8 +71,14 @@ if (step === "extensions") {
   for (const q of seqs) if (Number(q.last) < 100_000_000) await sql`select setval(${`public."${q.sequencename}"`}::regclass, 100000000, false)`;
   console.log(`${seqs.length} id sequences start at 100,000,000`);
 
-  await sql`alter role postgres set statement_timeout = '30s'`;
+  const [{ role }] = await sql`select current_user as role`;
+  await sql.unsafe(`alter role "${role}" set statement_timeout = '30s'`);
   console.log("statement_timeout 30s for the app's role");
+
+  if (!supabase) { console.log("Neon: heartbeats are Neon Functions (neon/autopilot.ts, neon/news.ts)"); await sql.end(); process.exit(0); }
+  const site = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
+  const secret = process.env.AUTOPILOT_SECRET;
+  if (!/^https:\/\//.test(site) || !secret) throw new Error("Set NEXT_PUBLIC_SITE_URL (https) and AUTOPILOT_SECRET");
 
   const [existing] = await sql`select id from vault.secrets where name = 'youbank_cron_secret'`;
   if (existing) await sql`select vault.update_secret(${existing.id}::uuid, ${secret})`;
@@ -84,6 +95,6 @@ if (step === "extensions") {
   const jobs = await sql`select jobname, schedule, active from cron.job where jobname like 'youbank-%' order by 1`;
   console.log("heartbeats:", jobs.map((j) => `${j.jobname} ${j.schedule}${j.active ? "" : " (inactive)"}`).join(", "));
 } else {
-  console.log("Usage: supabase-setup.mts extensions | finish");
+  console.log("Usage: db-setup.mts extensions | finish");
 }
 await sql.end();
