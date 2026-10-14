@@ -1,0 +1,40 @@
+{"text":"What are the odds Targa is sold this year?","intent":"odds","names":["Targa"]}
+{"text":"what's the chance TRGP gets acquired","intent":"odds","tickers":["TRGP"]}
+{"text":"Is Hess in play?","intent":"odds"}
+{"text":"probability that Peloton is a takeover target","intent":"odds"}
+{"text":"deal radar for Etsy","intent":"odds","names":["Etsy"]}
+{"text":"how likely is a sale of Masimo","intent":"odds","names":["Masimo"]}
+{"text":"takeover odds on WBA","intent":"odds","tickers":["WBA"]}
+{"text":"Is NVDA hiring?","intent":"pulse","tickers":["NVDA"]}
+{"text":"job postings at Snowflake","intent":"pulse","names":["Snowflake"]}
+{"text":"any layoffs or WARN notices at Intel","intent":"pulse","names":["Intel"]}
+{"text":"what's the web traffic trend for Chewy","intent":"pulse","names":["Chewy"]}
+{"text":"patents filed by Rivian lately","intent":"pulse"}
+{"text":"federal contracts won by Palantir","intent":"pulse"}
+{"text":"headcount at CRWD","intent":"pulse","tickers":["CRWD"]}
+{"text":"precedents for midstream deals","intent":"precedents"}
+{"text":"comparable deals for Targa","intent":"precedents","names":["Targa"]}
+{"text":"what did buyers pay for pipeline companies","intent":"precedents"}
+{"text":"EV/EBITDA multiples paid in software take-privates","intent":"precedents"}
+{"text":"deals like the Hess acquisition","intent":"precedents"}
+{"text":"tell me about Targa Resources","intent":"company"}
+{"text":"what's going on at Boeing","intent":"company","names":["Boeing"]}
+{"text":"brief me on DELL","intent":"company","tickers":["DELL"]}
+{"text":"how is Nike doing","intent":"company"}
+{"text":"overview of Chord Energy","intent":"company","names":["Chord Energy"]}
+{"text":"catch me up","intent":"feed"}
+{"text":"what's new today","intent":"feed"}
+{"text":"read me my digest","intent":"feed"}
+{"text":"anything new on my feed?","intent":"feed"}
+{"text":"what changed overnight","intent":"feed"}
+{"text":"send me the briefing","intent":"feed"}
+{"text":"how are my theses doing","intent":"thesis"}
+{"text":"did any kill criteria fire on my thesis","intent":"thesis"}
+{"text":"note on Targa: CFO open to a call in May","intent":"note","names":["Targa"]}
+{"text":"remember that Chord's deck is due Friday","intent":"note"}
+{"text":"make a note about Hess, ask about Guyana","intent":"note","names":["Hess"]}
+{"text":"email the CFO at Targa about the deal","intent":"send"}
+{"text":"send this to my team","intent":"send"}
+{"text":"text Maria the odds","intent":"send"}
+{"text":"what did Targa say about capex in the last 10-K","intent":"ask","names":["Targa"]}
+{"text":"what is the revenue guidance for 2027 in the deck I uploaded","intent":"ask"}

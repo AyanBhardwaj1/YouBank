@@ -5,7 +5,7 @@ const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Nothing in YouBank uses these; a compromised script or embed cannot either.
+  // Nothing in YouBank uses these (except the microphone on Edge, allowed below); a compromised script or embed cannot either.
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
 ];
 
@@ -37,6 +37,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
       { source: "/((?!office/taskpane|office/commands).*)", headers: NO_FRAMING },
+      // The Voice Analyst's hold-to-talk needs the microphone on Edge only; a later rule overrides the one above.
+      { source: "/app/edge", headers: [{ key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()" }] },
     ];
   },
 };

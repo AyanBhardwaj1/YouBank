@@ -773,7 +773,7 @@ async function main() {
     check("keyboard list: then by links touching each, ties by name", rows.map((r) => `${r.n.name}:${r.c}`).join(",") === "Focus Co:2,Alpha:3,Zeta:3,Beta:2,Alone:0", rows.map((r) => `${r.n.name}:${r.c}`));
     const saved = { v: process.env.VOYAGE_API_KEY, m: process.env.EDGE_ANSWER_MODEL, o: process.env.OPENAI_API_KEY };
     delete process.env.VOYAGE_API_KEY; delete process.env.EDGE_ANSWER_MODEL; process.env.OPENAI_API_KEY = "x";
-    const offAll = UPGRADES.every((u) => !upgradeOn(u.id) || u.id === "modal-budget" || u.id === "docs-storage");
+    const offAll = UPGRADES.every((u) => !upgradeOn(u.id) || u.id === "modal-budget" || u.id === "docs-storage" || u.id === "lbo-refine"); // lbo-refine needs no key: without ML it runs in TypeScript
     process.env.VOYAGE_API_KEY = "k"; process.env.EDGE_ANSWER_MODEL = "gpt-5.6-sol";
     const report = upgradesReport();
     check("upgrades stay off until their key is set, then a built one turns on (a switch with any value too)", offAll && upgradeOn("rerank-voyage") && upgradeOn("answer-model") && !upgradeOn("transcribe-openai") && report.find((r) => r.id === "rerank-voyage")!.needs[0].set && !JSON.stringify(report).includes("\"k\""));

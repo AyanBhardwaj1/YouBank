@@ -110,11 +110,11 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
     minPlan: "team", metered: false, costPerUseUsd: 0,
     perUse: "a perk: the same ticks, shared",
   },
-  /* ---------------- Voice Analyst (E13), stretch ---------------- */
+  /* ---------------- Voice Analyst (E13); hold-to-talk is free ---------------- */
   {
     id: "edge.voice-realtime", area: "edge", name: "Live voice analyst",
     description: "A real-time spoken conversation with Edge, answers cited as on screen.",
-    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.1, planned: true,
-    perUse: "a minute of gpt-realtime-2.1, about $0.06 to $0.11",
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.33,
+    perUse: "a live session of about three minutes at $0.11 a minute (two-minute minimum, ten-minute cap, three a day), recorded in the AI ledger",
   },
 ];

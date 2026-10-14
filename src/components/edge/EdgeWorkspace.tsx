@@ -31,6 +31,7 @@ const DealsView = dynamic(() => import("./next/DealsView").then((m) => m.DealsVi
 const PulseView = dynamic(() => import("./next/PulseView").then((m) => m.PulseView), { loading: ViewLoading });
 const RadarView = dynamic(() => import("./next/RadarView").then((m) => m.RadarView), { loading: ViewLoading });
 const CallsView = dynamic(() => import("./next/CallsView").then((m) => m.CallsView), { loading: ViewLoading });
+const VoiceButton = dynamic(() => import("./voice/VoiceButton").then((m) => m.VoiceButton), { ssr: false });
 const ThesesView = dynamic(() => import("./next/ThesesView").then((m) => m.ThesesView), { loading: ViewLoading });
 
 export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif" | "deals" | "pulse" | "radar" | "calls" | "theses" | "track";
@@ -146,6 +147,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
           </div>
         )}
       </div>
+      <VoiceButton tickers={watchedTickers} />
     </div>
     </MotionConfig>
   );

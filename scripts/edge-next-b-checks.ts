@@ -27,6 +27,8 @@ import { callTool, type ToolDef } from "@/lib/edge/agent/tools";
 import { emptyState, type AgentState, type ClaimState, type Plan } from "@/lib/edge/agent/types";
 import { applyLadder, canSpend, combine, LADDER, nextTick, overall, recomputeTree, TICK_CAP } from "@/lib/edge/agent/update";
 import { withFeatures } from "@/lib/billing/use";
+import { companiesIn, routeUtterance, scriptFor, trimScript, type Intent } from "@/lib/edge/voice/router";
+import { EDGE_TOOL, MAX_SECONDS, MIN_SECONDS, sessionConfig, sessionCost, USD_PER_MINUTE } from "@/lib/edge/voice/realtime";
 
 type Check = (label: string, cond: boolean, detail?: unknown) => void;
 const fx = (...p: string[]) => readFileSync(path.join(__dirname, "fixtures", ...p), "utf8");
@@ -326,5 +328,29 @@ export async function checksB(check: Check) {
     const allowed = await withFeatures(["edge.thesis-deep"], () => callTool(premiumTool, "deep", {})).then((r) => r.text === "ok", () => false);
     check("a premium tool is refused outside a scope that holds it, and runs inside one", refused && allowed);
     void ({} as ClaimState);
+  }
+
+  /* ======================= E13 Voice Analyst ======================= */
+  console.log("E13 Voice Analyst: the router on 40 recorded utterances, scripts and the live session's limits");
+  {
+    const rows = fx("voice", "utterances.jsonl").trim().split("\n").map((l) => JSON.parse(l) as { text: string; intent: Intent; tickers?: string[]; names?: string[] });
+    const wrong = rows.filter((r) => routeUtterance(r.text).intent !== r.intent).map((r) => ({ text: r.text, want: r.intent, got: routeUtterance(r.text).intent }));
+    check("all 40 utterances route to the right tool", rows.length === 40 && wrong.length === 0, wrong);
+    const missed = rows.filter((r) => { const c = routeUtterance(r.text); return (r.tickers ?? []).some((t) => !c.tickers.includes(t)) || (r.names ?? []).some((n) => !c.names.includes(n)); }).map((r) => ({ text: r.text, got: routeUtterance(r.text) }));
+    check("the companies each utterance names are found (tickers in capitals, names after a preposition)", missed.length === 0, missed);
+    check("common capitals are not tickers (CEO, EV, WARN, Q3)", companiesIn("Did the CEO mention EV demand or WARN filings in Q3?").tickers.length === 0);
+    const sends = ["email the CFO at Targa", "send this to my team", "text Maria the odds", "reply to the banker", "message the deal team"];
+    check("no-send guard: every send or email request becomes a note to review, never a send", sends.every((t) => routeUtterance(t).intent === "send") && /never send/.test(scriptFor("send", {})) && routeUtterance("send me the briefing").intent === "feed");
+    check("the live model's tool cannot send (its intents exclude send)", !(EDGE_TOOL.parameters.properties.intent.enum as readonly string[]).includes("send") && /cannot send/.test(JSON.stringify(sessionConfig("m"))));
+    const long = Array.from({ length: 40 }, (_, i) => `Sentence number ${i} says something.`).join(" ");
+    const cut = trimScript(long);
+    check("scripts stay under 70 words and end at a sentence", cut.split(" ").length <= 70 && cut.endsWith(".") && trimScript("Short answer.") === "Short answer.");
+    const odds = scriptFor("odds", { p: 0.18, base: 0.042, low: 0.11, high: 0.27 }, "Targa Resources");
+    check("the odds script states a model probability, its interval and the base rate, and says it is not advice", /18 percent model probability/.test(odds) && /11 percent to 27 percent/.test(odds) && /4\.2 percent/.test(odds) && /not a rumour or advice/.test(odds) && odds.split(" ").length <= 70);
+    const intents: Intent[] = ["odds", "pulse", "precedents", "company", "feed", "thesis", "note", "send", "ask"];
+    check("every tool's script fits in 70 words, and a missing answer says so plainly", intents.every((i) => scriptFor(i, { text: long, items: Array.from({ length: 9 }, (_, k) => ({ title: `Item ${k} with a fairly long title about a company`, overall: 0.4, status: "running" })), p: 0.2, base: 0.05, low: 0.1, high: 0.3 }, "X").split(" ").length <= 71) && /could not find that for Targa/.test(scriptFor("pulse", null, "Targa")) && scriptFor("ask", { notFound: true }) === "The documents do not answer this.");
+    check("thesis scripts call figures agent estimates", /agent estimate/.test(scriptFor("thesis", { items: [{ title: "Targa sale", overall: 0.31, status: "running" }] })));
+    check("live sessions: a two-minute minimum, a ten-minute cap, priced per minute", sessionCost(10) === Math.round(2 * USD_PER_MINUTE * 1e4) / 1e4 && sessionCost(10_000) === Math.round(10 * USD_PER_MINUTE * 1e4) / 1e4 && MIN_SECONDS === 120 && MAX_SECONDS === 600);
+    check("the session key lives a minute; the session has Edge's one tool", sessionConfig("m").expires_after.seconds === 60 && sessionConfig("m").session.tools.length === 1 && sessionConfig("m").session.model === "m");
   }
 }
