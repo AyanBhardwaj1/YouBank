@@ -9,7 +9,7 @@ contract every premium feature follows.
 |---|---|---|
 | Plans | `src/lib/billing/plans.ts` | The plans in order (free, campus, pro, team, enterprise), their list prices, minimum seats and AI allowances; why they are what they are is in `docs/pricing.md` |
 | Billing | `src/lib/billing/stripe.ts`, `/api/billing/{checkout,credits,confirm,portal,invoices,seats,webhook,status}` | Stripe Checkout (plans and credit packs), the billing portal, seats and the webhook that writes `subscriptions` and credit grants; Settings, under Plan |
-| Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`); each feature names the least plan that includes it |
+| Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`, `meetings.ts`); each feature names the least plan that includes it |
 | Entitlements | `src/lib/billing/entitlements.ts` | `entitlements(user)`, `canUse(user, id)` and `requireFeature(user, id)` on the server; a seat on someone's Deal Team or Enterprise subscription counts |
 | Plan API | `GET /api/billing/plan` | The signed-in person's plan and unlocked feature ids |
 | UI | `src/components/billing/Premium.tsx`, `src/lib/client/plan.ts` | `PremiumBadge`, `PremiumGate`, `usePlan()`, `useFeature(id)` |

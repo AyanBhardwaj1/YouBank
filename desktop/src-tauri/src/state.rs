@@ -53,6 +53,8 @@ pub struct AppState {
     pub ask_draft: Mutex<Option<String>>,
     /// The section the agent window was asked to open on, for a window still loading.
     pub agent_section: Mutex<Option<String>>,
+    /// The meeting copilot: the recording in progress, the offer or consent prompt, the server's rules.
+    pub meetings: crate::meetings::Meetings,
 }
 
 impl AppState {
@@ -80,6 +82,7 @@ impl AppState {
             update_ready: Mutex::new(None),
             ask_draft: Mutex::new(None),
             agent_section: Mutex::new(None),
+            meetings: crate::meetings::Meetings::default(),
         }
     }
 
