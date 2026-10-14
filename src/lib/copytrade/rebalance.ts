@@ -125,9 +125,9 @@ export function proposeOrders(input: RebalanceInput): Proposal {
     const delta = w.target - w.current;
     if (Math.abs(delta) < STEP / 2) continue;
     if (delta < 0) {
-      // A full exit sells everything the copy holds, fractional remainder included.
-      let units = w.target === 0 ? w.current : roundUnits(-delta, input.fractional);
-      units = Math.min(units, w.current);
+      // A full exit sells everything the copy holds, fractional remainder included where the broker trades
+      // fractions. Rounded down to the broker's step after the cap, so a sell never exceeds what is held.
+      const units = roundUnits(Math.min(w.target === 0 ? w.current : roundUnits(-delta, input.fractional), w.current), input.fractional);
       if (units <= 0) continue;
       const fromOutside = input.sellOutside ? Math.max(0, units - Math.min(managed.get(w.t) ?? 0, held.get(w.t) ?? 0)) : 0;
       const o = cap({ ticker: w.t, action: "SELL", units: fix(units), price: w.price, limitPrice: input.orderType === "Limit" ? limitPrice(w.price, "SELL", input.limitBand) : null, estValue: 0, boundValue: 0, reason: w.target === 0 ? "exit" : "trim", fromOutside: fix(fromOutside), taxCaution: true });

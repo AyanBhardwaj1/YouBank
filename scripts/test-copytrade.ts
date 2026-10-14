@@ -250,6 +250,10 @@ async function main() {
     check("orders under the minimum are skipped", small.orders.length === 1 && small.skipped.some((s) => /minimum/.test(s.reason)), small.orders);
     const managedGone = proposeOrders({ ...base, targets: [], positions: [{ ticker: "KO", units: 5, price: 60 }], managed: { KO: 20 } });
     check("the copy's shares are capped at what the account still holds", managedGone.orders[0].units === 5);
+    const dust = proposeOrders({ ...base, targets: [], fractional: true, positions: [{ ticker: "KO", units: 10.00005, price: 60 }], managed: { KO: 10.0001 } });
+    check("a fractional exit rounds down, never selling more than the account holds", dust.orders[0].units <= 10.00005 && near(dust.orders[0].units, 10, 1e-9), dust.orders[0]);
+    const odd = proposeOrders({ ...base, targets: [], sellOutside: true, positions: [{ ticker: "KO", units: 12.5, price: 60 }], managed: { KO: 12 } });
+    check("a whole-share broker's exit sells whole shares only", odd.orders[0].units === 12, odd.orders[0]);
     const market = proposeOrders({ ...base, orderType: "Market" });
     check("market orders carry no limit price", market.orders.every((o) => o.limitPrice === null));
   }
