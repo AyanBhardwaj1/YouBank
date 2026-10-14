@@ -250,7 +250,15 @@ export async function setStatus(userId: string, id: number, to: "paused" | "runn
   if (to === "running" && from !== "paused") throw Object.assign(new Error("Only a paused thesis can be resumed."), { status: 409 });
   if (to === "paused" && from !== "running") throw Object.assign(new Error("Only a running thesis can be paused."), { status: 409 });
   if (to === "stopped" && (from === "stopped" || from === "done")) return from;
-  const state: AgentState = to === "running" ? { ...a.state, nextTickAt: new Date().toISOString(), error: null, ...(a.state.tier === "plus" && !(await canUseById(userId, "edge.thesis-plus")) ? { tier: "free" as const, maxTicks: 14, stepsPerTick: 6 } : {}) } : { ...a.state, tickKey: null, ...(to === "stopped" ? { stopReason: "stopped by its owner", nextTickAt: null } : {}) };
+  const plus = to === "running" ? await canUseById(userId, "edge.thesis-plus") : true;
+  if (to === "running" && !plus) {
+    // Without More theses, the resumed thesis is the person's one free thesis: no other may be running, and it
+    // runs on the free limits (daily, the free budget), however it was set up while the plan included more.
+    const [r] = await requireDb().select({ n: sql<number>`count(*)::int` }).from(schema.edgeAgents).where(and(eq(schema.edgeAgents.ownerId, userId), eq(schema.edgeAgents.status, "running")));
+    if (Number(r?.n ?? 0) >= LIMITS.free.active) throw Object.assign(new Error("Your plan runs one thesis at a time. Pause or stop the running one to resume this, or upgrade for More theses."), { status: 402 });
+    if (a.state.tier === "plus") await requireDb().update(schema.edgeAgents).set({ cadence: "daily", budgetUsd: Math.min(a.row.budgetUsd, LIMITS.free.maxBudget) }).where(eq(schema.edgeAgents.id, id));
+  }
+  const state: AgentState = to === "running" ? { ...a.state, nextTickAt: new Date().toISOString(), error: null, ...(a.state.tier === "plus" && !plus ? { tier: "free" as const, maxTicks: 14, stepsPerTick: 6 } : {}) } : { ...a.state, tickKey: null, ...(to === "stopped" ? { stopReason: "stopped by its owner", nextTickAt: null } : {}) };
   await dbStore.save(id, state, { status: to });
   await dbStore.addStep(id, new Date().toISOString().slice(0, 10), { key: `status:${id}:${Date.now()}`, kind: "approval", input: { by: userId }, output: { from, to } });
   return to;
