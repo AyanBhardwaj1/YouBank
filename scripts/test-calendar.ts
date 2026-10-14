@@ -69,6 +69,12 @@ console.log("\nRecurrence rules");
   const full = ex("FREQ=WEEKLY;BYDAY=TU,TH", wallOf(2024, 1, 2, 9), wallOf(2026, 12, 31)).filter((w) => w >= "2026-10-01");
   const skipped = ex("FREQ=WEEKLY;BYDAY=TU,TH", wallOf(2024, 1, 2, 9), wallOf(2026, 12, 31), wallOf(2026, 10, 1));
   ok("jumping to the window matches full expansion", skipped, full);
+  {
+    const all = (n: number) => Array.from({ length: n }, (_, i) => i).join(",");
+    const t0 = Date.now();
+    const hostile = expandRule(parseRule(`FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;BYHOUR=${all(24)};BYMINUTE=${all(60)};BYSECOND=${all(60)}`)!, wallOf(2020, 1, 1), { from: wallOf(2026, 10, 1), to: wallOf(2026, 10, 2), until: null });
+    ok("a rule with millions of times a year is bounded, not a stall", Date.now() - t0 < 1500 && hostile.length <= 5000, true);
+  }
   ok("an impossible rule ends", ex("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30", wallOf(2026, 1, 1, 9)), ["2026-01-01T09:00"]);
   ok("format round-trips", formatRule(parseRule("FREQ=MONTHLY;INTERVAL=2;BYDAY=2TU,-1FR;WKST=SU;COUNT=4")!), "FREQ=MONTHLY;INTERVAL=2;COUNT=4;BYDAY=2TU,-1FR;WKST=SU");
 }

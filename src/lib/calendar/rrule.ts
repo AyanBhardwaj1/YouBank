@@ -148,13 +148,23 @@ function weekNoDays(y: number, weeks: number[], wkst: number): number[] {
 
 const uniqSorted = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
 
+/**
+ * The most date-times one period may produce. Calendars come from servers anyone can run, and a rule
+ * like YEARLY with every BYDAY, BYHOUR, BYMINUTE and BYSECOND would be 31 million per year: enough
+ * to stall the sync for everyone. Real rules stay far below this (every minute of a day is 1,440).
+ */
+export const MAX_PER_PERIOD = 20_000;
+
 /** Expand every candidate day of one period into date-times. */
 function withTimes(days: number[], r: Rule, h0: number, mi0: number, s0: number): number[] {
   const hs = r.byHour.length ? r.byHour : [h0];
   const ms = r.byMinute.length ? r.byMinute : [mi0];
   const ss = r.bySecond.length ? r.bySecond : [s0];
   const out: number[] = [];
-  for (const d of days) for (const h of hs) for (const m of ms) for (const s of ss) out.push(d + ((h * 60 + m) * 60 + s) * 1000);
+  for (const d of days) for (const h of hs) for (const m of ms) for (const s of ss) {
+    out.push(d + ((h * 60 + m) * 60 + s) * 1000);
+    if (out.length >= MAX_PER_PERIOD) return out;
+  }
   return out;
 }
 
