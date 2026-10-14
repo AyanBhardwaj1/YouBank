@@ -5,14 +5,16 @@
  * source), a signal, a table (labeled when synthetic), a ranking, a scenario, an answer, or a file.
  */
 import { Download, ExternalLink } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
+import { SupportDot, SupportSheet, VerifierFooter } from "../docs/Support";
+import type { ClaimSupport } from "@/lib/edge/claims/types";
 import { kindOfValue, type Answer, type Companies, type Findings, type Memo, type Places, type ProformaValue, type Ranking, type Scenario, type Signal, type Table } from "@/lib/edge/canvas/values";
 import { MiniPreview } from "./MiniPreview";
 
 const fmt = (v: number | null | undefined, dp = 0) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : v.toLocaleString("en-US", { maximumFractionDigits: dp }));
 
 /** Paragraph markdown with **bold**, *italic* and [n] citation chips. */
-export function MemoText({ markdown, sources, onCite }: { markdown: string; sources: { n: number; label: string; url?: string }[]; onCite?: (n: number) => void }) {
+export function MemoText({ markdown, sources, onCite, supports, onSupport }: { markdown: string; sources: { n: number; label: string; url?: string }[]; onCite?: (n: number) => void; supports?: (ClaimSupport | undefined)[]; onSupport?: (i: number) => void }) {
   const byN = new Map(sources.map((s) => [s.n, s]));
   const inline = (s: string, key: string): ReactNode[] => {
     const out: ReactNode[] = [];
@@ -31,14 +33,18 @@ export function MemoText({ markdown, sources, onCite }: { markdown: string; sour
     if (last < s.length) out.push(s.slice(last));
     return out;
   };
-  return <div className="space-y-2.5 text-[12.5px] leading-relaxed">{markdown.split(/\n{2,}/).map((p, i) => <p key={i}>{inline(p, `p${i}`)}</p>)}</div>;
+  return <div className="space-y-2.5 text-[12.5px] leading-relaxed">{markdown.split(/\n{2,}/).map((p, i) => <p key={i}>{inline(p, `p${i}`)}{supports?.[i] && <SupportDot s={supports[i]!} onOpen={onSupport ? () => onSupport(i) : undefined} />}</p>)}</div>;
 }
 
 function MemoView({ memo }: { memo: Memo }) {
+  const [sheet, setSheet] = useState<number | null>(null);
+  const para = sheet !== null ? memo.paragraphs?.[sheet] : undefined;
   return (
     <div>
       <h3 className="text-[14px] font-semibold">{memo.title}</h3>
-      <div className="mt-2"><MemoText markdown={memo.markdown} sources={memo.sources} onCite={(n) => document.getElementById(`src-${n}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} /></div>
+      <div className="mt-2"><MemoText markdown={memo.markdown} sources={memo.sources} supports={memo.paragraphs?.map((p) => p.support)} onSupport={setSheet} onCite={(n) => document.getElementById(`src-${n}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} /></div>
+      {memo.verifier && <div className="mt-2"><VerifierFooter v={memo.verifier} /></div>}
+      {para?.support && <SupportSheet claim={para.text} s={para.support} onClose={() => setSheet(null)} passages={para.cites.map((n) => ({ n, title: memo.sources[n - 1]?.label ?? "", quote: "" })).filter((x) => x.title)} />}
       <ol className="mt-3 space-y-1 border-t border-line pt-2 text-[11px] text-muted">
         {memo.sources.map((s) => <li key={s.n} id={`src-${s.n}`}><span className="num mr-1 text-accent">[{s.n}]</span>{s.url ? <a href={s.url} target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">{s.label}</a> : s.label}</li>)}
       </ol>

@@ -42,6 +42,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Meetings: the meeting copilot](#meetings-the-meeting-copilot)
    - [Teams and live collaboration](#teams-and-live-collaboration)
    - [YouBank for desktop](#youbank-for-desktop)
+   - [Edge: precedents, alternative data and sale odds](#edge-precedents-alternative-data-and-sale-odds)
    - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
@@ -1259,6 +1260,73 @@ from the latest `desktop-v*` GitHub Release and says in plain words what the app
   `/api/desktop/**`. Connected computers are listed, and can be disconnected, in Settings → Desktop app.
 - **What the site may ask of the app** is fixed at three commands (its version, open quick ask, open the
   agent's settings). The site cannot reach files, programs or the keychain through it.
+### Edge: precedents, alternative data and sale odds
+
+Edge's next round ([docs/edge-next.md](docs/edge-next.md)) adds seven features on shared foundations (an entity
+crosswalk, a weekly signal store with change points that state their false-alarm rate, and a forecast ledger
+whose probabilities are scored when their windows close, shown under **Track record**). All run on free
+public data; the paid layers follow [docs/premium.md](docs/premium.md).
+
+- **Deals (the Precedent Engine).** A precedent-transactions database built from EDGAR's own merger documents:
+  merger proxies, information statements, 14D-9s, S-4s and 8-K merger agreements with their press releases,
+  found daily and backfilled from 2015. The small model reads one section at a time (background, opinion,
+  termination fees, projections, approvals); every term is stored with its verbatim quote, re-read from that
+  quote by number parsers, checked against the target's as-filed XBRL figures and prices, and given a
+  confidence per field family (a stated prior until a family has 60 hand-labelled fields). "Deals like this
+  one" blends meaning (embeddings of the target's business and rationale) with size, industry, buyer type,
+  year and consideration, says why each matched, and gives the EV/EBITDA range with a split-conformal 80%
+  band whose coverage is tested on held-out recent deals. The deal page shows the sale process as a timeline,
+  each term with its quote and checks, and the fairness ranges as a football field. Reading the backfill is
+  platform spend and runs only while an administrator has it on (`EDGE_BACKFILL_DAILY_USD`, or the switch in
+  Deals); anyone can read one deal on demand from their own allowance. `PREC` in the Terminal shows the
+  engine's set with live EDGAR search as "Find more"; the `deals.precedents` canvas block feeds memos and Studio.
+- **Pulse (the Alt-Data Pulse).** Per company, from the crosswalk's ids: job postings by department and tell
+  from Greenhouse, Lever and Ashby boards (counts and titles only), weekly Wikipedia views, federal contract
+  awards from USAspending, WARN layoff notices (Texas, California, New York), and patents from PatentsView.
+  Changes are flagged at a change probability of 0.9 with a large move, and each finding states that
+  probability, the detector's measured false-alarm rate and its coverage ("1 of 3 known job boards").
+  Tells (integration hires, corporate development, restructuring, IPO readiness at private companies, new
+  metros, plant build-outs) become feed cards and CRM signals. `PULSE` in the Terminal, a strip on `/app/vc`
+  startups, and the `pulse.signals` canvas block.
+- **Deal Radar.** A model probability that a company announces an agreement to be acquired within 12 months,
+  always beside its sector's base rate and its Venn-Abers interval, with its reasons (each linked to its
+  filing: a 13D, an officer change, a rights plan) and what would move it. A discrete-time hazard model on
+  public filings only (XBRL as filed, holder and 8-K filings, the industry's deal wave), LightGBM on the ML
+  service or a logistic model without it, validated out of time against the base rate and a Palepu-style
+  logit. This round scores energy, technology and healthcare companies (`EDGE_ODDS_UNIVERSE=all` widens it to
+  every US-listed operating company). Forecasts for watched companies and the top 200 go into the ledger and
+  are scored automatically. `ODDS` in the Terminal and the `odds.score` canvas block. It is a statistical
+  estimate from public data, not a rumour or advice, and says so wherever it appears.
+- **Call Desk.** Earnings-call Q&A split into question and answer pairs (from filed transcripts or speaker-labelled
+  recordings), each answer scored as direct, partial or evasive by a 12-feature classifier calibrated by
+  temperature and per-class isotonic regression, with the reason in the answer's own words. Answers are
+  "evasive", never "lies". A company's evasion rate is a Beta-binomial posterior, and "rose" is said only when
+  the probability it rose is at least 0.9. Every quantified promise (revenue, EPS, EBITDA, capex; ranges, points
+  and growth) goes into the forecast ledger and is settled from the company's XBRL when the period's 10-Q or
+  10-K arrives; raised, lowered and withdrawn guidance are tracked, with a hit rate and its interval. The
+  Promises tab, `CALL` in the Terminal and the `calls.read` canvas block. Peer comparisons are premium; the
+  Eva-4B ensemble is a further premium path that stays off (`EDGE_CALLS_EVA=1`) until its training data's
+  licence is confirmed.
+- **LBO Stress Lab** (Scenarios, LBO tab). A buyout run over 1,000 synthetic monthly paths: operating drivers by
+  GJR-GARCH filtered historical simulation, the short rate from a two-regime model fitted to Treasury and SOFR
+  history, credit spreads that widen with leverage, and exit multiples from the Precedent Engine. It shows the
+  IRR and MOIC fans, covenant-breach probability by year, the highest entry price that still clears a target IRR,
+  what drives the losses, and the gentlest scenario that breaks the deal (Entropy Pooling, with how far it sits
+  from the base case). Studio's agent can run it on an LBO sheet. Refine (20,000 paths, seven years) is premium.
+- **Theses (the Thesis Agent).** State a thesis; the agent proposes a claim tree with priors, the evidence it
+  will look for and kill criteria, and runs once you approve. Each day it reads Edge's tools (precedents, Deal
+  Radar, Pulse, the signal store and the crosswalk), keeps only evidence the verifier finds in its source, and
+  moves each claim by a likelihood-ratio ladder; a model from a second provider argues the other side when a
+  claim moves 10 points, and kill criteria are watched as monitors. The memo says what changed. Probabilities
+  are labelled agent estimates; claims are logged to the forecast ledger and settled by you. Every step, its
+  cost and the budget are on the log. One free thesis per person (14 days); more, longer, twice-daily, weekly
+  deep synthesis and team theses are premium.
+- **Voice Analyst.** Hold the microphone button on any Edge view (or Alt+Shift+V) and ask: "odds Targa is sold",
+  "is NVDA hiring", "catch me up", "note on Targa: …". Speech is recognised and spoken by the browser itself, so
+  no audio leaves the device; answers are under 70 words with their sources on screen, and Edge never sends
+  anything by voice. "Commute brief" reads the feed, theses and watched companies with lock-screen controls.
+  A live spoken conversation over WebRTC is premium (`EDGE_VOICE_REALTIME=1`).
+
 ### Premium features
 
 Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
@@ -1266,8 +1334,10 @@ data and models a key in the environment decides whether it can run at all. They
 someone whose plan includes them uses them on purpose (a click, a ticked option); crons, monitors,
 prefetches and page loads always get the free method. Administrators (`ADMIN_EMAILS`) may use everything.
 Locked features stay visible with their plan badge, and trying one shows the plan's message in line with
-a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this list is
-`src/lib/billing/features/premium.ts`, with each feature's cost per use for the pricing model.
+a link to the plans. The contract is in [docs/premium.md](docs/premium.md); the registry is
+`src/lib/billing/features/` (one file per area), with each feature's cost per use for the pricing model.
+Why each of Edge's newest features is free or premium, and on which plan, is in
+[docs/pricing.md](docs/pricing.md#edges-next-round-whats-free-whats-premium-and-why).
 
 | Feature | Plan | Where | What it adds |
 |---|---|---|---|
@@ -1281,6 +1351,18 @@ a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this
 | TimesFM forecasts | Pro | Edge · Scenarios, Driver forecasts | Google's TimesFM through BigQuery, beside the free drift forecast |
 | Flare volumes (Nightfire) | Enterprise | Edge · a plant's panel | VIIRS Nightfire flares with an estimated volume (licensed data) |
 | GPU retraining of the deal model | Enterprise | Edge · Networks | One retraining on a Modal T4, wider and longer (the weekly one stays on CPU) |
+| Re-read a deal with the stronger model | Pro | Edge · Deals, a deal's page | `EDGE_REREAD_MODEL` (e.g. gpt-5.6-sol) re-reads every term, re-quoted and re-checked; the earlier reading stays in the audit trail |
+| Precedent exports | Pro | Edge · Deals | CSV of more than 50 precedents, with each term's quote and source (50 are free) |
+| Second-provider claim check | Pro | Edge · Ask, "Cross-check" | The other provider's model judges each claim against its passages |
+| Daily Pulse | Pro | Edge · Pulse, "Refresh daily" | Up to 50 companies refreshed every day instead of every week |
+| Deal Radar screener | Pro | Edge · Deal Radar, Screener | Every scored company filtered by odds and sector, with CSV export |
+| Peer call comparison | Pro | Edge · Call Desk, Compare peers | Up to six companies' latest calls and promises side by side, with a written comparison |
+| Evasion ensemble (Eva-4B) | Deal Team | Edge · Call Desk, a call's "Add Eva-4B" | A GPU classifier averaged with the free one, ten calls a day; off until its licence is confirmed (`EDGE_CALLS_EVA=1`) |
+| LBO refine | Pro | Edge · Scenarios, LBO, "Refine: 20,000 paths" | 20,000 paths over up to seven years, 25 a day |
+| More theses | Pro | Edge · Theses | Five active theses, 90-day horizons, checks twice a day |
+| Weekly deep synthesis | Pro | Edge · Theses, "Weekly deep pass" | A weekly synthesis on the flagship model at maximum reasoning |
+| Team theses | Deal Team | Edge · Theses | Shared with your team, who follow and add evidence |
+| Live voice analyst | Pro | Edge · voice sheet, "Live conversation" | A real-time spoken conversation, up to ten minutes, three a day |
 | Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
 | Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
 | More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
@@ -1440,6 +1522,7 @@ All tables are in `src/db/schema.ts`.
   - `0018_calendar`
   - `0019_meetings`
   - `0023_copytrade`
+  - `0024_seat_cooldown`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1553,6 +1636,13 @@ bash scripts/preflight.sh                                         # everything t
 | `COPYTRADE_TRADING_ENABLED` | for real orders | `1` lets approved batches go to brokers; anything else keeps real trading off (paper copies work regardless) |
 | `COPYTRADE_MAX_ORDER_USD`, `COPYTRADE_MAX_DAY_USD` | no | Server-wide ceilings per order and per person per day; defaults `25000` and `50000` |
 | `OPENFIGI_API_KEY` | no | Raises OpenFIGI's rate limit for CUSIP-to-ticker mapping (it works without one) |
+| `EDGE_BACKFILL_DAILY_USD` | no | Switches on reading the deal database's backfill and new deals, and sets the day's ceiling in dollars (platform spend; an administrator can also switch it in Deals, at $0.50 a day) |
+| `EDGE_REREAD_MODEL` | for the deal re-read | The stronger model for "Re-read with the stronger model" (uses `OPENAI_API_KEY`) |
+| `PATENTSVIEW_API_KEY` | for patent counts | A free PatentsView key; without it the Pulse leaves patents out |
+| `EDGE_WARN_TX_URL`, `EDGE_WARN_CA_URL`, `EDGE_WARN_NY_URL` | no | Replace a state's WARN source when it moves (the defaults are the last known locations) |
+| `EDGE_PULSE_TITLE_AI=1` | no | Lets the small model sort job titles the rules leave unsorted (platform spend) |
+| `EDGE_ODDS_UNIVERSE=all` | no | Scores every US-listed operating company in the Deal Radar instead of energy, technology and healthcare |
+| `EDGE_EDITOR_EMAILS` | no | People besides administrators who may confirm or correct crosswalk links |
 
 ---
 
@@ -1698,6 +1788,9 @@ Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet
 | Meetings (83 checks) | `pnpm exec tsx scripts/test-meetings.ts` | Transcript chunk stitching (overlaps, re-sent chunks, per-chunk speaker labels, "You" from the microphone levels); participant matching; the notes parser (action items, owners, dates); proposed deal changes; the notetaker's webhook signatures, events and transcripts; meeting context and auto-join; transcription answers and engine choice; the premium features |
 | Desktop app (27 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; meeting audio (mixing, resampling, levels, WAV, overlapping chunks, silence in loopback), call detection and its parsers, never-record rules, the recording dot; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Edge next (260 checks) | `pnpm exec tsx scripts/test-edge-next.ts` | The crosswalk, the change library and its placebo rate, the calibration library and ledger rules, Calibrated Claims, the Precedent Engine (number readers, section location on saved proxies, checks on hand-labelled fields, similarity, the conformal band's coverage), the Pulse (every source's parser on saved responses, title rules on 60 labelled titles, findings) and the Deal Radar (no look-ahead, labels, the model beating its baselines on synthetic data, calibration, card wording) |
+| Deal Radar model (14 checks) | `python ml/test_odds_core.py` | LightGBM training and scoring as the ML service runs them, on a synthetic panel with a known hazard |
+| Edge next evaluations | `scripts/eval-precedents.ts`, `scripts/eval-odds.ts`, `scripts/eval-claims.ts` | Field accuracy, recall@10 of banker-chosen precedents and interval coverage; the Deal Radar's out-of-time scorecard; claim support (against the test branch) |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
@@ -1826,11 +1919,11 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 | Plan | Price | AI allowance per seat | For |
 |---|---|---|---|
-| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, Edge's free core (precedents, Deal Radar, the Pulse, Call Desk, the LBO lab, one thesis, hold-to-talk), with a taste of the assistant |
 | Campus | Free with a .edu address | $2 a day, $10 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
-| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox |
-| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces, assignable seats |
-| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox, AI meeting briefs, and most premium features: deep research and builds, Edge's premium layers (deal re-reads, claim cross-checks, the daily Pulse, the Radar screener, the LBO refine, five theses with the weekly deep pass, live voice) |
+| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, more mailboxes, the adaptive engine across the team, shared workspaces and team theses, the meeting notetaker, Planet imagery in 3D, Dune queries, Eva-4B on calls, fund blends, assignable seats |
+| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences (Nightfire), GPU retraining of the deal model |
 
 - **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
   dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
@@ -1847,6 +1940,10 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Team seats.** The buyer of Deal Team or Enterprise holds one seat and gives the others to members of
   a team they own or administer (Settings, under Plan). A seat count changed in the portal reaches
   YouBank through the webhook, which takes back the newest seats beyond it.
+  - A freed seat can go back to the same person at any time, but to someone else only 30 days after it
+    was last given, so one seat cannot pass a fresh AI allowance from person to person. The seats API
+    names the date and the Plan tab shows it; administrators are exempt
+    ([docs/pricing.md](docs/pricing.md#team-seats-and-the-reassignment-cooldown), `drizzle/0024_seat_cooldown.sql`).
 - **Billing is Stripe.**
   - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
     who already pays is sent to the portal; an open checkout for the same purchase is reused, others are
@@ -1960,6 +2057,8 @@ YouBank/
 | [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
 | [docs/copy-trading.md](docs/copy-trading.md) | Fund copies: 13F ingestion and CUSIP mapping, the backtest, paper and live copies, SnapTrade, safety rails, and what counsel must review before real trading |
+| [docs/edge-next.md](docs/edge-next.md) | Edge's next round: the 14 proposals, the build order and what each step delivered |
+| [docs/edge-architecture.md](docs/edge-architecture.md) | Edge's parts, tables, background jobs, free-tier guards and operations |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |

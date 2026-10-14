@@ -61,6 +61,10 @@ const GeoScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.Ge
 const NetScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.NetScreen), { loading: ScreenLoading });
 const SimScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.SimScreen), { loading: ScreenLoading });
 const AskScreen = dynamic(() => import("./screens/EdgeScreens").then((m) => m.AskScreen), { loading: ScreenLoading });
+const PulseScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.PulseScreen), { loading: ScreenLoading });
+const OddsScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.OddsScreen), { loading: ScreenLoading });
+const CallScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.CallScreen), { loading: ScreenLoading });
+const LboScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.LboScreen), { loading: ScreenLoading });
 const CrypScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.CrypScreen), { loading: ScreenLoading });
 const TokenScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.TokenScreen), { loading: ScreenLoading });
 const DefiScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.DefiScreen), { loading: ScreenLoading });
@@ -132,6 +136,10 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "NET": return <NetScreen ticker={t} onRun={onRun} />;
       case "SIM": return <SimScreen ticker={t} arg={panel.arg} />;
       case "ASK": return <AskScreen ticker={t} arg={panel.arg} />;
+      case "PULSE": return <PulseScreen ticker={t} onRun={onRun} />;
+      case "ODDS": return <OddsScreen ticker={t} onRun={onRun} />;
+      case "CALL": return <CallScreen ticker={t} onRun={onRun} />;
+      case "LBO": return <LboScreen ticker={t} onRun={onRun} />;
       case "CRYP": return <CrypScreen onRun={onRun} />;
       case "TOKEN": return <TokenScreen onRun={onRun} arg={panel.arg} />;
       case "DEFI": return <DefiScreen onRun={onRun} />;

@@ -9,6 +9,8 @@ import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
 import { putObject, r2Ready } from "../../infra/r2";
+import { verifyClaims } from "../../claims/verify";
+import { logError } from "@/lib/errors";
 import { register } from "../engine";
 import { crossed, evidenceOf, kindOfValue, metricOf, rowsOf, toCsv, type Evidence, type Memo, type Signal, type Table } from "../values";
 
@@ -58,6 +60,13 @@ register("out.memo", {
       { maxTokens: 2500, timeoutMs: 120_000 });
     await ctx.progress("check");
     const memo: Memo = { title: r.data.title, markdown: memoMarkdown(r.data, evidence.length, synthetic), sources: evidence.map((e, i) => ({ n: i + 1, label: e.label, ...(e.url ? { url: e.url } : {}) })) };
+    // Calibrated Claims on each paragraph, against the evidence it cites (dots only; a memo holds nothing back).
+    try {
+      const paras = r.data.paragraphs.map((p) => ({ text: p.text.replace(/\s*\[\d+(?:\s*[,;-]\s*\d+)*\]/g, "").trim(), cites: [...new Set(p.cites.filter((n) => n >= 1 && n <= evidence.length))] }));
+      const v = await verifyClaims(paras.map((p) => ({ text: p.text, analysis: !p.cites.length, cites: p.cites.map((n) => ({ text: evidence[n - 1].text, header: evidence[n - 1].label, quote: "near" as const, rank: 1 })) })), { mode: "balanced", scope: [], memo: true });
+      memo.paragraphs = paras.map((p, i) => ({ ...p, support: v.supports[i] }));
+      memo.verifier = v.info;
+    } catch (e) { logError(e, { where: "edge-memo-claims" }); }
     const uncited = r.data.paragraphs.filter((p) => !p.cites.some((n) => n >= 1 && n <= evidence.length)).length;
     return { outputs: { memo }, summary: `${memo.title} (${r.data.paragraphs.length} paragraphs, ${evidence.length} sources${uncited ? `, ${uncited} marked as analysis` : ""})`, preview: { kind: "text", text: memo.markdown.slice(0, 280) } };
   },

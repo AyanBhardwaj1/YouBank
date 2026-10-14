@@ -9,7 +9,7 @@ import { myTeamIds } from "@/lib/teams/db";
 import { getJson, putJson, r2Ready } from "../infra/r2";
 
 export type ScenarioRow = typeof schema.edgeScenarios.$inferSelect;
-export type Kind = "market" | "company" | "gap" | "synthetic" | "practice";
+export type Kind = "market" | "company" | "gap" | "synthetic" | "practice" | "lbo";
 
 const BIG = 200_000;
 

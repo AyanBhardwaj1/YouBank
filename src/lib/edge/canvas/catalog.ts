@@ -5,8 +5,8 @@
  * it. Pure: validation, next-node tips, automatic layout and the starter canvases live here too.
  */
 
-export type Kind = "companies" | "places" | "findings" | "proforma" | "docs" | "answer" | "ranking" | "graph" | "scenario" | "table" | "memo" | "signal" | "file";
-export type Module = "source" | "earth" | "documents" | "networks" | "scenarios" | "output";
+export type Kind = "companies" | "places" | "findings" | "proforma" | "docs" | "answer" | "ranking" | "graph" | "scenario" | "table" | "memo" | "signal" | "file" | "deals" | "series";
+export type Module = "source" | "earth" | "documents" | "networks" | "scenarios" | "signals" | "output";
 
 export type Field =
   | { key: string; label: string; type: "tickers"; help?: string }
@@ -137,6 +137,48 @@ export const NODES: NodeDef[] = [
     defaults: { finding: "acquirers", depth: 2, limit: 10 },
   },
 
+  /* ---------- Signals · precedents, alternative data, sale odds ---------- */
+  {
+    type: "deals.precedents", module: "signals", label: "Precedents", tech: "Deal database", icon: "Handshake", blurb: "Deals like these companies from EDGAR merger filings, every term quoted, with the multiple range and its tested band",
+    inputs: [{ name: "in", label: "Companies or a deal what-if", kinds: ["companies", "proforma"], required: true }],
+    outputs: [{ name: "deals", label: "Precedent set", kind: "deals" }, { name: "table", label: "Table", kind: "table" }],
+    steps: [{ id: "query", label: "Describe the company" }, { id: "retrieve", label: "Find similar deals" }, { id: "range", label: "Multiple range" }],
+    fields: [
+      { key: "years", label: "Look back (years)", type: "number", min: 1, max: 12 },
+      { key: "buyer", label: "Buyer", type: "select", options: [{ value: "", label: "Any buyer" }, { value: "strategic", label: "Strategic" }, { value: "sponsor", label: "Sponsor" }, { value: "sponsor_backed", label: "Sponsor-backed" }] },
+      { key: "k", label: "How many", type: "number", min: 5, max: 40 },
+    ],
+    defaults: { years: 8, buyer: "", k: 15 },
+  },
+  {
+    type: "pulse.signals", module: "signals", label: "Alt-Data Pulse", tech: "Change points", icon: "Activity", blurb: "Hiring, attention, contracts, layoffs and patents as weekly series, with change points and their false-alarm rate",
+    inputs: [{ name: "companies", label: "Companies", kinds: ["companies"], required: true }],
+    outputs: [{ name: "series", label: "Signal series", kind: "series" }, { name: "findings", label: "Changes found", kind: "findings" }],
+    steps: [{ id: "crosswalk", label: "Match ids" }, { id: "read", label: "Read sources" }, { id: "detect", label: "Detect changes" }],
+    fields: [
+      { key: "metric", label: "Series to pass on", type: "select", options: [{ value: "", label: "All of them" }, { value: "jobs.open", label: "Open job postings" }, { value: "jobs.dept.engineering", label: "Engineering postings" }, { value: "wiki.views", label: "Wikipedia views" }, { value: "usasp.obligated", label: "Federal awards" }, { value: "warn.employees", label: "WARN layoffs" }, { value: "patents.grants", label: "Patents granted" }] },
+      { key: "refresh", label: "Read the sources now (otherwise the stored series)", type: "toggle" },
+    ],
+    defaults: { metric: "", refresh: false },
+  },
+  {
+    type: "odds.score", module: "signals", label: "Deal Radar", tech: "Calibrated hazard model", icon: "Radar", blurb: "A model's calibrated 12-month odds of each company announcing a sale, with reasons and the sector base rate",
+    inputs: [{ name: "companies", label: "Companies", kinds: ["companies"], required: true }],
+    outputs: [{ name: "ranking", label: "Ranked by odds", kind: "ranking" }, { name: "table", label: "Table", kind: "table" }],
+    steps: [{ id: "features", label: "Read filings" }, { id: "score", label: "Score" }, { id: "explain", label: "Reasons" }],
+    fields: [],
+    defaults: {},
+  },
+
+  {
+    type: "calls.read", module: "signals", label: "Call Desk", tech: "Calibrated classifier", icon: "AudioLines", blurb: "Earnings-call answers scored for evasion with calibrated probabilities, and management's promises against what was reported",
+    inputs: [{ name: "in", label: "Companies or documents", kinds: ["companies", "docs"], required: true }],
+    outputs: [{ name: "table", label: "Promises and calls", kind: "table" }, { name: "memo", label: "Summary", kind: "memo" }],
+    steps: [{ id: "calls", label: "Find read calls" }, { id: "promises", label: "Promises ledger" }, { id: "write", label: "Summarise" }],
+    fields: [{ key: "read", label: "Read unread filed transcripts now (free)", type: "toggle" }],
+    defaults: { read: false },
+  },
+
   /* ---------- Scenarios · Synthetic data ---------- */
   {
     type: "scen.simulate", module: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", blurb: "Simulated paths for what could happen, always labeled synthetic",
@@ -151,6 +193,19 @@ export const NODES: NodeDef[] = [
       { key: "method", label: "Method", type: "select", options: [{ value: "auto", label: "Chosen by data type" }, { value: "statistical", label: "Statistical (bootstrap, GARCH, regimes)" }, { value: "diffusion", label: "Deep generative (diffusion)" }] },
     ],
     defaults: { driver: "replay", replay: "2022", shock: "", horizon: 60, method: "auto" },
+  },
+  {
+    type: "scen.lbo", module: "scenarios", label: "LBO Stress Lab", tech: "Synthetic data", icon: "Coins", blurb: "A buyout over 1,000 synthetic macro and operating paths: IRR fan, covenant-breach odds, the most a sponsor can pay, and the gentlest scenario that breaks it",
+    inputs: [{ name: "companies", label: "Company", kinds: ["companies"], required: true }, { name: "deals", label: "Precedents (optional)", kinds: ["deals"] }],
+    outputs: [{ name: "scenario", label: "Stress test", kind: "scenario" }, { name: "table", label: "Breach odds by year", kind: "table" }],
+    steps: [{ id: "inputs", label: "Company and multiples" }, { id: "simulate", label: "Simulate paths" }, { id: "stress", label: "Run the buyout" }],
+    fields: [
+      { key: "leverage", label: "Term loan (x EBITDA)", type: "number", min: 0, max: 8, step: 0.25 },
+      { key: "notes", label: "Senior notes (x EBITDA)", type: "number", min: 0, max: 4, step: 0.25 },
+      { key: "maxLeverage", label: "Net leverage covenant (x)", type: "number", min: 2, max: 12, step: 0.25 },
+      { key: "years", label: "Hold (years)", type: "number", min: 2, max: 5 },
+    ],
+    defaults: { leverage: 4, notes: 1.5, maxLeverage: 7, years: 5 },
   },
   {
     type: "scen.synthetic", module: "scenarios", label: "Synthetic data", tech: "Synthetic data", icon: "FlaskConical", blurb: "A realistic synthetic copy of a table, labeled with its recipe and seed",
@@ -196,7 +251,7 @@ export const NODES: NodeDef[] = [
   },
   {
     type: "out.export", module: "output", label: "Export dataset", icon: "Download", blurb: "CSV or Excel of what is wired in",
-    inputs: [{ name: "in", label: "Table, findings, ranking or pro-forma", kinds: ["table", "findings", "ranking", "proforma"], required: true }],
+    inputs: [{ name: "in", label: "Table, findings, ranking, pro-forma, precedents or series", kinds: ["table", "findings", "ranking", "proforma", "deals", "series"], required: true }],
     outputs: [{ name: "file", label: "File", kind: "file" }], steps: [],
     fields: [{ key: "format", label: "Format", type: "select", options: [{ value: "csv", label: "CSV" }, { value: "xlsx", label: "Excel" }] }],
     defaults: { format: "csv" },
@@ -212,7 +267,7 @@ export const NODES: NodeDef[] = [
 
 export const NODE: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.type, n]));
 
-export const MODULE_LABEL: Record<Module, string> = { source: "Sources", earth: "Earth · GeoAI", documents: "Documents · RAG", networks: "Networks · GNN", scenarios: "Scenarios · Synthetic data", output: "Outputs" };
+export const MODULE_LABEL: Record<Module, string> = { source: "Sources", earth: "Earth · GeoAI", documents: "Documents · RAG", networks: "Networks · GNN", scenarios: "Scenarios · Synthetic data", signals: "Signals · Deals and alt data", output: "Outputs" };
 
 /** Whether an output of kind `kind` may feed input `port`. Pure. */
 export const accepts = (port: Port, kind: Kind) => port.kinds.includes("any") || port.kinds.includes(kind);
@@ -364,15 +419,16 @@ export const TEMPLATES: Template[] = [
     },
   },
   {
-    id: "buyer-finder", title: "Target + buyer finder", blurb: "Likely buyers from the graph model, the strategic case from filings, and a cited memo",
-    modules: ["networks", "documents", "output"],
+    id: "buyer-finder", title: "Target + buyer finder", blurb: "Likely buyers from the graph model, the Deal Radar's sale odds, the strategic case from filings, and a cited memo",
+    modules: ["networks", "signals", "documents", "output"],
     build: ({ tickers }) => {
       const src = makeNode("source.companies", { tickers: tickers.slice(0, 1) }, "companies");
       const net = makeNode("net.graph", { finding: "acquirers" }, "network");
+      const odds = makeNode("odds.score", {}, "odds");
       const docs = makeNode("source.documents", { sources: ["sec"], forms: ["10-K", "10-Q"] }, "filings");
       const ask = makeNode("docs.ask", { question: "What would make this company attractive to a buyer, and what stands in the way?", mode: "strict" }, "rationale");
       const memo = makeNode("out.memo", { style: "memo" }, "memo");
-      return layout({ nodes: [src, net, docs, ask, memo], edges: [wire("companies", "companies", "network", "companies"), wire("companies", "companies", "filings", "companies"), wire("filings", "docs", "rationale", "docs"), wire("network", "ranking", "memo", "in"), wire("rationale", "answer", "memo", "in")] });
+      return layout({ nodes: [src, net, odds, docs, ask, memo], edges: [wire("companies", "companies", "network", "companies"), wire("companies", "companies", "odds", "companies"), wire("companies", "companies", "filings", "companies"), wire("filings", "docs", "rationale", "docs"), wire("network", "ranking", "memo", "in"), wire("odds", "ranking", "memo", "in"), wire("rationale", "answer", "memo", "in")] });
     },
   },
   {

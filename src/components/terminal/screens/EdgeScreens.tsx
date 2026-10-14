@@ -127,6 +127,7 @@ export function EdgeScreen({ ticker, onRun }: { ticker: string; onRun: Run }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-semibold">{d.name}</div>
           <div className="truncate text-[11px] text-muted">{[g?.industry, g?.place, g?.revenue ? `revenue ${fmtUsd(g.revenue)}` : ""].filter(Boolean).join(" · ") || "Not in the relationship graph yet"}</div>
+          {d.odds && <button type="button" onClick={() => onRun({ ticker, fn: "ODDS", via: "click" })} className="mt-0.5 block truncate text-left text-[11px] text-muted hover:text-fg">Deal Radar: model probability of a sale announcement within 12 months <span className="num text-fg">{(d.odds.p * 100).toFixed(1)}%</span>{d.odds.low !== null && d.odds.high !== null ? ` (${(d.odds.low * 100).toFixed(0)}–${(d.odds.high * 100).toFixed(0)}%)` : ""}, base rate {(d.odds.base * 100).toFixed(1)}%{d.odds.reason ? ` · ${d.odds.reason}` : ""}</button>}
         </div>
         {(d.watch || d.canWatch) && (
           <button type="button" disabled={busy} onClick={() => void watch()} aria-pressed={!!d.watch} title={d.watch ? "Stop watching" : "Watch it: its ground, filings and deals are checked daily, and big changes alert you"}

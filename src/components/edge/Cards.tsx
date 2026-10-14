@@ -13,6 +13,7 @@ import { Compare } from "./Compare";
 import { TerrainPanel } from "./Terrain";
 import { Timelapse } from "./Timelapse";
 import { wordDiff } from "@/lib/edge/docs/text";
+import { ProbBar, Sparkline } from "./next/charts";
 import { ago, confidenceLabel, fmtNum, useClock, type EdgeCard, type FilingVisual, type FlagVisual, type FlaringVisual, type GroundVisual, type MethaneVisual, type PermitsVisual, type PredictionVisual, type ProformaVisual, type RadarVisual } from "./client";
 
 /** "4m", "Yesterday", "Sep 26": kept fresh by the shared clock, so a tick re-renders only the times. */
@@ -540,6 +541,128 @@ export function PredictionCard({ card, index, onOpen }: { card: EdgeCard; index:
   );
 }
 
+
+type SignalVisual = {
+  type: string; ticker?: string; name?: string; metric?: string; points?: { period: string; value: number }[]; prob?: number; move?: number; coverage?: string;
+  news?: { headline: string; url: string } | null; label?: string; postings?: { title: string; location: string; firstSeen: string; url: string }[];
+  award?: { id: string; amount: number; agency: string; description: string; url: string; start: string }; notice?: { state: string; company: string; date: string; employees: number; city: string };
+  p?: number; low?: number | null; high?: number | null; base?: number | null; rise?: number; reasons?: { label: string; direction: "up" | "down"; url?: string }[]; history?: number[]; version?: string; disclaimer?: string;
+};
+
+const SIGNAL_KICKER: Record<string, string> = {
+  hiring_shift: "Pulse · hiring", hiring_tell: "Pulse · a tell", attention_spike: "Pulse · attention", contract_award: "Pulse · federal award",
+  layoff_notice: "Pulse · WARN notice", patent_shift: "Pulse · patents", deal_odds: "Deal Radar · model probability",
+};
+
+/** The Alt-Data Pulse's findings and the Deal Radar's odds, as one card with a body per kind. */
+export function SignalCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as SignalVisual;
+  const pctOf = (x: number | null | undefined, dp = 0) => (x === null || x === undefined || !Number.isFinite(x) ? "—" : `${(x * 100).toFixed(dp)}%`);
+  return (
+    <Shell card={card} index={index} kicker={`${SIGNAL_KICKER[card.kind] ?? "Signals"}${v.ticker ? ` · ${v.ticker}` : ""}`} icon={card.kind === "deal_odds" ? "Radar" : "Activity"}>
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        {card.kind === "deal_odds" && typeof v.p === "number" ? (
+          <div className="rounded-lg border border-line bg-elevated/40 p-2.5">
+            <div className="flex items-baseline justify-between gap-2 text-[12px]"><span className="num text-[18px] font-semibold text-fg">{pctOf(v.p)}</span><span className="text-muted">interval {pctOf(v.low)} to {pctOf(v.high)} · base rate {pctOf(v.base, 1)}</span></div>
+            <div className="mt-1.5"><ProbBar p={v.p} low={v.low} high={v.high} base={v.base} max={Math.max(0.3, (v.high ?? v.p) * 1.2)} label="12-month sale odds" /></div>
+            {v.reasons?.length ? <div className="mt-2 flex flex-wrap gap-1">{v.reasons.slice(0, 3).map((r) => <a key={r.label} href={r.url || undefined} target="_blank" rel="noreferrer" className={`rounded-full border px-1.5 py-px text-[10.5px] ${r.direction === "up" ? "border-accent/50 text-fg" : "border-line text-muted"}`}>{r.direction === "up" ? "▲" : "▼"} {r.label}</a>)}</div> : null}
+            {v.history && v.history.length > 1 ? <div className="mt-2"><Sparkline values={v.history} width={140} label="Odds over 26 weeks" /></div> : null}
+          </div>
+        ) : null}
+        {v.points?.length ? <div className="flex items-center gap-2 rounded-lg border border-line bg-elevated/40 p-2"><Sparkline values={v.points.map((p) => p.value)} width={160} height={32} label={v.metric ?? "Series"} /><span className="text-[11px] text-muted">{typeof v.prob === "number" ? `change probability ${v.prob.toFixed(2)}` : ""}</span></div> : null}
+        {v.postings?.length ? <ul className="space-y-0.5 rounded-lg border border-line bg-elevated/40 p-2 text-[11.5px]">{v.postings.slice(0, 5).map((p, i) => <li key={i} className="flex justify-between gap-2"><a href={p.url} target="_blank" rel="noreferrer" className="truncate hover:text-info">{p.title}</a><span className="num shrink-0 text-muted">{p.location || ""} · {p.firstSeen}</span></li>)}</ul> : null}
+        {v.award ? <p className="text-[12px] text-muted"><a href={v.award.url} target="_blank" rel="noreferrer" className="text-info hover:underline">Award {v.award.id}</a> · {v.award.agency} · from {v.award.start}</p> : null}
+        {v.notice ? <p className="text-[12px] text-muted">{v.notice.employees.toLocaleString("en-US")} employees · {v.notice.city ? `${v.notice.city}, ` : ""}{v.notice.state} · notice dated {v.notice.date} · filed as &ldquo;{v.notice.company}&rdquo;</p> : null}
+        <p className="text-[12px] leading-relaxed text-muted">{card.summary}</p>
+        {v.news ? <a href={v.news.url} className="text-[11.5px] text-info hover:underline">The story behind it: {v.news.headline}</a> : null}
+        {card.kind === "deal_odds" ? <p className="text-[10.5px] text-faint">{v.disclaimer ?? "A statistical estimate from public data, not a rumour or advice."}</p> : null}
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>{card.observedAt ? <Ago iso={card.observedAt} /> : null}{v.coverage ? ` · ${v.coverage}` : ""}{v.version ? ` · model ${v.version}` : ""}</span>
+          <a href={card.kind === "deal_odds" ? `/app/edge?view=radar&ticker=${v.ticker ?? ""}` : `/app/edge?view=pulse&ticker=${v.ticker ?? ""}`} className="inline-flex items-center gap-1 text-accent hover:underline">{card.kind === "deal_odds" ? "Why, and the track record" : "The Pulse"} <ArrowRight className="h-3 w-3" /></a>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+type CallVisual = { type: "call_evasion"; ticker: string; name: string; docId: number; rate: { mean: number; low: number; high: number }; before: number; prob: number; calls: number; topics: { topic: string; n: number }[]; quote: string; version: string; disclaimer: string };
+type PromiseVisual = { type: "guidance_result" | "commitment_due"; ticker: string; question: string; reported?: number; status?: string; missPct?: number; p: number; period: string; low?: number | null; high?: number | null; unit?: string };
+type ThesisVisual = { type: "thesis_update"; agentId: number; title: string; overall: number | null; moved: { n: number; from: number; to: number; why: string }[]; fired: { n: number; text: string; detail: string }[]; claims: { n: number; text: string; p: number; history: number[] }[] };
+const pc0 = (x: number | null | undefined) => (x === null || x === undefined || !Number.isFinite(x) ? "—" : `${Math.round(x * 100)}%`);
+
+/** Call Desk (E5): a call whose share of answers that did not address the question rose, with what was avoided. */
+export function CallCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as CallVisual;
+  return (
+    <Shell card={card} index={index} kicker={`Call Desk · ${v.ticker}`} icon="AudioLines">
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="rounded-lg border border-line bg-elevated/40 p-2.5 text-[12px]">
+          <div className="flex items-baseline justify-between gap-2"><span className="num text-[18px] font-semibold">{pc0(v.rate.mean)}</span><span className="text-muted">interval {pc0(v.rate.low)} to {pc0(v.rate.high)} · last {v.calls} call{v.calls === 1 ? "" : "s"} {pc0(v.before)}</span></div>
+          <div className="mt-1 text-[11px] text-muted">Probability the rate rose: {v.prob.toFixed(2)}{v.topics.length ? ` · avoided: ${v.topics.map((t) => t.topic).join(", ")}` : ""}</div>
+          {v.quote ? <p className="mt-1.5 border-l-2 border-neg/60 pl-2 text-[11.5px] italic text-muted">&ldquo;{v.quote}&rdquo;</p> : null}
+        </div>
+        <p className="text-[10.5px] text-faint">{v.disclaimer}</p>
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>{card.observedAt ? <Ago iso={card.observedAt} /> : null} · classifier {v.version}</span>
+          <a href={`/app/edge?view=calls&ticker=${v.ticker}`} className="inline-flex items-center gap-1 text-accent hover:underline">The call, question by question <ArrowRight className="h-3 w-3" /></a>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+/** Call Desk (E5): a promise settled from XBRL against its range, or one whose period ends within 30 days. */
+export function PromiseCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as PromiseVisual;
+  const settled = card.kind === "guidance_result";
+  const tone = v.status === "hit" ? "text-pos" : v.status ? "text-neg" : "text-muted";
+  return (
+    <Shell card={card} index={index} kicker={`${settled ? "Promise settled" : "Promise due"} · ${v.ticker || "Call Desk"}`} icon="ListChecks">
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="rounded-lg border border-line bg-elevated/40 p-2.5 text-[12px]">
+          {settled ? <div className={`font-semibold ${tone}`}>{v.status === "hit" ? "Hit the range" : v.status === "missed_low" ? `Below the range by ${((v.missPct ?? 0) * 100).toFixed(1)}%` : `Above the range by ${((v.missPct ?? 0) * 100).toFixed(1)}%`}</div> : <div className="text-muted">Period ends {v.period}; settled from XBRL when its filing lands.</div>}
+          <div className="mt-1 text-[11px] text-muted">Edge gave it {pc0(v.p)} of hitting when it was said, from the company&apos;s record.</div>
+        </div>
+        <p className="text-[12px] leading-relaxed text-muted">{card.summary}</p>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>{card.observedAt ? <Ago iso={card.observedAt} /> : null}</span>
+          <a href={`/app/edge?view=calls&ticker=${v.ticker}`} className="inline-flex items-center gap-1 text-accent hover:underline">All its promises <ArrowRight className="h-3 w-3" /></a>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+/** Thesis Agent (E7): the person's thesis moved, or a kill criterion fired. Only its owner sees it. */
+export function ThesisCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as ThesisVisual;
+  return (
+    <Shell card={card} index={index} kicker="Your thesis" icon="Lightbulb">
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        {v.fired.length ? <ul className="space-y-1 rounded-lg border border-neg/40 bg-neg/5 p-2.5 text-[12px]">{v.fired.map((k) => <li key={k.n}><span className="font-semibold text-neg">Kill criterion fired:</span> {k.text}<div className="text-[11px] text-muted">{k.detail}</div></li>)}</ul> : null}
+        <ul className="space-y-1 rounded-lg border border-line bg-elevated/40 p-2.5 text-[12px]">{v.claims.slice(0, 5).map((c) => { const m = v.moved.find((x) => x.n === c.n); return <li key={c.n} className="grid grid-cols-[minmax(0,1fr)_auto_72px] items-center gap-2"><span className="truncate" title={c.text}>{c.n}. {c.text}</span><span className={`num ${m ? "font-semibold" : "text-muted"}`}>{m ? `${pc0(m.from)} → ${pc0(m.to)}` : pc0(c.p)}</span><Sparkline values={c.history.length > 1 ? c.history : [c.p, c.p]} width={72} height={18} label={`Claim ${c.n}`} /></li>; })}</ul>
+        <p className="text-[12px] leading-relaxed text-muted">{card.summary}</p>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Overall (agent estimate) {pc0(v.overall)}</span>
+          <a href={`/app/edge?view=theses&thesis=${v.agentId}`} className="inline-flex items-center gap-1 text-accent hover:underline">The thesis <ArrowRight className="h-3 w-3" /></a>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+const SIGNAL_CARD_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds"]);
+
 /** One finding as its card. Memoized: a card re-renders only when its finding or handlers change. */
 export const EdgeCardView = memo(function EdgeCardView(props: { card: EdgeCard; index: number; onMap?: OnMap; onOpenDeal?: (card: EdgeCard) => void; onOpenRadar?: (card: EdgeCard) => void; onOpenNetworks?: (ticker: string) => void }) {
   if (props.card.kind === "deal_proforma") return <ProformaCard card={props.card} index={props.index} onOpen={props.onOpenDeal} />;
@@ -551,5 +674,9 @@ export const EdgeCardView = memo(function EdgeCardView(props: { card: EdgeCard; 
   if (props.card.kind === "filing_change") return <FilingCard card={props.card} index={props.index} onOpen={props.onOpenRadar} />;
   if (props.card.kind === "graph_flag") return <FlagCard card={props.card} index={props.index} onOpen={props.onOpenNetworks} />;
   if (props.card.kind === "graph_prediction") return <PredictionCard card={props.card} index={props.index} onOpen={props.onOpenNetworks} />;
+  if (SIGNAL_CARD_KINDS.has(props.card.kind)) return <SignalCard card={props.card} index={props.index} />;
+  if (props.card.kind === "call_evasion") return <CallCard card={props.card} index={props.index} />;
+  if (props.card.kind === "guidance_result" || props.card.kind === "commitment_due") return <PromiseCard card={props.card} index={props.index} />;
+  if (props.card.kind === "thesis_update") return <ThesisCard card={props.card} index={props.index} />;
   return null;
 });

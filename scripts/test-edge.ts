@@ -638,7 +638,7 @@ async function main() {
       { items: [{ id: 1, title: "Pad", kind: "ground_change", confidence: 0.8, tickers: ["ET"], observedAt: null, summary: "s", sources: [] }] },
     ]);
     check("a story runs from the ground to the memo and leaves out bare lists", sections.map((x) => x.kind).join() === "findings,scenario,answer,memo" && sections[0].title === "What changed on the ground" && sections[3].title === "Memo", sections.map((x) => x.kind));
-    const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "net.graph", "docs.ask", "scen.simulate", "source.documents", "docs.changes", "out.export"]);
+    const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "net.graph", "docs.ask", "scen.simulate", "source.documents", "docs.changes", "out.export", "odds.score"]);
     check("a banker's first canvas is the buyer finder once the model has trained, the asset watch before", starterTemplate("banker", true, all) === "buyer-finder" && starterTemplate("banker", false, all) === "asset-watch" && starterTemplate("student", true, all) === "asset-watch");
     check("a first canvas whose blocks are not ready falls back to the asset watch", starterTemplate("markets", true, new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo"])) === "asset-watch");
     check("section titles read naturally", sectionTitle("ranking", { finding: "Likely acquirers", subject: "Targa", items: [] }) === "Likely acquirers for Targa");
@@ -773,7 +773,7 @@ async function main() {
     check("keyboard list: then by links touching each, ties by name", rows.map((r) => `${r.n.name}:${r.c}`).join(",") === "Focus Co:2,Alpha:3,Zeta:3,Beta:2,Alone:0", rows.map((r) => `${r.n.name}:${r.c}`));
     const saved = { v: process.env.VOYAGE_API_KEY, m: process.env.EDGE_ANSWER_MODEL, o: process.env.OPENAI_API_KEY };
     delete process.env.VOYAGE_API_KEY; delete process.env.EDGE_ANSWER_MODEL; process.env.OPENAI_API_KEY = "x";
-    const offAll = UPGRADES.every((u) => !upgradeOn(u.id) || u.id === "modal-budget" || u.id === "docs-storage");
+    const offAll = UPGRADES.every((u) => !upgradeOn(u.id) || u.id === "modal-budget" || u.id === "docs-storage" || u.id === "lbo-refine"); // lbo-refine needs no key: without ML it runs in TypeScript
     process.env.VOYAGE_API_KEY = "k"; process.env.EDGE_ANSWER_MODEL = "gpt-5.6-sol";
     const report = upgradesReport();
     check("upgrades stay off until their key is set, then a built one turns on (a switch with any value too)", offAll && upgradeOn("rerank-voyage") && upgradeOn("answer-model") && !upgradeOn("transcribe-openai") && report.find((r) => r.id === "rerank-voyage")!.needs[0].set && !JSON.stringify(report).includes("\"k\""));

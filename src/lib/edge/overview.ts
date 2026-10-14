@@ -13,6 +13,7 @@ import { companyCards, type EdgeCard } from "./feed";
 import type { Flag } from "./graph/algo";
 import { overview, predictions, redFlags, type Prediction } from "./graph/findings";
 import { companyByTicker } from "./graph/store";
+import { oddsFor } from "./odds/score";
 import { listWatches } from "./watches";
 
 export type RankedPick = { name: string; ticker: string; score: number; rank: number; why: string };
@@ -27,6 +28,8 @@ export type CompanyOverview = {
   cards: EdgeCard[];
   graph: CompanyGraph | null;
   assets: { plants: number; pipelines: number; capacityMMcfd: number; pipelineKm: number };
+  /** The Deal Radar's line (E4): the model probability, its interval and the sector base rate, when scored. */
+  odds: { p: number; low: number | null; high: number | null; base: number; reason: string | null; version: string } | null;
 };
 
 /** A pick in a line: the company and the first reason path, in words. Pure. */
@@ -57,11 +60,20 @@ const assetsOf = (ticker: string) => memo(`edge:overview:assets:${ticker}`, 10 *
 export async function companyOverview(userId: string, blend: Blend, ticker: string): Promise<CompanyOverview> {
   const watches = await listWatches(userId);
   const [graph, assets, cards, listed] = await Promise.all([graphOf(ticker), assetsOf(ticker), companyCards(userId, ticker, watches, blend, 8), resolveTicker(ticker)]);
+  const odds = await oddsLine(ticker).catch(() => null);
   const w = watches.find((x) => x.mine && x.kind === "company" && x.target.ticker === ticker);
   const { name, ...rest } = graph ?? { name: "" };
   return {
     ticker, name: name || listed?.name || ticker,
     watch: w ? { id: w.id } : null, canWatch: !w && watches.filter((x) => x.mine).length < WATCH_LIMIT,
-    cards, graph: graph ? (rest as CompanyGraph) : null, assets,
+    cards, graph: graph ? (rest as CompanyGraph) : null, assets, odds,
   };
+}
+
+/** The Deal Radar's stored odds for a company (no scoring here: the daily and weekly passes score). */
+async function oddsLine(ticker: string): Promise<CompanyOverview["odds"]> {
+  const node = await companyByTicker(ticker);
+  if (!node) return null;
+  const o = await oddsFor(node.id);
+  return o ? { p: o.p, low: o.low, high: o.high, base: o.base, reason: o.reasons.find((r) => r.direction === "up")?.label ?? null, version: o.version } : null;
 }

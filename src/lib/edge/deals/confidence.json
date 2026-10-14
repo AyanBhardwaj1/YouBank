@@ -1,0 +1,67 @@
+{
+  "version": "fixture-2026-10-14",
+  "fittedAt": "2026-10-14T00:27:48.989Z",
+  "labelledDeals": 3,
+  "families": {
+    "price": {
+      "n": 10,
+      "correct": 10,
+      "iso": {
+        "x": [
+          0.68,
+          0.7300000000000001,
+          0.8300000000000001
+        ],
+        "y": [
+          1,
+          1,
+          1
+        ],
+        "n": 10
+      }
+    },
+    "size": {
+      "n": 2,
+      "correct": 2,
+      "iso": null
+    },
+    "protection": {
+      "n": 6,
+      "correct": 6,
+      "iso": null
+    },
+    "advisers": {
+      "n": 1,
+      "correct": 1,
+      "iso": null
+    },
+    "fairness": {
+      "n": 4,
+      "correct": 4,
+      "iso": null
+    },
+    "process": {
+      "n": 11,
+      "correct": 11,
+      "iso": {
+        "x": [
+          0.8300000000000001
+        ],
+        "y": [
+          1
+        ],
+        "n": 11
+      }
+    },
+    "projections": {
+      "n": 1,
+      "correct": 1,
+      "iso": null
+    },
+    "approvals": {
+      "n": 1,
+      "correct": 1,
+      "iso": null
+    }
+  }
+}

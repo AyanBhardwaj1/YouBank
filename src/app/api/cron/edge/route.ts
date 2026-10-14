@@ -10,6 +10,7 @@ import { notifyWatchers } from "@/lib/edge/notify";
 import { scanPermits } from "@/lib/edge/permits";
 import { scanMethane } from "@/lib/edge/premium/carbonmapper";
 import { scanRadar } from "@/lib/edge/radar";
+import { dailyNext } from "@/lib/edge/next";
 import { checkDue } from "@/lib/edge/watches";
 import { describeFailure } from "@/lib/errors";
 
@@ -25,8 +26,9 @@ export const maxDuration = 300;
  * in Sentinel-1 radar for new structures (each every six days, a dozen a day), count the drilling
  * permits near them, and (only when licensed) match Carbon Mapper's methane plumes to them; keep the
  * relationship graph current (watched companies re-read, the Newsroom's deals folded in, the deal model
- * retrained when a deal was announced since it last trained). Big findings alert their watchers at once;
- * the rest go in the daily digest.
+ * retrained when a deal was announced since it last trained); then Edge's next features (forecasts settled,
+ * new merger documents into the deal database, watched companies' Pulse and sale odds). Big findings alert
+ * their watchers at once; the rest go in the daily digest.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
@@ -50,9 +52,12 @@ export async function GET(req: Request) {
     // Big findings alert their watchers now; the rest wait for the digest.
     const alerts = await notifyWatchers([...watches.found, ...deals, ...filings, ...flares.created, ...radar.created, ...permits.created, ...methaneCreated]).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-notify").message }));
     const graph = await graphDaily().catch((e) => ({ error: describeFailure(e, 500, "edge-cron-graph").message }));
+    // Edge's next features: forecasts settled, new merger documents, watched companies' Pulse and odds (lib/edge/next.ts).
+    const next = await dailyNext(deadline - 20_000).catch((e) => ({ created: [] as number[], error: describeFailure(e, 500, "edge-cron-next").message }));
+    const nextAlerts = next.created.length ? await notifyWatchers(next.created).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-next-notify").message })) : null;
     // Digests go hourly from the job runner at each person's brief time; without it, once a day from here.
     const digests = jobsReady() ? "hourly" : await sendDigests(deadline, { anyHour: true }).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-digest").message }));
-    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, flares, radar, permits, methane, alerts, graph, digests });
+    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, flares, radar, permits, methane, alerts, graph, next, nextAlerts, digests });
   } catch (e) {
     return NextResponse.json({ ok: false, error: describeFailure(e, 500, "edge-cron").message }, { status: 500 });
   }

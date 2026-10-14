@@ -4,8 +4,8 @@ YouBank Edge ML service: Modal app ``youbank-edge-ml``.
 One authenticated HTTP entry point (``api``) dispatches to one Modal function per task,
 plus a ``status`` endpoint for async calls. Tasks:
 
-    health, geo.refine, geo.embed_change, geo.footprints, docs.parse, docs.rerank, audio.transcribe,
-    graph.train, synth.tabular, synth.series, topics.map
+    health, geo.refine, geo.embed_change, geo.footprints, docs.parse, docs.rerank, docs.verify, audio.transcribe,
+    graph.train, synth.tabular, synth.series, topics.map, odds.train, odds.score, calls.evasion, lbo.refine
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
 Large outputs go to Cloudflare R2 under ``ml/``; results carry the R2 key.
@@ -57,7 +57,7 @@ SECRET_KEYS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEM_USD_PER_GIB_SECOND = 0.00000222
 # GPU tasks: Modal's GPU and its list price per second (T4 $0.59 an hour), added to the CPU and memory above.
-GPU_TASKS: dict[str, tuple[str, float]] = {"graph.train.gpu": ("T4", 0.59 / 3600)}
+GPU_TASKS: dict[str, tuple[str, float]] = {"graph.train.gpu": ("T4", 0.59 / 3600), "calls.evasion": ("T4", 0.59 / 3600)}
 
 # task name -> (Modal function name, CPU cores, memory MiB, timeout seconds, max containers)
 TASKS: dict[str, tuple[str, float, int, int, int]] = {
@@ -67,6 +67,8 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "geo.footprints": ("geo_footprints", 2.0, 7168, 600, 2),  # SAM 2.1 base+ automatic masks (SAM ViT-B as fallback)
     "docs.parse": ("docs_parse", 2.0, 4096, 900, 3),
     "docs.rerank": ("docs_rerank", 4.0, 2048, 120, 3),
+    # Calibrated Claims (E2): NLI entailment of a claim by each passage it cites.
+    "docs.verify": ("docs_verify", 2.0, 2048, 120, 3),
     "audio.transcribe": ("audio_transcribe", 4.0, 8192, 3600, 2),
     "graph.train": ("graph_train", 2.0, 4096, 1800, 1),
     # The same training on a GPU, wider and longer, only when a person asks for it (premium: edge.graph-gpu).
@@ -74,6 +76,14 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "synth.tabular": ("synth_tabular", 2.0, 4096, 1800, 1),
     "synth.series": ("synth_series", 2.0, 4096, 1800, 1),
     "topics.map": ("topics_map", 2.0, 4096, 600, 1),
+    # Deal Radar (E4): train monthly (a few CPU minutes), score the universe weekly and watched companies daily.
+    "odds.train": ("odds_train", 2.0, 4096, 1800, 1),
+    "odds.score": ("odds_score", 1.0, 2048, 300, 2),
+    # Call Desk (E5): the optional Eva-4B ensemble on a T4, used only when a person asks (premium edge.calls-eva)
+    # and only once EDGE_CALLS_EVA=1 is set on the app (the weights' training-data licence is unconfirmed).
+    "calls.evasion": ("calls_evasion", 2.0, 16384, 600, 1),
+    # LBO Stress Lab (E6): 20,000 paths over up to seven years (premium edge.lbo-refine); logic in ml/lbo_core.py.
+    "lbo.refine": ("lbo_refine", 2.0, 4096, 600, 2),
 }
 SCALEDOWN_SECONDS = 60
 INNGEST_URL = "https://inn.gs/e/"
@@ -123,6 +133,11 @@ PINS = {
     "tokenizers": "0.23.2",
     "safetensors": "0.8.0",
     "pyarrow": "25.0.1",
+    # Deal Radar (E4): the hazard model (MIT)
+    "lightgbm": "4.6.0",
+    # Call Desk (E5): Eva-4B through transformers (Apache-2.0); confirm these pins on the first staging deploy
+    "transformers": "5.6.0",
+    "accelerate": "1.13.0",
 }
 MODELS = {
     # geo.refine: the current pair, then the fallbacks for the pair below
@@ -144,6 +159,15 @@ MODELS = {
     "silero": {"repo": "istupakov/silero-vad-onnx", "revision": "b3e3ee3cce4c11ceb63b1a0b229d916069c1ddf6", "license": "MIT"},
     "whisper": {"repo": "Systran/faster-whisper-small", "revision": "536b0662742c02347bc0e980a01041f333bce120",
                 "compute": "int8", "license": "MIT"},
+    # docs.verify: a DeBERTa-v3 NLI cross-encoder (Apache-2.0, MIT/Apache checkers only; Bespoke-MiniCheck-7B is
+    # non-commercial and kept out), as an ONNX export. The revision is resolved at build time and reported by
+    # `health`; pin it here to that commit after the first staging deploy.
+    "nli": {"repo": os.environ.get("EDGE_NLI_REPO", "Xenova/nli-deberta-v3-small"), "revision": os.environ.get("EDGE_NLI_REVISION", "main"),
+            "origin": "cross-encoder/nli-deberta-v3-small", "license": "Apache-2.0"},
+    # calls.evasion (optional, off until the licence question is answered): Eva-4B, Apache-2.0 weights on
+    # Qwen3-4B-Instruct-2507. Only the weights; never the EvasionBench dataset. Pin the revision after staging.
+    "eva": {"repo": os.environ.get("EDGE_EVA_REPO", "FutureMa/Eva-4B"), "revision": os.environ.get("EDGE_EVA_REVISION", "main"),
+            "base": "Qwen/Qwen3-4B-Instruct-2507", "license": "Apache-2.0"},
     # docs.rerank
     "reranker": {"repo": "cross-encoder/ettin-reranker-32m-v1", "revision": "b33e5ceb5110773ea9cf5e00c9bedc83a8c2afdd",
                  "license": "Apache-2.0"},
@@ -156,6 +180,7 @@ PARAKEET_DIR = "/models/parakeet-tdt-0.6b-v2"
 SILERO_DIR = "/models/silero-vad"
 WHISPER_DIR = "/models/whisper-small"
 RERANK_DIR = "/models/ettin-reranker-32m"
+NLI_DIR = "/models/nli-deberta-v3-small"
 
 
 def _pin(*names: str) -> list[str]:
@@ -303,12 +328,43 @@ rerank_image = (
     )
 )
 
+# docs.verify: the NLI checker as ONNX (no torch), the same runtime as the reranker. The commit actually fetched is
+# written next to the model so `health` can report it.
+nli_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("onnxruntime", "tokenizers", "huggingface-hub"))
+    .run_commands(
+        "python -c \"from huggingface_hub import snapshot_download as s, HfApi; "
+        f"s('{MODELS['nli']['repo']}', revision='{MODELS['nli']['revision']}', local_dir='{NLI_DIR}', "
+        "allow_patterns=['tokenizer.json', 'tokenizer_config.json', 'config.json', 'onnx/model.onnx']); "
+        f"open('{NLI_DIR}/REVISION', 'w').write(HfApi().model_info('{MODELS['nli']['repo']}', revision='{MODELS['nli']['revision']}').sha)\"",
+    )
+)
+
 graph_image = _torch_image().pip_install(*_pin("torch-geometric", "scikit-learn", "boto3"))
 # The GPU variant: PyPI's torch wheel carries CUDA (the CPU index's does not).
 graph_gpu_image = modal.Image.debian_slim(python_version=PY).pip_install(
     f"torch=={PINS['torch'].split('+')[0]}", *_pin("torch-geometric", "scikit-learn", "boto3"))
 
 synth_image = _torch_image().pip_install(*_pin("scikit-learn", "boto3"))
+
+# Deal Radar: LightGBM and scikit-learn (with scipy for the Jeffreys intervals); the pure logic lives in
+# ml/odds_core.py, added as local source so it is the same file the local tests import.
+odds_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("lightgbm", "scikit-learn", "boto3"))
+    .add_local_python_source("odds_core")
+)
+
+# Call Desk's optional Eva-4B: PyPI's torch wheel (with CUDA) and transformers; the pure logic in ml/calls_core.py.
+calls_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(f"torch=={PINS['torch'].split('+')[0]}", *_pin("transformers", "accelerate", "safetensors", "tokenizers", "huggingface-hub", "boto3"))
+    .add_local_python_source("calls_core")
+)
+
+# LBO Stress Lab: numpy only; the engine lives in ml/lbo_core.py, the same file the local tests import.
+lbo_image = modal.Image.debian_slim(python_version=PY).pip_install("numpy==2.4.6").add_local_python_source("lbo_core")
 
 topics_image = (
     modal.Image.debian_slim(python_version=PY)
@@ -573,6 +629,7 @@ def _health(inp: dict) -> dict:
         "parakeet": f"{hf('parakeet')} ({MODELS['parakeet']['quantization']})",
         "whisper": f"{hf('whisper')} ({MODELS['whisper']['compute']})",
         "reranker": hf("reranker"),
+        "nli": f"{MODELS['nli']['repo']}@{MODELS['nli']['revision']}",
     }
     resources = {t: {"cpu": c, "memoryMiB": m, "timeout": s, "maxContainers": k} for t, (_, c, m, s, k) in TASKS.items()}
     return {"app": APP_NAME, "versions": versions, "tasks": list(TASKS), "models": models,
@@ -1893,6 +1950,84 @@ def _docs_rerank(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
+# docs.verify: NLI entailment for Calibrated Claims (E2). Input {"pairs": [{"premise", "hypothesis"}]} (a cited
+# passage with its header line, and the claim); output the entailment and contradiction probability of each, in
+# order. The label order is read from the model's own config, never assumed.
+# ---------------------------------------------------------------------------------------------
+NLI_MAX_PAIRS = 256
+NLI_BATCH = 16
+_NLI: dict = {}
+
+
+def _nli() -> dict:
+    if _NLI:
+        return _NLI
+    import onnxruntime as ort
+    from tokenizers import Tokenizer
+
+    so = ort.SessionOptions()
+    so.intra_op_num_threads = _hw_threads(TASKS["docs.verify"][1])
+    so.inter_op_num_threads = 1
+    sess = ort.InferenceSession(f"{NLI_DIR}/onnx/model.onnx", so, providers=["CPUExecutionProvider"])
+    cfg = json.load(open(f"{NLI_DIR}/config.json"))
+    labels = {int(k): str(v).lower() for k, v in (cfg.get("id2label") or {}).items()}
+    find = lambda word: next((i for i, l in labels.items() if l.startswith(word)), None)  # noqa: E731
+    entail, contra = find("entail"), find("contra")
+    if entail is None:
+        raise RuntimeError(f"the NLI model's labels have no entailment class: {labels}")
+    tok = Tokenizer.from_file(f"{NLI_DIR}/tokenizer.json")
+    tok.no_padding()
+    try:
+        revision = open(f"{NLI_DIR}/REVISION").read().strip()
+    except OSError:
+        revision = MODELS["nli"]["revision"]
+    _NLI.update(sess=sess, tok=tok, entail=entail, contra=contra, inputs=[i.name for i in sess.get_inputs()],
+                output=sess.get_outputs()[0].name, pad=tok.token_to_id("[PAD]") or 0, revision=revision)
+    return _NLI
+
+
+def _docs_verify(inp: dict) -> dict:
+    import numpy as np
+
+    raw = inp.get("pairs")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("pairs must be a non-empty list of {premise, hypothesis}")
+    if len(raw) > NLI_MAX_PAIRS:
+        raise ValueError(f"at most {NLI_MAX_PAIRS} pairs per call (got {len(raw)})")
+    pairs = []
+    for i, p in enumerate(raw):
+        if not isinstance(p, dict) or not isinstance(p.get("premise"), str) or not isinstance(p.get("hypothesis"), str):
+            raise ValueError(f"pair {i} needs premise and hypothesis strings")
+        pairs.append((p["premise"][:4000], p["hypothesis"][:1000]))
+    m = _nli()
+    tok = m["tok"]
+    tok.enable_truncation(max_length=512, strategy="only_first")
+    enc = tok.encode_batch(pairs)
+    entail, contra = np.zeros(len(enc), np.float32), np.zeros(len(enc), np.float32)
+    order = sorted(range(len(enc)), key=lambda k: len(enc[k].ids))
+    for b in range(0, len(order), NLI_BATCH):
+        idx = order[b:b + NLI_BATCH]
+        width = max(len(enc[k].ids) for k in idx)
+        ids_arr = np.full((len(idx), width), m["pad"], np.int64)
+        mask = np.zeros((len(idx), width), np.int64)
+        types = np.zeros((len(idx), width), np.int64)
+        for row, k in enumerate(idx):
+            n = len(enc[k].ids)
+            ids_arr[row, :n] = enc[k].ids
+            mask[row, :n] = 1
+            types[row, :n] = enc[k].type_ids
+        feeds = {"input_ids": ids_arr, "attention_mask": mask, "token_type_ids": types}
+        logits = np.asarray(m["sess"].run([m["output"]], {k: v for k, v in feeds.items() if k in m["inputs"]})[0], np.float64)
+        z = np.exp(logits - logits.max(axis=1, keepdims=True))
+        prob = z / z.sum(axis=1, keepdims=True)
+        entail[idx] = prob[:, m["entail"]]
+        if m["contra"] is not None:
+            contra[idx] = prob[:, m["contra"]]
+    return {"entail": [round(float(v), 4) for v in entail], "contradict": [round(float(v), 4) for v in contra],
+            "model": f"{MODELS['nli']['repo']}@{m['revision'][:12]}"}
+
+
+# ---------------------------------------------------------------------------------------------
 # audio.transcribe: ffmpeg -> 16 kHz mono -> Parakeet TDT 0.6B v2 for English (int8 ONNX, Silero VAD segments,
 # word timestamps); faster-whisper small (int8) for other languages and whenever Parakeet fails.
 # ---------------------------------------------------------------------------------------------
@@ -3011,6 +3146,103 @@ def _topics_map(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
+# odds.train / odds.score: the Deal Radar's calibrated hazard model (ml/odds_core.py holds the logic).
+# ---------------------------------------------------------------------------------------------
+_ODDS_CACHE: dict = {}
+
+
+def _odds_train(inp: dict) -> dict:
+    """Read the panel (JSON lines from R2), train and validate LightGBM, calibrate, save model and calibration."""
+    import odds_core
+
+    features = inp.get("features") or []
+    if not features:
+        raise ValueError("input needs 'features' (the TypeScript feature list with monotone constraints)")
+    out_key = str(inp.get("outKey") or f"ml/odds/lgbm-{int(time.time())}")
+    if not out_key.startswith("ml/"):
+        raise ValueError("outKey must live under ml/")
+    text = _fetch_bytes(inp, "panelKey").decode("utf-8")
+    res = odds_core.train_odds(text, features, seed=int(inp.get("seed") or 0))
+    model_key = _r2_put(f"{out_key}.txt", res["model"].booster_.model_to_string().encode("utf-8"), "text/plain")
+    cal_key = _put_json(f"{out_key}-cal.json", res["calibration"])
+    return {"modelKey": model_key, "calibrationKey": cal_key, "scorecard": res["scorecard"], "calibration": res["calibrationSummary"],
+            "sectorRates": res["sectorRates"], "trainedThrough": res["trainedThrough"], "info": res["info"]}
+
+
+def _odds_score(inp: dict) -> dict:
+    """Score feature rows with a stored model: calibrated odds, Venn-Abers intervals, contributions, moves."""
+    import lightgbm as lgb
+    import odds_core
+
+    mk, ck = str(inp.get("modelKey") or ""), str(inp.get("calibrationKey") or "")
+    if not mk or not ck:
+        raise ValueError("input needs 'modelKey' and 'calibrationKey'")
+    if _ODDS_CACHE.get("key") != (mk, ck):
+        _ODDS_CACHE.update(key=(mk, ck), booster=lgb.Booster(model_str=_r2_get(mk).decode("utf-8")), cal=json.loads(_r2_get(ck)))
+    rows = inp.get("rows") or []
+    if not isinstance(rows, list) or len(rows) > 2000:
+        raise ValueError("rows must be a list of at most 2000 {id, x}")
+    return {"scores": odds_core.score_odds(_ODDS_CACHE["booster"], _ODDS_CACHE["cal"], rows)}
+
+
+# ---------------------------------------------------------------------------------------------
+# calls.evasion: Eva-4B's class probabilities for Q&A pairs (ml/calls_core.py holds the prompt and maths).
+# ---------------------------------------------------------------------------------------------
+_EVA: dict = {}
+
+
+def _eva_model():
+    if "model" not in _EVA:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        spec = MODELS["eva"]
+        tok = AutoTokenizer.from_pretrained(spec["repo"], revision=spec["revision"])
+        model = AutoModelForCausalLM.from_pretrained(spec["repo"], revision=spec["revision"], torch_dtype=torch.float16, device_map="cuda")
+        model.eval()
+        # The first token of each label, as the tokenizer splits it after "Label:" and a space.
+        firsts = [tok.encode(" " + label, add_special_tokens=False)[0] for label in __import__("calls_core").LABELS]
+        _EVA.update(tok=tok, model=model, firsts=firsts)
+    return _EVA
+
+
+def _calls_evasion(inp: dict) -> dict:
+    """Eva-4B probabilities of (direct, intermediate, fully_evasive) for each pair, from the labels' first-token logits."""
+    import torch
+    import calls_core
+
+    pairs = calls_core.clean_pairs(inp.get("pairs"))
+    m = _eva_model()
+    tok, model = m["tok"], m["model"]
+    probs = []
+    for i in range(0, len(pairs), 8):
+        batch = pairs[i:i + 8]
+        texts = [tok.apply_chat_template(calls_core.build_messages(p["question"], p["answer"]), tokenize=False, add_generation_prompt=True) for p in batch]
+        enc = tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to("cuda")
+        with torch.no_grad():
+            logits = model(**enc).logits
+        last = enc["attention_mask"].sum(dim=1) - 1
+        for j in range(len(batch)):
+            row = logits[j, last[j]].float()
+            probs.append(calls_core.label_probs([float(row[t]) for t in m["firsts"]]))
+    return {"probs": probs, "model": MODELS["eva"]["repo"], "revision": MODELS["eva"]["revision"]}
+
+
+# ---------------------------------------------------------------------------------------------
+# lbo.refine: the LBO Stress Lab's 20,000-path run (ml/lbo_core.py holds the engine, mirroring scen/lbo.ts).
+# ---------------------------------------------------------------------------------------------
+def _lbo_refine(inp: dict) -> dict:
+    import lbo_core
+
+    out_key = str(inp.get("outKey") or f"ml/lbo/refine-{int(time.time())}")
+    if not out_key.startswith("ml/"):
+        raise ValueError("outKey must live under ml/")
+    res = lbo_core.refine(inp)
+    key = _put_json(f"{out_key}.json", res)
+    return {"key": key, "paths": res["paths"], "summary": res["summary"]}
+
+
+# ---------------------------------------------------------------------------------------------
 # Modal functions: one per task
 # ---------------------------------------------------------------------------------------------
 @_task_function("health", api_image)
@@ -3043,6 +3275,11 @@ def docs_rerank(req: dict) -> dict:
     return _execute("docs.rerank", req, _docs_rerank)
 
 
+@_task_function("docs.verify", nli_image, env=_threads(_hw_threads(TASKS["docs.verify"][1])))
+def docs_verify(req: dict) -> dict:
+    return _execute("docs.verify", req, _docs_verify)
+
+
 @_task_function("audio.transcribe", audio_image)
 def audio_transcribe(req: dict) -> dict:
     return _execute("audio.transcribe", req, _audio_transcribe)
@@ -3073,6 +3310,26 @@ def topics_map(req: dict) -> dict:
     return _execute("topics.map", req, _topics_map)
 
 
+@_task_function("odds.train", odds_image)
+def odds_train(req: dict) -> dict:
+    return _execute("odds.train", req, _odds_train)
+
+
+@_task_function("odds.score", odds_image)
+def odds_score(req: dict) -> dict:
+    return _execute("odds.score", req, _odds_score)
+
+
+@_task_function("calls.evasion", calls_image)
+def calls_evasion(req: dict) -> dict:
+    return _execute("calls.evasion", req, _calls_evasion)
+
+
+@_task_function("lbo.refine", lbo_image)
+def lbo_refine(req: dict) -> dict:
+    return _execute("lbo.refine", req, _lbo_refine)
+
+
 TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
@@ -3080,12 +3337,17 @@ TASK_FUNCTIONS = {
     "geo.footprints": geo_footprints,
     "docs.parse": docs_parse,
     "docs.rerank": docs_rerank,
+    "docs.verify": docs_verify,
     "audio.transcribe": audio_transcribe,
     "graph.train": graph_train,
     "graph.train.gpu": graph_train_gpu,
     "synth.tabular": synth_tabular,
     "synth.series": synth_series,
     "topics.map": topics_map,
+    "odds.train": odds_train,
+    "odds.score": odds_score,
+    "calls.evasion": calls_evasion,
+    "lbo.refine": lbo_refine,
 }
 
 

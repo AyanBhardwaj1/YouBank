@@ -1,10 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import type { Command } from "@/lib/functions";
 import type { AnalystView, DividendView, EarningsView } from "@/lib/terminal/street";
 import { AiRead, AskAi, BarList, DataTable, fbig, fn, fp, Frame, fsp, Hint, Meter, Pill, SeriesChart, Section, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
 
 type Props = { ticker: string; onRun?: (c: Command) => void };
+
+// Call Desk's promises ledger (Edge beta), loaded on demand and shown only when it answers.
+const PromisesKeptLazy = dynamic(() => import("./SignalScreens").then((m) => m.PromisesKept), { ssr: false, loading: () => null });
 
 /** A beat-rate tile's figures; with no quarters on record the posterior is only its prior, so say so. */
 const beatTile = (b: EarningsView["beat"]["eps"]) =>
@@ -28,6 +32,7 @@ export function EeScreen({ ticker, onRun }: Props) {
               <Tile label="Quarters on record" value={String(d.quarters.length)} />
             </Tiles>
             <div className="flex justify-end gap-1.5"><AiRead fn="earnings" params={{ ticker }} /><AskAi onRun={onRun} ticker={ticker} question={`Preview ${ticker}'s next earnings: beat history, the typical move on report days, and what to watch in the release.`} /></div>
+            <PromisesKeptLazy ticker={ticker} compact />
             <Hint skill="EE">Beat rates come with a range because a few quarters prove little: four beats in four could be luck. The typical move is the stock&apos;s close-to-close reaction on report days; the 80% figure is the size of move that four reports in five stayed within.</Hint>
             <div className="grid gap-4 @3xl:grid-cols-2">
               <Section title="EPS surprise by quarter">

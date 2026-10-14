@@ -443,7 +443,67 @@ def _vectors(seed: int = 3) -> dict:
     return {"ids": [f"doc-{i}" for i in range(360)], "vectors": np.round(V, 4).tolist()}
 
 
+ODDS_KEYS = ["logAssets", "logRevenue", "revGrowth", "roa", "leverage", "cashRatio", "mismatch", "wave", "sc13d", "sc13dA", "switch13g", "insider",
+             "officerChange", "rightsPlan", "bylaws", "agreements", "proxyFight", "lateFiling", "activity8k", "age"]
+ODDS_MONOTONE = {"mismatch": 1, "wave": 1, "sc13d": 1, "sc13dA": 1, "switch13g": 1, "proxyFight": 1}
+
+
+def _odds_panel(companies: int = 200, months: int = 120, seed: int = 9) -> str:
+    """A Deal Radar panel in the TypeScript layout for 200 companies, sales from a known logistic hazard (no numpy)."""
+    import math
+    import random
+
+    r = random.Random(seed)
+    lines = []
+    for c in range(companies):
+        base = [r.gauss(0, 1) for _ in ODDS_KEYS]
+        for m in range(months):
+            t = f"{2012 + m // 12}-{m % 12 + 1:02d}-01"
+            x = [b + r.gauss(0, 0.3) for b in base]
+            x[ODDS_KEYS.index("sc13d")] = float(r.random() < 0.12)
+            x[ODDS_KEYS.index("proxyFight")] = float(r.random() < 0.06)
+            x[ODDS_KEYS.index("wave")] = 1 + 0.5 * math.sin(m / 9)
+            z = -4.0 + 2.2 * x[ODDS_KEYS.index("sc13d")] + 2.0 * x[ODDS_KEYS.index("proxyFight")] + (x[ODDS_KEYS.index("wave")] - 1)
+            y = None if m >= months - 12 else float(r.random() < 1 / (1 + math.exp(-z)))
+            lines.append(json.dumps([str(c), t, ["1311", "7372", "2834"][c % 3], y, 1, *[round(v, 4) for v in x]]))
+    return "\n".join(lines)
+
+
 @app.function(image=image, secrets=[SECRET], timeout=900, cpu=1.0, memory=1024)
+def _lbo_input(paths: int = 2000) -> dict:
+    """A small LBO Stress Lab refine (ml/lbo_core.py): a synthetic two-factor history and the default structure."""
+    import math
+    import random
+    rnd = random.Random(3)
+    v, H = 0.0016, []
+    for _ in range(240):
+        z = rnd.gauss(0, 1)
+        e = math.sqrt(v) * z
+        v = 0.0001 + 0.1 * e * e + 0.85 * v
+        H.append([0.006 + e, 0.1 * rnd.gauss(0, 1)])
+    means = [sum(r[j] for r in H) / len(H) for j in range(2)]
+    sds = [math.sqrt(sum((r[j] - means[j]) ** 2 for r in H) / (len(H) - 1)) for j in range(2)]
+    Z = [[(r[j] - means[j]) / sds[j] for j in range(2)] for r in H]
+    tranches = [{"name": "Term loan B", "kind": "tlb", "turns": 4, "floating": True, "spreadBps": 350, "floorPct": 0.5, "oid": 99, "amortPct": 1, "prepayable": True},
+                {"name": "Senior notes", "kind": "notes", "turns": 1.5, "floating": False, "fixedPct": 8.5, "amortPct": 0, "prepayable": False},
+                {"name": "Revolver", "kind": "revolver", "turns": 1, "floating": True, "spreadBps": 325, "floorPct": 0, "amortPct": 0, "prepayable": True}]
+    return {
+        "structure": {"ebitda0": 2e8, "entryMultiple": 11, "tranches": tranches, "financeFeePct": 2, "txnFeePct": 2, "minCash": 2e7, "daPct": 30, "capexPct": 40, "nwcPct": 10, "tax": 25, "sweep": 75, "years": 5, "periodsPerYear": 4,
+                      "covenants": {"maxNetLeverage": 7, "minInterestCover": 1.75, "springing": False, "springAt": 0.35}},
+        "macro": {"fits": [{"mu": 0.006, "omega": 0.0001, "alpha": 0.1, "gamma": 0.05, "beta": 0.8, "lastVar": 0.0016}, {"mu": 0.0, "omega": 0.001, "alpha": 0.1, "gamma": 0.0, "beta": 0.8, "lastVar": 0.01}], "Z": Z, "market": 0, "rates": 1, "sector": -1},
+        "rates": {"regimes": [{"mu": 2.75, "phi": 0.03, "sigma": 0.12}, {"mu": 2.0, "phi": 0.06, "sigma": 0.45}], "P": [[0.97, 0.03], [0.15, 0.85]], "start": 4.0, "startRegime": 0, "basis": 0.05, "rho": 0.5},
+        "op": {"revenue0": 1e9, "ebitda0": 2e8, "growthQ": math.log(1.05) / 4, "betaMarket": 0.5, "betaSector": 0, "residSd": 0.04, "residuals": [], "fixedShare": 0.3, "costInflQ": math.log(1.025) / 4, "marginKappa": 0.25, "marginSd": 0.01},
+        "exit": {"base": 10, "sigma": 0.2, "elasticity": 0.5}, "spread": {"baseBps": 350, "slopeBpsPerPct": 25, "capBps": 1500},
+        "paths": paths, "seed": 11, "hurdle": 0.2, "confidence": 0.6, "breakYear": 3, "outKey": "ml/smoke/lbo-refine",
+    }
+
+
+CALLS_INPUT = {"pairs": [
+    {"question": "Can you quantify the margin expansion you expect next year, in basis points?", "answer": "Sure. We expect about 120 basis points next year, roughly half in the first quarter."},
+    {"question": "What capex range are you assuming for 2027?", "answer": "We don't provide guidance on that. We'll share more at our investor day."},
+]}
+
+
 def make_fixtures(run: str) -> dict:
     import os
 
@@ -483,11 +543,13 @@ def make_fixtures(run: str) -> dict:
     series_input = {"dataKey": put("returns.json", json.dumps(_returns()).encode(), "application/json"),
                     "window": 60, "n": 64, "seed": 3, "steps": 1500}
     topics_input = {"vectorsKey": put("vectors.json", json.dumps(_vectors()).encode(), "application/json")}
+    odds_input = {"panelKey": put("odds-panel.jsonl", _odds_panel().encode(), "application/x-ndjson"),
+                  "features": [{"key": k, "monotone": ODDS_MONOTONE.get(k, 0)} for k in ODDS_KEYS], "outKey": f"{prefix}odds-model"}
     return {"keys": keys, "docs": docs, "audio": audio_input, "audioFr": audio_fr, "audioSource": source,
             "graph": graph_input,
             "graphSize": {"nodes": len(g["nodes"]), "edges": len(g["edges"]), "deals": len(g["deals"])},
             "graphOracle": oracle,
-            "tabular": tab_input, "series": series_input, "topics": topics_input}
+            "tabular": tab_input, "series": series_input, "topics": topics_input, "odds": odds_input}
 
 
 @app.function(image=image, secrets=[SECRET], timeout=1200, cpu=0.5, memory=512)
@@ -634,7 +696,13 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         ("synth.tabular", "synth_tabular", fx["tabular"], []),
         ("synth.series", "synth_series", fx["series"], []),
         ("topics.map", "topics_map", fx["topics"], []),
+        ("odds.train", "odds_train", fx["odds"], []),
+        # LBO Stress Lab (E6): a 2,000-path refine on a synthetic history (the app sends 20,000).
+        ("lbo.refine", "lbo_refine", _lbo_input(), []),
     ]
+    # Call Desk's Eva-4B (GPU) runs only when asked for by name: its use is off until its licence is confirmed.
+    if wanted and "calls.evasion" in wanted:
+        plan.append(("calls.evasion", "calls_evasion", CALLS_INPUT, []))
     report, lock = {"run": run, "target": target, "graphSize": fx["graphSize"], "graphOracle": fx["graphOracle"],
                     "audioSource": fx["audioSource"]}, threading.Lock()
 
@@ -675,6 +743,21 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         t.start()
     for t in threads:
         t.join()
+
+    # odds.score runs on the model odds.train just made, for a sample of rows (both tasks on a 200-company panel).
+    trained = (report.get("odds.train") or {}).get("result") or {}
+    if trained.get("modelKey") and (not wanted or "odds.score" in wanted or "odds.train" in wanted):
+        rows = [{"id": str(i), "x": [float(i % 2) if k == "sc13d" else 0.0 for k in ODDS_KEYS]} for i in range(200)]
+        try:
+            env, lat = call(modal.Function.from_name(target, "odds_score"), "odds.score", {"modelKey": trained["modelKey"], "calibrationKey": trained["calibrationKey"], "rows": rows})
+            res = env.get("result") or {}
+            scores = res.get("scores") or []
+            report["odds.score"] = {"latency": lat, "seconds": env["seconds"], "costUsd": env["costUsd"], "ok": env["ok"], "error": env["error"],
+                                    "rows": len(scores), "intervalsHold": all(s["low"] <= s["p"] <= s["high"] for s in scores),
+                                    "a13dRaisesOdds": bool(scores) and scores[1]["p"] >= scores[0]["p"]}
+        except Exception as e:
+            report["odds.score"] = {"exception": f"{type(e).__name__}: {e}"}
+        created.extend([trained["modelKey"], trained["calibrationKey"]])
 
     if not no_http:
         print("  http checks")

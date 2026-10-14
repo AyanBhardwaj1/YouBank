@@ -15,7 +15,7 @@ const SOURCES = ["sec", "uploads", "audio", "workspace", "newsroom", "web"];
 
 /**
  * Ask the documents: { question, mode: strict|balanced, form, scope: { tickers, sources, forms, months,
- * docIds }, premium?: { model, citations } }. The answer streams as lines of JSON: { progress } while
+ * docIds }, premium?: { model, citations, crosscheck } }. The answer streams as lines of JSON: { progress } while
  * sources are read and passages found, then { answer } (or { error }).
  *
  * Asking is the explicit act premium upgrades wait for: the plan is checked here, before anything is
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
         docIds: (scope.docIds ?? []).map(Number).filter(Number.isInteger).slice(0, 200),
       },
     };
-    const premium = { model: body.premium?.model === true, citations: body.premium?.citations === true };
+    const premium = { model: body.premium?.model === true, citations: body.premium?.citations === true, crosscheck: body.premium?.crosscheck === true };
     const want = askWants(premium);
     const allowed = allowedOf(await entitlements(user), want);
     for (const id of want.require) requireReady(id);

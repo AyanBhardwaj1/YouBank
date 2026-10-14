@@ -16,7 +16,7 @@ import { featureById } from "@/lib/billing/features";
 import { PLANS, type PlanId } from "@/lib/billing/plans";
 import { premiumOn } from "@/lib/billing/use";
 
-export type UpgradeModule = "earth" | "documents" | "networks" | "scenarios" | "platform";
+export type UpgradeModule = "earth" | "documents" | "networks" | "scenarios" | "deals" | "pulse" | "platform";
 
 export type Upgrade = {
   id: string;
@@ -79,6 +79,33 @@ export const UPGRADES: Upgrade[] = [
     needs: ["ANTHROPIC_API_KEY"], flag: { name: "EDGE_CITATIONS", value: "anthropic" },
     steps: ["Set ANTHROPIC_API_KEY and EDGE_CITATIONS=anthropic in Vercel and redeploy (optionally EDGE_CITATIONS_MODEL).", "People whose plan includes it see 'Exact-span citations' under Ask. Those answers come as a direct answer and cited points (citations cannot be combined with the table and timeline shapes)."],
   },
+  {
+    id: "claims-crosscheck", module: "documents", name: "Second-provider claim check", built: true, feature: "edge.claims-crosscheck",
+    improves: "Each claim in an answer is judged again against its passages by the other provider's model (Claude when OpenAI wrote the answer, and the reverse); its verdict shows beside the calibrated support, and in Strict a claim it rejects is held back.",
+    cost: "About $0.03 an answer on Claude Sonnet 5.5 ($2 in / $10 out per million tokens); EDGE_CROSSCHECK_MODEL and EDGE_CROSSCHECK_OPENAI_MODEL change the models.",
+    needs: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"], steps: ["Set both OPENAI_API_KEY and ANTHROPIC_API_KEY in Vercel, so a second provider exists, and redeploy.", "People whose plan includes it see 'Cross-check with a second provider' under Ask; nothing is sent to the second provider unless they tick it."],
+  },
+  // Deals
+  {
+    id: "deals-reread", module: "deals", name: "Re-read a deal with the stronger model", built: true, feature: "edge.deals-reread",
+    improves: "One deal's merger documents re-read by a larger model (EDGE_REREAD_MODEL, gpt-5.6-sol by default), every term re-quoted and re-checked; the earlier reading is kept in the audit trail.",
+    cost: "About $0.24 a deal (40,000 tokens in at $4 and 4,000 out at $20 per million), on the OpenAI key Edge already has.",
+    needs: ["OPENAI_API_KEY"], flag: { name: "EDGE_REREAD_MODEL", value: null },
+    steps: ["Set EDGE_REREAD_MODEL to the stronger model (gpt-5.6-sol, or any model id the account can use) in Vercel and redeploy.", "People whose plan includes it see 'Re-read with the stronger model' on a deal's page; nothing runs unless they press it. The earlier reading stays in the deal's audit trail."],
+  },
+  {
+    id: "deals-backfill", module: "deals", name: "Faster deal-database backfill", built: true,
+    improves: "Reads more past merger documents a day into the Precedent Engine's database (2015 onward). The backfill is shared platform data, read only while an administrator has it switched on (Settings, or POST /api/edge/deals/backfill).",
+    cost: "Small-model tokens: about $0.005-0.01 a deal. EDGE_BACKFILL_DAILY_USD sets the day's ceiling (default $0.50, about 50 deals), inside the app-wide AI caps.",
+    needs: ["EDGE_BACKFILL_DAILY_USD"], steps: ["Set EDGE_BACKFILL_DAILY_USD to the day's ceiling you accept (for example 5 for about 500 deals a day) and redeploy.", "Switch the backfill on from Edge, Deals, as an administrator; it resumes where it stopped."],
+  },
+  // Pulse
+  {
+    id: "patentsview", module: "pulse", name: "Patent counts (PatentsView)", built: true,
+    improves: "Adds patents granted and applications published each month to the Pulse, from USPTO's PatentsView (CC BY 4.0), matched to companies through the crosswalk.",
+    cost: "Free: a PatentsView API key (request one on the PatentSearch API page).",
+    needs: ["PATENTSVIEW_API_KEY"], steps: ["Request a key at search.patentsview.org (free), set PATENTSVIEW_API_KEY in Vercel and redeploy. The weekly Pulse then reads patent counts."],
+  },
   // Earth
   {
     id: "planet", module: "earth", name: "Planet imagery (3 m daily, 50 cm on request)", built: true, feature: "edge.planet",
@@ -117,6 +144,29 @@ export const UPGRADES: Upgrade[] = [
     improves: "Forecasts of the scenario drivers (oil, gas, rates, the market) from Google's TimesFM foundation model through BigQuery's AI.FORECAST, with 10-90% bands (the free path: a drift and volatility forecast from the same history). The open weights are non-commercial; BigQuery is the licensed route.",
     cost: "BigQuery ML prediction rates: $6.25 per TiB with a 10 MB minimum, about $0.0001 a forecast.",
     needs: ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON"], steps: ["In Google Cloud, enable the BigQuery API on a project with billing and create a service account with the BigQuery Job User role.", "Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS_JSON (the key file's JSON) in Vercel; optionally TIMESFM_MODEL (default 'TimesFM 2.5') and BIGQUERY_LOCATION (default US). Redeploy.", "People whose plan includes it see 'Forecast with TimesFM' under Scenarios' drivers; nothing is sent to BigQuery unless they press it."],
+  },
+  // Call Desk (E5)
+  {
+    id: "calls-eva", module: "documents", name: "Eva-4B evasion ensemble", built: true, feature: "edge.calls-eva",
+    improves: "Scores each earnings-call answer with the Eva-4B classifier (Apache-2.0 weights on Qwen3-4B) on a GPU and averages its probabilities with the free classifier's.",
+    cost: "Modal T4 $0.59/h with 2 cores and 16 GiB: about 3.5 minutes billed a call (the weights loading on a cold container, scoring and the idle tail), about $0.05; at most ten a day per person.",
+    needs: ["EDGE_ML_URL", "EDGE_ML_SECRET"], flag: { name: "EDGE_CALLS_EVA", value: "1" },
+    steps: ["Have counsel confirm that Eva-4B, whose training data came from licensed S&P Capital IQ transcripts, may be used commercially (docs/edge-next.md, open question 4). Until then leave it off.", "Redeploy the ML service (modal deploy ml/edge_ml.py) so its calls.evasion task exists, and smoke-test it on staging.", "Set EDGE_CALLS_EVA=1 in Vercel and redeploy. People whose plan includes it see 'Add Eva-4B' on Call Desk; it runs only when they press it."],
+  },
+  // LBO Stress Lab (E6)
+  {
+    id: "lbo-refine", module: "scenarios", name: "LBO refine on the ML service", built: true, feature: "edge.lbo-refine",
+    improves: "Runs an LBO stress test over 20,000 paths and up to seven years on the ML service (lbo.refine) instead of the 1,000-path preview; without the ML service the same refine runs in the background job.",
+    cost: "About two minutes of two Modal CPU cores, start-up and idle tail included: about $0.005 a refine; at most 25 a day per person.",
+    needs: [], steps: ["Redeploy the ML service (modal deploy ml/edge_ml.py) so its lbo.refine task exists; until then refines run in the Inngest job.", "People whose plan includes it see 'Refine: 20,000 paths' in the LBO lab."],
+  },
+  // Voice Analyst (E13)
+  {
+    id: "voice-realtime", module: "platform", name: "Live voice analyst", built: true, feature: "edge.voice-realtime",
+    improves: "A real-time spoken conversation with Edge over WebRTC, with the same tools as hold-to-talk; the free path uses the browser's own speech recognition and voice.",
+    cost: "OpenAI's realtime model, about $0.06 to $0.11 a minute; sessions are capped at 10 minutes and three a day per person (30 minutes).",
+    needs: ["OPENAI_API_KEY"], flag: { name: "EDGE_VOICE_REALTIME", value: "1" },
+    steps: ["Set EDGE_VOICE_REALTIME=1 in Vercel (optionally EDGE_REALTIME_MODEL, default gpt-realtime-2.1) and redeploy.", "People whose plan includes it see 'Live conversation' in the voice sheet; a session key is minted only when they press it."],
   },
   // Platform
   {

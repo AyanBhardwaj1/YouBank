@@ -20,8 +20,9 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
 import { CREDIT_PACKS, packById } from "@/lib/billing/packs";
 import type { SeatBoard } from "@/lib/billing/seats";
-import { FEATURES, type FeatureArea } from "@/lib/billing/features";
+import { featuresByArea } from "@/lib/billing/features";
 import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
+import { apiError, errorMessage } from "@/lib/client/errors";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
 type Status = ClientEntitlements & {
@@ -41,11 +42,6 @@ type Bills = {
   receipts: { id: string; description: string; created: string; amount: number; refunded: number; currency: string; url: string | null }[];
 };
 
-const AREA_LABEL: Record<FeatureArea, string> = {
-  ai: "AI", edge: "Edge", maps: "3D maps and geospatial AI", crypto: "Blockchain and crypto", studio: "Studio",
-  relationships: "Relationships", desktop: "Desktop app", platform: "Platform",
-};
-
 const STATUS_LABEL: Record<string, string> = {
   active: "Active", trialing: "Trial", past_due: "Payment overdue: update your card under Manage billing to keep the plan",
   canceled: "Cancelled", unpaid: "Unpaid", incomplete: "Waiting for the first payment", incomplete_expired: "Checkout expired", paused: "Paused",
@@ -53,6 +49,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 const dateOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" }) : null);
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", timeZone: "UTC" });
+/** "November 13, 2026" in UTC, as the seats API words the cooldown's date. */
+const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const cash = (n: number, currency = "usd") => n.toLocaleString("en-US", { style: "currency", currency: currency.toUpperCase() });
 const money = (n: number) => (n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`);
 
@@ -86,24 +84,30 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
 
 async function send<T>(method: "POST" | "DELETE", url: string, body: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const j = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(j.error ?? "Something went wrong on our side. Try again in a moment.");
-  return j;
+  if (!r.ok) throw await apiError(r);
+  return (await r.json()) as T;
 }
 
 /**
  * Deal Team and Enterprise seats: the owner gives them to people on teams they own or administer, and
- * takes them back. The count itself changes under Manage billing (the Stripe portal).
+ * takes them back. The count itself changes under Manage billing (the Stripe portal). A freed seat can go
+ * back to the person who had it at once, and to someone else 30 days after it was last given (the server
+ * enforces it; this shows the date).
  */
 function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard) => void }) {
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const used = board.assigned.filter((a) => a.active).length;
-  const free = Math.max(0, board.assignable - board.assigned.length);
+  const cooling = board.cooling ?? [];
+  const coolingIds = new Set(cooling.map((c) => c.userId));
+  const free = board.free ?? Math.max(0, board.assignable - board.assigned.length);
+  const roomNow = board.assignable - board.assigned.length > 0;
+  const canPick = (userId: string) => free > 0 || (roomNow && coolingIds.has(userId));
+  const pickable = board.candidates.some((c) => canPick(c.userId));
   const act = async (fn: () => Promise<{ board: SeatBoard | null }>) => {
     setBusy(true); setError(null);
-    try { const r = await fn(); if (r.board) onChange(r.board); setPick(""); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { const r = await fn(); if (r.board) onChange(r.board); setPick(""); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const assign = () => {
     const [teamId, userId] = pick.split(":");
@@ -115,7 +119,7 @@ function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard)
         <h3 className="text-[13.5px] font-semibold">Seats</h3>
         <span className="text-[11.5px] text-muted"><span className="num font-medium text-fg">{used + 1}</span> of <span className="num">{board.seats}</span> {PLANS[board.plan].name} seats in use, yours included</span>
       </div>
-      <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Give a seat to someone on a team you own or administer and they get {PLANS[board.plan].name}, with their own AI allowance. Invite people on the <a href="/app/team" className="underline hover:text-fg">Team page</a> first. To add or remove seats, use Manage billing; if you lower the count, the most recently given seats are taken back first.</p>
+      <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Give a seat to someone on a team you own or administer and they get {PLANS[board.plan].name}, with their own AI allowance. Invite people on the <a href="/app/team" className="underline hover:text-fg">Team page</a> first. A seat you free can go back to the same person at any time, and to someone else 30 days after it was last given. To add or remove seats, use Manage billing; if you lower the count, the most recently given seats are taken back first.</p>
       {error && <p role="alert" className="mt-2 text-[12px] text-neg">{error}</p>}
       {board.assigned.length > 0 && (
         <ul className="mt-3 divide-y divide-line rounded-lg border border-line text-[12px]">
@@ -128,17 +132,29 @@ function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard)
           ))}
         </ul>
       )}
+      {cooling.length > 0 && (
+        <div className="mt-3 rounded-lg border border-line px-3 py-2 text-[12px]">
+          <div className="text-[11.5px] font-medium">Freed in the last 30 days</div>
+          <ul className="mt-1 space-y-0.5">
+            {cooling.map((c) => (
+              <li key={c.userId} className="text-muted">
+                <span className="text-fg">{c.name || c.email || "A former seat holder"}</span>: can have it back now; this seat can be given to someone else on <span className="num text-fg">{longDate(c.until)}</span>.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {board.candidates.length === 0 ? (
           <p className="text-[11.5px] text-muted">Nobody on your teams is waiting for a seat. Invite people on the Team page.</p>
         ) : (
           <>
-            <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || free === 0} aria-label="Person to give a seat to" className="ctl min-w-[220px] border border-line bg-transparent px-2 py-1 text-[12px]">
-              <option value="">{free === 0 ? "All seats are in use" : "Choose someone on your teams…"}</option>
-              {board.candidates.map((c) => <option key={`${c.teamId}:${c.userId}`} value={`${c.teamId}:${c.userId}`}>{c.name || c.email} ({c.email}{c.teamName ? `, ${c.teamName}` : ""})</option>)}
+            <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || !pickable} aria-label="Person to give a seat to" className="ctl min-w-[220px] border border-line bg-transparent px-2 py-1 text-[12px]">
+              <option value="">{!roomNow ? "All seats are in use" : !pickable ? `No seat free for someone new until ${board.nextFree ? longDate(board.nextFree) : "a freed seat's 30 days pass"}` : "Choose someone on your teams…"}</option>
+              {board.candidates.map((c) => <option key={`${c.teamId}:${c.userId}`} value={`${c.teamId}:${c.userId}`} disabled={!canPick(c.userId)}>{c.name || c.email} ({c.email}{c.teamName ? `, ${c.teamName}` : ""}){coolingIds.has(c.userId) ? ", had this seat" : ""}</option>)}
             </select>
-            <button type="button" disabled={busy || !pick || free === 0} onClick={assign} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving…" : "Give a seat"}</button>
-            <span className="text-[11px] text-faint">{free} free</span>
+            <button type="button" disabled={busy || !pick || !pickable} onClick={assign} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving…" : "Give a seat"}</button>
+            <span className="text-[11px] text-faint">{free} free{cooling.length ? `, ${cooling.length} cooling` : ""}</span>
           </>
         )}
       </div>
@@ -244,7 +260,7 @@ export function PlanSettings() {
   // Someone with a live subscription changes plan in the portal; a lapsed one buys anew.
   const paying = !!status?.subscription?.manageable && LIVE_STATUSES.includes(status.subscription.status);
   const unlocked = new Set(status?.features ?? []);
-  const areas = [...new Set(FEATURES.map((f) => f.area))];
+  const areas = featuresByArea();
   const anyYearlyOnly = PLAN_ORDER.some((p) => PLANS[p].selfServe && !PLANS[p].monthlyUsd);
 
   return (
@@ -335,7 +351,7 @@ export function PlanSettings() {
           const isCurrent = id === current;
           const below = !!current && !isCurrent && planAtLeast(current, id);
           const buyable = !!shown && (status?.billing.purchasable[id] ?? []).includes(shown);
-          const featureCount = FEATURES.filter((f) => planAtLeast(id, f.minPlan) && !planAtLeast("free", f.minPlan)).length;
+          const featureCount = areas.reduce((n, a) => n + a.features.filter((f) => planAtLeast(id, f.minPlan) && !planAtLeast("free", f.minPlan)).length, 0);
           return (
             <div key={id} className={`panel flex h-full flex-col p-4 ${isCurrent ? "border-accent/50" : ""}`}>
               <div className="flex items-center justify-between gap-2">
@@ -431,15 +447,15 @@ export function PlanSettings() {
       <div className="panel p-4">
         <h3 className="text-[13.5px] font-semibold">Premium features</h3>
         <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Each is fully built; your plan decides whether you can use it. Ones that cost us money per use (large models, paid data) run only when you start them.</p>
-        {!status ? null : FEATURES.length === 0 ? (
+        {!status ? null : areas.length === 0 ? (
           <p className="mt-3 text-[12px] text-muted">Premium features appear here as they are added.</p>
         ) : (
           <div className="mt-3 space-y-3">
             {areas.map((a) => (
-              <div key={a}>
-                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">{AREA_LABEL[a] ?? a}</div>
+              <div key={a.area}>
+                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">{a.label}</div>
                 <ul className="divide-y divide-line rounded-lg border border-line">
-                  {FEATURES.filter((f) => f.area === a).map((f) => (
+                  {a.features.map((f) => (
                     <li key={f.id} className="flex items-start gap-2 px-3 py-2">
                       <Icon name={unlocked.has(f.id) ? "Check" : "Lock"} className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${unlocked.has(f.id) ? "text-pos" : "text-faint"}`} />
                       <div className="min-w-0 flex-1">

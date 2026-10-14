@@ -24,6 +24,7 @@ pnpm exec tsx scripts/test-news.ts > /tmp/youbank-test-news.log 2>&1 && tail -1 
 
 step "edge"
 pnpm exec tsx scripts/test-edge.ts > /tmp/youbank-test-edge.log 2>&1 && tail -1 /tmp/youbank-test-edge.log || { cat /tmp/youbank-test-edge.log; fail=1; }
+pnpm exec tsx scripts/test-edge-next.ts > /tmp/youbank-test-edge-next.log 2>&1 && tail -1 /tmp/youbank-test-edge-next.log || { cat /tmp/youbank-test-edge-next.log; fail=1; }
 
 step "crypto"
 pnpm exec tsx scripts/test-crypto.ts > /tmp/youbank-test-crypto.log 2>&1 && tail -1 /tmp/youbank-test-crypto.log || { cat /tmp/youbank-test-crypto.log; fail=1; }

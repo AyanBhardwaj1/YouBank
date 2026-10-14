@@ -17,6 +17,9 @@ import { logError } from "@/lib/errors";
 import type { Answer, Citation } from "../canvas/values";
 import { EDGE_SMALL_MODEL, small } from "../models";
 import { citedAnswer, claimsOf } from "../premium/citations";
+import { verifyClaims } from "../claims/verify";
+import type { CitedPassage } from "../claims/features";
+import type { ClaimSupport, VerifierInfo } from "../claims/types";
 import { paidOn } from "../premium";
 import { clock } from "./chunk";
 import { quoteFound } from "./text";
@@ -27,11 +30,11 @@ import { readableDocs } from "./store";
 export type Scope = { tickers?: string[]; sources?: string[]; forms?: string[]; months?: number; docIds?: number[] };
 /** `premium` asks for paid upgrades on this question (the route checks the plan and opens the premium scope). */
 export type AskInput = { question: string; mode?: "strict" | "balanced"; form?: "auto" | "direct" | "table" | "timeline" | "memo"; scope: Scope; premium?: AskPremium };
-export type AskPremium = { model?: boolean; citations?: boolean };
+export type AskPremium = { model?: boolean; citations?: boolean; crosscheck?: boolean };
 
 /** The premium features a question asks for, and the ones that apply on their own when the plan has them. Pure. */
 export function askWants(p: AskPremium | undefined): { auto: string[]; require: string[] } {
-  return { auto: ["edge.rerank"], require: [...(p?.model ? ["edge.answer-model"] : []), ...(p?.citations ? ["edge.citations"] : [])] };
+  return { auto: ["edge.rerank"], require: [...(p?.model ? ["edge.answer-model"] : []), ...(p?.citations ? ["edge.citations"] : []), ...(p?.crosscheck ? ["edge.claims-crosscheck"] : [])] };
 }
 /** How an answer was made: the search, any reranker, the models, how much it read, and the second look. */
 export type AnswerMethod = { search: string; reranker: string | null; selector: string; answerModel: string; contextTokens: number; secondPass: { claims: number; found: number; model: string } | null; transcription?: string[] };
@@ -40,6 +43,8 @@ export type FullAnswer = Answer & {
   web: { title: string; url: string }[]; checked?: { quotes: number; verified: number; dropped: number; recovered?: number }; scopeDocs?: number;
   /** One line on how the answer was made, for the reader and the audit trail. */
   method?: string; provenance?: AnswerMethod;
+  /** Calibrated Claims: claims Strict held back below its line (shown on request), and the verifier's account of itself. */
+  held?: (Answer["claims"][number] & { support?: ClaimSupport })[]; verifier?: VerifierInfo;
 };
 
 const Written = z.object({
@@ -225,13 +230,19 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
   const byChunk = new Map<string, number>();
   const firstOfBlock = new Map<number, number>();
   let tried = 0, verified = 0;
-  const citeChunk = (h: Hit, quote: string): number => {
+  // What Calibrated Claims needs about each citation: its passage, the header it was embedded with, the
+  // rank of the passage it came from, and whether its quote was found only on the second reading.
+  const citeInfo = new Map<number, { text: string; header: string; rank: number }>();
+  const secondReading = new Set<number>();
+  const headerOf = (h: Hit) => `${h.title.replace(/\s+(10-K|10-Q|8-K|20-F|6-K|DEF 14A|DEFM14A|S-4|S-1)\b.*$/i, "").trim()}${h.ticker ? ` (${h.ticker})` : ""} · ${h.title}${h.section ? ` · ${h.section}` : ""}`;
+  const citeChunk = (h: Hit, quote: string, rank = 8): number => {
     const k = `c${h.chunkId}`;
     if (!byChunk.has(k)) {
       const c: Citation = { n: citations.length + 1, docId: h.docId, title: h.title, quote: quote.slice(0, 400), url: h.url, ...(h.page ? { page: h.page } : {}), ...(h.tStart !== null ? { tStart: h.tStart } : {}) };
       Object.assign(c, { chunkId: h.chunkId, lang: h.lang, fileId: h.fileId, source: h.source, section: h.section });
       citations.push(c);
       byChunk.set(k, c.n);
+      citeInfo.set(c.n, { text: h.text, header: headerOf(h), rank });
     }
     return byChunk.get(k)!;
   };
@@ -243,12 +254,12 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
     if ("web" in p) {
       if (!quoteFound(quote, p.text)) return null;
       const k = `w${n}`;
-      if (!byChunk.has(k)) { const c: Citation = { n: citations.length + 1, docId: 0, title: p.title, quote: quote.slice(0, 400), url: p.url }; Object.assign(c, { chunkId: 0, lang: "en", fileId: null, source: "web", section: "" }); citations.push(c); byChunk.set(k, c.n); }
+      if (!byChunk.has(k)) { const c: Citation = { n: citations.length + 1, docId: 0, title: p.title, quote: quote.slice(0, 400), url: p.url }; Object.assign(c, { chunkId: 0, lang: "en", fileId: null, source: "web", section: "" }); citations.push(c); byChunk.set(k, c.n); citeInfo.set(c.n, { text: p.text, header: p.title, rank: n }); }
       at = byChunk.get(k)!;
     } else {
       const i = quoteChunk(quote, p.chunks);
       if (i < 0) return null;
-      at = citeChunk(p.chunks[i], quote);
+      at = citeChunk(p.chunks[i], quote, n);
     }
     verified++;
     if (!firstOfBlock.has(n)) firstOfBlock.set(n, at);
@@ -274,18 +285,34 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
       for (const g of good) {
         const target = missing[g.claim - 1];
         if (!target.c.cites.length) recovered++;
+        const known = byChunk.has(`c${g.at.chunkId}`);
         const at = citeChunk(g.at, g.quote);
+        if (!known) secondReading.add(at);
         if (!target.c.cites.includes(at)) target.c.cites.push(at);
       }
     } catch (e) { logError(e, { where: "edge-requote" }); }
     secondPass = { claims: missing.length, found: recovered, model: EDGE_SMALL_MODEL() };
   }
 
-  const claims = drafted.flatMap((c) => {
+  const checkedClaims: (Answer["claims"][number] & { support?: ClaimSupport })[] = drafted.flatMap((c) => {
     if (!c.cites.length && (mode === "strict" || !c.analysis)) return mode === "strict" ? [] : [{ text: c.text, cites: [], analysis: true }];
     return [{ text: c.text, cites: c.cites, analysis: c.analysis || !c.cites.length }];
   });
-  const dropped = r.data.claims.length - claims.length;
+  const dropped = r.data.claims.length - checkedClaims.length;
+  // Calibrated Claims: each claim's support probability; Strict holds back those below its line.
+  let claims = checkedClaims, held: typeof checkedClaims = [], verifier: VerifierInfo | undefined;
+  if (checkedClaims.length && !r.data.notFound) {
+    await opts.progress?.("Scoring each claim's support");
+    try {
+      const passagesOf = (c: { cites: number[] }): CitedPassage[] => c.cites.flatMap((n): CitedPassage[] => { const i = citeInfo.get(n); return i ? [{ text: i.text, header: i.header, rank: i.rank, quote: secondReading.has(n) ? "near" : "exact" }] : []; });
+      const scope = [...new Map([...citeInfo.values()].map((i) => { const first = i.header.split(" · ")[0]; return [first, { name: first.replace(/\([^)]*\)/g, "").trim(), ticker: /\(([A-Z][A-Z0-9.\-]{0,9})\)/.exec(first)?.[1] ?? "" }]; })).values()];
+      const v = await verifyClaims(checkedClaims.map((c) => ({ text: c.text, analysis: c.analysis, cites: passagesOf(c) })), { mode, scope, answerModel: r.model });
+      const scored = checkedClaims.map((c, i) => ({ ...c, support: v.supports[i] }));
+      claims = scored.filter((_, i) => !v.hold[i]);
+      held = scored.filter((_, i) => v.hold[i]);
+      verifier = v.info;
+    } catch (e) { logError(e, { where: "edge-claims-verify" }); }
+  }
   const notFound = r.data.notFound || (mode === "strict" && !claims.length);
   // Quotes from documents not in English get a translation alongside.
   const foreign = citations.filter((c) => { const lang = (c as Citation & { lang?: string }).lang; return lang && !/^en/i.test(lang); });
@@ -308,10 +335,12 @@ export async function askDocuments(userId: string, input: AskInput, opts: { dead
     cited ? `answer by ${r.model} with exact-span citations (Anthropic Citations)` : `answer by ${r.model}`,
     secondPass ? `a second reading by ${secondPass.model} found quotes for ${secondPass.found} of ${secondPass.claims} claim${secondPass.claims === 1 ? "" : "s"}` : "",
     ...transcription,
+    verifier ? `claims scored by the calibrated verifier ${verifier.version} (calibration set ${verifier.set}${verifier.nli ? ", with the NLI checker" : ""}${verifier.crosscheck ? `, cross-checked by ${verifier.crosscheck}` : ""})` : "",
   ].filter(Boolean).join("; ");
   return save(userId, input, {
     question, mode, text, claims, citations, notFound, form: r.data.form, contradictions, web: webResult?.citations ?? [],
     checked: { quotes: tried, verified, dropped: Math.max(0, dropped), ...(secondPass ? { recovered: secondPass.found } : {}) }, scopeDocs: docIds.length, method, provenance,
+    ...(verifier ? { verifier, held } : {}),
     ...(r.data.table && !notFound ? { table: r.data.table } : {}), ...(timeline?.length && !notFound ? { timeline } : {}),
   });
 }

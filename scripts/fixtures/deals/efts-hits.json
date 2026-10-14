@@ -1,0 +1,10 @@
+[
+  { "_id": "0001193125-24-061234:d712345ddefm14a.htm", "_source": { "display_names": ["Harbor Ridge Midstream, Inc.  (HRMI)  (CIK 0001700001)"], "ciks": ["0001700001"], "form": "DEFM14A", "file_date": "2024-04-26", "file_type": "DEFM14A", "sics": ["4922"] } },
+  { "_id": "0001193125-24-061234:d712345dex991.htm", "_source": { "display_names": ["Harbor Ridge Midstream, Inc.  (HRMI)  (CIK 0001700001)"], "ciks": ["0001700001"], "form": "DEFM14A", "file_date": "2024-04-26", "file_type": "EX-99.1" } },
+  { "_id": "0001104659-24-099876:tm24joint_defm14a.htm", "_source": { "display_names": ["Bellweather Software Corp  (BWSC)  (CIK 0001700002)", "Corvane Health Systems, Inc.  (CRVH)  (CIK 0001700003)"], "ciks": ["0001700002", "0001700003"], "form": "DEFM14A", "file_date": "2024-10-15", "file_type": "DEFM14A", "sics": ["7372"] } },
+  { "_id": "0001140361-25-027777:ef20051234_8k.htm", "_source": { "display_names": ["Ardent Biopharma Inc  (ARDB)  (CIK 0001700004)"], "ciks": ["0001700004"], "form": "8-K", "file_date": "2025-07-15", "file_type": "8-K", "items": ["1.01", "8.01", "9.01"] } },
+  { "_id": "0001140361-25-027777:ef20051234_ex2-1.htm", "_source": { "display_names": ["Ardent Biopharma Inc  (ARDB)  (CIK 0001700004)"], "ciks": ["0001700004"], "form": "8-K", "file_date": "2025-07-15", "file_type": "EX-2.1", "items": ["1.01", "8.01", "9.01"] } },
+  { "_id": "0001140361-25-027777:ef20051234_ex99-1.htm", "_source": { "display_names": ["Ardent Biopharma Inc  (ARDB)  (CIK 0001700004)"], "ciks": ["0001700004"], "form": "8-K", "file_date": "2025-07-15", "file_type": "EX-99.1", "items": ["1.01", "8.01", "9.01"] } },
+  { "_id": "0000950170-25-011111:ex2-1.htm", "_source": { "display_names": ["Some Other Co  (CIK 0001700005)"], "ciks": ["0001700005"], "form": "8-K", "file_date": "2025-07-20", "file_type": "EX-2.1", "items": ["2.01", "9.01"] } },
+  { "_id": "0001193125-25-160000:d55555dsc14d9.htm", "_source": { "display_names": ["Quillstone Therapeutics, Inc.  (QSTX)  (CIK 0001700006)"], "ciks": ["0001700006"], "form": "SC 14D9", "file_date": "2025-07-28", "file_type": "SC 14D9", "sics": ["2834"] } }
+]

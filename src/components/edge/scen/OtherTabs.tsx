@@ -6,6 +6,7 @@
  * (fictional companies), and the saved list.
  */
 import { Download, FileSpreadsheet, Loader2, Play, Trash2 } from "lucide-react";
+import { LboSaved } from "./LboTab";
 import { useMemo, useState } from "react";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Select } from "@/components/ui/Select";
@@ -247,7 +248,8 @@ export function SavedList({ nonce }: { nonce: number }) {
         ))}</ul>
       )}
       {open?.kind === "market" && <MarketResultView r={open.result as MarketResult} id={open.id} status={open.status} />}
-      {open && open.kind !== "market" && <p className="text-[12px] text-muted">Reopen {open.kind} scenarios from their tab to run them again; the saved result is kept with its seed.</p>}
+      {open?.kind === "lbo" && <LboSaved key={open.id} id={open.id} result={open.result} status={open.status} />}
+      {open && open.kind !== "market" && open.kind !== "lbo" && <p className="text-[12px] text-muted">Reopen {open.kind} scenarios from their tab to run them again; the saved result is kept with its seed.</p>}
     </div>
   );
 }

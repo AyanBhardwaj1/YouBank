@@ -4,13 +4,17 @@
  * A cited answer. The direct answer comes first, then its shape (a table, a timeline), then the
  * evidence board: each claim on the left wired to the passages that support it on the right, with
  * passages that disagree joined in red. Every quote was checked against its passage on the server;
- * the header says how many passed and what was removed. Any citation opens the source viewer.
+ * the header says how many passed and what was removed. Any citation opens the source viewer. Each claim
+ * carries its calibrated support (Calibrated Claims): a dot and a percentage, wires coloured by it, and in
+ * Strict the claims held back below the line, revealable, with the verifier's measured error underneath.
  */
 import { AlertTriangle, Check, Copy, Globe, Languages, Mic, FileText } from "lucide-react";
 import { SendToStudio } from "../SendToStudio";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clockOf } from "@/lib/edge/docs/text";
 import { answerMarkdown, directOf, SOURCE_LABEL, type Cite, type DocAnswer, type ViewTarget } from "./client";
+import { SupportDot, SupportSheet, supportStroke, VerifierFooter } from "./Support";
+import type { ClaimSupport } from "@/lib/edge/claims/types";
 
 function CiteChip({ n, onClick, onHover }: { n: number; onClick: () => void; onHover?: (on: boolean) => void }) {
   return (
@@ -24,7 +28,9 @@ const where = (c: Cite) => [c.section, c.page ? `p. ${c.page}` : "", c.tStart !=
 type Geo = { w: number; h: number; claims: { x: number; y: number }[]; cites: Map<number, { x: number; xr: number; y: number }> };
 
 /** Claims wired to passages. The wires are drawn from measured positions and hidden on narrow screens. */
-function EvidenceBoard({ a, open }: { a: DocAnswer; open: (c: Cite) => void }) {
+type WithSupport = DocAnswer["claims"][number] & { support?: ClaimSupport };
+
+function EvidenceBoard({ a, open, onSupport }: { a: DocAnswer; open: (c: Cite) => void; onSupport: (i: number, held: boolean) => void }) {
   const board = useRef<HTMLDivElement>(null);
   const claimEls = useRef<(HTMLElement | null)[]>([]);
   const citeEls = useRef(new Map<number, HTMLElement>());
@@ -63,7 +69,8 @@ function EvidenceBoard({ a, open }: { a: DocAnswer; open: (c: Cite) => void }) {
             if (!s || !e || !s.x) return null;
             const dx = Math.max(24, (e.x - s.x) / 2);
             const on = lit(i, n);
-            return <path key={`${i}-${n}`} d={`M${s.x},${s.y} C${s.x + dx},${s.y} ${e.x - dx},${e.y} ${e.x},${e.y}`} fill="none" stroke={on && hover ? "var(--accent)" : "var(--line-strong)"} strokeWidth={on && hover ? 1.8 : 1.1} opacity={on ? 1 : 0.25} />;
+            const tone = supportStroke((c as WithSupport).support);
+            return <path key={`${i}-${n}`} d={`M${s.x},${s.y} C${s.x + dx},${s.y} ${e.x - dx},${e.y} ${e.x},${e.y}`} fill="none" stroke={on && hover ? "var(--accent)" : tone ?? "var(--line-strong)"} strokeWidth={on && hover ? 1.8 : 1.1} opacity={on ? (tone && !hover ? 0.55 : 1) : 0.25} />;
           }))}
           {a.contradictions.map((x, i) => {
             const p = geo.cites.get(x.a), q = geo.cites.get(x.b);
@@ -81,6 +88,7 @@ function EvidenceBoard({ a, open }: { a: DocAnswer; open: (c: Cite) => void }) {
             {c.analysis && <span className="mr-1.5 rounded-full border border-line px-1.5 py-px text-[10px] text-muted">Analysis</span>}
             <span className={c.analysis ? "italic text-muted" : ""}>{c.text}</span>
             {c.cites.map((n) => { const cite = byN.get(n); return cite ? <CiteChip key={n} n={n} onClick={() => open(cite)} onHover={(on) => setHover(on ? { cite: n } : null)} /> : null; })}
+            {(c as WithSupport).support && <SupportDot s={(c as WithSupport).support!} onOpen={() => onSupport(i, false)} />}
           </li>
         ))}
       </ol>
@@ -111,6 +119,10 @@ function EvidenceBoard({ a, open }: { a: DocAnswer; open: (c: Cite) => void }) {
 
 export function AnswerView({ a, onCite }: { a: DocAnswer; onCite: (t: ViewTarget) => void }) {
   const [copied, setCopied] = useState(false);
+  const [sheet, setSheet] = useState<{ i: number; held: boolean } | null>(null);
+  const [showHeld, setShowHeld] = useState(false);
+  const held = (a.held ?? []) as WithSupport[];
+  const sheetClaim = sheet ? ((sheet.held ? held : a.claims) as WithSupport[])[sheet.i] : null;
   const open = (c: Cite) => {
     if (c.chunkId) onCite({ chunkId: c.chunkId, quote: c.quote, cite: c });
     else if (c.url) window.open(c.url, "_blank", "noopener,noreferrer");
@@ -164,7 +176,32 @@ export function AnswerView({ a, onCite }: { a: DocAnswer; onCite: (t: ViewTarget
         </ol>
       )}
 
-      {!a.notFound && a.claims.length > 0 && <EvidenceBoard a={a} open={open} />}
+      {!a.notFound && a.claims.length > 0 && <EvidenceBoard a={a} open={open} onSupport={(i, h) => setSheet({ i, held: h })} />}
+
+      {held.length > 0 && (
+        <div className="rounded-md border border-dashed border-line px-2.5 py-2 text-[12px]">
+          <button type="button" onClick={() => setShowHeld((v) => !v)} aria-expanded={showHeld} className="text-muted hover:text-fg">
+            {held.length} claim{held.length === 1 ? "" : "s"} held back (below the {Math.round((a.verifier?.alpha ?? 0.05) * 100)}% line) · {showHeld ? "hide" : "show"}
+          </button>
+          {showHeld && (
+            <ul className="mt-2 space-y-1.5">
+              {held.map((c, i) => (
+                <li key={i} className="text-muted">
+                  <span className="italic">{c.text}</span>
+                  {c.cites.map((n) => { const cite = byN.get(n); return cite ? <CiteChip key={n} n={n} onClick={() => open(cite)} /> : null; })}
+                  {c.support && <SupportDot s={c.support} onOpen={() => setSheet({ i, held: true })} />}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {a.verifier && !a.notFound && <VerifierFooter v={a.verifier} />}
+      {sheet && sheetClaim?.support && (
+        <SupportSheet claim={sheetClaim.text} s={sheetClaim.support} onClose={() => setSheet(null)}
+          passages={sheetClaim.cites.map((n) => byN.get(n)).filter((c): c is Cite => !!c).map((c) => ({ n: c.n, title: c.title, quote: c.quote }))}
+          report={a.answerId ? { answerId: a.answerId, index: sheet.i, held: sheet.held } : undefined} />
+      )}
 
       {a.contradictions.length > 0 && (
         <ul className="space-y-1.5">
