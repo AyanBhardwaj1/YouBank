@@ -92,15 +92,25 @@ export async function applyPage(userId: string, cal: Pick<CalendarRow, "id">, pa
   return upserts.length;
 }
 
-/** Microsoft's delta windows are fixed at the start; begin a new one once a day as the window slides. */
-const DELTA_MAX_AGE = 24 * 3_600_000;
+/**
+ * How long an incremental token is used before the window is read in full again. Incremental reads
+ * only report what changed, so without a fresh full read the window would never slide: an unchanged
+ * weekly series (Google's expanded instances, a CalDAV resource, an ICS feed answering 304) would
+ * stop at the end of the first window, and Microsoft's delta windows are fixed when they start.
+ */
+export const FULL_READ_EVERY = 24 * 3_600_000;
+
+/** The stored token to sync from, or null for a full read of the window. */
+export function tokenToUse(cal: Pick<CalendarRow, "syncToken" | "windowStart">, now = Date.now()): string | null {
+  if (!cal.syncToken || !cal.windowStart) return null;
+  return now - cal.windowStart.getTime() > FULL_READ_EVERY ? null : cal.syncToken;
+}
 
 /** Bring one calendar up to date. A stale token falls back to a full read. */
 export async function syncCalendar(userId: string, provider: CalendarProvider, cal: CalendarRow, ctx: LinkContext, now = Date.now()): Promise<{ written: number; full: boolean }> {
   const window = syncWindow(now);
   const ref = { remoteId: cal.remoteId, timezone: cal.timezone };
-  const stale = provider.id === "microsoft" && cal.windowStart && now - cal.windowStart.getTime() > DELTA_MAX_AGE;
-  let token = cal.syncToken && !stale ? cal.syncToken : null;
+  let token = tokenToUse(cal, now);
   let page: SyncPage;
   try {
     page = await provider.listEvents(ref, window, token);

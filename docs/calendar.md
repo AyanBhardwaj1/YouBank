@@ -148,6 +148,9 @@ The window is 30 days back and 90 ahead. Each shown calendar is read incremental
 - CalDAV: sync-collection (RFC 6578) with calendar-multiget for changed resources.
 - ICS: ETag or Last-Modified.
 
+Every calendar is also read in full once a day, whatever its provider: an incremental read reports only
+what changed, so without it an unchanged weekly series would stop at the end of the first window.
+
 A full read replaces the calendar's stored events. An incremental read upserts, deletes, and replaces a
 CalDAV resource's occurrences as a group. An event moved out of the window is deleted. Google and Microsoft
 expand series on their side; CalDAV and ICS are expanded by `expand.ts`.

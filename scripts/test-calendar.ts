@@ -15,6 +15,7 @@ import { buildEventCalendar, cancelOccurrence, overrideOccurrence, patchEvent } 
 import { linkMeeting, normalizeEmail, titleMentions } from "@/lib/calendar/match";
 import { findSlots, formatSlot, freeWithin, mergeIntervals } from "@/lib/calendar/slots";
 import { findVideoLink, videoProvider } from "@/lib/calendar/video";
+import { tokenToUse } from "@/lib/calendar/sync";
 import { runAdapterTests } from "./fixtures/calendar/adapters";
 
 let pass = 0, fail = 0;
@@ -182,6 +183,15 @@ console.log("\nVideo links");
   ok("Teams link", videoProvider(findVideoLink("", "https://teams.microsoft.com/l/meetup-join/19%3ameeting_x%40thread.v2/0?context=y")), "Microsoft Teams");
   ok("Meet code", findVideoLink("meet.google.com/abc-defg-hij is the room, https://meet.google.com/abc-defg-hij"), "https://meet.google.com/abc-defg-hij");
   ok("no link", findVideoLink("Board room, 3rd floor"), "");
+}
+
+console.log("\nSync tokens");
+{
+  const now = Date.parse("2026-10-14T12:00:00Z");
+  ok("a fresh token is used", tokenToUse({ syncToken: "t1", windowStart: new Date(now - 3 * H) }, now), "t1");
+  // Incremental reads report only changes, so an unchanged series would never reach the moving window's end.
+  ok("after a day the window is read in full again, for every provider", tokenToUse({ syncToken: "t1", windowStart: new Date(now - 25 * H) }, now), null);
+  ok("no token, or no recorded full read, means a full read", [tokenToUse({ syncToken: "", windowStart: new Date(now) }, now), tokenToUse({ syncToken: "t1", windowStart: null }, now)], [null, null]);
 }
 
 console.log("\nProvider adapters against recorded responses");
