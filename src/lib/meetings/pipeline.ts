@@ -13,7 +13,7 @@
 import { after } from "next/server";
 import { structured } from "@/lib/ai/agent";
 import { loadUserContext } from "@/lib/ai/persona";
-import { recordUsage, runAsUser } from "@/lib/ai/usage";
+import { runAsUser } from "@/lib/ai/usage";
 import { canUse, requireFeature } from "@/lib/billing/entitlements";
 import { MEETINGS_FREE_NOTES } from "@/lib/billing/features/meetings";
 import { getSettings as getCrmSettings, personaFor } from "@/lib/crm/settings";
@@ -220,6 +220,9 @@ export async function stopBot(user: User, meetingId: number): Promise<MeetingRow
  */
 export async function syncBot(user: User, m: MeetingRow, force = false): Promise<MeetingRow> {
   if (m.source !== "bot" || !m.botId || m.status === "ready" || m.status === "failed" || m.status === "cancelled") return m;
+  // The transcript was already taken in and the notes started: a later webhook (Recall sends several
+  // once a call ends) or a replay must not take it in, bill it or start the notes again.
+  if (m.status === "processing" && m.bot.endedAt) return m;
   const polled = m.bot.polledAt ? Date.parse(m.bot.polledAt) : 0;
   if (!force && Date.now() - polled < 20_000) return m;
   const provider = botProvider();
@@ -234,10 +237,12 @@ export async function syncBot(user: User, m: MeetingRow, force = false): Promise
   await putChunk(m.id, { seq: 0, startSec: 0, durationSec: duration, segments, engine: `${provider.id} transcript` });
   const known = new Map(m.participants.map((p) => [(p.email || p.name).toLowerCase(), p]));
   for (const p of participants) if (!known.has((p.email || p.name).toLowerCase())) known.set((p.email || p.name).toLowerCase(), { name: p.name, email: p.email });
+  // The bot is paid to Recall, outside the AI ledger (it is not part of the AI allowance), so its hours
+  // are kept on the meeting for metering rather than recorded as AI spend.
   const joined = bot.joinedAt ? Date.parse(bot.joinedAt) : m.startedAt.getTime();
   const hours = Math.max(duration, (Date.now() - joined) / 1000) / 3600;
-  recordUsage({ feature: "meetings-bot", provider: provider.id, model: "notetaker", usage: { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0 }, extraCostUsd: Math.round(hours * BOT_USD_PER_HOUR * 1000) / 1000 });
-  const row = await updateMeeting(m.id, { status: "processing", bot: { ...bot, endedAt: new Date().toISOString() }, participants: [...known.values()], durationSec: duration, endedAt: m.endedAt ?? new Date(), transcriber: `${provider.id} transcript` });
+  const costUsd = Math.round(hours * BOT_USD_PER_HOUR * 1000) / 1000;
+  const row = await updateMeeting(m.id, { status: "processing", bot: { ...bot, endedAt: new Date().toISOString(), hours: Math.round(hours * 1000) / 1000, costUsd }, participants: [...known.values()], durationSec: duration, endedAt: m.endedAt ?? new Date(), transcriber: `${provider.id} transcript` });
   later(user, () => finishMeeting(user, m.id), m.id);
   return row;
 }

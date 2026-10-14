@@ -1444,7 +1444,7 @@ export const meetings = pgTable("meetings", {
   status: text("status").notNull().default("live"), // joining | live | processing | ready | failed | cancelled
   meetingUrl: text("meeting_url").notNull().default(""),
   botId: text("bot_id"),
-  bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string }>().notNull().default({}),
+  bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string; hours?: number; costUsd?: number }>().notNull().default({}),
   context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
   participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
   consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
