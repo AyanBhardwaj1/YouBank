@@ -9,6 +9,8 @@
  *   own data, ready to feed monte_carlo.
  * - risk_check: the implied credit rating and the earnings-quality flags, for the notes a reviewer
  *   would want next to the debt and earnings rows.
+ * - lbo_stress: the workbook's LBO run through Edge's LBO Stress Lab (E6) over synthetic paths, written to a
+ *   labelled 'LBO Stress' sheet.
  */
 import { z } from "zod";
 import { def, type ToolDef } from "@/lib/ai/tools";
@@ -19,6 +21,9 @@ import { getCompanyData } from "@/lib/company";
 import { getCompanyFacts } from "@/lib/edgar/facts";
 import { creditView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
 import { waccView } from "@/lib/terminal/wacc";
+import type { Tranche } from "@/lib/edge/scen/lbo";
+import { runLab } from "@/lib/edge/scen/lab";
+import { rateModel } from "@/lib/edge/scen/rates";
 import type { Engine } from "./engine";
 import { addSheet, clearRange, requireSheet, sheetByName, writeRange, type Patch } from "./ops";
 import type { Scalar, StudioDocData } from "./types";
@@ -202,6 +207,63 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
           credit: "error" in c ? c : { rating: c.rating.rating, grade: c.rating.grade, views: c.rating.views, mortality: c.rating.mortality, coverage: c.coverage, caveat: c.caveat },
           quality: "error" in q ? q : { fy: q.fy, beneishM: q.beneish?.m ?? null, beneishFlag: q.beneish?.flag ?? null, piotroski: q.piotroski?.score ?? null, accruals: q.accruals, flags: q.flags },
           sources: ["SEC XBRL company facts", "Prices: Financial Modeling Prep (when on the plan)"],
+        });
+      }),
+    }),
+    def({
+      name: "lbo_stress",
+      description: "Stress the workbook's LBO (the sheet build_model template lbo writes) with Edge's LBO Stress Lab: the model's own entry EBITDA, multiples, debt, rates, sweep, tax, growth, D&A and capex run over 1,000 SYNTHETIC macro and operating paths (rates, the market, the company's results). Returns the IRR distribution, the chance of a covenant breach by year, the most a sponsor can pay for the hurdle IRR with the given confidence, and the gentlest scenario that breaks the deal. Writes an 'LBO Stress' sheet labelled SYNTHETIC with its recipe and seed. Nothing in the LBO sheet changes.",
+      schema: z.object({
+        sheet: z.string().optional().describe("the LBO sheet's name (default LBO)"),
+        max_net_leverage: z.number().min(1).max(15).optional().describe("maintenance covenant, net debt / LTM EBITDA (default entry leverage + 1.5x)"),
+        min_interest_cover: z.number().min(0.5).max(10).optional().describe("maintenance covenant, LTM EBITDA / interest (default 1.75x)"),
+        hurdle: z.number().min(0).max(0.6).optional().describe("hurdle IRR as a fraction (default 0.2)"),
+        write_sheet: z.boolean().optional(),
+      }),
+      run: (i) => s.guard(async () => {
+        const home = requireSheet(s.doc, i.sheet ?? "LBO");
+        const v = (a: string) => { const x = s.engine.get(home.id, a); return typeof x === "number" && Number.isFinite(x) ? x : NaN; };
+        const ebitda = v("C5"), entry = v("C6"), txn = v("C8"), senior = v("C9"), sub = v("C10"), seniorRate = v("C11"), subRate = v("C12"), amort = v("C13"), sweep = v("C14"), exit = v("C15"), tax = v("C16");
+        const revenue = v("C29"), growth = v("D30"), daRev = v("D34"), capexRev = v("D42");
+        if (![ebitda, entry, senior, sub, seniorRate, revenue].every(Number.isFinite) || ebitda <= 0) throw new Error(`The '${home.name}' sheet does not look like the LBO template (entry EBITDA in C5, multiple in C6, debt in C9:C10, rates in C11:C12, revenue in C29). Build it with build_model template lbo first.`);
+        // The model is in USD millions; the lab works in dollars. D&A and capex are a share of revenue there, of EBITDA here.
+        const rm = await rateModel();
+        const sofr = rm.start + rm.basis;
+        const tranches: Tranche[] = [
+          seniorRate * 100 > sofr ? { name: "Senior debt", kind: "tlb", turns: senior, floating: true, spreadBps: Math.round((seniorRate * 100 - sofr) * 100), floorPct: 0, oid: 100, amortPct: Number.isFinite(amort) ? amort * 100 : 1, prepayable: true }
+            : { name: "Senior debt", kind: "tlb", turns: senior, floating: false, fixedPct: seniorRate * 100, amortPct: Number.isFinite(amort) ? amort * 100 : 1, prepayable: true },
+          { name: "Subordinated debt", kind: "notes", turns: sub, floating: false, fixedPct: subRate * 100, amortPct: 0, prepayable: false },
+        ];
+        const lab = await runLab({
+          manual: { name: s.doc.title || "LBO", revenue: revenue * 1e6, ebitda: ebitda * 1e6, capexPct: Number.isFinite(capexRev) ? (capexRev * revenue / ebitda) * 100 : 40, daPct: Number.isFinite(daRev) ? (daRev * revenue / ebitda) * 100 : 30, growth: Number.isFinite(growth) ? growth : 0.04 },
+          entryMultiple: entry, exitMultiple: Number.isFinite(exit) ? exit : entry, tranches, sweep: Number.isFinite(sweep) ? sweep * 100 : 100, tax: Number.isFinite(tax) ? tax * 100 : 25, txnFeePct: Number.isFinite(txn) ? txn * 100 : 2, financeFeePct: 0, minCash: 0, years: 5,
+          covenants: { maxNetLeverage: i.max_net_leverage ?? Math.round((senior + sub + 1.5) * 4) / 4, minInterestCover: i.min_interest_cover ?? 1.75, springing: false, springAt: 0.35 }, hurdle: i.hurdle ?? 0.2, seed: 7,
+        });
+        const r = lab.result;
+        let where = "";
+        if (i.write_sheet !== false) {
+          let sheet = sheetByName(s.doc, "LBO Stress");
+          const patches: Patch[] = [];
+          if (!sheet) { const x = addSheet(s.doc, "LBO Stress"); patches.push(x.patch); sheet = x.sheet; await s.commit(patches, "Added the LBO Stress sheet"); }
+          const rows: Scalar[][] = [
+            [`SYNTHETIC: ${r.paths.toLocaleString("en-US")} simulated paths, seed ${lab.seed}. Not a forecast; a stress test of the '${home.name}' model's structure.`],
+            [],
+            ["Measure", "Value"],
+            ["Median IRR", cellNum(r.irr.p50)], ["IRR, 10th percentile", cellNum(r.irr.p10)], ["IRR, 90th percentile", cellNum(r.irr.p90)], ["Median MOIC", cellNum(r.moic.p50)],
+            ["Chance MOIC under 1x", cellNum(r.odds.moicBelowOne)], ["Chance of any covenant breach", cellNum(r.odds.breachAny)],
+            ...r.breachByYear.map((b, k) => [`Covenant breach by year ${k + 1}`, cellNum(b)] as Scalar[]),
+            [`Most a sponsor can pay (x EBITDA) for ${Math.round(r.maxPrice.hurdle * 100)}% IRR with ${Math.round(r.maxPrice.confidence * 100)}% probability`, r.maxPrice.multiple ? cellNum(r.maxPrice.multiple) : "none clears it"],
+            ["Gentlest scenario that breaks it", r.reverse.sentence],
+            [],
+            ["Recipe", lab.recipe],
+          ];
+          await s.commit([clearRange(s.doc, "LBO Stress", "A1:B60", "contents"), writeRange(s.doc, "LBO Stress", "A1", rows)], "Wrote the LBO stress test", { sheet: sheet.id, range: `A1:B${rows.length}` });
+          where = ` Results on 'LBO Stress'!A1:B${rows.length}.`;
+        }
+        return J({
+          synthetic: true, paths: r.paths, seed: lab.seed, irr: { p10: round(r.irr.p10), p50: round(r.irr.p50), p90: round(r.irr.p90) }, moicP50: round(r.moic.p50),
+          chanceMoicBelowOne: round(r.odds.moicBelowOne), breachByYear: r.breachByYear.map(round), maxEntryMultiple: r.maxPrice.multiple ? round(r.maxPrice.multiple) : null,
+          gentlestBreach: r.reverse.sentence, assumptions: lab.assumptions, note: `Label every number from this as synthetic.${where}`,
         });
       }),
     }),

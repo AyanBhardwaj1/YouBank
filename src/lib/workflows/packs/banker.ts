@@ -3,6 +3,7 @@
  * Authored from docs/research/banker-ma-coverage.md, banker-restructuring.md and banker-capital-markets.md.
  * Conventions: USD millions unless a field says otherwise; percent inputs are whole numbers (25 = 25%).
  */
+import { calculatorStructure, lboSchedule, steadyPath } from "@/lib/edge/scen/lbo";
 import { bool, fmt, list, num, parseCsv, str, type Inputs, type ToolDef, type WorkflowOutput } from "../types";
 
 /* ---------------- specialty groups (strings must match roles.ts verbatim) ---------------- */
@@ -813,47 +814,26 @@ const MA_CALCS: ToolDef[] = [
     example: { ebitda: 150, entryMultiple: 12, tlbTurns: 4, secondTurns: 1.5, sofr: 3.75, tlbSpread: 375, secondRate: 10.5, oid: 99.5, financeFeePct: 2, txnFeePct: 2, minCash: 25, growth: 9, daPct: 20, capexPct: 15, nwcPct: 15, tax: 25, amortPct: 1, sweep: 75, years: 5, exitMultiple: 12 },
     prefill: (c) => ({ ebitda: c.ltm.adjEbitda ?? c.ltm.ebitda ?? 150, entryMultiple: c.ltm.adjEbitda && c.price ? Math.max(4, Math.round((c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0)) / c.ltm.adjEbitda)) : 12 }),
     compute: (i: Inputs): WorkflowOutput => {
+      // The shared LBO engine (src/lib/edge/scen/lbo.ts), run yearly on this deterministic path; the LBO Stress
+      // Lab runs the same function quarterly on simulated paths, so the two agree exactly on a steady path.
       const e0 = num(i, "ebitda"), entryX = num(i, "entryMultiple"), years = Math.round(num(i, "years", 5));
-      const tlb0 = num(i, "tlbTurns") * e0, sl0 = num(i, "secondTurns") * e0;
       const oid = num(i, "oid", 99.5), tlbRate = num(i, "sofr") / 100 + num(i, "tlbSpread") / 10000 + (100 - oid) / 4 / 100;
-      const slRate = num(i, "secondRate") / 100, g = num(i, "growth") / 100, da = num(i, "daPct") / 100;
-      const capex = num(i, "capexPct") / 100, nwc = num(i, "nwcPct") / 100, tax = num(i, "tax") / 100;
-      const amortPct = num(i, "amortPct") / 100, sweep = num(i, "sweep") / 100, minCash = num(i, "minCash");
+      const slRate = num(i, "secondRate") / 100, g = num(i, "growth") / 100, minCash = num(i, "minCash");
       const exitX = num(i, "exitMultiple");
-      if (e0 <= 0 || entryX <= 0) throw new Error("Entry EBITDA and entry multiple must be positive.");
-      const entryTev = e0 * entryX, debt0 = tlb0 + sl0;
-      const fees = debt0 * (num(i, "financeFeePct") / 100) + entryTev * (num(i, "txnFeePct") / 100);
-      const uses = entryTev + fees + minCash, equity = uses - debt0;
-      if (equity <= 0) throw new Error("Leverage exceeds the purchase price plus fees: reduce the debt turns.");
-      let tlb = tlb0, sl = sl0, cash = minCash, prevE = e0;
-      const rows: { y: number; ebitda: number; interest: number; taxes: number; fcf: number; amort: number; sweepPaid: number; tlb: number; sl: number; cash: number; netDebt: number }[] = [];
-      for (let y = 1; y <= years; y++) {
-        const ebitda = e0 * Math.pow(1 + g, y);
-        const interest = tlb * tlbRate + sl * slRate;
-        const ebit = ebitda * (1 - da);
-        const taxes = Math.max(0, ebit - interest) * tax;
-        const dNwc = (ebitda - prevE) * nwc;
-        const fcf = ebitda - interest - taxes - ebitda * capex - dNwc;
-        const amort = Math.min(tlb, tlb0 * amortPct);
-        const avail = Math.max(0, fcf - amort);
-        let pay = avail * sweep;
-        tlb -= amort;
-        const toTlb = Math.min(tlb, pay); tlb -= toTlb; pay -= toTlb;
-        const toSl = Math.min(sl, pay); sl -= toSl; pay -= toSl;
-        cash += fcf - amort - toTlb - toSl;
-        rows.push({ y, ebitda, interest, taxes, fcf, amort, sweepPaid: toTlb + toSl, tlb, sl, cash, netDebt: tlb + sl - cash });
-        prevE = ebitda;
-      }
+      const structure = calculatorStructure({ ebitda: e0, entryMultiple: entryX, tlbTurns: num(i, "tlbTurns"), secondTurns: num(i, "secondTurns"), tlbSpread: num(i, "tlbSpread"), secondRate: num(i, "secondRate"), oid, financeFeePct: num(i, "financeFeePct"), txnFeePct: num(i, "txnFeePct"), minCash, daPct: num(i, "daPct"), capexPct: num(i, "capexPct"), nwcPct: num(i, "nwcPct"), tax: num(i, "tax"), amortPct: num(i, "amortPct"), sweep: num(i, "sweep"), years });
+      const run = lboSchedule(structure, steadyPath(e0, g, num(i, "sofr"), exitX, years));
+      const tlb0 = structure.tranches[0].turns * e0, sl0 = structure.tranches[1].turns * e0;
+      const { entryTev, debt0, fees, uses, equity } = run;
+      const rows = run.rows.map((r) => ({ y: r.t, ebitda: r.ebitda, interest: r.interest, taxes: r.taxes, fcf: r.fcf, amort: r.amort, sweepPaid: r.swept, tlb: r.balances[0], sl: r.balances[1], cash: r.cash, netDebt: r.netDebt }));
       const last = rows[rows.length - 1];
-      const exitTev = last.ebitda * exitX, exitEquity = exitTev - last.netDebt;
-      const moic = exitEquity / equity, irr = Math.pow(Math.max(moic, 0.0001), 1 / years) - 1;
-      const openNd = debt0 - minCash;
+      const exitEquity = run.exitEquity, moic = run.moic, irr = run.irr;
+      const openNd = run.openNetDebt;
       const attribution = [
         { label: "Sponsor equity", value: equity, total: true },
-        { label: "EBITDA growth", value: entryX * (last.ebitda - e0) },
-        { label: "Multiple change", value: (exitX - entryX) * last.ebitda },
-        { label: "Debt paydown & cash build", value: openNd - last.netDebt },
-        { label: "Fees at entry", value: -fees },
+        { label: "EBITDA growth", value: run.attribution.growth },
+        { label: "Multiple change", value: run.attribution.multiple },
+        { label: "Debt paydown & cash build", value: run.attribution.paydown },
+        { label: "Fees at entry", value: run.attribution.fees },
         { label: "Exit equity proceeds", value: exitEquity, total: true },
       ];
       const exits = [exitX - 2, exitX - 1, exitX, exitX + 1, exitX + 2].filter((x) => x > 0);

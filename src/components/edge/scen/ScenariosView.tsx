@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Scenarios · Synthetic data: market scenarios and stress tests, company what-ifs, synthetic tables and
+ * Scenarios · Synthetic data: market scenarios and stress tests, company what-ifs, the LBO Stress Lab (E6), synthetic tables and
  * filled gaps, and fictional practice data. Everything made here is labeled synthetic (or fictional)
  * with its recipe and seed, and every scenario is checked against real data for realism.
  */
@@ -9,13 +9,14 @@ import { useCallback, useState } from "react";
 import { onTabKeys, tabProps } from "../tabs";
 import { DriverForecast } from "./DriverForecast";
 import { MarketTab } from "./MarketTab";
+import { LboTab } from "./LboTab";
 import { CompanyTab, PracticeTab, SavedList, TablesTab } from "./OtherTabs";
 
-type Tab = "market" | "company" | "tables" | "practice" | "saved";
-const TABS: { id: Tab; label: string }[] = [{ id: "market", label: "Market scenarios" }, { id: "company", label: "Company what-if" }, { id: "tables", label: "Synthetic tables" }, { id: "practice", label: "Practice data" }, { id: "saved", label: "Saved" }];
+export type ScenTab = "market" | "company" | "lbo" | "tables" | "practice" | "saved";
+const TABS: { id: ScenTab; label: string }[] = [{ id: "market", label: "Market scenarios" }, { id: "company", label: "Company what-if" }, { id: "lbo", label: "LBO" }, { id: "tables", label: "Synthetic tables" }, { id: "practice", label: "Practice data" }, { id: "saved", label: "Saved" }];
 
-export function ScenariosView({ tickers }: { tickers: string[] }) {
-  const [tab, setTab] = useState<Tab>("market");
+export function ScenariosView({ tickers, initialTab, initialTicker }: { tickers: string[]; initialTab?: ScenTab | null; initialTicker?: string | null }) {
+  const [tab, setTab] = useState<ScenTab>(initialTab ?? "market");
   const [nonce, setNonce] = useState(0);
   const saved = useCallback(() => setNonce((n) => n + 1), []);
   return (
@@ -28,6 +29,7 @@ export function ScenariosView({ tickers }: { tickers: string[] }) {
       </div>
       {tab === "market" && <><MarketTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} onSaved={saved} /><DriverForecast /></>}
       {tab === "company" && <CompanyTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} onSaved={saved} />}
+      {tab === "lbo" && <LboTab suggest={tickers.length ? tickers : ["ET", "KMI", "TRGP"]} initial={initialTicker} />}
       {tab === "tables" && <TablesTab onSaved={saved} />}
       {tab === "practice" && <PracticeTab onSaved={saved} />}
       {tab === "saved" && <SavedList nonce={nonce} />}

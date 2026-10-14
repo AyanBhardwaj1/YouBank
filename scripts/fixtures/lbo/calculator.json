@@ -1,0 +1,964 @@
+[
+ {
+  "input": {
+   "ebitda": 150,
+   "entryMultiple": 12,
+   "tlbTurns": 4,
+   "secondTurns": 1.5,
+   "sofr": 3.75,
+   "tlbSpread": 375,
+   "secondRate": 10.5,
+   "oid": 99.5,
+   "financeFeePct": 2,
+   "txnFeePct": 2,
+   "minCash": 25,
+   "growth": 9,
+   "daPct": 20,
+   "capexPct": 15,
+   "nwcPct": 15,
+   "tax": 25,
+   "amortPct": 1,
+   "sweep": 75,
+   "years": 5,
+   "exitMultiple": 12
+  },
+  "output": {
+   "title": "LBO returns",
+   "summary": "Entry at 12.0x on $150.0M of EBITDA is $1.8B of enterprise value, funded with 5.5x of leverage and $1.1B of sponsor equity (56% of uses). Exiting in year 5 at 12.0x returns $2.4B, a 2.24x MOIC and 17.5% IRR. Debt paydown contributes $392.3M of the $1.3B of value created.",
+   "blocks": [
+    {
+     "type": "kpis",
+     "items": [
+      {
+       "label": "IRR",
+       "value": "17.5%",
+       "tone": "warn",
+       "hint": "Buyout funds target 20-25%"
+      },
+      {
+       "label": "MOIC",
+       "value": "2.24x"
+      },
+      {
+       "label": "Sponsor equity",
+       "value": "$1.1B"
+      },
+      {
+       "label": "Entry leverage",
+       "value": "5.5x"
+      },
+      {
+       "label": "Exit leverage",
+       "value": "1.8x"
+      },
+      {
+       "label": "Entry TEV",
+       "value": "$1.8B"
+      },
+      {
+       "label": "Exit equity",
+       "value": "$2.4B"
+      }
+     ]
+    },
+    {
+     "type": "table",
+     "title": "Sources and uses (USD mm)",
+     "columns": [
+      "Item",
+      "Uses",
+      "Sources",
+      "x EBITDA"
+     ],
+     "rows": [
+      [
+       "Purchase enterprise value",
+       "1,800",
+       "",
+       "12.0x"
+      ],
+      [
+       "Fees and expenses",
+       "53",
+       "",
+       "0.3x"
+      ],
+      [
+       "Minimum cash",
+       "25",
+       "",
+       ""
+      ],
+      [
+       "Term loan B",
+       "",
+       "600",
+       "4.0x"
+      ],
+      [
+       "Second lien",
+       "",
+       "225",
+       "1.5x"
+      ],
+      [
+       "Sponsor equity",
+       "",
+       "1,053",
+       "7.0x"
+      ]
+     ],
+     "totals": [
+      "Total",
+      "1,878",
+      "1,878",
+      "12.5x"
+     ],
+     "note": "Term loan all-in 7.63% (SOFR + 375bps plus OID accretion at a four-year life); second lien 10.50%."
+    },
+    {
+     "type": "table",
+     "title": "Debt schedule (USD mm)",
+     "columns": [
+      "Year",
+      "EBITDA",
+      "Cash interest",
+      "Cash taxes",
+      "Free cash flow",
+      "Amortization",
+      "Sweep",
+      "TLB",
+      "Second lien",
+      "Cash",
+      "Net debt",
+      "Net leverage"
+     ],
+     "rows": [
+      [
+       "Y1",
+       "164",
+       "69",
+       "15",
+       "52",
+       "6",
+       "35",
+       "559",
+       "225",
+       "37",
+       "748",
+       "4.6x"
+      ],
+      [
+       "Y2",
+       "178",
+       "66",
+       "19",
+       "64",
+       "6",
+       "43",
+       "510",
+       "225",
+       "51",
+       "684",
+       "3.8x"
+      ],
+      [
+       "Y3",
+       "194",
+       "63",
+       "23",
+       "77",
+       "6",
+       "53",
+       "451",
+       "225",
+       "69",
+       "607",
+       "3.1x"
+      ],
+      [
+       "Y4",
+       "212",
+       "58",
+       "28",
+       "92",
+       "6",
+       "64",
+       "381",
+       "225",
+       "90",
+       "515",
+       "2.4x"
+      ],
+      [
+       "Y5",
+       "231",
+       "53",
+       "33",
+       "108",
+       "6",
+       "76",
+       "298",
+       "225",
+       "116",
+       "408",
+       "1.8x"
+      ]
+     ]
+    },
+    {
+     "type": "waterfall",
+     "title": "Returns attribution (USD mm)",
+     "format": "money",
+     "steps": [
+      {
+       "label": "Sponsor equity",
+       "value": 1052.5,
+       "total": true
+      },
+      {
+       "label": "EBITDA growth",
+       "value": 969.5231188200014
+      },
+      {
+       "label": "Multiple change",
+       "value": 0
+      },
+      {
+       "label": "Debt paydown & cash build",
+       "value": 392.3207326285474
+      },
+      {
+       "label": "Fees at entry",
+       "value": -52.5
+      },
+      {
+       "label": "Exit equity proceeds",
+       "value": 2361.843851448549,
+       "total": true
+      }
+     ]
+    },
+    {
+     "type": "sensitivity",
+     "title": "IRR: exit multiple × hold period",
+     "rowLabel": "Exit multiple",
+     "colLabel": "Hold (years)",
+     "rows": [
+      "10.0x",
+      "11.0x",
+      "12.0x",
+      "13.0x",
+      "14.0x"
+     ],
+     "cols": [
+      "Y1",
+      "Y2",
+      "Y3",
+      "Y4",
+      "Y5"
+     ],
+     "values": [
+      [
+       -0.1570368171021378,
+       0.021523930783392542,
+       0.08266073006937624,
+       0.11073675668052729,
+       0.12542881898651093
+      ],
+      [
+       -0.0016923990498812769,
+       0.10128858926264783,
+       0.13278974628694096,
+       0.14574768094078805,
+       0.15152750948026128
+      ],
+      [
+       0.15365201900237535,
+       0.17565384893559255,
+       0.17883606122533746,
+       0.17781475909182953,
+       0.17545447974013273
+      ],
+      [
+       0.30899643705463187,
+       0.24558716603617614,
+       0.22154142982280045,
+       0.2074578844666528,
+       0.19757835208986751
+      ],
+      [
+       0.4643408551068884,
+       0.31179754683068084,
+       0.26145297141455925,
+       0.2350657810819623,
+       0.21817874060543185
+      ]
+     ],
+     "format": "pct",
+     "baseRow": 2,
+     "baseCol": 4
+    }
+   ],
+   "caveats": [
+    "Interest accrues on beginning balances with no revolver draw modeled; a negative free cash flow year builds no cash and is funded from the cash balance.",
+    "Cash taxes are computed on EBIT less interest with no NOL carryforward and no limitation on interest deductibility under section 163(j).",
+    "Returns are a single entry and exit cash flow, so the IRR is the annualized MOIC. A dividend recap or a bolt-on would change both the IRR and the attribution.",
+    "2026 middle-market structures run 4.0-5.0x total leverage (5.0-6.0x for upper-middle-market credits) with sponsor equity of 45-55% of the purchase price; unitranche all-in pricing is 9.0-11.0% against 7.5-9.5% for broadly syndicated loans."
+   ],
+   "nextSteps": [
+    "Solve the entry price at a 20-25% hurdle to set the ability-to-pay",
+    "Test the structure against the debt capacity calculator",
+    "Compare the pricing with the term sheet grid"
+   ]
+  }
+ },
+ {
+  "input": {
+   "ebitda": 80,
+   "entryMultiple": 9,
+   "tlbTurns": 5,
+   "secondTurns": 0,
+   "sofr": 4.25,
+   "tlbSpread": 450,
+   "secondRate": 11,
+   "oid": 98,
+   "financeFeePct": 2.5,
+   "txnFeePct": 1.5,
+   "minCash": 10,
+   "growth": -3,
+   "daPct": 25,
+   "capexPct": 30,
+   "nwcPct": 10,
+   "tax": 21,
+   "amortPct": 5,
+   "sweep": 100,
+   "years": 7,
+   "exitMultiple": 8
+  },
+  "output": {
+   "title": "LBO returns",
+   "summary": "Entry at 9.0x on $80.0M of EBITDA is $720.0M of enterprise value, funded with 5.0x of leverage and $350.8M of sponsor equity (47% of uses). Exiting in year 7 at 8.0x returns $224.2M, a 0.64x MOIC and -6.2% IRR. Debt paydown contributes $97.1M of the $-126.6M of value created.",
+   "blocks": [
+    {
+     "type": "kpis",
+     "items": [
+      {
+       "label": "IRR",
+       "value": "-6.2%",
+       "tone": "neg",
+       "hint": "Buyout funds target 20-25%"
+      },
+      {
+       "label": "MOIC",
+       "value": "0.64x"
+      },
+      {
+       "label": "Sponsor equity",
+       "value": "$350.8M"
+      },
+      {
+       "label": "Entry leverage",
+       "value": "5.0x"
+      },
+      {
+       "label": "Exit leverage",
+       "value": "4.5x"
+      },
+      {
+       "label": "Entry TEV",
+       "value": "$720.0M"
+      },
+      {
+       "label": "Exit equity",
+       "value": "$224.2M"
+      }
+     ]
+    },
+    {
+     "type": "table",
+     "title": "Sources and uses (USD mm)",
+     "columns": [
+      "Item",
+      "Uses",
+      "Sources",
+      "x EBITDA"
+     ],
+     "rows": [
+      [
+       "Purchase enterprise value",
+       "720",
+       "",
+       "9.0x"
+      ],
+      [
+       "Fees and expenses",
+       "21",
+       "",
+       "0.3x"
+      ],
+      [
+       "Minimum cash",
+       "10",
+       "",
+       ""
+      ],
+      [
+       "Term loan B",
+       "",
+       "400",
+       "5.0x"
+      ],
+      [
+       "Second lien",
+       "",
+       "0",
+       "0.0x"
+      ],
+      [
+       "Sponsor equity",
+       "",
+       "351",
+       "4.4x"
+      ]
+     ],
+     "totals": [
+      "Total",
+      "751",
+      "751",
+      "9.4x"
+     ],
+     "note": "Term loan all-in 9.25% (SOFR + 450bps plus OID accretion at a four-year life); second lien 11.00%."
+    },
+    {
+     "type": "table",
+     "title": "Debt schedule (USD mm)",
+     "columns": [
+      "Year",
+      "EBITDA",
+      "Cash interest",
+      "Cash taxes",
+      "Free cash flow",
+      "Amortization",
+      "Sweep",
+      "TLB",
+      "Second lien",
+      "Cash",
+      "Net debt",
+      "Net leverage"
+     ],
+     "rows": [
+      [
+       "Y1",
+       "78",
+       "37",
+       "4",
+       "13",
+       "20",
+       "0",
+       "380",
+       "0",
+       "3",
+       "377",
+       "4.9x"
+      ],
+      [
+       "Y2",
+       "75",
+       "35",
+       "4",
+       "13",
+       "20",
+       "0",
+       "360",
+       "0",
+       "-4",
+       "364",
+       "4.8x"
+      ],
+      [
+       "Y3",
+       "73",
+       "33",
+       "5",
+       "14",
+       "20",
+       "0",
+       "340",
+       "0",
+       "-10",
+       "350",
+       "4.8x"
+      ],
+      [
+       "Y4",
+       "71",
+       "31",
+       "5",
+       "14",
+       "20",
+       "0",
+       "320",
+       "0",
+       "-16",
+       "336",
+       "4.7x"
+      ],
+      [
+       "Y5",
+       "69",
+       "30",
+       "5",
+       "14",
+       "20",
+       "0",
+       "300",
+       "0",
+       "-22",
+       "322",
+       "4.7x"
+      ],
+      [
+       "Y6",
+       "67",
+       "28",
+       "5",
+       "14",
+       "20",
+       "0",
+       "280",
+       "0",
+       "-28",
+       "308",
+       "4.6x"
+      ],
+      [
+       "Y7",
+       "65",
+       "26",
+       "5",
+       "15",
+       "20",
+       "0",
+       "260",
+       "0",
+       "-33",
+       "293",
+       "4.5x"
+      ]
+     ]
+    },
+    {
+     "type": "waterfall",
+     "title": "Returns attribution (USD mm)",
+     "format": "money",
+     "steps": [
+      {
+       "label": "Sponsor equity",
+       "value": 350.79999999999995,
+       "total": true
+      },
+      {
+       "label": "EBITDA growth",
+       "value": -138.25235175758652
+      },
+      {
+       "label": "Multiple change",
+       "value": -64.63862758249039
+      },
+      {
+       "label": "Debt paydown & cash build",
+       "value": 97.06891058855058
+      },
+      {
+       "label": "Fees at entry",
+       "value": -20.799999999999997
+      },
+      {
+       "label": "Exit equity proceeds",
+       "value": 224.17793124847367,
+       "total": true
+      }
+     ]
+    },
+    {
+     "type": "sensitivity",
+     "title": "IRR: exit multiple × hold period",
+     "rowLabel": "Exit multiple",
+     "colLabel": "Hold (years)",
+     "rows": [
+      "6.0x",
+      "7.0x",
+      "8.0x",
+      "9.0x",
+      "10.0x"
+     ],
+     "cols": [
+      "Y1",
+      "Y2",
+      "Y3",
+      "Y4",
+      "Y5",
+      "Y6",
+      "Y7"
+     ],
+     "values": [
+      [
+       -0.7471265678449259,
+       -0.499033545209321,
+       -0.3692760575685674,
+       -0.2909420864558532,
+       -0.23817164597353035,
+       -0.19981163933158452,
+       -0.17036492806946313
+      ],
+      [
+       -0.5259179019384266,
+       -0.3176952332316254,
+       -0.22859019011395298,
+       -0.17885065782583587,
+       -0.14667509264674838,
+       -0.1238087103190143,
+       -0.10645702672003032
+      ],
+      [
+       -0.304709236031927,
+       -0.17531084602490965,
+       -0.12619517443586048,
+       -0.09984465164767953,
+       -0.08303379115718923,
+       -0.07109489810376024,
+       -0.06196500902599811
+      ],
+      [
+       -0.08350057012542755,
+       -0.054122308850951595,
+       -0.043419395006077055,
+       -0.03743951506062082,
+       -0.03332411225517429,
+       -0.03011245197965562,
+       -0.027392754292468235
+      ],
+      [
+       0.1377080957810719,
+       0.053212710017667364,
+       0.027077183433997787,
+       0.014754117104692321,
+       0.00786624826187099,
+       0.0036911345459975653,
+       0.0010777869231690662
+      ]
+     ],
+     "format": "pct",
+     "baseRow": 2,
+     "baseCol": 6
+    }
+   ],
+   "caveats": [
+    "Interest accrues on beginning balances with no revolver draw modeled; a negative free cash flow year builds no cash and is funded from the cash balance.",
+    "Cash taxes are computed on EBIT less interest with no NOL carryforward and no limitation on interest deductibility under section 163(j).",
+    "Returns are a single entry and exit cash flow, so the IRR is the annualized MOIC. A dividend recap or a bolt-on would change both the IRR and the attribution.",
+    "2026 middle-market structures run 4.0-5.0x total leverage (5.0-6.0x for upper-middle-market credits) with sponsor equity of 45-55% of the purchase price; unitranche all-in pricing is 9.0-11.0% against 7.5-9.5% for broadly syndicated loans."
+   ],
+   "nextSteps": [
+    "Solve the entry price at a 20-25% hurdle to set the ability-to-pay",
+    "Test the structure against the debt capacity calculator",
+    "Compare the pricing with the term sheet grid"
+   ]
+  }
+ },
+ {
+  "input": {
+   "ebitda": 400,
+   "entryMultiple": 14,
+   "tlbTurns": 3,
+   "secondTurns": 2,
+   "sofr": 2,
+   "tlbSpread": 300,
+   "secondRate": 9,
+   "oid": 100,
+   "financeFeePct": 1.5,
+   "txnFeePct": 2,
+   "minCash": 50,
+   "growth": 12,
+   "daPct": 15,
+   "capexPct": 10,
+   "nwcPct": 20,
+   "tax": 25,
+   "amortPct": 1,
+   "sweep": 50,
+   "years": 4,
+   "exitMultiple": 15
+  },
+  "output": {
+   "title": "LBO returns",
+   "summary": "Entry at 14.0x on $400.0M of EBITDA is $5.6B of enterprise value, funded with 5.0x of leverage and $3.8B of sponsor equity (65% of uses). Exiting in year 4 at 15.0x returns $8.5B, a 2.25x MOIC and 22.5% IRR. Debt paydown contributes $1.1B of the $4.8B of value created.",
+   "blocks": [
+    {
+     "type": "kpis",
+     "items": [
+      {
+       "label": "IRR",
+       "value": "22.5%",
+       "tone": "pos",
+       "hint": "Buyout funds target 20-25%"
+      },
+      {
+       "label": "MOIC",
+       "value": "2.25x"
+      },
+      {
+       "label": "Sponsor equity",
+       "value": "$3.8B"
+      },
+      {
+       "label": "Entry leverage",
+       "value": "5.0x"
+      },
+      {
+       "label": "Exit leverage",
+       "value": "1.4x"
+      },
+      {
+       "label": "Entry TEV",
+       "value": "$5.6B"
+      },
+      {
+       "label": "Exit equity",
+       "value": "$8.5B"
+      }
+     ]
+    },
+    {
+     "type": "table",
+     "title": "Sources and uses (USD mm)",
+     "columns": [
+      "Item",
+      "Uses",
+      "Sources",
+      "x EBITDA"
+     ],
+     "rows": [
+      [
+       "Purchase enterprise value",
+       "5,600",
+       "",
+       "14.0x"
+      ],
+      [
+       "Fees and expenses",
+       "142",
+       "",
+       "0.4x"
+      ],
+      [
+       "Minimum cash",
+       "50",
+       "",
+       ""
+      ],
+      [
+       "Term loan B",
+       "",
+       "1,200",
+       "3.0x"
+      ],
+      [
+       "Second lien",
+       "",
+       "800",
+       "2.0x"
+      ],
+      [
+       "Sponsor equity",
+       "",
+       "3,792",
+       "9.5x"
+      ]
+     ],
+     "totals": [
+      "Total",
+      "5,792",
+      "5,792",
+      "14.5x"
+     ],
+     "note": "Term loan all-in 5.00% (SOFR + 300bps plus OID accretion at a four-year life); second lien 9.00%."
+    },
+    {
+     "type": "table",
+     "title": "Debt schedule (USD mm)",
+     "columns": [
+      "Year",
+      "EBITDA",
+      "Cash interest",
+      "Cash taxes",
+      "Free cash flow",
+      "Amortization",
+      "Sweep",
+      "TLB",
+      "Second lien",
+      "Cash",
+      "Net debt",
+      "Net leverage"
+     ],
+     "rows": [
+      [
+       "Y1",
+       "448",
+       "132",
+       "62",
+       "199",
+       "12",
+       "94",
+       "1,094",
+       "800",
+       "144",
+       "1,751",
+       "3.9x"
+      ],
+      [
+       "Y2",
+       "502",
+       "127",
+       "75",
+       "239",
+       "12",
+       "114",
+       "969",
+       "800",
+       "257",
+       "1,511",
+       "3.0x"
+      ],
+      [
+       "Y3",
+       "562",
+       "120",
+       "89",
+       "284",
+       "12",
+       "136",
+       "821",
+       "800",
+       "393",
+       "1,227",
+       "2.2x"
+      ],
+      [
+       "Y4",
+       "629",
+       "113",
+       "105",
+       "334",
+       "12",
+       "161",
+       "647",
+       "800",
+       "555",
+       "893",
+       "1.4x"
+      ]
+     ]
+    },
+    {
+     "type": "waterfall",
+     "title": "Returns attribution (USD mm)",
+     "format": "money",
+     "steps": [
+      {
+       "label": "Sponsor equity",
+       "value": 3792,
+       "total": true
+      },
+      {
+       "label": "EBITDA growth",
+       "value": 3211.708416000003
+      },
+      {
+       "label": "Multiple change",
+       "value": 629.4077440000002
+      },
+      {
+       "label": "Debt paydown & cash build",
+       "value": 1057.0114067058594
+      },
+      {
+       "label": "Fees at entry",
+       "value": -142
+      },
+      {
+       "label": "Exit equity proceeds",
+       "value": 8548.127566705864,
+       "total": true
+      }
+     ]
+    },
+    {
+     "type": "sensitivity",
+     "title": "IRR: exit multiple × hold period",
+     "rowLabel": "Exit multiple",
+     "colLabel": "Hold (years)",
+     "rows": [
+      "13.0x",
+      "14.0x",
+      "15.0x",
+      "16.0x",
+      "17.0x"
+     ],
+     "cols": [
+      "Y1",
+      "Y2",
+      "Y3",
+      "Y4"
+     ],
+     "values": [
+      [
+       0.07420886075949396,
+       0.1496022690955794,
+       0.17031245474594314,
+       0.177482751070275
+      ],
+      [
+       0.19235232067510588,
+       0.2057802669703921,
+       0.2053225737710651,
+       0.20211678759672225
+      ],
+      [
+       0.3104957805907176,
+       0.259454932627871,
+       0.2384090793980409,
+       0.22532322842622654
+      ],
+      [
+       0.4286392405063295,
+       0.310933790252643,
+       0.26981623996431736,
+       0.24728136514058763
+      ],
+      [
+       0.5467827004219412,
+       0.3604661250952357,
+       0.2997421826168276,
+       0.26813745907611763
+      ]
+     ],
+     "format": "pct",
+     "baseRow": 2,
+     "baseCol": 3
+    }
+   ],
+   "caveats": [
+    "Interest accrues on beginning balances with no revolver draw modeled; a negative free cash flow year builds no cash and is funded from the cash balance.",
+    "Cash taxes are computed on EBIT less interest with no NOL carryforward and no limitation on interest deductibility under section 163(j).",
+    "Returns are a single entry and exit cash flow, so the IRR is the annualized MOIC. A dividend recap or a bolt-on would change both the IRR and the attribution.",
+    "2026 middle-market structures run 4.0-5.0x total leverage (5.0-6.0x for upper-middle-market credits) with sponsor equity of 45-55% of the purchase price; unitranche all-in pricing is 9.0-11.0% against 7.5-9.5% for broadly syndicated loans."
+   ],
+   "nextSteps": [
+    "Solve the entry price at a 20-25% hurdle to set the ability-to-pay",
+    "Test the structure against the debt capacity calculator",
+    "Compare the pricing with the term sheet grid"
+   ]
+  }
+ }
+]
