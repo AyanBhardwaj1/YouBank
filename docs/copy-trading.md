@@ -188,6 +188,10 @@ order (with our client order id), order detail and recent orders.
   reason.
 - The review shows every order, the estimate, buys, sells and cash after, skipped lines with reasons, the
   market's state, and a tax-lot caution on any sell. A proposal expires after 15 minutes.
+- The copy's own holding is recounted from filled orders in the account it trades in now (shares bought
+  in an account it used before do not count). A new proposal is refused while an earlier batch of the
+  copy may still trade (an open limit order, or a placement with no answer, sent in the last four days),
+  since those shares would otherwise be ordered twice. The plan is checked again (blends, live copies).
 
 **One-tap approve** (`approveBatch`, tested with in-memory fakes and run against the database in the app):
 - The person ticks that they checked the orders and approves. Batches of $10,000 or more, or 15 orders or
@@ -206,6 +210,8 @@ order (with our client order id), order detail and recent orders.
   broker holds for the open, and the review says so.
 - **Broker permissions**: an account whose broker does not allow trading through SnapTrade cannot be used
   for a live copy.
+- **Holdings at approval**: every sell is checked against the account's holdings at the moment of
+  approval; if a share was sold since the review, the batch expires and nothing is sent.
 - **Fills**: the status refresh (on demand, and by the cron for orders sent in the last four days) reads
   each order's detail, records fills, and recounts the copy's own holdings from filled orders.
 
@@ -213,7 +219,11 @@ order (with our client order id), order detail and recent orders.
 - `COPYTRADE_TRADING_ENABLED=1` must be set, or approval refuses with a plain message. Off by default.
   Paper copies, connecting and viewing positions keep working.
 - Per-order and per-day limits per copy, under server ceilings (`COPYTRADE_MAX_ORDER_USD`, default
-  $25,000; `COPYTRADE_MAX_DAY_USD`, default $50,000, counted across a person's copies).
+  $25,000; `COPYTRADE_MAX_DAY_USD`, default $50,000, counted across a person's copies). Both are checked
+  again at approval; the daily limit is read once more after the batch is claimed, so two batches approved
+  at the same moment cannot pass it together (an over-limit claim is released before anything is sent).
+- Routes that change copies, consents, connections or orders accept only JSON from YouBank's own pages
+  (requests the browser marks as cross-site in `Sec-Fetch-Site` are refused).
 - Two consents, stored with the text's version and hash and audited: "how copies work" before the first
   copy or connection, "the risks of real orders" before the first approval.
 - An **append-only audit log** (`copy_audit`; SQL rules turn UPDATE and DELETE into nothing): every
