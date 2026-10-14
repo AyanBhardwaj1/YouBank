@@ -17,6 +17,7 @@ import type { CalendarPush } from "@/db/schema";
 import { decryptToken, encryptToken, secretsMatch } from "@/lib/crm/crypto";
 import { providerFor, type AccountRow, type CalendarRow } from "./accounts";
 import { canPush, type CalendarProvider } from "./provider";
+import { siteUrl } from "@/lib/site";
 
 const RENEW_BEFORE = 24 * 3_600_000;
 
@@ -31,9 +32,12 @@ export function pushEnabled(origin: string): boolean {
   }
 }
 
-/** The public base URL for webhooks: CALENDAR_PUSH_URL, APP_URL, or the request's origin. */
-export function pushOrigin(requestOrigin: string): string {
-  return (process.env.CALENDAR_PUSH_URL || process.env.APP_URL || requestOrigin).replace(/\/$/, "");
+/**
+ * The public base URL Google and Microsoft post to: the site's address (siteUrl, from
+ * NEXT_PUBLIC_SITE_URL), or CALENDAR_PUSH_URL for a tunnel during local work.
+ */
+export function pushOrigin(): string {
+  return (process.env.CALENDAR_PUSH_URL || siteUrl()).replace(/\/$/, "");
 }
 
 /** Create or renew the channel for one calendar when it is missing or about to lapse. */

@@ -5,7 +5,8 @@
  * token, a state nonce in an httpOnly cookie, tokens encrypted at rest. It uses its own client when
  * GOOGLE_CALENDAR_CLIENT_ID is set and otherwise reuses the Gmail client (GOOGLE_CLIENT_ID), asking
  * only for calendar scopes; that client then also needs the Calendar API enabled and this app's
- * calendar callback URL added to its redirect URIs.
+ * calendar callback URL added to its redirect URIs. The callback is on the site's public address
+ * (siteLink, from NEXT_PUBLIC_SITE_URL) unless GOOGLE_CALENDAR_REDIRECT_URI overrides it.
  *
  * Scopes: `calendar.readonly` (calendar list and free/busy) and `calendar.events` (read and write
  * events). Both are Google "sensitive" scopes, not "restricted" like Gmail's, so verification is the
@@ -21,6 +22,7 @@ import { emailFromIdToken, jsonCall, ProviderError, tokenRequest, type CalendarP
 import type { Attendee, EventDraft, EventRef, Interval, RemoteCalendar, RemoteEvent, SyncPage, WriteOptions } from "../types";
 import { findVideoLink } from "../video";
 import { describeWithLink } from "../ical-write";
+import { siteLink } from "@/lib/site";
 
 export const GOOGLE_CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
@@ -37,11 +39,11 @@ const LABEL = "Google Calendar";
 export type OAuthConfig = { clientId: string; clientSecret: string; redirectUri: string };
 
 /** The client to use, or null when neither a calendar nor a Gmail OAuth client is configured. */
-export function googleCalendarConfig(origin: string): OAuthConfig | null {
+export function googleCalendarConfig(): OAuthConfig | null {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_ID ? process.env.GOOGLE_CALENDAR_CLIENT_SECRET : process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret, redirectUri: process.env.GOOGLE_CALENDAR_REDIRECT_URI || `${origin}/api/calendar/oauth/google/callback` };
+  return { clientId, clientSecret, redirectUri: process.env.GOOGLE_CALENDAR_REDIRECT_URI || siteLink("/api/calendar/oauth/google/callback") };
 }
 
 export function googleAuthUrl(cfg: OAuthConfig, state: string, loginHint?: string): string {

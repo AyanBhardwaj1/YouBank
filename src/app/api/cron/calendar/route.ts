@@ -27,7 +27,7 @@ async function handle(req: Request) {
   }
   const started = Date.now();
   const deadline = started + 260_000;
-  const origin = pushOrigin(new URL(req.url).origin);
+  const origin = pushOrigin();
   const db = requireDb();
   const A = schema.calendarAccounts;
   const accounts = await db.select().from(A).where(eq(A.status, "connected")).orderBy(sql`${A.lastSyncAt} asc nulls first`, asc(A.id)).limit(500);

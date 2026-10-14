@@ -21,6 +21,7 @@ import { emailFromIdToken, jsonCall, ProviderError, tokenRequest, type CalendarP
 import type { Attendee, EventDraft, EventRef, Interval, RemoteCalendar, RemoteEvent, SyncPage, WriteOptions } from "../types";
 import { findVideoLink } from "../video";
 import { describeWithLink } from "../ical-write";
+import { siteLink } from "@/lib/site";
 
 export const MICROSOFT_SCOPES = ["openid", "email", "offline_access", "User.Read", "Calendars.ReadWrite"];
 const API = "https://graph.microsoft.com/v1.0";
@@ -28,10 +29,10 @@ const LABEL = "Microsoft 365";
 
 export type OAuthConfig = { clientId: string; clientSecret: string; redirectUri: string; tenant: string };
 
-export function microsoftConfig(origin: string): OAuthConfig | null {
+export function microsoftConfig(): OAuthConfig | null {
   const clientId = process.env.MICROSOFT_CLIENT_ID, clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret, tenant: process.env.MICROSOFT_TENANT || "common", redirectUri: process.env.MICROSOFT_REDIRECT_URI || `${origin}/api/calendar/oauth/microsoft/callback` };
+  return { clientId, clientSecret, tenant: process.env.MICROSOFT_TENANT || "common", redirectUri: process.env.MICROSOFT_REDIRECT_URI || siteLink("/api/calendar/oauth/microsoft/callback") };
 }
 
 const authority = (cfg: OAuthConfig) => `https://login.microsoftonline.com/${encodeURIComponent(cfg.tenant)}/oauth2/v2.0`;

@@ -6,6 +6,7 @@ import { googleAddress, googleCalendarConfig, googleExchange } from "@/lib/calen
 import { microsoftAddress, microsoftConfig, microsoftExchange } from "@/lib/calendar/providers/microsoft";
 import { syncAccount } from "@/lib/calendar/sync";
 import { describeFailure } from "@/lib/errors";
+import { siteLink } from "@/lib/site";
 import { CALENDAR_STATE_COOKIE } from "../connect/route";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,9 @@ export const maxDuration = 60;
 /** The provider sends the person back here with a code: exchange it, store the account, sync after. */
 export async function GET(req: Request, ctx: { params: Promise<{ provider: string }> }) {
   const url = new URL(req.url);
-  const origin = url.origin;
-  const back = (params: Record<string, string>) => NextResponse.redirect(`${origin}/app/settings?${new URLSearchParams({ tab: "calendar", ...params })}`);
+  const back = (params: Record<string, string>) => NextResponse.redirect(siteLink(`/app/settings?${new URLSearchParams({ tab: "calendar", ...params })}`));
   const user = await currentUser();
-  if (!user) return NextResponse.redirect(`${origin}/sign-in`);
+  if (!user) return NextResponse.redirect(siteLink("/sign-in"));
   const provider = (await ctx.params).provider;
   if (provider !== "google" && provider !== "microsoft") return back({ error: "Unknown calendar provider." });
 
@@ -35,12 +35,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     let address: string;
     let tokens;
     if (provider === "google") {
-      const cfg = googleCalendarConfig(origin);
+      const cfg = googleCalendarConfig();
       if (!cfg) return back({ error: "Google Calendar is not set up on this server." });
       tokens = await googleExchange(fetch, cfg, code);
       address = await googleAddress(fetch, tokens.access_token, tokens.id_token);
     } else {
-      const cfg = microsoftConfig(origin);
+      const cfg = microsoftConfig();
       if (!cfg) return back({ error: "Microsoft 365 is not set up on this server." });
       tokens = await microsoftExchange(fetch, cfg, code);
       address = await microsoftAddress(fetch, tokens.access_token, tokens.id_token);

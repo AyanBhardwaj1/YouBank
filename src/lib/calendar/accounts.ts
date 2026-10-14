@@ -37,12 +37,13 @@ export function toSafe(a: AccountRow): SafeAccount {
 const safeHost = (url?: string) => { try { return url ? new URL(url).hostname : ""; } catch { return ""; } };
 
 /** Which ways of connecting this server supports, for "Not set up yet" in the UI. */
-export function providerSetup(origin: string): Record<ProviderId, { ready: boolean; reason: string }> {
+export function providerSetup(): Record<ProviderId, { ready: boolean; reason: string }> {
   const enc = encryptionReady();
-  const noEnc = "Needs EMAIL_TOKEN_SECRET on the server, so passwords and tokens can be stored encrypted.";
+  // Plain words for people; which variable is missing is in the startup environment check (lib/env).
+  const noEnc = "Not set up on this server yet: calendar sign-ins cannot be stored safely.";
   return {
-    google: { ready: enc && !!googleCalendarConfig(origin), reason: !enc ? noEnc : "Needs a Google OAuth client (GOOGLE_CALENDAR_CLIENT_ID and _SECRET, or the Gmail client)." },
-    microsoft: { ready: enc && !!microsoftConfig(origin), reason: !enc ? noEnc : "Needs a Microsoft app registration (MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET)." },
+    google: { ready: enc && !!googleCalendarConfig(), reason: !enc ? noEnc : "Not set up on this server yet: Google sign-in needs an OAuth client." },
+    microsoft: { ready: enc && !!microsoftConfig(), reason: !enc ? noEnc : "Not set up on this server yet: Microsoft sign-in needs an app registration." },
     caldav: { ready: enc, reason: enc ? "" : noEnc },
     ics: { ready: enc, reason: enc ? "" : noEnc },
   };
@@ -68,7 +69,7 @@ export async function checkAccountLimit(user: Pick<CurrentUser, "id" | "email">,
 }
 
 function assertEncryption() {
-  if (!encryptionReady()) throw new Error("EMAIL_TOKEN_SECRET is not set, so calendar credentials cannot be stored safely. Generate one with: openssl rand -base64 32");
+  if (!encryptionReady()) throw Object.assign(new Error("Calendar connections are not set up on this server yet, so sign-ins cannot be stored safely."), { status: 503 });
 }
 
 const expiry = (seconds: number) => new Date(Date.now() + Math.max(seconds - 60, 60) * 1000);
@@ -149,11 +150,11 @@ async function accessToken(account: AccountRow): Promise<string> {
     const refresh = decryptToken(account.refreshToken);
     let t: TokenResponse;
     if (account.provider === "google") {
-      const cfg = googleCalendarConfig("");
+      const cfg = googleCalendarConfig();
       if (!cfg) throw new ProviderError("Google Calendar is no longer set up on this server.", "auth");
       t = await googleRefresh(fetch, cfg, refresh);
     } else {
-      const cfg = microsoftConfig("");
+      const cfg = microsoftConfig();
       if (!cfg) throw new ProviderError("Microsoft 365 is no longer set up on this server.", "auth");
       t = await microsoftRefresh(fetch, cfg, refresh);
     }
