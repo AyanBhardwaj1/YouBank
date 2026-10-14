@@ -15,10 +15,13 @@ export const maxDuration = 120;
  */
 export async function POST(req: Request) {
   const validation = new URL(req.url).searchParams.get("validationToken");
-  if (validation !== null) return new NextResponse(validation.slice(0, 1000), { status: 200, headers: { "content-type": "text/plain" } });
+  if (validation !== null) return new NextResponse(validation.slice(0, 1000), { status: 200, headers: { "content-type": "text/plain", "x-content-type-options": "nosniff" } });
   const body = (await req.json().catch(() => null)) as { value?: { subscriptionId?: string; clientState?: string }[] } | null;
   const ids = new Set<number>();
-  for (const n of body?.value ?? []) {
+  // Graph batches a few notifications per post; anyone can post here, so a huge list must not
+  // become thousands of lookups.
+  const list = Array.isArray(body?.value) ? body.value.slice(0, 50) : [];
+  for (const n of list) {
     const cal = await calendarForPush("microsoft", n.subscriptionId ?? "", n.clientState ?? "").catch(() => null);
     if (cal) ids.add(cal.id);
   }
