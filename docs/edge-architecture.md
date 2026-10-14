@@ -10,7 +10,7 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Database | Neon Postgres with PostGIS and pgvector | the `edge_*` tables below; signals in `crm_signals`; alerts in `news_notifications` |
 | Files | Cloudflare R2, through `aws4fetch` (`src/lib/edge/infra/r2.ts`) | uploads (in 4 MB parts), transcripts, parsed documents, graph exports and models, factor history, large scenario results, exports |
 | Background jobs | Inngest (`src/lib/edge/functions.ts`, served at `/api/inngest`) | canvas runs, monitors, the digest, document reading, the graph, scenario refinement |
-| ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine` (Prithvi-EO-2.0, SAM 2.1, older pair as fallback), `geo.embed_change` (AlphaEarth embeddings, with a grid for the 3D map), `geo.footprints` (SAM 2.1 automatic masks), `docs.parse`, `docs.rerank` (ettin-reranker-32m), `audio.transcribe` (Parakeet for English, Whisper otherwise), `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `health`. Deploys go to a staging copy (`EDGE_ML_APP=youbank-edge-ml-staging`) and its smoke test first; see `ml/README.md` |
+| ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine` (Prithvi-EO-2.0, SAM 2.1, older pair as fallback), `geo.embed_change` (AlphaEarth embeddings, with a grid for the 3D map), `geo.footprints` (SAM 2.1 automatic masks), `docs.parse`, `docs.rerank` (ettin-reranker-32m), `audio.transcribe` (Parakeet for English, Whisper otherwise), `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `docs.verify` (Calibrated Claims), `odds.train` and `odds.score` (Deal Radar; the logic in `ml/odds_core.py`), `health`. Deploys go to a staging copy (`EDGE_ML_APP=youbank-edge-ml-staging`) and its smoke test first; see `ml/README.md` |
 | Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2, Sentinel-1 radar, NAIP and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, NASA FIRMS heat detections, the New Mexico OCD (C-115B waste reports, well permits), the Texas RRC map service, AWS Terrain Tiles for the 3D map, USGS 3DEP lidar point clouds (Entwine on AWS Open Data), OpenStreetMap through Overpass and OpenFreeMap, Impact Observatory land use, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
 | Language models | the app's OpenAI/Anthropic setup, under the AI spend caps | answers, memos, card text, intro drafts |
 
@@ -28,6 +28,7 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Canvas | `canvas/` (catalog, engine, values, executors per module, outputs, story, studio) |
 | Across the app | `overview.ts` (Terminal EDGE), `links.ts`, `push.ts` (Studio and Office), `intros.ts` (CRM), `story.ts` |
 | Platform | `infra/` (R2, jobs, ML client, usage meters), `functions.ts`, `runtime.ts`, `models.ts` (the small model), `premium.ts` (the upgrades registry) and `premium/` (rerank, Planet, Carbon Mapper adapters) |
+| Edge next ([docs/edge-next.md](edge-next.md)) | `entities/` (the crosswalk), `series/` (signal store, change library), `forecasts/` (the ledger), `calib/`, `claims/` (Calibrated Claims), `deals/` (the Precedent Engine), `pulse/` (the Alt-Data Pulse), `odds/` (the Deal Radar), `next.ts` (their daily parts) |
 
 ## Tables
 
@@ -56,7 +57,11 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
   - `edge_pushes`: Studio pushes, `pending`, `accepted`, `dismissed` or `superseded`.
   - `edge_usage`: free-tier meters.
 
-Migrations are `drizzle/0013_edge.sql` and `drizzle/0014_edge_platform.sql`. They are applied by hand:
+- **Edge next.** `edge_entity_ids`, `edge_series`, `edge_forecasts`, `edge_deals`, `edge_deal_fields`, `edge_agents`,
+  `edge_agent_steps`, `edge_job_state` (the backfill's, the Pulse's and the Deal Radar's cursors and switches). R2 holds the
+  Pulse's raw pulls and posting state, and the Deal Radar's raw store, events, panels and models.
+
+Migrations are `drizzle/0013_edge.sql`, `drizzle/0014_edge_platform.sql` and `drizzle/0020_edge_next.sql`. They are applied by hand:
 first on a Neon branch, then on production with the owner's approval.
 
 ## Background work
@@ -70,6 +75,9 @@ first on a Neon branch, then on production with the owner's approval.
 | Document reading | `edge/doc.uploaded` | `docs.parse` or `audio.transcribe`, then embedding. |
 | Graph | weekly `0 4 * * 0`, `edge/graph.refresh`, `edge/graph.ingest`, `edge/graph.train` | Training runs `graph.train` on Modal. New cards notify watchers. |
 | Scenario refinement | `edge/scenario.refine` | 10,000 paths, or `synth.series`. |
+| Deal backfill | daily `40 5 * * *`, `edge/deals.backfill` | Discovers merger documents (free) and reads unread deals only while an administrator has reading on, within `EDGE_BACKFILL_DAILY_USD` a day. |
+| Pulse | weekly `10 5 * * 0`, `edge/pulse.weekly`; the daily pass | Startups seeded, placebo rates measured, the universe refreshed 25 companies a step; daily lists and stale watched companies in the daily pass. |
+| Deal Radar | monthly `20 3 2 * *` (`edge/odds.refresh`), weekly `30 6 * * 1` (`edge/odds.score`); the daily pass | Scan, events, panel, training, scoring; weekly re-scoring with fresh filings; watched companies daily. |
 
 Long ML calls are asynchronous:
 1. The job starts the call and waits for `edge/ml.done` with the call id (`step.waitForEvent`).

@@ -39,6 +39,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [The adaptive engine](#the-adaptive-engine)
    - [Teams and live collaboration](#teams-and-live-collaboration)
    - [YouBank for desktop](#youbank-for-desktop)
+   - [Edge: precedents, alternative data and sale odds](#edge-precedents-alternative-data-and-sale-odds)
    - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
@@ -1126,6 +1127,44 @@ from the latest `desktop-v*` GitHub Release and says in plain words what the app
   `/api/desktop/**`. Connected computers are listed, and can be disconnected, in Settings → Desktop app.
 - **What the site may ask of the app** is fixed at three commands (its version, open quick ask, open the
   agent's settings). The site cannot reach files, programs or the keychain through it.
+### Edge: precedents, alternative data and sale odds
+
+Edge's next round ([docs/edge-next.md](docs/edge-next.md)) adds three features on shared foundations (an entity
+crosswalk, a weekly signal store with change points that state their false-alarm rate, and a forecast ledger
+whose probabilities are scored when their windows close, shown under **Track record**). All three run on free
+public data; the paid layers follow [docs/premium.md](docs/premium.md).
+
+- **Deals (the Precedent Engine).** A precedent-transactions database built from EDGAR's own merger documents:
+  merger proxies, information statements, 14D-9s, S-4s and 8-K merger agreements with their press releases,
+  found daily and backfilled from 2015. The small model reads one section at a time (background, opinion,
+  termination fees, projections, approvals); every term is stored with its verbatim quote, re-read from that
+  quote by number parsers, checked against the target's as-filed XBRL figures and prices, and given a
+  confidence per field family (a stated prior until a family has 60 hand-labelled fields). "Deals like this
+  one" blends meaning (embeddings of the target's business and rationale) with size, industry, buyer type,
+  year and consideration, says why each matched, and gives the EV/EBITDA range with a split-conformal 80%
+  band whose coverage is tested on held-out recent deals. The deal page shows the sale process as a timeline,
+  each term with its quote and checks, and the fairness ranges as a football field. Reading the backfill is
+  platform spend and runs only while an administrator has it on (`EDGE_BACKFILL_DAILY_USD`, or the switch in
+  Deals); anyone can read one deal on demand from their own allowance. `PREC` in the Terminal shows the
+  engine's set with live EDGAR search as "Find more"; the `deals.precedents` canvas block feeds memos and Studio.
+- **Pulse (the Alt-Data Pulse).** Per company, from the crosswalk's ids: job postings by department and tell
+  from Greenhouse, Lever and Ashby boards (counts and titles only), weekly Wikipedia views, federal contract
+  awards from USAspending, WARN layoff notices (Texas, California, New York), and patents from PatentsView.
+  Changes are flagged at a change probability of 0.9 with a large move, and each finding states that
+  probability, the detector's measured false-alarm rate and its coverage ("1 of 3 known job boards").
+  Tells (integration hires, corporate development, restructuring, IPO readiness at private companies, new
+  metros, plant build-outs) become feed cards and CRM signals. `PULSE` in the Terminal, a strip on `/app/vc`
+  startups, and the `pulse.signals` canvas block.
+- **Deal Radar.** A model probability that a company announces an agreement to be acquired within 12 months,
+  always beside its sector's base rate and its Venn-Abers interval, with its reasons (each linked to its
+  filing: a 13D, an officer change, a rights plan) and what would move it. A discrete-time hazard model on
+  public filings only (XBRL as filed, holder and 8-K filings, the industry's deal wave), LightGBM on the ML
+  service or a logistic model without it, validated out of time against the base rate and a Palepu-style
+  logit. This round scores energy, technology and healthcare companies (`EDGE_ODDS_UNIVERSE=all` widens it to
+  every US-listed operating company). Forecasts for watched companies and the top 200 go into the ledger and
+  are scored automatically. `ODDS` in the Terminal and the `odds.score` canvas block. It is a statistical
+  estimate from public data, not a rumour or advice, and says so wherever it appears.
+
 ### Premium features
 
 Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
@@ -1148,6 +1187,11 @@ a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this
 | TimesFM forecasts | Pro | Edge · Scenarios, Driver forecasts | Google's TimesFM through BigQuery, beside the free drift forecast |
 | Flare volumes (Nightfire) | Enterprise | Edge · a plant's panel | VIIRS Nightfire flares with an estimated volume (licensed data) |
 | GPU retraining of the deal model | Enterprise | Edge · Networks | One retraining on a Modal T4, wider and longer (the weekly one stays on CPU) |
+| Re-read a deal with the stronger model | Pro | Edge · Deals, a deal's page | `EDGE_REREAD_MODEL` (e.g. gpt-5.6-sol) re-reads every term, re-quoted and re-checked; the earlier reading stays in the audit trail |
+| Precedent exports | Pro | Edge · Deals | CSV of more than 50 precedents, with each term's quote and source (50 are free) |
+| Second-provider claim check | Pro | Edge · Ask, "Cross-check" | The other provider's model judges each claim against its passages |
+| Daily Pulse | Pro | Edge · Pulse, "Refresh daily" | Up to 50 companies refreshed every day instead of every week |
+| Deal Radar screener | Pro | Edge · Deal Radar, Screener | Every scored company filtered by odds and sector, with CSV export |
 | Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
 | Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
 | More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
@@ -1398,6 +1442,13 @@ bash scripts/preflight.sh                                         # everything t
 | `NIGHTFIRE_USER`, `NIGHTFIRE_PASSWORD` | for Nightfire | An EOG account under its data licence; `NIGHTFIRE_CLIENT_SECRET`, `NIGHTFIRE_URL_TEMPLATE` and `NIGHTFIRE_TOKEN_URL` only if EOG changes its download client |
 | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` | for TimesFM | A service account key with BigQuery Job User; `TIMESFM_MODEL` (default `TimesFM 2.5`), `BIGQUERY_LOCATION` (default `US`) |
 | `EDGE_ML_GPU=1` | for GPU retraining | After deploying the ML service's `graph.train.gpu` task |
+| `EDGE_BACKFILL_DAILY_USD` | no | Switches on reading the deal database's backfill and new deals, and sets the day's ceiling in dollars (platform spend; an administrator can also switch it in Deals, at $0.50 a day) |
+| `EDGE_REREAD_MODEL` | for the deal re-read | The stronger model for "Re-read with the stronger model" (uses `OPENAI_API_KEY`) |
+| `PATENTSVIEW_API_KEY` | for patent counts | A free PatentsView key; without it the Pulse leaves patents out |
+| `EDGE_WARN_TX_URL`, `EDGE_WARN_CA_URL`, `EDGE_WARN_NY_URL` | no | Replace a state's WARN source when it moves (the defaults are the last known locations) |
+| `EDGE_PULSE_TITLE_AI=1` | no | Lets the small model sort job titles the rules leave unsorted (platform spend) |
+| `EDGE_ODDS_UNIVERSE=all` | no | Scores every US-listed operating company in the Deal Radar instead of energy, technology and healthcare |
+| `EDGE_EDITOR_EMAILS` | no | People besides administrators who may confirm or correct crosswalk links |
 
 ---
 
@@ -1505,6 +1556,9 @@ bash scripts/preflight.sh                                         # everything t
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
 | Desktop app (15 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Edge next (260 checks) | `pnpm exec tsx scripts/test-edge-next.ts` | The crosswalk, the change library and its placebo rate, the calibration library and ledger rules, Calibrated Claims, the Precedent Engine (number readers, section location on saved proxies, checks on hand-labelled fields, similarity, the conformal band's coverage), the Pulse (every source's parser on saved responses, title rules on 60 labelled titles, findings) and the Deal Radar (no look-ahead, labels, the model beating its baselines on synthetic data, calibration, card wording) |
+| Deal Radar model (14 checks) | `python ml/test_odds_core.py` | LightGBM training and scoring as the ML service runs them, on a synthetic panel with a known hazard |
+| Edge next evaluations | `scripts/eval-precedents.ts`, `scripts/eval-odds.ts`, `scripts/eval-claims.ts` | Field accuracy, recall@10 of banker-chosen precedents and interval coverage; the Deal Radar's out-of-time scorecard; claim support (against the test branch) |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
 The end-to-end scripts write rows under a throwaway user. Point them at a **Neon branch**, never at
@@ -1754,6 +1808,8 @@ YouBank/
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
 | [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
 | [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
+| [docs/edge-next.md](docs/edge-next.md) | Edge's next round: the 14 proposals, the build order and what each step delivered |
+| [docs/edge-architecture.md](docs/edge-architecture.md) | Edge's parts, tables, background jobs, free-tier guards and operations |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |
