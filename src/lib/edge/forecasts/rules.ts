@@ -41,6 +41,24 @@ export function resolveXbrl(rule: Extract<ForecastRule, { type: "xbrl" }>, repor
 }
 
 /**
+ * The reported value an XBRL rule settles on: rows of the concept whose period ends on the rule's date (or
+ * within `endWithinDays`, for 52/53-week fiscal years) and, when the rule says so, whose length falls in
+ * `days` (a year rather than the fourth quarter that ends the same day); the first filed wins (as reported,
+ * not restated). Pure.
+ */
+export function pickReported(rows: { end: string; val: number; filed: string; days?: number }[], rule: Pick<Extract<ForecastRule, { type: "xbrl" }>, "period" | "days" | "endWithinDays">): { value: number; end: string } | null {
+  const target = Date.parse(rule.period), tol = (rule.endWithinDays ?? 0) * 86_400_000;
+  const ok = rows.filter((r) => Math.abs(Date.parse(r.end) - target) <= tol && (!rule.days || (r.days !== undefined && r.days >= rule.days[0] && r.days <= rule.days[1])));
+  const hit = ok.sort((a, b) => Math.abs(Date.parse(a.end) - target) - Math.abs(Date.parse(b.end) - target) || a.filed.localeCompare(b.filed))[0];
+  return hit ? { value: hit.val, end: hit.end } : null;
+}
+
+/** EBITDA as operating income plus depreciation and amortisation, for the same period (both reported). Pure. */
+export function derivedEbitda(oi: { value: number; end: string } | null, da: { value: number; end: string } | null): { value: number; end: string } | null {
+  return oi && da && oi.end === da.end ? { value: oi.value + da.value, end: oi.end } : null;
+}
+
+/**
  * For each question (kind, subject, close), the forecast that counts: the latest one made at least
  * `horizonDays` before the close, or the earliest one when none was made that early. Pure.
  */

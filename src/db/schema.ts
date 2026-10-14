@@ -1368,7 +1368,7 @@ export const edgeSeries = pgTable("edge_series", {
 
 export type ForecastRule =
   | { type: "deal"; role: "target" | "acquirer"; node: number; minStakePct?: number }
-  | { type: "xbrl"; cik: string; concept: string; period: string; op: ">=" | "<=" | "between"; value: number; high?: number; unit?: string }
+  | { type: "xbrl"; cik: string; concept: string; period: string; op: ">=" | "<=" | "between"; value: number; high?: number; unit?: string; days?: [number, number]; endWithinDays?: number }
   | { type: "manual"; note?: string; parent?: number };
 
 /** F3: a probability Edge stated, when it was stated, and how it turned out. Append-only. */

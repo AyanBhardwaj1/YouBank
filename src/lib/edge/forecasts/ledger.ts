@@ -17,7 +17,7 @@ import type { ForecastRule } from "@/db/schema";
 import { getCompanyFacts, rowsFor } from "@/lib/edgar/facts";
 import { logError } from "@/lib/errors";
 import { record } from "../provenance";
-import { resolveDeal, resolveXbrl, standingAtHorizon, worthLogging, type DealEvent, type ForecastRow } from "./rules";
+import { derivedEbitda, pickReported, resolveDeal, resolveXbrl, standingAtHorizon, worthLogging, type DealEvent, type ForecastRow } from "./rules";
 import { trackSummary, type TrackSummary } from "./track";
 
 export type ForecastIn = {
@@ -56,12 +56,27 @@ async function dealEvents(nodes: number[], since: string): Promise<DealEvent[]> 
   ];
 }
 
-/** The reported value for an XBRL rule's concept and period (the period's end date), from SEC company facts. */
+/**
+ * The reported value for an XBRL rule's concept and period, from SEC company facts. Rules may give a duration
+ * window and an end-date tolerance (Call Desk's guidance), and `derived:ebitda` sums operating income and
+ * depreciation and amortisation for the same period.
+ */
 async function reportedValue(rule: Extract<ForecastRule, { type: "xbrl" }>): Promise<{ value: number; url: string } | null> {
   const cf = await getCompanyFacts(rule.cik.padStart(10, "0"));
-  const rows = rowsFor(cf, rule.concept.includes(":") ? rule.concept.split(":")[0] : "us-gaap", rule.concept.split(":").pop()!, rule.unit ?? "USD");
-  const hit = rows.filter((r) => r.end === rule.period).sort((a, b) => a.filed.localeCompare(b.filed))[0];
-  return hit ? { value: hit.val, url: `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${rule.cik}&type=10-&dateb=&owner=include&count=40` } : null;
+  const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${rule.cik}&type=10-&dateb=&owner=include&count=40`;
+  const one = (concept: string) => pickReported(rowsFor(cf, concept.includes(":") ? concept.split(":")[0] : "us-gaap", concept.split(":").pop()!, rule.unit ?? "USD"), rule);
+  if (rule.concept === "derived:ebitda") {
+    const oi = one("OperatingIncomeLoss");
+    const da = ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet"].map(one).find((x) => x !== null) ?? null;
+    const v = derivedEbitda(oi, da);
+    return v ? { value: v.value, url } : null;
+  }
+  const hit = rule.days || rule.endWithinDays ? one(rule.concept) : (() => {
+    const rows = rowsFor(cf, rule.concept.includes(":") ? rule.concept.split(":")[0] : "us-gaap", rule.concept.split(":").pop()!, rule.unit ?? "USD");
+    const r = rows.filter((x) => x.end === rule.period).sort((a, b) => a.filed.localeCompare(b.filed))[0];
+    return r ? { value: r.val, end: r.end } : null;
+  })();
+  return hit ? { value: hit.value, url } : null;
 }
 
 /**
