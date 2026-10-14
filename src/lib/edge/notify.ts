@@ -10,6 +10,7 @@ import { logError } from "@/lib/errors";
 import { alertLater, alertNow } from "./alerts";
 import { noteFindingsForNetworks } from "./crm";
 import { matches } from "./feed";
+import { pulseIsBig } from "./pulse/findings";
 import type { Bbox } from "./sources/eia";
 import { BETA_ON } from "./watches";
 
@@ -27,6 +28,10 @@ export function isBig(d: Pick<Detection, "kind" | "confidence" | "magnitude" | "
     case "deal_proforma": return d.magnitude >= 0.6;
     case "filing_change": return d.magnitude >= 0.5;
     case "graph_flag": return (d.visual as { flag?: { severity?: string } }).flag?.severity === "high";
+    // The Pulse: a tell with three or more postings, a WARN notice of 250 or more, an award over $100 million.
+    case "hiring_tell": case "layoff_notice": case "contract_award": return pulseIsBig(d.kind, d.visual);
+    // Deal Radar: 12-month odds of at least 25% that rose by 8 points or more.
+    case "deal_odds": { const v = d.visual as { p?: number; rise?: number }; return (v.p ?? 0) >= 0.25 && (v.rise ?? 0) >= 0.08; }
     default: return false;
   }
 }

@@ -46,9 +46,12 @@ export function sizeOf(kind: string, magnitude: number): number {
   return Math.max(0, Math.min(1, magnitude));
 }
 
-/** Satellite changes, radar, flaring and methane are rarely in the news; permits are public records few read; a deal is news, though not its map; a filing is public, its edits rarely reported. Fades over a month. Pure. */
+/** Kinds that rarely reach the news: the Alt-Data Pulse's signals and the Deal Radar's odds (base 0.8). */
+const SIGNAL_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds"]);
+
+/** Satellite changes, radar, flaring and methane are rarely in the news; permits are public records few read; a deal is news, though not its map; a filing is public, its edits rarely reported; alternative-data signals and model odds rarely reach the news. Fades over a month. Pure. */
 export function noveltyOf(kind: string, ageDays: number): number {
-  const base = kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : 0.6;
+  const base = kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : 0.6;
   return base * (0.5 + 0.5 * Math.exp(-ageDays / 30));
 }
 

@@ -1,0 +1,5 @@
+{"limit":100,"results":[
+ {"internal_id":1,"Award ID":"W912DY26C0001","Recipient Name":"ACME CO","Award Amount":125000000,"Start Date":"2026-09-30","Awarding Agency":"Department of Defense","generated_internal_id":"CONT_AWD_W912DY26C0001_9700","Description":"GRID HARDENING SERVICES"},
+ {"internal_id":2,"Award ID":"HSHQDC26F0002","Recipient Name":"ACME CO","Award Amount":2500000,"Start Date":"2026-09-02","Awarding Agency":"Department of Homeland Security","generated_internal_id":"CONT_AWD_HSHQDC26F0002_7001","Description":"SOFTWARE MAINTENANCE"},
+ {"internal_id":3,"Award ID":"BAD","Recipient Name":"ACME CO","Award Amount":10,"Start Date":"not a date"}
+],"page_metadata":{"page":1,"hasNext":false}}

@@ -19,6 +19,8 @@ const SCOPES: { id: Scope | "all"; label: string }[] = [
 const KINDS: { id: string; label: string }[] = [
   { id: "ground_change", label: "Ground" }, { id: "radar_change", label: "Radar" }, { id: "flaring", label: "Flaring" }, { id: "methane_plume", label: "Methane" }, { id: "permits", label: "Permits" }, { id: "deal_proforma", label: "Deals" },
   { id: "filing_change", label: "Filings" }, { id: "graph_flag", label: "Red flags" }, { id: "graph_prediction", label: "Model picks" },
+  { id: "hiring_shift", label: "Hiring" }, { id: "hiring_tell", label: "Tells" }, { id: "attention_spike", label: "Attention" }, { id: "contract_award", label: "Awards" },
+  { id: "layoff_notice", label: "Layoffs" }, { id: "patent_shift", label: "Patents" }, { id: "deal_odds", label: "Sale odds" },
 ];
 const SIGNALS: { key: keyof Blend; label: string; hint: string }[] = [
   { key: "relevance", label: "Relevance", hint: "How closely it touches what you watch" },

@@ -40,6 +40,17 @@ import { factsAsOf } from "@/lib/edge/deals/facts";
 import { dealCsv } from "@/lib/edge/deals/export";
 import { partsFromHtml } from "@/lib/edge/docs/html";
 import { premiumOf } from "@/lib/news/deals";
+import { boardUrls, parseAshby, parseGreenhouseDepartments, parseGreenhouseJobs, parseLever } from "@/lib/edge/pulse/sources/ats";
+import { weeklyViews, pageviewsUrl } from "@/lib/edge/pulse/sources/wikimedia";
+import { awardsBody, monthlyAwards, parseAwards } from "@/lib/edge/pulse/sources/usaspending";
+import { monthlyCounts, patentQueryUrl } from "@/lib/edge/pulse/sources/patentsview";
+import { matchNotices, parseCsv, rowsToNotices, warnDate, WARN_SOURCES } from "@/lib/edge/pulse/sources/warn";
+import { departmentOf, metroOf, tellsOf } from "@/lib/edge/pulse/titles";
+import { byMetro, foldRead } from "@/lib/edge/pulse/postings";
+import { coverageText, evaluate, flaggedPeriods, pulseIsBig } from "@/lib/edge/pulse/findings";
+import { dailyListOf } from "@/lib/edge/pulse/jobs";
+import { noveltyOf } from "@/lib/edge/feed";
+import { isBig } from "@/lib/edge/notify";
 import { EDGE_NEXT_FEATURES } from "@/lib/billing/features/edge-next";
 import { FEATURES } from "@/lib/billing/features";
 import { isPlanId, PLAN_ORDER } from "@/lib/billing/plans";
@@ -485,6 +496,96 @@ async function main() {
     const tf = factsAsOf(cf as never, "2024-03-04");
     check("the target's figures as filed by the announcement: no later restatement leaks in", tf.revenueMm === 1200 && tf.ebitdaMm === 400 && tf.netDebtMm === 1290, tf);
     check("the registry's field kinds are all readable", FIELDS.every((f) => FIELD[f.field] === f));
+  }
+
+  console.log("E3 Alt-Data Pulse: sources");
+  {
+    const gh = parseGreenhouseDepartments(JSON.parse(fixture("pulse", "greenhouse-departments.json")), "acmeco");
+    check("Greenhouse departments: nested departments read, duplicates once, 'No Department' blank", gh.length === 5 && gh.find((p) => p.id === "4003")?.department === "Data" && gh.find((p) => p.id === "4005")?.department === "" && gh.find((p) => p.id === "4001")?.department === "Engineering", gh.map((p) => `${p.id}:${p.department}`));
+    check("Greenhouse: first published wins over updated, as an ISO date", gh.find((p) => p.id === "4001")?.publishedAt?.startsWith("2026-09-01") === true);
+    check("Greenhouse jobs fallback parses", parseGreenhouseJobs({ jobs: [{ id: 1, title: "X", location: { name: "Y" }, absolute_url: "u" }] }, "t").length === 1);
+    const lv = parseLever(JSON.parse(fixture("pulse", "lever.json")), "zenco");
+    check("Lever: department or team, location, created time; a posting without an id dropped", lv.length === 2 && lv[0].department === "Go To Market" && lv[1].department === "Finance" && lv[0].publishedAt?.startsWith("2025-10-01") === true, lv);
+    const ab = parseAshby(JSON.parse(fixture("pulse", "ashby.json")), "gridco");
+    check("Ashby: listed jobs only", ab.length === 2 && !ab.some((p) => p.id === "a3"));
+    check("board endpoints and pages", boardUrls("greenhouse", "acmeco").api.endsWith("/boards/acmeco/departments") && boardUrls("lever", "zenco").page === "https://jobs.lever.co/zenco" && boardUrls("ashby", "g").api.includes("posting-api/job-board/g"));
+    const wv = weeklyViews(JSON.parse(fixture("pulse", "wikimedia.json")), new Date("2026-10-13T12:00:00Z"));
+    check("Wikipedia views summed by Monday week, the unfinished week left out", wv.length === 2 && wv[0].period === "2026-09-28" && wv[0].value === 220 + 80 && wv[1].period === "2026-10-05" && wv[1].value === 90, wv);
+    check("pageviews URL uses underscores and daily granularity", pageviewsUrl("Acme Co", "2024-10-13", "2026-10-13").includes("/user/Acme_Co/daily/2024101300/2026101300"));
+    const aw = parseAwards(JSON.parse(fixture("pulse", "usaspending.json")));
+    check("USAspending awards parsed, a malformed row dropped, links to the award page", aw.length === 2 && aw[0].amount === 125e6 && aw[0].url.endsWith("CONT_AWD_W912DY26C0001_9700"));
+    const ma = monthlyAwards(aw);
+    check("awards by start month: obligated and count", ma.obligated.length === 1 && ma.obligated[0].value === 127.5e6 && ma.count[0].value === 2);
+    check("the awards request asks for contracts A to D by UEI", JSON.stringify(awardsBody("ABCDEFGHJKLM", "2024-01-01", "2026-01-01", 1).filters.award_type_codes) === '["A","B","C","D"]');
+    check("PatentsView grants by month (bad dates skipped)", JSON.stringify(monthlyCounts(JSON.parse(fixture("pulse", "patentsview.json")), "patent_date")) === '[{"period":"2026-08-01","value":2},{"period":"2026-09-01","value":1}]' && patentQueryUrl("patent", "abc", "2024-01-01").includes("assignees.assignee_id"));
+    const tx = rowsToNotices(JSON.parse(fixture("pulse", "warn-tx.json")), WARN_SOURCES.find((x) => x.state === "TX")!);
+    check("WARN Texas: Excel serial dates and US dates, rows without a date dropped", tx.length === 2 && tx[0].date === "2026-09-15" && tx[0].employees === 312 && tx[1].date === "2026-09-15", tx);
+    const ca = rowsToNotices(parseCsv(fixture("pulse", "warn-ca.csv")), WARN_SOURCES.find((x) => x.state === "CA")!);
+    check("WARN California from CSV: quoted commas and thousands", ca.length === 2 && ca[0].company === "Zenco, Inc." && ca[1].employees === 1050 && ca[1].kind === "Closure Permanent", ca);
+    const ny = rowsToNotices(JSON.parse(fixture("pulse", "warn-ny.json")), WARN_SOURCES.find((x) => x.state === "NY")!);
+    check("WARN New York from open data JSON", ny.length === 1 && ny[0].date === "2026-09-18" && ny[0].employees === 75);
+    check("dates in every form", warnDate(46280) === "2026-09-15" && warnDate("9/5/26") === "2026-09-05" && warnDate(new Date("2026-01-02T00:00:00Z")) === "2026-01-02" && warnDate("soon") === null);
+    const m = matchNotices([...tx, ...ca], [{ nodeId: 1, name: "Acme Co" }, { nodeId: 2, name: "Apple Inc." }]);
+    check("notices match companies at the 0.9 line: 'Acme Co' yes, 'Acme Co Holdings' too, 'Apple Hospitality' never Apple", (m.get(1)?.length ?? 0) === 2 && !m.has(2), [...m.entries()].map(([k, v]) => [k, v.map((n) => n.company)]));
+  }
+
+  console.log("E3 Alt-Data Pulse: titles, tells and postings");
+  {
+    const titles = fixture("pulse", "titles.jsonl").trim().split("\n").map((l) => JSON.parse(l) as { title: string; dept: string; tells?: string[] });
+    const right = titles.filter((t) => departmentOf(t.title) === t.dept).length;
+    check("department rules: at least 55 of the 60 labelled titles", titles.length === 60 && right >= 55, titles.filter((t) => departmentOf(t.title) !== t.dept).map((t) => `${t.title} -> ${departmentOf(t.title)} (want ${t.dept})`));
+    const tellRight = titles.filter((t) => JSON.stringify(tellsOf(t.title, { privateCompany: true })) === JSON.stringify(t.tells ?? [])).length;
+    check("tell rules match every labelled title", tellRight === 60, titles.filter((t) => JSON.stringify(tellsOf(t.title, { privateCompany: true })) !== JSON.stringify(t.tells ?? [])).map((t) => t.title));
+    check("IPO-readiness tells count only at private companies", tellsOf("Head of Investor Relations", { privateCompany: false }).length === 0 && tellsOf("Head of Investor Relations", { privateCompany: true })[0] === "ipo");
+    check("metros comparable; remote as remote", metroOf("New York, NY") === "new york" && metroOf("Remote - US") === "remote" && metroOf("") === "");
+    const day = (d: string) => `${d}T12:00:00Z`;
+    const post = (id: string, title: string, location: string, publishedAt: string | null = null) => ({ id, title, department: "", location, publishedAt, url: `u/${id}`, board: "greenhouse" as const, token: "t" });
+    const first = foldRead(null, [post("1", "Software Engineer", "Austin, TX", "2026-01-05T00:00:00Z"), post("2", "Software Engineer II", "Austin, TX", "2025-12-01T00:00:00Z")], day("2026-01-07"), { privateCompany: false });
+    check("first read: open postings counted; new ones by publish date this week only", first.read.open === 2 && first.read.added === 1 && first.read.points.find((p) => p.metric === "jobs.open")?.value === 2 && first.read.points.find((p) => p.metric === "jobs.dept.engineering")?.value === 2);
+    const second = foldRead(first.state, [post("2", "Software Engineer II", "Austin, TX"), post("3", "Integration Manager", "Chicago, IL"), post("4", "IMO Lead", "Chicago, IL"), post("5", "TSA Coordinator", "Chicago, IL")], day("2026-01-14"), { privateCompany: false });
+    check("later reads: first seen this week is new; closed postings drop out of open; a department once seen keeps a zero", second.read.added === 3 && second.read.open === 4 && second.read.points.find((p) => p.metric === "jobs.tell.integration")?.value === 3 && second.read.recentTells.length === 3);
+    const third = foldRead(second.state, [], day("2026-01-21"), { privateCompany: false });
+    check("a department and tell keep zero points once seen, so their series have no gaps", third.read.points.find((p) => p.metric === "jobs.dept.engineering")?.value === 0 && third.read.points.find((p) => p.metric === "jobs.tell.integration")?.value === 0);
+    // A new metro after six months, with three field postings there: expansion and a build-out.
+    let st = foldRead(null, [post("a", "Engineer", "Austin, TX")], day("2025-06-01"), { privateCompany: false }).state;
+    const later = foldRead(st, [post("a", "Engineer", "Austin, TX"), post("b", "Field Technician", "Midland, TX"), post("c", "Electrician", "Midland, TX"), post("d", "Plant Operator", "Midland, TX")], day("2026-01-10"), { privateCompany: false });
+    st = later.state;
+    check("location tells: a new metro gives expansion; three field postings there a build-out", later.read.newMetros.includes("midland") && later.read.points.find((p) => p.metric === "jobs.tell.expansion")?.value === 3 && later.read.points.find((p) => p.metric === "jobs.tell.buildout")?.value === 1);
+    check("where they hire, most first", byMetro(st)[0].metro === "midland" && byMetro(st)[0].open === 3);
+    check("postings keep titles and links, never descriptions", Object.values(st.postings).every((k) => Object.keys(k).sort().join() === "d,f,m,p,s,t,tells,u"));
+  }
+
+  console.log("E3 Alt-Data Pulse: findings");
+  {
+    const weeks = weeksBetween("2025-06-02", "2026-10-05");
+    const R = rng(5), Z = normals(R);
+    const steady = weeks.map(() => Math.round(200 * Math.exp(0.04 * Z())));
+    const drop = weeks.map((_, i) => Math.round((i >= weeks.length - 5 ? 90 : 200) * Math.exp(0.04 * Z())));
+    const asPts = (v: number[]) => v.map((value, i) => ({ period: weeks[i], value }));
+    const cov = { boards: 1, boardsKnown: 3, excluded: ["workday"], wikipedia: true, awards: true, patents: false, warnStates: ["TX", "CA", "NY"] };
+    const co = { nodeId: 7, name: "Acme Co", ticker: "ACME" };
+    const now = new Date("2026-10-13T00:00:00Z");
+    const hits = evaluate(co, { "jobs.open": asPts(drop) }, { coverage: cov, falseAlarms: { jobs: 0.25 } }, now);
+    const h = hits.find((x) => x.kind === "hiring_shift");
+    check("a 55% fall in open postings is a hiring shift with its probability, false-alarm rate and coverage", !!h && h.confidence >= 0.9 && /down \d+% in six weeks/.test(h.title) && /one false alarm every 4 company-years/.test(h.why) && /1 of 3 known job boards answered; Workday not read/.test(h.why), h);
+    check("a steady series raises nothing", evaluate(co, { "jobs.open": asPts(steady) }, { coverage: cov, falseAlarms: {} }, now).length === 0);
+    const moved = evaluate(co, { "jobs.open": asPts([...drop.slice(0, -1), 0]) }, { coverage: cov, falseAlarms: {}, boardMoved: { scheme: "greenhouse", value: "acmeco", evidence: "https://acme.example/careers" } }, now);
+    check("board moved: a board at zero while the careers page links elsewhere is 'jobs board moved', not 'hiring stopped'", moved.length === 1 && moved[0].title === "Acme Co's jobs board moved" && /not a sign that hiring stopped/.test(moved[0].summary));
+    const tellPts = asPts(weeks.map((_, i) => (i === weeks.length - 1 ? 3 : 0)));
+    const recent = [1, 2, 3].map((i) => ({ tell: "integration" as const, title: `Integration Manager ${i}`, location: "chicago", firstSeen: "2026-10-01", url: `u${i}` }));
+    const tell = evaluate(co, { "jobs.tell.integration": tellPts }, { coverage: cov, falseAlarms: {}, recentTells: recent }, now).find((x) => x.kind === "hiring_tell");
+    check("three integration postings in 30 days after none: a tell, worded as a reason to reconnect", !!tell && tell.title === "Acme Co is hiring for m&a integration: a reason to reconnect" && pulseIsBig("hiring_tell", tell.visual));
+    check("two tell postings are not enough", !evaluate(co, { "jobs.tell.integration": tellPts }, { coverage: cov, falseAlarms: {}, recentTells: recent.slice(0, 2) }, now).some((x) => x.kind === "hiring_tell"));
+    const award = { id: "W1", recipient: "ACME", amount: 125e6, start: "2026-09-30", agency: "DoD", description: "GRID", url: "u" };
+    const ev = evaluate(co, {}, { coverage: cov, falseAlarms: {}, awards: [award, { ...award, id: "W2", amount: 2e6 }], notices: [{ state: "TX", company: "Acme Co", date: "2026-09-15", employees: 312, city: "Houston", kind: "", key: "k" }] }, now);
+    check("an award over $10 million and a WARN notice become findings; big when over $100 million and 250 employees", ev.filter((x) => x.kind === "contract_award").length === 1 && ev.some((x) => x.kind === "layoff_notice") && ev.every((x) => pulseIsBig(x.kind, x.visual)));
+    const flagged = flaggedPeriods(asPts(drop));
+    check("the weeks flagged online include the drop and nothing before it", flagged.length >= 1 && flagged.every((w) => w >= weeks[weeks.length - 5]), flagged);
+    check("flagged online equals re-running the detector on each prefix", JSON.stringify(flagged) === JSON.stringify(weeks.slice(12).filter((_, j) => { const i = j + 12; const v = changeVerdict(drop.slice(0, i + 1)); return v.alarm; })), flagged);
+    check("coverage in words", coverageText(cov) === "1 of 3 known job boards answered; Workday not read (no public API; their terms forbid scraping)");
+    check("signal kinds have novelty 0.8 at age zero", near(noveltyOf("hiring_tell", 0), 0.8, 1e-9) && near(noveltyOf("deal_odds", 0), 0.8, 1e-9));
+    check("isBig: a WARN notice of 250 or more, an award over $100 million, odds of 25% that rose 8 points", isBig({ kind: "layoff_notice", confidence: 0.9, magnitude: 0.3, visual: { employees: 312 } }) && !isBig({ kind: "contract_award", confidence: 0.9, magnitude: 0.3, visual: { amountUsd: 50e6 } }) && isBig({ kind: "deal_odds", confidence: 0.5, magnitude: 0.5, visual: { p: 0.27, rise: 0.09 } }) && !isBig({ kind: "deal_odds", confidence: 0.5, magnitude: 0.5, visual: { p: 0.27, rise: 0.05 } }));
+    check("daily lists: tickers only, up to 50", dailyListOf({ edge: { pulseDaily: ["ACME", "bad ticker", 3, ...Array.from({ length: 60 }, (_, i) => `T${i}`)] } }).length === 50 && dailyListOf(null).length === 0);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

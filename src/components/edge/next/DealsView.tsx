@@ -42,7 +42,9 @@ const SECTORS: { v: string; label: string }[] = [
 const SIZES = [{ v: "", label: "Any size" }, { v: "0-500", label: "Under $500m" }, { v: "500-2000", label: "$500m to $2bn" }, { v: "2000-10000", label: "$2bn to $10bn" }, { v: "10000-", label: "Over $10bn" }];
 const BUYERS = [{ v: "", label: "Any buyer" }, { v: "strategic", label: "Strategic" }, { v: "sponsor", label: "Sponsor" }, { v: "sponsor_backed", label: "Sponsor-backed" }];
 const CONS = [{ v: "", label: "Any consideration" }, { v: "cash", label: "Cash" }, { v: "stock", label: "Stock" }, { v: "mixed", label: "Mixed" }];
-const YEARS = [{ v: "", label: "Since 2015" }, { v: "2", label: "Last 2 years" }, { v: "5", label: "Last 5 years" }];
+// Year chips carry their own start dates, worked out once when the module loads (renders stay pure).
+const THIS_YEAR = new Date().getUTCFullYear();
+const YEARS = [{ v: "", label: "Since 2015" }, { v: `${THIS_YEAR - 2}-01-01`, label: `Since ${THIS_YEAR - 2}` }, { v: `${THIS_YEAR - 5}-01-01`, label: `Since ${THIS_YEAR - 5}` }];
 const TICKER = /^[A-Za-z][A-Za-z0-9.\-]{0,9}$/;
 
 const x = (v: number | null | undefined, dp = 1) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : `${v.toFixed(dp)}x`);
@@ -304,7 +306,7 @@ export function DealsView({ tickers }: { tickers: string[] }) {
   const [open, setOpen] = useState<number | null>(null);
   const filters = useMemo(() => {
     const [min, max] = size.split("-");
-    const from = years ? new Date(Date.now() - Number(years) * 365 * 86_400_000).toISOString().slice(0, 10) : "";
+    const from = years;
     return { sic, buyer, consideration: cons, min: min || "", max: max || "", from };
   }, [sic, size, buyer, cons, years]);
   const qs = new URLSearchParams(Object.entries({ q, ...filters }).filter(([, v]) => v)).toString();

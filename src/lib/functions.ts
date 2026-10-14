@@ -64,6 +64,8 @@ export const FUNCTIONS = {
   NET: { label: "Network", hint: "Its relationships from SEC filings, likely buyers and targets, warm intros", group: "edge" },
   SIM: { label: "Stress", hint: "Simulate its stock: SIM, SIM 2008, SIM oil -30%", group: "edge", args: true },
   ASK: { label: "Ask filings", hint: "Ask its filings and your documents, with quotes: ASK what drove volumes?", group: "edge", args: true },
+  PULSE: { label: "Pulse", hint: "Its hiring, attention, federal awards, layoff notices and patents, with change points", group: "edge" },
+  ODDS: { label: "Deal Radar", hint: "A model probability of a sale announcement within 12 months; ODDS alone for the board", group: "edge" },
 } as const satisfies Record<string, FnDef>;
 
 export type FunctionCode = keyof typeof FUNCTIONS;
@@ -108,7 +110,8 @@ export function parseCommand(input: string, activeTicker: string, edge = false):
   const code = (s: string): s is FunctionCode => isCommandCode(s, edge);
 
   const tickerFirst = TICKER_RE.test(first) && !!second && code(second) && (!code(first) || !takesArgs(first) || tokens.length === 2);
-  if (code(first) && !tickerFirst) return build(first, activeTicker, raw.slice(1));
+  // ODDS alone is the Deal Radar's board, not the active company's odds.
+  if (code(first) && !tickerFirst) return build(first, first === "ODDS" && tokens.length === 1 ? "" : activeTicker, raw.slice(1));
   if (!TICKER_RE.test(first)) return { ok: false, error: `"${first}" is not a ticker or a function` };
   if (!second) return { ok: true, command: { ticker: first, fn: "DES" } };
   if (!code(second)) return { ok: false, error: `Unknown function "${second}". Try ${FUNCTION_CODES.slice(0, 12).join(", ")}…` };

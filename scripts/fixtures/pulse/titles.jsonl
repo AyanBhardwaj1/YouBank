@@ -1,0 +1,60 @@
+{"title":"Senior Software Engineer, Payments","dept":"engineering"}
+{"title":"Site Reliability Engineer","dept":"engineering"}
+{"title":"Frontend Developer (React)","dept":"engineering"}
+{"title":"DevOps Engineer","dept":"engineering"}
+{"title":"Firmware Engineer","dept":"engineering"}
+{"title":"QA Analyst","dept":"engineering"}
+{"title":"Machine Learning Engineer","dept":"data"}
+{"title":"Data Scientist, Pricing","dept":"data"}
+{"title":"Business Intelligence Analyst","dept":"data"}
+{"title":"Analytics Manager","dept":"data"}
+{"title":"Account Executive, Enterprise","dept":"sales"}
+{"title":"Sales Development Representative","dept":"sales"}
+{"title":"Business Development Manager","dept":"sales"}
+{"title":"Customer Success Manager","dept":"sales"}
+{"title":"Solutions Consultant","dept":"sales"}
+{"title":"Product Marketing Manager","dept":"marketing"}
+{"title":"Content Strategist","dept":"marketing"}
+{"title":"Social Media Coordinator","dept":"marketing"}
+{"title":"Public Relations Lead","dept":"marketing"}
+{"title":"Senior Product Manager","dept":"product"}
+{"title":"Product Designer","dept":"product"}
+{"title":"UX Researcher","dept":"product"}
+{"title":"Senior Accountant","dept":"finance"}
+{"title":"FP&A Manager","dept":"finance"}
+{"title":"Tax Director","dept":"finance"}
+{"title":"Payroll Specialist","dept":"finance"}
+{"title":"Accounts Payable Specialist","dept":"finance"}
+{"title":"Assistant Controller","dept":"finance"}
+{"title":"Corporate Counsel","dept":"legal"}
+{"title":"Paralegal","dept":"legal"}
+{"title":"Compliance Officer","dept":"legal"}
+{"title":"Technical Recruiter","dept":"people"}
+{"title":"HR Business Partner","dept":"people"}
+{"title":"Talent Acquisition Lead","dept":"people"}
+{"title":"Benefits Administrator","dept":"people"}
+{"title":"Field Service Technician","dept":"field"}
+{"title":"Electrician","dept":"field"}
+{"title":"Plant Operator","dept":"field"}
+{"title":"Maintenance Mechanic","dept":"field"}
+{"title":"Welder","dept":"field"}
+{"title":"Journeyman Lineman","dept":"field"}
+{"title":"CDL Driver","dept":"field"}
+{"title":"Supply Chain Analyst","dept":"operations"}
+{"title":"Logistics Coordinator","dept":"operations"}
+{"title":"Procurement Manager","dept":"operations"}
+{"title":"Facilities Manager","dept":"operations"}
+{"title":"Program Manager, Construction","dept":"operations"}
+{"title":"Executive Assistant","dept":"other"}
+{"title":"Chief of Staff","dept":"other"}
+{"title":"Receptionist","dept":"other"}
+{"title":"Integration Manager, Post-Merger","dept":"other","tells":["integration"]}
+{"title":"Integration Management Office Lead","dept":"other","tells":["integration"]}
+{"title":"TSA Coordinator","dept":"other","tells":["integration"]}
+{"title":"Director, Corporate Development","dept":"other","tells":["corpdev"]}
+{"title":"M&A Associate","dept":"other","tells":["corpdev"]}
+{"title":"Head of Investor Relations","dept":"other","tells":["ipo"]}
+{"title":"SEC Reporting Manager","dept":"finance","tells":["ipo"]}
+{"title":"SOX Compliance Analyst","dept":"legal","tells":["ipo"]}
+{"title":"Interim CFO","dept":"finance","tells":["restructuring"]}
+{"title":"Restructuring Director","dept":"other","tells":["restructuring"]}

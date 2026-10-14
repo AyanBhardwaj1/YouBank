@@ -1,0 +1,8 @@
+{"departments":[
+ {"id":1,"name":"Engineering","parent_id":null,"child_ids":[11],"jobs":[
+  {"id":4001,"title":"Senior Software Engineer, Payments","updated_at":"2026-09-20T10:00:00-04:00","first_published":"2026-09-01T09:00:00-04:00","location":{"name":"New York, NY"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4001"},
+  {"id":4002,"title":"Site Reliability Engineer","updated_at":"2026-09-22T10:00:00-04:00","location":{"name":"Remote - US"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4002"}
+ ],"children":[{"id":11,"name":"Data","jobs":[{"id":4003,"title":"Machine Learning Engineer","updated_at":"2026-09-25T10:00:00Z","location":{"name":"San Francisco, CA"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4003"}]}]},
+ {"id":2,"name":"Corporate Development","jobs":[{"id":4004,"title":"Integration Manager, Post-Merger","updated_at":"2026-10-01T10:00:00Z","first_published":"2026-10-01T10:00:00Z","location":{"name":"Chicago, IL"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4004"}]},
+ {"id":3,"name":"No Department","jobs":[{"id":4001,"title":"Senior Software Engineer, Payments","updated_at":"2026-09-20T10:00:00Z","location":{"name":"New York, NY"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4001"},{"id":4005,"title":"Accounts Payable Specialist","updated_at":"2026-09-10T10:00:00Z","location":{"name":"Chicago, IL"},"absolute_url":"https://boards.greenhouse.io/acmeco/jobs/4005"}]}
+]}

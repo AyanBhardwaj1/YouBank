@@ -8,6 +8,7 @@
  */
 import { executeRun } from "./canvas/engine";
 import { backfillSlice } from "./deals/jobs";
+import { measurePlacebo, seedStartups, setWeeklyCursor, weeklyCursor, weeklyStep } from "./pulse/jobs";
 import { newsroomDeals } from "./graph/deals";
 import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
@@ -178,4 +179,27 @@ export const dealsBackfill = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill];
+/**
+ * The Alt-Data Pulse's weekly pass (E3): new /app/vc startups into the graph, each metric family's placebo
+ * false-alarm rate measured, then the universe refreshed 25 companies a step from its cursor. Free sources
+ * only; new findings notify their watchers.
+ */
+export const pulseWeekly = inngest.createFunction(
+  { id: "edge-pulse-weekly", triggers: [{ cron: "10 5 * * 0" }, { event: "edge/pulse.weekly" }], concurrency: 1, retries: 1 },
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    await s.run("startups", () => seedStartups(500));
+    await s.run("placebo", () => measurePlacebo());
+    let cursor = await s.run("cursor", async () => (await weeklyCursor()).after ?? 0);
+    let refreshed = 0, created = 0;
+    for (let i = 0; i < 60; i++) {
+      const r = await s.run(`batch-${i}`, async () => { const x = await weeklyStep(cursor, Date.now() + 230_000); if (x.created.length) await notifyWatchers(x.created).catch(() => undefined); await flushUsage(); return { next: x.next, refreshed: x.refreshed, created: x.created.length }; });
+      refreshed += r.refreshed; created += r.created; cursor = r.next;
+      await s.run(`save-${i}`, () => setWeeklyCursor(cursor ? { after: cursor } : { after: 0, finishedAt: new Date().toISOString() }));
+      if (!cursor) break;
+    }
+    return { refreshed, created };
+  },
+);
+
+export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill, pulseWeekly];

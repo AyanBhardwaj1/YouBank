@@ -6,8 +6,12 @@
 import { buildQuery } from "../../deals/query";
 import { bandSentence } from "../../deals/range";
 import { similarDeals } from "../../deals/store";
+import { companyNode } from "../../entities/resolve";
+import { falseAlarms, loadWarn, pulseOf, refreshCompany } from "../../pulse/ingest";
+import { changeVerdict, falseAlarmSentence } from "../../series/change";
+import { metricDef } from "../../series/metrics";
 import { register } from "../engine";
-import type { Companies, DealsValue, ProformaValue, Table } from "../values";
+import type { Companies, DealsValue, Findings, ProformaValue, SeriesValue, Table } from "../values";
 
 const tickersIn = (values: unknown[] | undefined) => [...new Set((values ?? []).flatMap((v) => {
   const c = v as Companies & ProformaValue;
@@ -46,6 +50,42 @@ register("deals.precedents", {
       outputs: { deals: value, table },
       summary: value.items.length ? `${value.items.length} precedents${range ? `, median ${range.median.toFixed(1)}x EV/EBITDA` : ""}` : "No precedents in the deal database yet for these companies",
       preview: { kind: "list", items: value.items.slice(0, 5).map((x) => ({ label: `${x.target}${x.buyer ? ` / ${x.buyer}` : ""}`, detail: [x.evEbitda ? `${x.evEbitda.toFixed(1)}x` : "", x.why.slice(0, 2).join("; ")].filter(Boolean).join(" · "), score: undefined })) },
+    };
+  },
+});
+
+register("pulse.signals", {
+  async start(ctx) {
+    const tickers = tickersIn(ctx.inputs.companies).slice(0, 5);
+    if (!tickers.length) throw Object.assign(new Error("Wire in the companies to read signals for."), { status: 400 });
+    const want = typeof ctx.config.metric === "string" ? ctx.config.metric : "";
+    const items: SeriesValue["items"] = [];
+    const found: Findings["items"] = [];
+    const notices = ctx.config.refresh ? await loadWarn().catch(() => []) : [];
+    const fa = await falseAlarms().catch(() => ({} as Record<string, number>));
+    const famOf = (m: string) => (m.startsWith("jobs.dept") ? "jobs.dept" : m.startsWith("jobs") ? "jobs" : m === "wiki.views" ? "attention" : m.startsWith("patents") ? "patents" : "");
+    for (const t of tickers) {
+      await ctx.progress("crosswalk", `Matching ${t}`);
+      const node = await companyNode(t);
+      if (!node) continue;
+      if (ctx.config.refresh && Date.now() < ctx.deadline - 60_000) { await ctx.progress("read", `Reading ${t}'s sources`); await refreshCompany(node.id, Math.min(ctx.deadline - 30_000, Date.now() + 60_000), { notices }).catch(() => undefined); }
+      await ctx.progress("detect");
+      const p = await pulseOf(node.id);
+      if (!p) continue;
+      for (const [metric, points] of Object.entries(p.series)) {
+        if (want && metric !== want) continue;
+        if (!want && (metric.startsWith("jobs.dept.") || metric.startsWith("jobs.tell.") || metric === "jobs.new" || metric === "patents.apps" || metric === "usasp.awards")) continue;
+        const v = points.length >= 12 ? changeVerdict(points.map((x) => x.value)) : null;
+        const def = metricDef(metric);
+        items.push({ ticker: t, name: p.name, metric, label: def?.label ?? metric, unit: def?.unit ?? "", points: points.slice(-104), latest: points.at(-1)?.value ?? null, change: v && Number.isFinite(v.move) ? v.move : null, changeProb: v?.prob ?? null, falseAlarms: v && famOf(metric) ? falseAlarmSentence(fa[famOf(metric)] ?? NaN) : "", source: def?.source ?? "" });
+      }
+      for (const f of p.findings.slice(0, 6)) found.push({ id: f.id, title: f.title, kind: f.kind, confidence: f.confidence, tickers: [t], observedAt: f.observedAt, summary: f.summary, sources: [] });
+    }
+    const value: SeriesValue = { type: "series", items, ...(items.length ? {} : { note: "No signals stored for these companies yet; switch on 'Read the sources now'." }) };
+    return {
+      outputs: { series: value, findings: { items: found } satisfies Findings },
+      summary: `${items.length} series, ${found.length} recent changes for ${tickers.join(", ")}`,
+      preview: { kind: "chart", series: items.slice(0, 4).map((x) => ({ label: `${x.ticker} ${x.label}`, values: x.points.slice(-26).map((p) => p.value) })) },
     };
   },
 });

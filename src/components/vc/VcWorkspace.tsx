@@ -9,6 +9,7 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Select } from "@/components/ui/Select";
 import { useSubNav } from "@/lib/subnav";
 import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
+import { StartupPulse } from "@/components/edge/next/StartupPulse";
 
 type Startup = {
   id: number; source: string; sourceId: string; name: string; oneLiner: string; description: string; website: string; url: string; logo: string; program: string; status: string;
@@ -229,6 +230,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
               {selected.url && <a href={selected.url} target="_blank" rel="noreferrer" className="rounded border border-line px-2 py-1 text-info hover:border-accent/50">{selected.source === "formd" ? "SEC filing ↗" : selected.source === "hn" ? "HN thread ↗" : "Source ↗"}</a>}
               <button type="button" onClick={() => searchFormD(selected.name)} className="rounded border border-line px-2 py-1 text-muted hover:border-accent/50 hover:text-accent">Form D filings</button>
             </div>
+            {selected.website && <StartupPulse key={selected.id} id={selected.id} />}
             {selected.founders && <div className="mt-4 text-[12px]"><span className="text-[10px] uppercase tracking-wider text-muted">Founders / officers</span><div className="mt-0.5">{selected.founders}</div></div>}
             {selected.investors.length > 0 && <div className="mt-3 text-[12px]"><span className="text-[10px] uppercase tracking-wider text-muted">Investors</span><div className="mt-0.5">{selected.investors.join(", ")}</div></div>}
             <p className="mt-4 whitespace-pre-line text-[12.5px] leading-relaxed text-fg/90">{selected.description}</p>

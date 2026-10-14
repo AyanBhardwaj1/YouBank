@@ -8,6 +8,7 @@ import { describeFailure } from "@/lib/errors";
 import { dealsDaily } from "./deals/jobs";
 import { resolveDue } from "./forecasts/ledger";
 import { jobsReady } from "./infra/jobs";
+import { pulseDaily } from "./pulse/jobs";
 import { pruneSeries } from "./series/store";
 
 export type NextDaily = Record<string, unknown> & { created: number[] };
@@ -22,6 +23,9 @@ export async function dailyNext(deadline: number, now = new Date()): Promise<Nex
   await part("forecasts", out, () => resolveDue(Math.min(deadline, Date.now() + 40_000), now));
   // E1: the day's new merger documents (free); read them too when reading is on and Inngest is not there to.
   await part("deals", out, () => dealsDaily(Math.min(deadline, Date.now() + 70_000), { slice: !jobsReady() }));
+  // E3: daily lists (premium perk, plan re-checked) and watched companies not read for a week; free sources only.
+  const pulse = await part("pulse", out, () => pulseDaily(Math.min(deadline, Date.now() + 60_000)));
+  if (pulse) out.created.push(...pulse.created);
   if (now.getUTCDay() === 0) await part("prune", out, async () => ({ series: await pruneSeries(now) }));
   return out;
 }
