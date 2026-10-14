@@ -139,7 +139,8 @@ export async function runTick(deps: Deps, agentId: number, deadline: number): Pr
       const d = deps.tools[e.tool];
       if (!d) return { tool: e.tool, input: { args: e.args }, output: { missing: true }, error: `no tool ${e.tool}` };
       try { const r = await d.run(e.args); return { tool: e.tool, input: { args: e.args }, output: r as unknown as Record<string, unknown>, cost: d.costUsd }; }
-      catch (err) { return { tool: e.tool, input: { args: e.args }, output: { failed: true }, error: String((err as Error).message ?? "failed").slice(0, 200) }; }
+      // The step log is shown to the owner: only a plain refusal (status below 500) keeps its words.
+      catch (err) { const st = (err as { status?: number }).status; return { tool: e.tool, input: { args: e.args }, output: { failed: true }, error: st && st < 500 ? String((err as Error).message ?? "failed").slice(0, 200) : "the tool failed" }; }
     });
     if ((o as { text?: string }).text) outs.push({ ...(o as unknown as Omit<ToolOutput, "id" | "at">), id: `T${i + 1}`, at: now.toISOString() });
   }
