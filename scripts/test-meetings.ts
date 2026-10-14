@@ -223,7 +223,7 @@ function webhooks() {
   const state = recallState({ id: "bot_1", status_changes: [{ code: "joining_call" }, { code: "in_call_recording" }, { code: "done" }], recordings: [{ media_shortcuts: { transcript: { status: { code: "done" }, data: { download_url: "https://example.test/t.json" } }, participant_events: { data: { participants_download_url: "https://example.test/p.json" } } } }] });
   check("a finished bot reports its transcript and participants", state.status === "processing" && state.transcriptUrl === "https://example.test/t.json" && state.participantsUrl === "https://example.test/p.json");
   const failed = recallState({ id: "bot_2", status_changes: [{ code: "fatal", sub_code: "meeting_not_found" }] });
-  check("a failed bot says why", failed.status === "failed" && /meeting_not_found/.test(failed.error ?? ""));
+  check("a failed bot says why", failed.status === "failed" && /could not record this meeting \(meeting not found\)/.test(failed.error ?? ""));
 }
 
 function contextAndModel() {

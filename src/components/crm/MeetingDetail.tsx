@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage, safeText } from "@/lib/client/errors";
 import { STAGE_LABEL, type Stage } from "@/lib/crm/model";
 import { INTEREST_LABEL, PLATFORM_LABEL, STATUS_LABEL, clock, durationLabel, isPlatform, type MeetingNotes, type MeetingStatus, type Segment } from "@/lib/meetings/model";
 import type { MeetingAccess } from "./MeetingsPanel";
@@ -39,7 +40,7 @@ export function MeetingDetail({ ctx, id, access, onBack, onDrafted }: { ctx: Pan
   const [picking, setPicking] = useState<{ q: string; found: Ref | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  const load = useCallback(() => api<Detail>(`/api/meetings/${id}`).then((x) => { setD(x); setFailed(null); }).catch((e) => setFailed(e instanceof Error ? e.message : String(e))), [id]);
+  const load = useCallback(() => api<Detail>(`/api/meetings/${id}`).then((x) => { setD(x); setFailed(null); }).catch((e) => setFailed(errorMessage(e))), [id]);
   useEffect(() => { void load(); }, [load, ctx.tick]);
 
   // A meeting still in progress (a notetaker in the call, notes being written) refreshes itself.
@@ -125,7 +126,7 @@ export function MeetingDetail({ ctx, id, access, onBack, onDrafted }: { ctx: Pan
         </div>
       </header>
 
-      {m.error && <p className="ctl border border-info/40 bg-info/5 px-3 py-2 text-[12px]">{m.error}</p>}
+      {m.error && <p className="ctl border border-info/40 bg-info/5 px-3 py-2 text-[12px]">{safeText(m.error)}</p>}
       {m.status === "processing" && <p className="text-[12px] text-muted">Writing the notes. This takes a minute or two; the page updates on its own.</p>}
       {m.status === "joining" && <p className="text-[12px] text-muted">The notetaker is joining. If the meeting has a waiting room, admit “{access?.settings.botName ?? "YouBank Notetaker"}”.</p>}
 

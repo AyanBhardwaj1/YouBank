@@ -137,7 +137,8 @@ export function recallState(bot: RecallBot): BotState {
     code, status,
     transcriptUrl: transcriptDone ? rec?.transcript?.data?.download_url ?? null : null,
     participantsUrl: rec?.participant_events?.data?.participants_download_url ?? null,
-    error: status === "failed" ? [last?.sub_code, last?.message].filter(Boolean).join(": ") || "The notetaker could not record this meeting." : null,
+    // Shown to the person: Recall's reason code in words, never its free-text message.
+    error: status === "failed" ? `The notetaker could not record this meeting${last?.sub_code && /^[a-z0-9_]{2,60}$/i.test(last.sub_code) ? ` (${last.sub_code.replace(/_/g, " ")})` : ""}.` : null,
   };
 }
 

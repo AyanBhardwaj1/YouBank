@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage, safeText } from "@/lib/client/errors";
 import { PLATFORM_LABEL, STATUS_LABEL, durationLabel, isPlatform, type MeetingSettings, type MeetingStatus } from "@/lib/meetings/model";
 import { MeetingDetail } from "./MeetingDetail";
 import { MeetingSettingsForm } from "./MeetingSettings";
@@ -44,7 +45,7 @@ export function MeetingsPanel({ ctx, initialMeeting, onDrafted }: { ctx: PanelCt
 
   useEffect(() => {
     let cancelled = false;
-    api<List>("/api/meetings").then((l) => { if (!cancelled) setList(l); }).catch((e) => { if (!cancelled) ctx.say(e instanceof Error ? e.message : String(e)); });
+    api<List>("/api/meetings").then((l) => { if (!cancelled) setList(l); }).catch((e) => { if (!cancelled) ctx.say(errorMessage(e)); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.tick]);
@@ -140,7 +141,7 @@ export function MeetingsPanel({ ctx, initialMeeting, onDrafted }: { ctx: PanelCt
               </div>
               {people.length > 0 && <p className="mt-1 truncate text-[11.5px]"><span className="text-muted">With</span> {people.slice(0, 6).join(", ")}{people.length > 6 ? ` and ${people.length - 6} more` : ""}</p>}
               {m.summary && <p className="mt-1 line-clamp-2 text-[11.5px] text-muted">{m.summary}</p>}
-              {!m.summary && m.error && <p className="mt-1 text-[11.5px] text-muted">{m.error}</p>}
+              {!m.summary && m.error && <p className="mt-1 text-[11.5px] text-muted">{safeText(m.error)}</p>}
             </button>
           );
         })}
