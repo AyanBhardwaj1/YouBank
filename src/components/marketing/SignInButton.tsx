@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
 import { errorMessage } from "@/lib/client/errors";
@@ -7,12 +8,16 @@ import { looksInternal, OUR_SIDE } from "@/lib/error-text";
 
 const UNAVAILABLE = "Sign-in is unavailable on our side right now. Try again in a few minutes.";
 
+/** Google sign-in is offered only when its OAuth client is set up (NEXT_PUBLIC_GOOGLE_SIGNIN=1 at build). */
+export const GOOGLE_SIGNIN = process.env.NEXT_PUBLIC_GOOGLE_SIGNIN === "1";
+const GOOGLE_LABEL = "Continue with Google";
+
 /**
  * What a failed sign-in says. The auth client answers failures as `{ error: { message, status } }`
  * rather than throwing; one on the service's side (its database down or over a limit) reads as an
  * outage, never as the provider's own words.
  */
-function signInError(e: unknown): string {
+export function signInError(e: unknown): string {
   const failure = (e ?? {}) as { status?: unknown; message?: unknown };
   if (Number(failure.status) >= 500) return UNAVAILABLE;
   if (e instanceof Error) { const m = errorMessage(e); return m.startsWith(OUR_SIDE) ? UNAVAILABLE : m; }
@@ -20,7 +25,7 @@ function signInError(e: unknown): string {
 }
 
 /** `next` is where a returning person lands; `newUser` where a first-time one does (onboarding, unless a flow must finish first). */
-export function SignInButton({ label = "Continue with Google", next = "/app", newUser = "/onboarding", className = "" }: { label?: string; next?: string; newUser?: string; className?: string }) {
+export function SignInButton({ label = GOOGLE_LABEL, next = "/app", newUser = "/onboarding", className = "" }: { label?: string; next?: string; newUser?: string; className?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const go = async () => {
@@ -35,6 +40,17 @@ export function SignInButton({ label = "Continue with Google", next = "/app", ne
       setBusy(false);
     }
   };
+  // Without Google, the same button opens the sign-in page (email and password).
+  if (!GOOGLE_SIGNIN) {
+    return (
+      <div className={className}>
+        <Link href={next === "/app" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`}
+          className="inline-flex items-center gap-3 rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white">
+          {label === GOOGLE_LABEL ? "Sign in" : label}
+        </Link>
+      </div>
+    );
+  }
   return (
     <div className={className}>
       <button type="button" onClick={go} onPointerEnter={() => { void getAuthClient(); }} disabled={busy}
