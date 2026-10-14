@@ -61,7 +61,8 @@ if (step === "extensions") {
   }
   console.log(`migrations replayed: ${applied} statements, ${skipped} already there`);
 
-  const tables = await sql`select tablename from pg_tables where schemaname = 'public' order by 1`;
+  // Our own tables only: an extension's (PostGIS's spatial_ref_sys) belongs to the platform.
+  const tables = await sql`select tablename from pg_tables where schemaname = 'public' and tableowner = current_user order by 1`;
   for (const t of tables) await sql.unsafe(`alter table public."${t.tablename}" enable row level security`);
   console.log(`row level security on for ${tables.length} tables`);
 
