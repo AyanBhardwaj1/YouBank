@@ -21,7 +21,7 @@ import { describeFailure, logError } from "@/lib/errors";
 import { lease, rateLimit } from "@/lib/locks";
 import { botProvider } from "./bot";
 import { applyMeetingToCrm, removeMeetingEntry, type CrmReport } from "./crm";
-import { meetingContext } from "./context";
+import { manualSource, meetingContext } from "./context";
 import { isMeetingUrl, isPlatform, platformOfUrl, type MeetingNotes, type Segment } from "./model";
 import { NotesSchema, parseNotes } from "./notes";
 import { labelSelf, renderTranscript, stitch, type Activity } from "./stitch";
@@ -283,9 +283,11 @@ export async function updatePicks(user: User, meetingId: number, input: { title?
   const set: Partial<MeetingRow> = {};
   if (typeof input.title === "string") set.title = input.title.replace(/\p{Cc}/gu, "").trim().slice(0, 200);
   const remove = Number(input.removeContactId);
-  const added = ids(input.contactIds);
+  // Only the person's own contacts and deals can be linked.
+  const owned = await manualSource.contextAt(user.id, new Date(), { contactIds: ids(input.contactIds), dealIds: ids(input.dealIds) });
+  const added = owned?.contactIds ?? [], addedDeals = owned?.dealIds ?? [];
   const contactIds = [...new Set([...(ctx.contactIds ?? []), ...added])].filter((n) => n !== remove);
-  const dealIds = [...new Set([...(ctx.dealIds ?? []), ...ids(input.dealIds)])];
+  const dealIds = [...new Set([...(ctx.dealIds ?? []), ...addedDeals])];
   // An unlinked contact stays unlinked when the meeting is filed again, even if a name still fits.
   const excludedContactIds = [...new Set([...(ctx.excludedContactIds ?? []), ...(remove > 0 ? [remove] : [])])].filter((n) => !added.includes(n));
   set.context = { ...m.context, contactIds, dealIds, excludedContactIds };
@@ -296,9 +298,9 @@ export async function updatePicks(user: User, meetingId: number, input: { title?
   }
   m = await updateMeeting(m.id, set);
   if (m.status === "ready") await applyMeetingToCrm(user, m, (m.notes as MeetingNotes | null) ?? null);
-  else if (ids(input.contactIds).length || ids(input.dealIds).length) {
-    await linkMeeting(user.id, m.id, "contact", ids(input.contactIds), "manual");
-    await linkMeeting(user.id, m.id, "deal", ids(input.dealIds), "manual");
+  else if (added.length || addedDeals.length) {
+    await linkMeeting(user.id, m.id, "contact", added, "manual");
+    await linkMeeting(user.id, m.id, "deal", addedDeals, "manual");
   }
   return getMeeting(user.id, m.id);
 }

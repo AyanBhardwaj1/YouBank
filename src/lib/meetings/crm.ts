@@ -91,6 +91,14 @@ export async function applyMeetingToCrm(user: { id: string; email: string; name:
     let how: string = match.how;
     const pn = notesFor(notes, person, contact);
     if (!contact && person.email) {
+      // Matching reads at most 5,000 contacts: look the address up directly before treating them as new,
+      // so an existing contact is never overwritten with what the meeting said, nor offered for removal.
+      const [existing] = await db.select().from(schema.crmContacts)
+        .where(and(eq(schema.crmContacts.userId, user.id), eq(schema.crmContacts.email, person.email.trim().toLowerCase())));
+      if (existing && excluded.has(existing.id)) { participants.push({ name: person.name, email: person.email, contactId: null, how: "none" }); continue; }
+      if (existing) { contact = existing; how = "email"; byId.set(existing.id, existing); }
+    }
+    if (!contact && person.email) {
       // A new person with an address: a contact now, marked for review, with a suggestion to keep them.
       const external = audienceOf(person.email, internal) === "external";
       contact = await upsertContact(user.id, { email: person.email, name: person.name, title: pn?.title, company: pn?.company, kind: external ? "unknown" : "colleague" });

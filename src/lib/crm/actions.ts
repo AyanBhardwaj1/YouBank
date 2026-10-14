@@ -265,12 +265,21 @@ export async function dismissAction(userId: string, id: number): Promise<void> {
     .where(and(eq(schema.crmActions.id, id), eq(schema.crmActions.userId, userId), eq(schema.crmActions.status, "pending"))).returning();
   const contactId = (a?.payload as { contactId?: unknown } | undefined)?.contactId;
   if (a?.kind !== "review_contact" || typeof contactId !== "number") return;
-  const [[mail], [deal], [draft]] = await Promise.all([
+  // Only a contact the meeting itself created (made just before the suggestion) and still awaiting
+  // review is removed; one that existed already, or was kept or edited since, stays.
+  const [c] = await db.select({ tags: schema.crmContacts.tags, createdAt: schema.crmContacts.createdAt }).from(schema.crmContacts)
+    .where(and(eq(schema.crmContacts.id, contactId), eq(schema.crmContacts.userId, userId)));
+  if (!c || !c.tags.includes("needs review") || c.createdAt.getTime() < a.createdAt.getTime() - 10 * 60_000) return;
+  const [[mail], [deal], [draft], [lead]] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), eq(schema.crmThreads.contactId, contactId), sql`${schema.crmThreads.category} <> 'meeting'`)),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDeals).where(and(eq(schema.crmDeals.userId, userId), eq(schema.crmDeals.contactId, contactId))),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDrafts).where(and(eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.contactId, contactId), sql`${schema.crmDrafts.status} <> 'discarded'`)),
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.crmCampaignLeads).where(eq(schema.crmCampaignLeads.contactId, contactId)),
   ]);
-  if ((mail?.n ?? 0) + (deal?.n ?? 0) + (draft?.n ?? 0) > 0) return;
+  if ((mail?.n ?? 0) + (deal?.n ?? 0) + (draft?.n ?? 0) + (lead?.n ?? 0) > 0) return;
+  // Other suggestions about them (a role change the same meeting stated) go with them.
+  await db.update(schema.crmActions).set({ status: "dismissed", decidedAt: new Date() })
+    .where(and(eq(schema.crmActions.userId, userId), eq(schema.crmActions.contactId, contactId), eq(schema.crmActions.status, "pending")));
   await db.delete(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), eq(schema.crmThreads.contactId, contactId), eq(schema.crmThreads.category, "meeting")));
   await db.delete(schema.meetingLinks).where(and(eq(schema.meetingLinks.userId, userId), eq(schema.meetingLinks.kind, "contact"), eq(schema.meetingLinks.refId, contactId)));
   await db.delete(schema.crmContacts).where(and(eq(schema.crmContacts.id, contactId), eq(schema.crmContacts.userId, userId)));
