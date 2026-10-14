@@ -25,7 +25,7 @@ import { meetingContext } from "./context";
 import { isMeetingUrl, isPlatform, platformOfUrl, type MeetingNotes, type Segment } from "./model";
 import { NotesSchema, parseNotes } from "./notes";
 import { labelSelf, renderTranscript, stitch, type Activity } from "./stitch";
-import { createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
+import { NOTES_FEATURE, createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
 import { NO_TRANSCRIBER, pickTranscriber, wavSeconds } from "./transcribe";
 
 type User = { id: string; email: string; name: string };
@@ -144,7 +144,7 @@ export async function writeNotes(user: User, m: MeetingRow, segments: Segment[])
     people ? `Known participants:\n${people}` : "Participants: not listed; take them from the transcript.",
     `Transcript:\n${renderTranscript(segments)}`,
   ].join("\n\n");
-  const { data } = await structured(NotesSchema, "meetings-notes", system, prompt, { prefs: ctx.prefs, task: "draft", maxTokens: 12_000, timeoutMs: 240_000 });
+  const { data } = await structured(NotesSchema, NOTES_FEATURE, system, prompt, { prefs: ctx.prefs, task: "draft", maxTokens: 12_000, timeoutMs: 240_000 });
   return parseNotes(data, { meetingDate: m.startedAt, selfName: user.name });
 }
 

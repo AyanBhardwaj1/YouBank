@@ -145,13 +145,25 @@ export async function meetingLinks(meetingId: number) {
 
 /* ---------------- Allowances and retention ---------------- */
 
-/** Meetings that got AI notes this calendar month (UTC), for the free allowance. */
+/**
+ * Notes written this calendar month (UTC), for the free allowance: the meetings that have them, or the
+ * notes model calls in the AI usage ledger, whichever is more. The ledger keeps counting when a meeting
+ * is deleted or its notes are rewritten, so neither hands the allowance back.
+ */
 export async function notesUsedThisMonth(userId: string, now = new Date()): Promise<number> {
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const [r] = await requireDb().select({ n: sql<number>`count(*)::int` }).from(schema.meetings)
-    .where(and(eq(schema.meetings.userId, userId), isNotNull(schema.meetings.notesAt), gte(schema.meetings.notesAt, start)));
-  return r?.n ?? 0;
+  const db = requireDb();
+  const [[m], [u]] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.meetings)
+      .where(and(eq(schema.meetings.userId, userId), isNotNull(schema.meetings.notesAt), gte(schema.meetings.notesAt, start))),
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.aiUsage)
+      .where(and(eq(schema.aiUsage.userId, userId), eq(schema.aiUsage.feature, NOTES_FEATURE), gte(schema.aiUsage.createdAt, start))),
+  ]);
+  return Math.max(m?.n ?? 0, u?.n ?? 0);
 }
+
+/** The usage-ledger feature name the notes model call is recorded under. */
+export const NOTES_FEATURE = "meetings-notes";
 
 /** Remove transcripts older than the person's retention. Notes and links stay. Returns how many meetings. */
 export async function purgeExpired(userId: string): Promise<number> {
