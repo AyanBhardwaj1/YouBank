@@ -94,8 +94,10 @@ export async function recordChunk(user: User, meetingId: number, c: ChunkInput):
   if (seconds === null) throw status("That piece of audio could not be read.", 400);
   if (seconds > MAX_CHUNK_SEC || seconds > c.durationSec + 5) throw status("That piece of audio is longer than a chunk.", 413);
   const m = await getMeeting(user.id, meetingId);
-  if (m.status === "cancelled" || m.status === "failed") throw status("This meeting was stopped.", 409);
   if (m.source !== "desktop") throw status("This meeting is recorded by the notetaker.", 409);
+  // The app ends a meeting only after its last chunk is through, so audio for a meeting that has
+  // ended (or whose transcript was purged) is refused rather than added after its notes.
+  if (m.status !== "live" || m.purgedAt) throw status("This meeting was stopped.", 409);
   await rateLimit(`meetings-chunk:${user.id}`, 400, 3_600_000, "Too much audio this hour. The app will retry shortly.");
   const engine = pickTranscriber();
   if (!engine) throw status(NO_TRANSCRIBER, 503);
