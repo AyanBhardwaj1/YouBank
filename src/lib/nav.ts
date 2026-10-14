@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "crm" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -28,7 +28,7 @@ export const FEATURES: NavFeature[] = [
   },
   {
     id: "news", href: "/app/news", label: "Newsroom", icon: "Newspaper", blurb: "News for your desk, deals and filings",
-    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Radar"), tab("/app/news", "view", "saved", "Saved")],
+    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "globe", "Globe"), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Radar"), tab("/app/news", "view", "saved", "Saved")],
   },
   { id: "tools", href: "/app/tools", label: "Tools", icon: "Wand2", blurb: "Calculators and AI workflows" },
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },
@@ -49,12 +49,16 @@ export const FEATURES: NavFeature[] = [
     links: [tab("/app/copy", "tab", "discover", "Discover", true), tab("/app/copy", "tab", "copies", "My copies"), tab("/app/copy", "tab", "following", "Following"), tab("/app/copy", "tab", "broker", "Brokerage"), tab("/app/copy", "tab", "activity", "Activity")],
   },
   {
-    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, pipeline and follow-ups",
+    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",
     links: [
       tab("/app/crm", "tab", "drafts", "Review queue", true), tab("/app/crm", "tab", "inbox", "Inbox"), tab("/app/crm", "tab", "pipeline", "Pipeline"),
-      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
+      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "meetings", "Meetings"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
       tab("/app/crm", "tab", "nurture", "Nurture"), tab("/app/crm", "tab", "agent", "Agent & autopilot"),
     ],
+  },
+  {
+    id: "calendar", href: "/app/calendar", label: "Calendar", icon: "Calendar", blurb: "Every calendar, meetings and prep briefs",
+    links: [tab("/app/calendar", "view", "week", "Week", true), tab("/app/calendar", "view", "day", "Day"), tab("/app/calendar", "view", "agenda", "Agenda")],
   },
   { id: "collab", href: "/app/collab", label: "Together", icon: "Users", blurb: "Work through a tool together, live" },
   { id: "library", href: "/app/library", label: "Library", icon: "Library", blurb: "Your saved work" },
@@ -63,7 +67,7 @@ export const FEATURES: NavFeature[] = [
     id: "settings", href: "/app/settings", label: "Settings", icon: "Settings", blurb: "Style, AI model, alerts and data",
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
-      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
       tab("/app/settings", "tab", "desktop", "Desktop app"),
     ],
   },

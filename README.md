@@ -38,6 +38,8 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Relationships: the email agent](#relationships-the-email-agent)
    - [Autopilot](#autopilot)
    - [The adaptive engine](#the-adaptive-engine)
+   - [Calendar](#calendar)
+   - [Meetings: the meeting copilot](#meetings-the-meeting-copilot)
    - [Teams and live collaboration](#teams-and-live-collaboration)
    - [YouBank for desktop](#youbank-for-desktop)
    - [Premium features](#premium-features)
@@ -48,14 +50,15 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
 6. [Running locally](#running-locally)
 7. [Environment variables](#environment-variables)
 8. [Connecting a mailbox](#connecting-a-mailbox)
-9. [Deploying](#deploying)
-10. [Testing](#testing)
-11. [Security, privacy and compliance](#security-privacy-and-compliance)
-12. [Research behind the product](#research-behind-the-product)
-13. [Plans and billing](#plans-and-billing)
-14. [Roadmap](#roadmap)
-15. [Repository layout](#repository-layout)
-16. [Further docs](#further-docs)
+9. [Connecting a calendar](#connecting-a-calendar)
+10. [Deploying](#deploying)
+11. [Testing](#testing)
+12. [Security, privacy and compliance](#security-privacy-and-compliance)
+13. [Research behind the product](#research-behind-the-product)
+14. [Plans and billing](#plans-and-billing)
+15. [Roadmap](#roadmap)
+16. [Repository layout](#repository-layout)
+17. [Further docs](#further-docs)
 
 ---
 
@@ -394,10 +397,29 @@ reads the important stories once: bullets, key numbers, why it matters, companie
 against SEC's list) and deal terms. Deals and raises fill a tracker with the premium to the unaffected
 close and implied multiples from SEC figures, and advisor league tables.
 
-- **Four editions**, chosen in the header or in Settings: Terminal (a Bloomberg-style wire), Editorial
-  (an FT-style magazine), Brief (an Axios-style morning brief with the wire alongside) and Modern (an
-  Apple News-style dashboard). With the advanced switch, any look goes with any layout. Stories open in
-  a side peek or on their own page; motion is rich, subtle or off (and off under reduced motion).
+- **Five editions**, chosen in the header or in Settings: Front page (a data-led front: the hero
+  beside its chart, generated data-art thumbnails, "the day in data" drawn in as you scroll, a ticker
+  and the globe), Terminal (a Bloomberg-style wire), Editorial (an FT-style magazine), Brief (an
+  Axios-style morning brief with the wire alongside) and Modern (an Apple News-style dashboard). With
+  the advanced switch, any look goes with any layout. Stories open in a side peek or on their own page;
+  motion is rich, subtle or off (and off under reduced motion).
+- **A front page that learns**, explainably: what you read, save, follow and hide becomes an affinity
+  per desk tag, company and kind of story, fading over two weeks, with the top kept varied. Every card
+  says why it is there, and "Why you're seeing this" shows the whole sum.
+- **Inside a story**: an interactive chart (the price reaction with the moment it broke, the deal on a
+  log scale, the key figures, or how coverage spread), a timeline, a relationship map of who is
+  involved (with your own contacts), and "why this matters to you": your watchlist, contacts, pipeline
+  and Edge watches it touches (free; an AI note on request with Pro).
+- **The globe**: where the last two days' news is happening, markers sized by significance, filtered
+  by desk, one click to the stories.
+- **Listen, swipe, watch**: an audio briefing with a chapter per story (free in your browser's voice;
+  with Pro, an AI script in a neural voice, on a click or each morning), Brief mode (a 20-second card
+  per story, swipe on a phone, keys on a desktop), and a 60-second recap of animated slides you can
+  save as images or record to video in the browser.
+- **Follow a story** to get a bell alert and a push when it develops (five free, unlimited with Pro).
+- **Public story pages** at `/news/<story>`: the summary, chart, timeline and sources for anyone, with
+  link previews drawn from the story's data, share buttons and a sign-up invitation; never anything
+  personal. In the sitemap.
 - **The morning brief**, written once a day per desk with a "for you" section, on Home, in the app, and
   by email (from your own connected mailbox), browser push or Slack.
 - **Alerts** for watchlist companies (urgent for a bankruptcy, restatement or takeover), companies
@@ -1122,6 +1144,72 @@ Graduation offers appear at the top of the queue.
 | Learning from edits | Lessons and own-writing examples | G. Gao et al., PRELUDE/CIPHER, NeurIPS (2024), arXiv:2404.15269; PROSE, ICML (2025), arXiv:2505.23815 |
 | Prompt-injection risk in mail agents | The security veto | The Trojan Hippo and EchoLeak attacks (2025–2026) |
 
+### Calendar
+
+Every calendar a person uses, read and written, and tied to Relationships (`/app/calendar`, full detail in
+[docs/calendar.md](docs/calendar.md)).
+
+- **Providers.**
+  - Google Calendar and Microsoft 365 / Outlook.com (OAuth).
+  - iCloud and any CalDAV server: Fastmail, Nextcloud, Yahoo, Zoho (app-specific password).
+  - Any ICS link, read only.
+  - Behind one provider interface, `src/lib/calendar/providers/`.
+- **The view.** Day, week and agenda views of every connected calendar, merged and colour-coded. On a
+  phone it opens on the agenda.
+- **Its own iCalendar engine.**
+  - A parser and writer that keeps files intact on a round trip.
+  - Recurrence expanded on the event's own clock (RRULE, EXDATE, RDATE, RECURRENCE-ID overrides), so a
+    weekly 09:00 stays at 09:00 across daylight saving.
+  - IANA, Windows and custom VTIMEZONE zones.
+- **Linking.**
+  - Attendees link to contacts by address, and meetings link to deals by company domain or by the deal's
+    name in the title.
+  - Contacts and deal cards show "next meeting" and "last met", with a Schedule button.
+- **Meeting briefs.**
+  - Any meeting opens a free brief from YouBank's own data: recent emails, deal stage, the company in the
+    directory and the terminal, and recent news.
+  - The AI brief is written on a click (premium).
+  - An opt-in morning run briefs the day's external meetings (premium).
+- **Scheduling.**
+  - Free times come from live free/busy across all calendars, inside the person's working hours.
+  - Invitations are sent by their own provider. A video link can be pasted, or Google Meet or Teams can add one.
+  - Meetings can be moved or cancelled, one occurrence or the whole series.
+  - With smart scheduling (premium), the email agent offers real free times in drafts about meeting.
+- **Sync.**
+  - Incremental: Google sync tokens, Graph delta, CalDAV sync-collection, ICS ETags.
+  - Google and Microsoft push changes within seconds, and polling runs as the fallback.
+  - The sync is free work with no AI.
+- **For the meeting copilot.** `getMeetingAt`, `getUpcomingMeetings` and `GET /api/calendar/upcoming`
+  are a stable API, documented in docs/calendar.md.
+### Meetings: the meeting copilot
+
+The copilot listens to meetings and files what it learns into Relationships (the full design, and where
+a calendar plugs in, are in [docs/meetings.md](docs/meetings.md)). Two ways to listen:
+
+- **The desktop app** (free). When a Zoom, Teams, Google Meet, Webex or Slack huddle call starts, it
+  offers to start; nothing records until the person agrees to a prompt reminding them that some places
+  require everyone's consent (with a notice to paste in the chat). It records the microphone and what the
+  computer plays (WASAPI loopback, CoreAudio's tap on macOS 14.2+, the PulseAudio/PipeWire monitor on
+  Linux; microphone only where that is not available), shows a red dot in the tray and a small pill with
+  the time and Stop, and sends 30-second chunks to be transcribed. Audio is deleted once transcribed.
+- **The notetaker bot** (Deal Team, `meetings.bot`, about $0.65 an hour through Recall.ai): sent to a meeting
+  link by a click, or by an auto-join rule the person switched on; it joins as a participant and its
+  transcript names each speaker.
+
+Transcription uses OpenAI's speaker-labelled model when `OPENAI_API_KEY` is set, otherwise the ML
+service's Whisper and Parakeet. During a call, the copilot window shows the rolling transcript and what
+YouBank knows about the people in it (contacts, deal stage, recent emails, a listed company's numbers),
+free; live suggested questions are Pro (`meetings.live`), on only while switched on for that meeting.
+
+When the meeting ends, the notes (free for three meetings a month, then Pro, `meetings.notes`): a
+summary, decisions, action items with owners and dates, open questions, each person's sentiment,
+interest and signals, and follow-up drafts. They are filed the way the email agent files mail: each
+participant matched to a contact (or added and marked for review), a meeting entry on each contact's and
+deal's timeline carrying their topics (contact knowledge), stated deal terms as proposed changes to
+accept or reject (never written over), follow-ups in the review queue (never sent by autopilot).
+Relationships → Meetings lists the meetings, and each meeting's page shows the transcript, the notes,
+the proposed updates as cards, and an "ask about this meeting" box.
+
 ### Teams and live collaboration
 
 - **Teams** (`/app/team`) are shared workspaces.
@@ -1159,6 +1247,9 @@ from the latest `desktop-v*` GitHub Release and says in plain words what the app
     (Pro, `desktop.office_agent`) run the Studio agent and write the result back, keeping a backup.
   - **Alerts.** Edge findings and other bell alerts, the email agent's questions and news about pipeline
     deals, polled every few minutes (read only).
+  - **The meeting copilot** (see [Meetings](#meetings-the-meeting-copilot)): notices calls, asks for
+    consent, records the microphone and system audio, shows a recording pill and the copilot window, and
+    says when the notes are ready.
   - **Scheduled tasks** from the tray: the morning brief and the email agent's status (free), the Edge
     brief and watch checks (Pro, `desktop.background_ai`). An AI task runs on its schedule only if the
     person switched it on for that computer; the server keeps its own copy of that switch and refuses
@@ -1193,6 +1284,10 @@ a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this
 | Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
 | Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
 | More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
+| AI meeting briefs | Pro | Calendar · a meeting, "Write the AI brief" | Objectives, talking points, questions and watch-outs from the free assembled brief (`src/lib/billing/features/calendar.ts`) |
+| Morning auto-briefs | Pro | Settings · Calendar | Each morning, every external meeting that day is briefed (opt-in, up to eight) |
+| More than one calendar account | Pro | Settings · Calendar | Work and personal, Google and iCloud, merged |
+| Smart scheduling in drafts | Pro | Relationships drafts | The email agent offers real free times from the calendar |
 
 **Settings → Labs → Edge premium upgrades** lists each upgrade with whether YouBank has it switched on and
 whether your plan includes it; administrators also see its cost to us, the settings behind it (names only)
@@ -1319,8 +1414,10 @@ All tables are in `src/db/schema.ts`.
 | Adaptive engine | `crm_trust` (per stratum: good, bad, observations, unchanged, e-process, cancel streak), `crm_arms` (per arm: decayed pulls, rewards, negatives), `crm_lessons`, `crm_learning_events` (every label and outcome, for audit and offline evaluation) |
 | Studio | `studio_docs` (workbook, deck and comments as JSON, each edit an atomic `jsonb` update), `studio_events` (every patch with its undo; the serial id is the live-stream cursor and the add-in's sync cursor), `studio_runs` (each agent run: instruction, status, summary, stats), `studio_checkpoints` (named snapshots of the workbook and deck) |
 | Excel and PowerPoint | `office_pairings` (a code awaiting approval: the hashed poll secret and the expiry), `office_devices` (connected installs: the hashed token, last use, revocation) |
+| Meetings | `meetings` (each meeting: source, consent, participants, the live switch, notes), `meeting_chunks` (the transcript, one row per audio chunk), `meeting_links` (contacts and deals), `meeting_settings`; a meeting's proposed changes are `crm_actions` rows with `meeting_id` |
 | Desktop app | `desktop_pairings` (as for Office), `desktop_devices` (connected computers: the hashed token, system, app version, the scheduled-task switches, last use, revocation), `desktop_files` (each indexed local file: a hash of its path, its name, content hash and Edge document) |
 | Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
+| Calendar | `calendar_accounts` (connected accounts; OAuth tokens and app passwords encrypted), `calendar_calendars` (shown or hidden, sync token, push channel), `calendar_events` (occurrences in the 30-days-back, 90-ahead window, with linked contact and deal ids), `calendar_prefs` (zone, working hours, default calendar, meeting link, the auto-brief switch), `calendar_briefs` (AI meeting briefs) |
 | Fund copies | `copy_filers` (every 13F filer seen, for search), `copy_filings` (each 13F-HR and 13F-HR/A as read, holdings as JSON), `copy_securities` (CUSIP to ticker and sector, with the source), `copy_cusip_overrides` (the owner's corrections), `copy_follows`, `copy_portfolios` (paper and live copies), `copy_brokers` (the SnapTrade user, secret encrypted), `copy_consents`, `copy_batches` and `copy_orders` (proposals and what was sent), `copy_audit` (append-only by rule) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
@@ -1340,6 +1437,8 @@ All tables are in `src/db/schema.ts`.
   - `0010_contact_knowledge`
   - `0016_crypto`
   - `0017_desktop`
+  - `0018_calendar`
+  - `0019_meetings`
   - `0023_copytrade`
 - After applying them, `drizzle-kit push` should report no changes.
 
@@ -1411,6 +1510,9 @@ bash scripts/preflight.sh                                         # everything t
 | `CRON_SECRET` | yes | Bearer token for Vercel Cron (`/api/cron/sync`, `/api/cron/agent`) |
 | `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`) |
 | `AUTOPILOT_SECRET` | for autopilot | Bearer token the heartbeat sends to `/api/cron/autopilot` (`CRON_SECRET` is also accepted) |
+| `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI` | no | Google Calendar via OAuth; without them the Gmail client below is used. The redirect defaults to `<site>/api/calendar/oauth/google/callback` |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT`, `MICROSOFT_REDIRECT_URI` | no | Microsoft 365 and Outlook.com calendars via Graph; tenant `common` by default |
+| `CALENDAR_PUSH`, `CALENDAR_PUSH_URL`, `CALENDAR_POOL` | no | `off` turns calendar push off; a tunnel address for push during local work; sync concurrency (4) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | no | Gmail API connection via OAuth; the redirect defaults to `<origin>/api/crm/gmail/callback` |
 | `AUTOPILOT_SPOT_CHECK_RATE` | no | Overrides the spot-check rate (tests only) |
 | `NEWS_AI_BUDGET_USD` | no | The Newsroom's monthly AI cap; default `25` |
@@ -1433,6 +1535,8 @@ bash scripts/preflight.sh                                         # everything t
 | `DUNE_API_KEY` | for Dune queries | Reads saved queries' latest results, only on a click |
 | `OVERPASS_URL` | no | The OpenStreetMap Overpass endpoint the 3D digital twin reads; default the public overpass-api.de |
 | `USGS_LIDAR_INDEX_URL` | no | The index of USGS lidar surveys for point clouds; default Hobu's `resources.geojson` on GitHub |
+| `MEETINGS_TRANSCRIBE`, `MEETINGS_TRANSCRIBE_MODEL` | no | Meeting transcription: force `openai` or `ml`; the OpenAI model (default `gpt-4o-transcribe-diarize`) |
+| `RECALL_API_KEY`, `RECALL_REGION`, `RECALL_WEBHOOK_SECRET` | for the notetaker | Recall.ai's key, region (default `us-west-2`) and webhook signing secret; webhooks go to `/api/meetings/webhook` |
 | `YOUBANK_DEV_USER` | no | Development sign-in, ignored in production |
 | `ADMIN_EMAILS` | no | Comma-separated administrators: every premium feature, and admin-only screens |
 | `AI_DEEP_MODEL` | no | The model for deep research; default the flagship of the person's provider |
@@ -1482,6 +1586,23 @@ bash scripts/preflight.sh                                         # everything t
 
 ---
 
+## Connecting a calendar
+
+Settings, **Calendar**. The steps for each provider's developer console are in
+[docs/calendar.md](docs/calendar.md#setting-it-up). In short:
+
+- **Google:** enable the Calendar API on an OAuth client (the Gmail one works). Add
+  `https://<site>/api/calendar/oauth/google/callback` as a redirect URI. Set `GOOGLE_CALENDAR_CLIENT_ID` and
+  `_SECRET`, or rely on the Gmail client.
+- **Microsoft:** register an app for any organisation and personal accounts. Add
+  `https://<site>/api/calendar/oauth/microsoft/callback`. Grant `Calendars.ReadWrite`, `User.Read` and
+  `offline_access`. Set `MICROSOFT_CLIENT_ID` and `MICROSOFT_CLIENT_SECRET`.
+- **iCloud, Fastmail, Nextcloud, Yahoo, Zoho:** nothing on the server. People pick the service and paste an
+  app-specific password. YouBank signs in and lists the calendars before saving anything.
+- **ICS links:** paste any `webcal://` or `.ics` link. It is read only.
+
+Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet".
+
 ## Deploying
 
 1. **Environment.** Set the variables above in the Vercel project, not in `.env.local`.
@@ -1496,7 +1617,8 @@ bash scripts/preflight.sh                                         # everything t
    bash scripts/preflight.sh         # themes, typecheck, lint, tool packs, production build
    vercel --prod --yes
    ```
-4. **Crons.** `vercel.json` schedules `/api/cron/sync` (06:00 UTC) and `/api/cron/agent` (11:00 UTC).
+4. **Crons.** `vercel.json` schedules `/api/cron/sync` (06:00 UTC), `/api/cron/agent` (11:00 UTC),
+   `/api/cron/calendar` (06:15 UTC) and `/api/cron/calendar-briefs` (10:45 UTC).
 5. **The autopilot heartbeat.** Deploy it on the production branch with the Neon CLI. It is deployed this
    way, not from `neon.ts`, because it carries secrets:
    ```bash
@@ -1509,6 +1631,13 @@ bash scripts/preflight.sh                                         # everything t
    neon functions deploy news --src neon/news.ts \
      --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
    neon triggers create --function-slug news --name news-heartbeat --cron '*/10 * * * *'
+   ```
+   The calendar heartbeat runs every fifteen minutes. It calls the free sync, then the morning briefs, which
+   run only for people who switched them on. Apply `drizzle/0018_calendar.sql` first:
+   ```bash
+   neon functions deploy calendar --src neon/calendar.ts \
+     --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
+   neon triggers create --function-slug calendar --name calendar-heartbeat --cron '*/15 * * * *'
    ```
 7. **Billing (Stripe).** Create the products and prices, and the webhook endpoint, from `PLANS`:
    ```bash
@@ -1549,6 +1678,7 @@ bash scripts/preflight.sh                                         # everything t
 | Learning (63 tests) | `pnpm exec tsx scripts/test-learning.ts` | Beta CDF and quantile against exact values; certification boundaries; the e-process; scoring and critical fields; decay; Thompson sampling and propensities; delayed feedback; the security veto |
 | Autopilot (62 tests) | `pnpm exec tsx scripts/test-autopilot.ts` | Settings normalisation, autonomy levels, sending windows and time zones, the send verdict, placeholders, automated-mail detection, the daily cap, playbook selection |
 | Outreach (53 tests) | `pnpm exec tsx scripts/test-outreach.ts` | Follow-up, stale-deal and nurture candidate rules; funding-signal matching; company normalisation; sequence steps; the consent guard |
+| Calendar (119 tests) | `pnpm exec tsx scripts/test-calendar.ts` | iCalendar parsing, folding and round trips; RRULE expansion (ordinals, BYSETPOS, BYWEEKNO, UNTIL, COUNT, jumping to the window); time zones and DST, including custom VTIMEZONE, Windows and Mozilla zone names and floating times; editing one occurrence (EXDATE, overrides); attendee-to-contact and deal matching; slot finding; video links; the private-network guard; the Google, Microsoft, CalDAV and ICS adapters against fixtures in `scripts/fixtures/calendar/` |
 | Gmail parsing (12 tests) | `pnpm exec tsx scripts/test-gmail-parse.ts` | Address splitting (including quoted commas), MIME bodies, headers |
 | Inference (58 tests) | `pnpm exec tsx scripts/test-inference.ts` | The command parser; Welch beta, Kupiec, Parkinson; forecasts, seasonality and nested intervals; rating tables, the Ohlson units, left-out views; knowledge tracing and its policies; Kaplan-Meier and Poisson-binomial; relationship strength, contact knowledge, deal odds and pipeline simulation; the recession probit and Sahm rule; copula rank correlation; Monte Carlo and forecasting over a live Studio workbook |
 | Newsroom (73 tests) | `pnpm exec tsx scripts/test-news.ts` | URL, title and ticker cleaning; RSS, Atom and RDF; EDGAR's latest-filings feed, 8-K items and 13D pairs; Federal Register, GDELT and radar items; sector radars (FERC, DOE and NRC milestones, Fed bank applications, ITC cases, trials, FDA approvals, recalls, places and the map); robots.txt precedence; article extraction and paywall markers; classification and importance; clustering thresholds, figures (rounded or not) and filings; company names against SEC's listings; ranking reasons and mutes; desks; preferences, quiet hours and brief times; budget tiers; premiums, implied multiples and league tables; alert decisions; the calendar across daylight saving; research acceptance; tidying the model's reading; the brief email |
@@ -1565,7 +1695,8 @@ bash scripts/preflight.sh                                         # everything t
 | Excel, PowerPoint and Studio tools (127 tests) | `pnpm exec tsx scripts/test-office.ts` | The workbook diff behind "Synced from Excel"; the Excel adapter against an in-memory Excel (`scripts/mock-office.ts`): every template written in and read back unchanged, and each kind of agent edit applied to Excel and to Studio side by side; a formula Excel rejects; a person's edits coming back; PowerPoint insert and in-place refresh; checkpoints and restore; every brand-check rule and stacked fixes; markup placement and data-room sheets; the manifest; pairing codes |
 | Excel and PowerPoint end to end (52 checks) | see the header of `scripts/e2e-office.ts` | Against a running server and a Neon branch, with the live model: pairing and a single-use token; linking a workbook; a template round trip through Postgres; gzipped, partial and refused (409) syncs; an agent run applied to Excel as it streams; rebuilding an old state from undo patches; the deck's slide ids; checkpoints; the brand check; a marked-up photo read into comments; a data-room PDF read into a sheet; revoking the device |
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
-| Desktop app (15 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; the pages' scripts and that every command they call is registered and allowed |
+| Meetings (83 checks) | `pnpm exec tsx scripts/test-meetings.ts` | Transcript chunk stitching (overlaps, re-sent chunks, per-chunk speaker labels, "You" from the microphone levels); participant matching; the notes parser (action items, owners, dates); proposed deal changes; the notetaker's webhook signatures, events and transcripts; meeting context and auto-join; transcription answers and engine choice; the premium features |
+| Desktop app (27 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; meeting audio (mixing, resampling, levels, WAV, overlapping chunks, silence in loopback), call detection and its parsers, never-record rules, the recording dot; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, Edge, launch limits, errors, tool packs, production build |
 
@@ -1775,12 +1906,15 @@ YouBank/
   docs/                    product thinking, decisions, specs, market research
   drizzle/                 hand-written SQL migrations (0001–0008)
   neon/autopilot.ts        the five-minute heartbeat relay (Neon Function)
+  neon/calendar.ts         the fifteen-minute calendar sync and morning-brief relay (Neon Function)
   scripts/                 tests, end-to-end runs, migrations, snapshot, themes, backfill, preflight
   src/app/                 routes: marketing, /for/<role>, /download, /onboarding, /app/*, /office/* (the add-in),
                            /desktop/connect, /api/*
   src/components/
-    crm/                   workspace, review queue, inbox, pipeline, contacts, campaigns, nurture,
-                           agent settings, engine insights, mailbox bar
+    crm/                   workspace, review queue, inbox, pipeline, contacts, meetings, campaigns,
+                           nurture, agent settings, engine insights, mailbox bar
+    calendar/              the calendar view, event panel and brief, scheduler, Calendar settings,
+                           meeting lines and Schedule buttons for contacts and deals
     studio/                Studio home, workspace, grid, deck view, slide charts, state hook
     office/                the add-in's task pane, and the connect and install pages
     marketing/             landing page, adaptive-engine demo, terminal demo, role pages, live demos
@@ -1793,6 +1927,10 @@ YouBank/
   src/db/schema.ts         every table
   src/lib/
     crm/                   the relationships agent, autopilot and the adaptive engine (see Architecture)
+    calendar/              iCalendar, RRULE and time zones, the four provider adapters, sync and push,
+                           linking, briefs, free/busy and slots, the meeting copilot API
+    meetings/              the meeting copilot: transcription, stitching, matching, notes, filing into
+                           Relationships, the notetaker bot, meeting context (docs/meetings.md)
     studio/                formula engine, functions, number formats, templates, audit, deck, edit
                            operations, persistence, .xlsx/.pptx, the Studio agent, workbook sync,
                            checkpoints, the brand check, reading printouts and data rooms
@@ -1818,7 +1956,9 @@ YouBank/
 |---|---|
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
 | [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
+| [docs/calendar.md](docs/calendar.md) | The calendar: provider setup, sync and push, the iCalendar engine, briefs, scheduling, and the meeting copilot API |
 | [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
+| [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
 | [docs/copy-trading.md](docs/copy-trading.md) | Fund copies: 13F ingestion and CUSIP mapping, the backtest, paper and live copies, SnapTrade, safety rails, and what counsel must review before real trading |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |

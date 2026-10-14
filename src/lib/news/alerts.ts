@@ -74,7 +74,8 @@ export async function deliverAlert(ctx: ReaderContext, n: { key: string; title: 
 
 /** One pass for one person: new stories since their cursor, decided, stored, delivered. */
 export async function alertsFor(userId: string, origin: string, now = new Date()): Promise<number> {
-  const ctx = await readerFor(userId);
+  // Alerts decide on the watchlist, network, follows and desk, never the learned affinities.
+  const ctx = await readerFor(userId, { learned: false });
   if (!ctx?.prefs.alerts.enabled) return 0;
   const key = `news:alert-cursor:${userId}`;
   const cursor = Number(await cacheGet(key)) || now.getTime() - 3 * 3_600_000;

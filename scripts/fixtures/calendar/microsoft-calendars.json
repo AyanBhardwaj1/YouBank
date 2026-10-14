@@ -1,0 +1,7 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('me')/calendars",
+  "value": [
+    { "id": "AAMkAGI2TGuLAAA=", "name": "Calendar", "color": "auto", "hexColor": "#e74856", "isDefaultCalendar": true, "canEdit": true, "owner": { "name": "Me", "address": "me@youbank.test" } },
+    { "id": "AAMkAGI2TGuLBBB=", "name": "United States holidays", "color": "lightGreen", "hexColor": "", "isDefaultCalendar": false, "canEdit": false }
+  ]
+}

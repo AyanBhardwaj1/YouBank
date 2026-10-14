@@ -8,10 +8,11 @@ import { Logo } from "@/components/brand/Logo";
 
 export const metadata = { title: "Sign in" };
 
-export default async function SignIn({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
-  // Only a path on this site: "/app/crm", never "//elsewhere.com" or a full address.
-  const asked = (await searchParams).next ?? "";
-  const next = /^\/(?![/\\])/.test(asked) ? asked : "/app";
+/** Where to land after signing in: ?next=, only for paths inside the app (never another site). */
+const safeNext = (v: unknown) => (typeof v === "string" && /^\/app(\/[A-Za-z0-9/_\-?=&.%]*)?$/.test(v) && !v.startsWith("//") ? v : "/app");
+
+export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const next = safeNext((await searchParams).next);
   if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">

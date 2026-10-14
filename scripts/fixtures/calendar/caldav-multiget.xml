@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <response>
+    <href>/123456789/calendars/home/weekly.ics</href>
+    <propstat>
+      <prop>
+        <getetag>"C=103@U=abc"</getetag>
+        <C:calendar-data><![CDATA[BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:weekly@icloud
+DTSTAMP:20261001T120000Z
+DTSTART;TZID=Europe/London:20261005T090000
+DTEND;TZID=Europe/London:20261005T093000
+RRULE:FREQ=WEEKLY;COUNT=4
+EXDATE;TZID=Europe/London:20261019T090000
+SUMMARY:Monday stand-up
+END:VEVENT
+END:VCALENDAR
+]]></C:calendar-data>
+      </prop>
+      <status>HTTP/1.1 200 OK</status>
+    </propstat>
+  </response>
+</multistatus>

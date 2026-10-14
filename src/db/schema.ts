@@ -417,7 +417,7 @@ export const crmDrafts = pgTable("crm_drafts", {
   contactId: integer("contact_id"),
   campaignLeadId: integer("campaign_lead_id"),
   /** Which step of a campaign, which nurture rule, which signal: whatever produced it. */
-  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[] }>().notNull().default({}),
+  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[]; meetingId?: number }>().notNull().default({}),
   /** Set when autopilot will send it: the time it goes, unless someone stops it first. */
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   /** Why autopilot handed it to a person instead of sending, in plain words. */
@@ -593,11 +593,14 @@ export const crmActions = pgTable("crm_actions", {
   dealId: integer("deal_id"),
   threadId: integer("thread_id"),
   draftId: integer("draft_id"),
+  /** The meeting a suggestion came from (a change a participant stated, a new person to add). */
+  meetingId: integer("meeting_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("crm_actions_user_dedupe_uidx").on(t.userId, t.dedupeKey),
   index("crm_actions_user_status_idx").on(t.userId, t.status),
+  index("crm_actions_meeting_idx").on(t.meetingId),
 ]);
 
 /** Something that happened to a contact's company, found in YouBank's own data (a Form D, for now). */
@@ -986,6 +989,37 @@ export const newsPushSubs = pgTable("news_push_subs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("news_push_subs_endpoint_uidx").on(t.endpoint), index("news_push_subs_user_idx").on(t.userId)]);
+
+/** A developing story someone follows: what they last heard about it, so each update alerts once. */
+export const newsFollows = pgTable("news_follows", {
+  userId: text("user_id").notNull(),
+  clusterId: integer("cluster_id").notNull(),
+  /** The story's source count when last told (or when followed). */
+  seenSources: integer("seen_sources").notNull().default(1),
+  /** The story's last update when last told. */
+  seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  updates: integer("updates").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.clusterId] }), index("news_follows_cluster_idx").on(t.clusterId)]);
+
+export type BriefingChapter = { id: string; title: string; text: string; clusterId?: number; tickers?: string[]; seconds: number };
+export type BriefingAudio = { key: string; bytes: number; seconds: number }[];
+
+/** A personal audio briefing: chapters with their scripts, and storage keys for a neural voice's audio. */
+export const newsBriefings = pgTable("news_briefings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  slot: text("slot").notNull(),
+  kind: text("kind").notNull(), // ai | daily
+  desk: text("desk").notNull().default(""),
+  chapters: jsonb("chapters").$type<BriefingChapter[]>().notNull().default([]),
+  audio: jsonb("audio").$type<BriefingAudio | null>(),
+  voice: text("voice").notNull().default(""),
+  model: text("model").notNull().default(""),
+  costUsd: doublePrecision("cost_usd").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("news_briefings_user_slot_kind_uidx").on(t.userId, t.slot, t.kind)]);
 
 /* ---------------- Edge ---------------- */
 
@@ -1473,6 +1507,194 @@ export const desktopFiles = pgTable("desktop_files", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("desktop_files_path_uidx").on(t.userId, t.deviceId, t.pathKey), index("desktop_files_user_sha_idx").on(t.userId, t.sha256)]);
 
+
+/* ---------------- Calendar ---------------- */
+
+/** Settings for a connected calendar account. Never the password or tokens. */
+export type CalendarAccountSettings = { serverUrl?: string; homeUrl?: string; username?: string; preset?: string; url?: string };
+/** A push channel (Google watch) or subscription (Microsoft Graph). The secret is encrypted. */
+export type CalendarPush = { kind: "google" | "microsoft"; id: string; resourceId: string; expiresAt: string; secret: string };
+export type CalendarAttendee = { email: string; name: string; response: string; optional?: boolean; organizer?: boolean; self?: boolean };
+
+/**
+ * A connected calendar account: Google or Microsoft (OAuth), CalDAV (app password) or an ICS link.
+ * Tokens and the app password are encrypted like mailbox tokens (src/lib/crm/crypto.ts).
+ */
+export const calendarAccounts = pgTable("calendar_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  provider: text("provider").notNull(), // google | microsoft | caldav | ics
+  address: text("address").notNull(),
+  displayName: text("display_name").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  tokenExpiresAt: ts("token_expires_at"),
+  secret: text("secret").notNull().default(""),
+  settings: jsonb("settings").$type<CalendarAccountSettings>().notNull().default({}),
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  status: text("status").notNull().default("connected"), // connected | needs_reauth | error
+  lastError: text("last_error").notNull().default(""),
+  lastSyncAt: ts("last_sync_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_accounts_user_provider_address_uidx").on(t.userId, t.provider, t.address)]);
+
+/** A calendar inside an account: shown or hidden, and where its sync and push notifications stand. */
+export const calendarCalendars = pgTable("calendar_calendars", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => calendarAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  remoteId: text("remote_id").notNull(),
+  name: text("name").notNull().default(""),
+  color: text("color").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  canWrite: boolean("can_write").notNull().default(false),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  visible: boolean("visible").notNull().default(true),
+  syncToken: text("sync_token").notNull().default(""),
+  /** When the current incremental window began; Microsoft's delta windows are restarted daily. */
+  windowStart: ts("window_start"),
+  lastSyncedAt: ts("last_synced_at"),
+  pushId: text("push_id"),
+  push: jsonb("push").$type<CalendarPush | null>(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_calendars_account_remote_uidx").on(t.accountId, t.remoteId),
+  index("calendar_calendars_user_idx").on(t.userId),
+  index("calendar_calendars_push_idx").on(t.pushId),
+]);
+
+/** One occurrence of an event in the sync window, with the Relationships contacts and deals it involves. */
+export const calendarEvents = pgTable("calendar_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  calendarId: integer("calendar_id").notNull().references(() => calendarCalendars.id, { onDelete: "cascade" }),
+  remoteId: text("remote_id").notNull(),
+  groupKey: text("group_key").notNull().default(""),
+  icalUid: text("ical_uid").notNull().default(""),
+  recurrenceId: text("recurrence_id"),
+  seriesId: text("series_id"),
+  title: text("title").notNull().default(""),
+  description: text("description").notNull().default(""),
+  location: text("location").notNull().default(""),
+  startsAt: ts("starts_at").notNull(),
+  endsAt: ts("ends_at").notNull(),
+  allDay: boolean("all_day").notNull().default(false),
+  timezone: text("timezone").notNull().default(""),
+  status: text("status").notNull().default("confirmed"), // confirmed | tentative | cancelled
+  busy: boolean("busy").notNull().default(true),
+  organizer: jsonb("organizer").$type<CalendarAttendee | null>(),
+  attendees: jsonb("attendees").$type<CalendarAttendee[]>().notNull().default([]),
+  videoUrl: text("video_url").notNull().default(""),
+  htmlLink: text("html_link").notNull().default(""),
+  etag: text("etag").notNull().default(""),
+  href: text("href").notNull().default(""),
+  contactIds: jsonb("contact_ids").$type<number[]>().notNull().default([]),
+  dealIds: jsonb("deal_ids").$type<number[]>().notNull().default([]),
+  external: boolean("external").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_events_calendar_remote_uidx").on(t.calendarId, t.remoteId),
+  index("calendar_events_user_start_idx").on(t.userId, t.startsAt),
+  index("calendar_events_group_idx").on(t.calendarId, t.groupKey),
+  index("calendar_events_contacts_idx").using("gin", sql`${t.contactIds} jsonb_path_ops`),
+  index("calendar_events_deals_idx").using("gin", sql`${t.dealIds} jsonb_path_ops`),
+]);
+
+/** Each person's scheduling preferences, and whether their external meetings are briefed each morning. */
+export const calendarPrefs = pgTable("calendar_prefs", {
+  userId: text("user_id").primaryKey(),
+  /** Kept so background work (the morning briefs) can check the plan, which administrators bypass by email. */
+  email: text("email").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  workHours: jsonb("work_hours").$type<{ start?: string; end?: string; days?: number[] }>().notNull().default({}),
+  defaultCalendarId: integer("default_calendar_id"),
+  defaultDuration: integer("default_duration").notNull().default(30),
+  /** A personal meeting room link, offered when creating a meeting. */
+  videoUrl: text("video_url").notNull().default(""),
+  autoBrief: boolean("auto_brief").notNull().default(false),
+  /** The local date of the last morning run, YYYY-MM-DD. */
+  autoBriefLast: text("auto_brief_last").notNull().default(""),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** An AI meeting brief. Made only on a click, or by the morning run the person switched on. */
+export const calendarBriefs = pgTable("calendar_briefs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  eventId: bigint("event_id", { mode: "number" }).notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  trigger: text("trigger").notNull().default("click"), // click | morning
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  provider: text("provider").notNull().default(""),
+  model: text("model").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_briefs_event_uidx").on(t.eventId), index("calendar_briefs_user_idx").on(t.userId, t.createdAt)]);
+/* ---------------- The meeting copilot ---------------- */
+
+/**
+ * A meeting the copilot listened to: captured by the desktop app (microphone and system audio, after a
+ * consent prompt) or by a notetaker bot sent to the meeting link. `participants` is who was there and
+ * which contact each became; `notes` is what was produced after the meeting (summary, decisions, action
+ * items, per-person signals, follow-ups). Audio is never kept here: each chunk is transcribed and
+ * dropped. `purgedAt` marks a transcript removed under the person's retention setting.
+ */
+export const meetings = pgTable("meetings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  deviceId: integer("device_id"),
+  source: text("source").notNull().default("desktop"), // desktop | bot
+  platform: text("platform").notNull().default(""), // zoom | teams | meet | webex | slack | other
+  title: text("title").notNull().default(""),
+  status: text("status").notNull().default("live"), // joining | live | processing | ready | failed | cancelled
+  meetingUrl: text("meeting_url").notNull().default(""),
+  botId: text("bot_id"),
+  bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string; hours?: number; costUsd?: number }>().notNull().default({}),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
+  consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
+  live: jsonb("live").$type<{ on?: boolean; since?: string; minutes?: number; lastAt?: string; brief?: unknown }>().notNull().default({}),
+  notes: jsonb("notes").$type<Record<string, unknown>>(),
+  notesAt: ts("notes_at"),
+  transcriber: text("transcriber").notNull().default(""),
+  durationSec: integer("duration_sec").notNull().default(0),
+  error: text("error").notNull().default(""),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  endedAt: ts("ended_at"),
+  purgedAt: ts("purged_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("meetings_user_started_idx").on(t.userId, t.startedAt), uniqueIndex("meetings_bot_uidx").on(t.botId)]);
+
+export type MeetingParticipantJson = { name: string; email?: string; contactId?: number | null; how?: string; self?: boolean };
+
+/** One piece of a meeting's transcript: the segments of one audio chunk (or a bot's whole transcript), times relative to `startSec`. */
+export const meetingChunks = pgTable("meeting_chunks", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  startSec: doublePrecision("start_sec").notNull().default(0),
+  durationSec: doublePrecision("duration_sec").notNull().default(0),
+  segments: jsonb("segments").$type<{ start: number; end: number; text: string; speaker?: string }[]>().notNull().default([]),
+  engine: text("engine").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_chunks_seq_uidx").on(t.meetingId, t.seq)]);
+
+/** Which contacts and deals a meeting is about, and how each was linked (email, name, new, manual, bot). */
+export const meetingLinks = pgTable("meeting_links", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(), // contact | deal
+  refId: integer("ref_id").notNull(),
+  how: text("how").notNull().default("manual"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_links_uidx").on(t.meetingId, t.kind, t.refId), index("meeting_links_ref_idx").on(t.userId, t.kind, t.refId)]);
+
+/** Each person's copilot settings (see MeetingSettings in lib/meetings/model); normalized on every read. */
+export const meetingSettings = pgTable("meeting_settings", {
+  userId: text("user_id").primaryKey(),
+  settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
 /* ---------------- Copy trading (drizzle/0023_copytrade.sql) ---------------- */
 
 /** Every 13F filer seen in EDGAR's indexes, for search by name or CIK; curated managers marked. */

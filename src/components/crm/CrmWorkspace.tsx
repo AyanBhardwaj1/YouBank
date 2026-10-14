@@ -13,12 +13,14 @@ import { CampaignsPanel } from "./CampaignsPanel";
 import { ContactsPanel } from "./ContactsPanel";
 import { InsightsPanel } from "./InsightsPanel";
 import { MailboxBar, type MailboxInfo } from "./MailboxBar";
+import { MeetingsPanel } from "./MeetingsPanel";
 import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { promptDialog } from "@/components/ui/Dialog";
 import { useSubNav } from "@/lib/subnav";
+import { MeetingLine, ScheduleButton, useMeetingSummaries } from "@/components/calendar/MeetingBadges";
 import { errorMessage } from "@/lib/client/errors";
 
 type Activity = {
@@ -47,6 +49,7 @@ const TABS = [
   { id: "inbox", label: "Inbox", icon: "Mail" },
   { id: "pipeline", label: "Pipeline", icon: "Layers" },
   { id: "contacts", label: "Contacts", icon: "Users" },
+  { id: "meetings", label: "Meetings", icon: "Calendar" },
   { id: "insights", label: "Insights", icon: "Activity" },
   { id: "campaigns", label: "Campaigns", icon: "Target" },
   { id: "nurture", label: "Nurture", icon: "RefreshCw" },
@@ -80,8 +83,8 @@ function threadStatus(t: Thread): { label: string; tone: string } | null {
   return null;
 }
 
-export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab }: {
-  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null;
+export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab, initialMeeting = null }: {
+  needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null; initialMeeting?: number | null;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
@@ -108,6 +111,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
     finally { setBusy(null); }
   };
   const ctx: PanelCtx = { busy, run, say, refresh: () => { void refresh(); }, tick };
+  const meetings = useMeetingSummaries(tick);
 
   useEffect(() => {
     if (needsMigration) return;
@@ -276,6 +280,8 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
                         </p>
                         {c && <p className="mt-0.5 truncate text-[11px] text-muted">{c.name || c.email}{c.title ? `, ${c.title}` : ""}</p>}
                         {d.nextStep && <p className="mt-1.5 text-[11px]"><span className="text-muted">Next:</span> {d.nextStep}</p>}
+                        <MeetingLine summary={meetings?.deals[d.id]} />
+                        <ScheduleButton className={`mt-1 ${btn.link}`} label="Schedule" prefill={{ title: d.name, attendees: c ? [{ email: c.email, name: c.name }] : [] }} onBooked={(m) => { say(m); void refresh(); }} />
                         {d.edge && <a href={d.edge.url} target="_blank" rel="noreferrer" className="mt-1.5 flex items-start gap-1 text-[11px] hover:underline"><Icon name="Radar" className="mt-0.5 h-3 w-3 shrink-0 text-accent" /><span><span className="text-muted">Edge:</span> {d.edge.title}</span></a>}
                         <Select value={d.stage} disabled={!!busy} onChange={(v) => move(d.id, v as Stage)}
                           className="mt-2 w-full ctl border border-line bg-elevated/60 px-1.5 py-1 text-[11px] outline-none focus:border-accent/60">
@@ -324,6 +330,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
       )}
 
       {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} /></div>}
+      {tab === "meetings" && <div className="mt-5"><MeetingsPanel ctx={ctx} initialMeeting={initialMeeting} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "insights" && <div className="mt-5"><InsightsPanel ctx={ctx} /></div>}
       {tab === "nurture" && <div className="mt-5"><NurturePanel ctx={ctx} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "campaigns" && <div className="mt-5"><CampaignsPanel ctx={ctx} onDrafted={() => undefined} /></div>}
