@@ -1,6 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 
-// Schema pushes need a session connection: Supabase's session pooler (port 5432) in DATABASE_URL_UNPOOLED, not the transaction pooler.
+// Schema pushes need a direct (Neon) or session (Supabase, port 5432) connection in DATABASE_URL_UNPOOLED.
 export default defineConfig({
   schema: "./src/db/schema.ts",
   out: "./drizzle",
