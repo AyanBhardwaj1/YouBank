@@ -196,6 +196,7 @@ export async function runAdapterTests(ok: Ok): Promise<void> {
     ok("ics: webcal becomes https", normalizeFeedUrl("webcal://calendar.example.com/team.ics"), "https://calendar.example.com/team.ics");
     const [c] = await ics.listCalendars();
     ok("ics: one read-only calendar named from the feed's zone", [c.canWrite, c.timezone, c.name], [false, "America/New_York", "calendar.example.com"]);
+    ok("ics: the calendar's stored id is not the (secret) link", c.remoteId.includes("calendar.example.com"), false);
     const first = await ics.listEvents({ remoteId: c.remoteId, timezone: c.timezone }, WINDOW, null);
     ok("ics: full read, ETag kept for next time", [first.full, first.nextToken, first.upserts.length > 5], [true, 'etag:"v1"', true]);
     const second = await ics.listEvents({ remoteId: c.remoteId, timezone: c.timezone }, WINDOW, first.nextToken);

@@ -49,7 +49,8 @@ export class IcsCalendar implements CalendarProvider {
     } catch {
       throw new ProviderError("That link did not return a calendar (.ics) file.", "other");
     }
-    return [{ remoteId: normalizeFeedUrl(this.url), name: name || new URL(normalizeFeedUrl(this.url)).hostname, color: "", timezone: tz, canWrite: false, primary: true }];
+    // One calendar per feed. Its id is not the link: the link is a secret and is stored only encrypted.
+    return [{ remoteId: "feed", name: name || new URL(normalizeFeedUrl(this.url)).hostname, color: "", timezone: tz, canWrite: false, primary: true }];
   }
 
   async listEvents(cal: CalendarRef, window: Interval, syncToken: string | null): Promise<SyncPage> {

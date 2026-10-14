@@ -8,6 +8,7 @@
  * the reason, and the UI shows Reconnect; disconnecting deletes the row and, by cascade, every
  * calendar and event that came from it.
  */
+import { createHash } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CalendarAccountSettings } from "@/db/schema";
@@ -121,8 +122,10 @@ export async function connectIcs(user: Pick<CurrentUser, "id" | "email">, input:
   const url = normalizeFeedUrl(input.url);
   const [cal] = await new IcsCalendar(url, publicFetch()).listCalendars();
   const u = new URL(url);
-  // The address shown and used to recognise a re-subscription: host and path, never the query (tokens).
-  const address = `${u.hostname}${u.pathname}`.toLowerCase().slice(0, 300);
+  // The address shown and used to recognise a re-subscription. Google, iCloud and Outlook put the
+  // private token in the path, so the path is only ever stored as a hash; the query is left out so a
+  // link whose query token was rotated still updates the same subscription.
+  const address = `${u.hostname.toLowerCase()} #${createHash("sha256").update(`${u.hostname.toLowerCase()}${u.pathname}`).digest("hex").slice(0, 10)}`;
   await checkAccountLimit(user, "ics", address);
   const values = { displayName: (input.name || cal?.name || u.hostname).slice(0, 120), secret: encryptToken(url), settings: { url: u.hostname }, status: "connected", lastError: "" };
   const [row] = await requireDb().insert(schema.calendarAccounts).values({ userId: user.id, provider: "ics", address, ...values })

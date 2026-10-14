@@ -70,7 +70,8 @@ async function enrich(userId: string, rows: Joined[]): Promise<Meeting[]> {
     attendees: e.attendees.map((a) => ({ ...a, contactId: byEmail.get(normalizeEmail(a.email)) ?? null })),
     contacts: e.contactIds.map((id) => cById.get(id)).filter((x): x is MeetingContact => !!x),
     deals: e.dealIds.map((id) => dById.get(id)).filter((x): x is MeetingDeal => !!x),
-    external: e.external, videoUrl: e.videoUrl, videoProvider: videoProvider(e.videoUrl), htmlLink: e.htmlLink,
+    // htmlLink can come from a feed's URL property, so only web links are handed to the page.
+    external: e.external, videoUrl: e.videoUrl, videoProvider: videoProvider(e.videoUrl), htmlLink: /^https?:\/\//i.test(e.htmlLink) ? e.htmlLink : "",
   }));
 }
 
