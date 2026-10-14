@@ -175,5 +175,4 @@ async function fillSectors(out: Map<string, Security>, max: number, deadline: nu
   }
 }
 
-/** Sector labels for display. */
-export const SECTOR_LABEL: Record<string, string> = { tech: "Technology", healthcare: "Healthcare", energy: "Energy and utilities", financials: "Financials", consumer: "Consumer", industrials: "Industrials and materials", media: "Media and telecom", realestate: "Real estate", other: "Other" };
+export { SECTOR_LABEL } from "./funds";

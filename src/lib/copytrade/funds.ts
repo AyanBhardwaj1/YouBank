@@ -53,3 +53,6 @@ export function padCik(v: string | number): string {
 
 /** Whether a filer's EDGAR name fits the curated entry (the guard against a mistyped CIK). */
 export const nameFits = (f: CuratedFund, edgarName: string) => edgarName.toLowerCase().includes(f.match);
+
+/** Sector labels for display. */
+export const SECTOR_LABEL: Record<string, string> = { tech: "Technology", healthcare: "Healthcare", energy: "Energy and utilities", financials: "Financials", consumer: "Consumer", industrials: "Industrials and materials", media: "Media and telecom", realestate: "Real estate", other: "Other" };
