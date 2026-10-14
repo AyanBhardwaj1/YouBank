@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { runAsPlatform } from "@/lib/ai/context";
 import { guarded } from "@/lib/auth/user";
 import { isAdmin } from "@/lib/auth/admin";
 import { requireEdge } from "@/lib/edge/access";
@@ -30,7 +31,9 @@ export async function POST(req: Request) {
     if (body.on === true || body.on === false || body.on === null) await setState({ on: body.on, by: user.email, switchedAt: new Date().toISOString() });
     if (body.run) {
       const sent = await sendJob("edge/deals.backfill", { by: user.email }).catch(() => ({ sent: false as const, reason: "" }));
-      if (!sent.sent) return NextResponse.json({ ran: "inline", result: await backfillSlice(Date.now() + 260_000), status: await backfillStatus() });
+      // Platform spend: run outside the administrator's context so the day's ceiling (which counts unattributed
+      // edge-deals-* usage) sees it, and it is not charged to their allowance.
+      if (!sent.sent) return NextResponse.json({ ran: "inline", result: await runAsPlatform(() => backfillSlice(Date.now() + 260_000)), status: await backfillStatus() });
       return NextResponse.json({ ran: "queued", status: await backfillStatus() });
     }
     return NextResponse.json(await backfillStatus());

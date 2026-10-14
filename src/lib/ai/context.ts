@@ -11,5 +11,10 @@ export function runAsUser<T>(userId: string, fn: () => T, opts?: { admin?: boole
   return store.run({ userId, admin: !!opts?.admin }, fn);
 }
 
+/** Run `fn` as platform work, attributed to no one even when called from a person's request (an administrator's switch). */
+export function runAsPlatform<T>(fn: () => T): T {
+  return store.exit(fn);
+}
+
 export const aiUser = () => store.getStore()?.userId ?? null;
 export const aiAdmin = () => store.getStore()?.admin ?? false;
