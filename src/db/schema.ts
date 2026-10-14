@@ -1556,6 +1556,23 @@ export const seatAssignments = pgTable("seat_assignments", {
   assignedAt: ts("assigned_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("seat_assignments_user_uidx").on(t.userId), index("seat_assignments_owner_idx").on(t.ownerUserId, t.assignedAt)]);
 
+/**
+ * Every seat given (drizzle/0024_seat_cooldown.sql), kept after the seat is freed, for the 30-day
+ * reassignment cooldown in lib/billing/seats.ts. No foreign key to the team, so deleting a team does not
+ * erase the history. `trimmedAt` marks seats taken back because the paid seat count went down: those do
+ * not cool.
+ */
+export const seatHistory = pgTable("seat_history", {
+  id: serial("id").primaryKey(),
+  ownerUserId: text("owner_user_id").notNull(),
+  userId: text("user_id").notNull(),
+  teamId: integer("team_id"),
+  email: text("email").notNull().default(""),
+  name: text("name").notNull().default(""),
+  assignedAt: ts("assigned_at").notNull().defaultNow(),
+  trimmedAt: ts("trimmed_at"),
+}, (t) => [index("seat_history_owner_idx").on(t.ownerUserId, t.assignedAt)]);
+
 /* ---------------- Crypto: watched addresses, cost basis, notarizations ---------------- */
 
 /**

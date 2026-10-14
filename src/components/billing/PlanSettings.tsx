@@ -22,6 +22,7 @@ import { CREDIT_PACKS, packById } from "@/lib/billing/packs";
 import type { SeatBoard } from "@/lib/billing/seats";
 import { featuresByArea } from "@/lib/billing/features";
 import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
+import { apiError, errorMessage } from "@/lib/client/errors";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
 type Status = ClientEntitlements & {
@@ -48,6 +49,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 const dateOf = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" }) : null);
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", timeZone: "UTC" });
+/** "November 13, 2026" in UTC, as the seats API words the cooldown's date. */
+const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 const cash = (n: number, currency = "usd") => n.toLocaleString("en-US", { style: "currency", currency: currency.toUpperCase() });
 const money = (n: number) => (n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`);
 
@@ -81,24 +84,30 @@ function Meter({ label, used, cap }: { label: string; used: number; cap: number 
 
 async function send<T>(method: "POST" | "DELETE", url: string, body: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const j = (await r.json().catch(() => ({}))) as T & { error?: string };
-  if (!r.ok) throw new Error(j.error ?? "Something went wrong on our side. Try again in a moment.");
-  return j;
+  if (!r.ok) throw await apiError(r);
+  return (await r.json()) as T;
 }
 
 /**
  * Deal Team and Enterprise seats: the owner gives them to people on teams they own or administer, and
- * takes them back. The count itself changes under Manage billing (the Stripe portal).
+ * takes them back. The count itself changes under Manage billing (the Stripe portal). A freed seat can go
+ * back to the person who had it at once, and to someone else 30 days after it was last given (the server
+ * enforces it; this shows the date).
  */
 function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard) => void }) {
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const used = board.assigned.filter((a) => a.active).length;
-  const free = Math.max(0, board.assignable - board.assigned.length);
+  const cooling = board.cooling ?? [];
+  const coolingIds = new Set(cooling.map((c) => c.userId));
+  const free = board.free ?? Math.max(0, board.assignable - board.assigned.length);
+  const roomNow = board.assignable - board.assigned.length > 0;
+  const canPick = (userId: string) => free > 0 || (roomNow && coolingIds.has(userId));
+  const pickable = board.candidates.some((c) => canPick(c.userId));
   const act = async (fn: () => Promise<{ board: SeatBoard | null }>) => {
     setBusy(true); setError(null);
-    try { const r = await fn(); if (r.board) onChange(r.board); setPick(""); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { const r = await fn(); if (r.board) onChange(r.board); setPick(""); } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const assign = () => {
     const [teamId, userId] = pick.split(":");
@@ -110,7 +119,7 @@ function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard)
         <h3 className="text-[13.5px] font-semibold">Seats</h3>
         <span className="text-[11.5px] text-muted"><span className="num font-medium text-fg">{used + 1}</span> of <span className="num">{board.seats}</span> {PLANS[board.plan].name} seats in use, yours included</span>
       </div>
-      <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Give a seat to someone on a team you own or administer and they get {PLANS[board.plan].name}, with their own AI allowance. Invite people on the <a href="/app/team" className="underline hover:text-fg">Team page</a> first. To add or remove seats, use Manage billing; if you lower the count, the most recently given seats are taken back first.</p>
+      <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Give a seat to someone on a team you own or administer and they get {PLANS[board.plan].name}, with their own AI allowance. Invite people on the <a href="/app/team" className="underline hover:text-fg">Team page</a> first. A seat you free can go back to the same person at any time, and to someone else 30 days after it was last given. To add or remove seats, use Manage billing; if you lower the count, the most recently given seats are taken back first.</p>
       {error && <p role="alert" className="mt-2 text-[12px] text-neg">{error}</p>}
       {board.assigned.length > 0 && (
         <ul className="mt-3 divide-y divide-line rounded-lg border border-line text-[12px]">
@@ -123,17 +132,29 @@ function Seats({ board, onChange }: { board: SeatBoard; onChange: (b: SeatBoard)
           ))}
         </ul>
       )}
+      {cooling.length > 0 && (
+        <div className="mt-3 rounded-lg border border-line px-3 py-2 text-[12px]">
+          <div className="text-[11.5px] font-medium">Freed in the last 30 days</div>
+          <ul className="mt-1 space-y-0.5">
+            {cooling.map((c) => (
+              <li key={c.userId} className="text-muted">
+                <span className="text-fg">{c.name || c.email || "A former seat holder"}</span>: can have it back now; this seat can be given to someone else on <span className="num text-fg">{longDate(c.until)}</span>.
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {board.candidates.length === 0 ? (
           <p className="text-[11.5px] text-muted">Nobody on your teams is waiting for a seat. Invite people on the Team page.</p>
         ) : (
           <>
-            <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || free === 0} aria-label="Person to give a seat to" className="ctl min-w-[220px] border border-line bg-transparent px-2 py-1 text-[12px]">
-              <option value="">{free === 0 ? "All seats are in use" : "Choose someone on your teams…"}</option>
-              {board.candidates.map((c) => <option key={`${c.teamId}:${c.userId}`} value={`${c.teamId}:${c.userId}`}>{c.name || c.email} ({c.email}{c.teamName ? `, ${c.teamName}` : ""})</option>)}
+            <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy || !pickable} aria-label="Person to give a seat to" className="ctl min-w-[220px] border border-line bg-transparent px-2 py-1 text-[12px]">
+              <option value="">{!roomNow ? "All seats are in use" : !pickable ? `No seat free for someone new until ${board.nextFree ? longDate(board.nextFree) : "a freed seat's 30 days pass"}` : "Choose someone on your teams…"}</option>
+              {board.candidates.map((c) => <option key={`${c.teamId}:${c.userId}`} value={`${c.teamId}:${c.userId}`} disabled={!canPick(c.userId)}>{c.name || c.email} ({c.email}{c.teamName ? `, ${c.teamName}` : ""}){coolingIds.has(c.userId) ? ", had this seat" : ""}</option>)}
             </select>
-            <button type="button" disabled={busy || !pick || free === 0} onClick={assign} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving…" : "Give a seat"}</button>
-            <span className="text-[11px] text-faint">{free} free</span>
+            <button type="button" disabled={busy || !pick || !pickable} onClick={assign} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:cursor-not-allowed disabled:opacity-50">{busy ? "Saving…" : "Give a seat"}</button>
+            <span className="text-[11px] text-faint">{free} free{cooling.length ? `, ${cooling.length} cooling` : ""}</span>
           </>
         )}
       </div>

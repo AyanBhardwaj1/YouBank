@@ -13,7 +13,8 @@ import { checkEnv, checkSiteUrl, checkStripe } from "@/lib/env";
 import Stripe from "stripe";
 import { blockedAt, dailyCapWith, monthCapMessage, userDailyUsd, userMonthlyUsd } from "@/lib/ai/limits";
 import { effectiveEnd } from "@/lib/billing/credits";
-import { assignableSeats, assignError, seatPlan, seatsToTrim } from "@/lib/billing/seats";
+import { assignableSeats, assignError, cooldownMessage, cooldownUntil, coolingSeats, freeSeats, seatDate, seatPlan, seatsToTrim } from "@/lib/billing/seats";
+import { looksInternal } from "@/lib/error-text";
 import { amountCents, envLines, packPrices, planPrices, portalConfig, webhookEvents, webhookUrl } from "@/lib/billing/setup";
 import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 import { allowancePeriod, CREDIT_DAILY_USD, CREDIT_PACKS, creditsAvailable, isPackId, PACK_MARGIN_TARGET, packFees, packMargin, remainingByGrant, settledUse, splitSpend } from "@/lib/billing/packs";
@@ -263,6 +264,48 @@ async function main() {
     check("raising it takes nothing back", seatsToTrim(rows, 10, "team", true).length === 0);
     check("moving to a plan without seats frees them all", seatsToTrim(rows, 1, "pro", true).length === 4);
     check("a cancelled subscription keeps its assignments for a resubscribe (they grant nothing meanwhile)", seatsToTrim(rows, 1, "team", false).length === 0);
+  }
+
+  console.log("seat reassignment cooldown");
+  {
+    const now = new Date(Date.UTC(2026, 9, 14, 12));
+    const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
+    // Four seats (three to give). A held one for 10 days and was freed; B and C hold the other two.
+    const history = [{ userId: "a", assignedAt: daysAgo(10), name: "Ann" }, { userId: "b", assignedAt: daysAgo(40) }, { userId: "c", assignedAt: daysAgo(5) }];
+    const base = { ownerId: "o", plan: "team", status: "active", seats: 4, ownerRole: "owner" as const, targetRole: "member" as const, targetSeatOwner: null, now, history };
+    const rotate = assignError({ ...base, targetId: "d", assigned: 2, current: ["b", "c"] });
+    check("a freed seat cannot go to someone new within 30 days of when it was last given", /This seat can be given to someone else on November 3, 2026\./.test(rotate ?? ""), rotate);
+    check("the refusal says why and what can be done instead", /fresh AI allowance/.test(rotate ?? "") && /give it back to the person who last held it/.test(rotate ?? "") && /add a seat under Manage billing/.test(rotate ?? ""));
+    check("the person whose seat it was can have it back at once", assignError({ ...base, targetId: "a", assigned: 2, current: ["b", "c"] }) === null);
+    check("after 30 days it can go to anyone", assignError({ ...base, targetId: "d", assigned: 2, current: ["b", "c"], now: new Date(now.getTime() + 21 * 86_400_000) }) === null);
+    check("administrators are exempt", assignError({ ...base, targetId: "d", assigned: 2, current: ["b", "c"], exempt: true }) === null);
+    check("a seat that was never used is free for anyone", assignError({ ...base, targetId: "d", assigned: 1, current: ["b"], history: [{ userId: "b", assignedAt: daysAgo(3) }] }) === null);
+    check("an extra paid seat can go to someone new while another cools", assignError({ ...base, seats: 5, targetId: "d", assigned: 2, current: ["b", "c"] }) === null);
+    check("a seat held more than 30 days ago and freed does not cool", coolingSeats(history, ["c"], now).map((c) => c.userId).join() === "a");
+    check("the window runs from when the seat was last given (a re-assignment restarts it)", coolingSeats([{ userId: "a", assignedAt: daysAgo(40) }, { userId: "a", assignedAt: daysAgo(2) }], [], now)[0]?.until.toISOString().startsWith("2026-11-11"));
+    check("people who still hold a seat are not cooling", coolingSeats(history, ["a", "b", "c"], now).length === 0);
+    check("free seats count the cooling ones as taken", freeSeats(3, 2, 1) === 0 && freeSeats(3, 1, 1) === 1 && freeSeats(3, 1, 5) === 0);
+    // The seat count went down while two freed seats cooled: a new person waits until enough windows end.
+    const many = [{ userId: "x", assignedAt: daysAgo(25) }, { userId: "y", assignedAt: daysAgo(20) }, { userId: "z", assignedAt: daysAgo(1) }];
+    const until = cooldownUntil({ assignable: 2, current: ["z"], history: many, targetId: "new", now });
+    check("with more seats cooling than room, the date is when enough windows have ended", until?.toISOString().startsWith("2026-10-24") === true, until);
+    check("no date when a seat is free or all seats are held (that has its own message)", cooldownUntil({ assignable: 3, current: ["z"], history: many.slice(1), targetId: "new", now }) === null && cooldownUntil({ assignable: 1, current: ["z"], history: many, targetId: "new", now }) === null);
+    check("the full seat count still comes first", /All 4 seats are in use/.test(assignError({ ...base, targetId: "d", assigned: 3, current: ["a", "b", "c"] }) ?? ""));
+    check("without history (before the migration) the old rules apply", assignError({ ...base, history: undefined, targetId: "d", assigned: 2, current: ["b", "c"] }) === null);
+    check("the message reaches the person as written (not screened as internal)", !looksInternal(cooldownMessage(new Date(Date.UTC(2026, 10, 3)))));
+    check("the date is the same everywhere (UTC)", seatDate(new Date(Date.UTC(2026, 10, 3, 23, 30))) === "November 3, 2026");
+    check("rotating one seat through new people every day gives one new person a month, not thirty", (() => {
+      // Three seats (two to give): "keep" holds one; the other is freed each day and offered to someone new.
+      const h: { userId: string; assignedAt: Date }[] = [{ userId: "p0", assignedAt: daysAgo(30) }, { userId: "keep", assignedAt: daysAgo(30) }];
+      const got: string[] = [];
+      for (let d = 1; d <= 30; d++) {
+        const t = new Date(now.getTime() - (30 - d) * 86_400_000), next = `p${d}`;
+        if (!assignError({ ...base, seats: 3, now: t, history: h, targetId: next, assigned: 1, current: ["keep"] })) { h.push({ userId: next, assignedAt: t }); got.push(next); }
+      }
+      return got.join() === "p30";
+    })());
+    const sql0024 = readFileSync(new URL("../drizzle/0024_seat_cooldown.sql", import.meta.url), "utf8");
+    check("the migration only adds (IF NOT EXISTS) and keeps history without a foreign key to the team", /CREATE TABLE IF NOT EXISTS "seat_history"/.test(sql0024) && /CREATE INDEX IF NOT EXISTS "seat_history_owner_idx"/.test(sql0024) && !/REFERENCES/.test(sql0024) && /WHERE NOT EXISTS/.test(sql0024));
   }
 
   console.log("checkout requests");

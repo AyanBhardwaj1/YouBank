@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   return guarded(async (user) => {
-    const [ent, row, ai, seats] = await Promise.all([entitlements(user), subscriptionOf(user.id).catch(() => null), aiAllowance(user.id, isAdmin(user)), seatBoard(user.id).catch(() => null)]);
+    const [ent, row, ai, seats] = await Promise.all([entitlements(user), subscriptionOf(user.id).catch(() => null), aiAllowance(user.id, isAdmin(user)), seatBoard(user.id, { exempt: isAdmin(user) }).catch(() => null)]);
     const on = billingEnabled();
     return NextResponse.json({
       ...ent,
