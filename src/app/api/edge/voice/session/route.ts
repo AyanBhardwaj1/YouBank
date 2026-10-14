@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import { guardAi } from "@/lib/ai/limits";
 import { guarded } from "@/lib/auth/user";
 import { requireFeature } from "@/lib/billing/entitlements";
 import { requireEdge } from "@/lib/edge/access";
 import { requireReady } from "@/lib/edge/premium";
-import { MAX_SECONDS, MIN_SECONDS, mintKey, recordMinutes, SESSIONS_PER_DAY } from "@/lib/edge/voice/realtime";
+import { MAX_SECONDS, MIN_SECONDS, mintKey, recordMinutes, sessionCost, SESSIONS_PER_DAY } from "@/lib/edge/voice/realtime";
 import { rateLimit } from "@/lib/locks";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,9 @@ export async function POST() {
     await requireEdge(user.id);
     await requireFeature(user, "edge.voice-realtime");
     requireReady("edge.voice-realtime");
+    // No model call runs on the server, so the AI caps are checked here: a person past their allowance (or
+    // with AI paused) gets no key, as a structured() call would refuse them.
+    await guardAi(user.id, sessionCost(MIN_SECONDS));
     await rateLimit(`edge-voice-live:${user.id}`, SESSIONS_PER_DAY, 86_400_000, `${SESSIONS_PER_DAY} live sessions today. Hold-to-talk still works.`);
     const k = await mintKey();
     recordMinutes(MIN_SECONDS, k.model);
