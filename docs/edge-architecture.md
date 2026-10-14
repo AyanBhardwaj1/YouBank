@@ -28,7 +28,7 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Canvas | `canvas/` (catalog, engine, values, executors per module, outputs, story, studio) |
 | Across the app | `overview.ts` (Terminal EDGE), `links.ts`, `push.ts` (Studio and Office), `intros.ts` (CRM), `story.ts` |
 | Platform | `infra/` (R2, jobs, ML client, usage meters), `functions.ts`, `runtime.ts`, `models.ts` (the small model), `premium.ts` (the upgrades registry) and `premium/` (rerank, Planet, Carbon Mapper adapters) |
-| Edge next ([docs/edge-next.md](edge-next.md)) | `entities/` (the crosswalk), `series/` (signal store, change library), `forecasts/` (the ledger), `calib/`, `claims/` (Calibrated Claims), `deals/` (the Precedent Engine), `pulse/` (the Alt-Data Pulse), `odds/` (the Deal Radar), `next.ts` (their daily parts) |
+| Edge next ([docs/edge-next.md](edge-next.md)) | `entities/` (the crosswalk), `series/` (signal store, change library), `forecasts/` (the ledger), `calib/`, `claims/` (Calibrated Claims), `deals/` (the Precedent Engine), `pulse/` (the Alt-Data Pulse), `odds/` (the Deal Radar), `calls/` (Call Desk: Q&A pairing, the calibrated evasion classifier and `model.json`, commitments and the promises ledger), `scen/lbo.ts`, `scen/rates.ts`, `scen/stress.ts`, `scen/reverse.ts`, `scen/lab.ts` (the LBO Stress Lab), `agent/` (the Thesis Agent: plan, tools, ladder, monitors, memo, the runtime and its store), `voice/` (the Voice Analyst: router, answers, the realtime session), `next.ts` (their daily parts) |
 
 ## Tables
 
@@ -78,6 +78,9 @@ first on a Neon branch, then on production with the owner's approval.
 | Deal backfill | daily `40 5 * * *`, `edge/deals.backfill` | Discovers merger documents (free) and reads unread deals only while an administrator has reading on, within `EDGE_BACKFILL_DAILY_USD` a day. |
 | Pulse | weekly `10 5 * * 0`, `edge/pulse.weekly`; the daily pass | Startups seeded, placebo rates measured, the universe refreshed 25 companies a step; daily lists and stale watched companies in the daily pass. |
 | Deal Radar | monthly `20 3 2 * *` (`edge/odds.refresh`), weekly `30 6 * * 1` (`edge/odds.score`); the daily pass | Scan, events, panel, training, scoring; weekly re-scoring with fresh filings; watched companies daily. |
+| Call Desk | the daily pass | Reads new transcripts of watched companies with the free classifier, posts `call_evasion` and `commitment_due` cards; the forecast resolver settles guidance from XBRL (`guidance_result`). Eva-4B (`calls.evasion` on a T4) runs only on a person's explicit read with the upgrade on. |
+| LBO refine | `edge/lbo.refine` | 20,000 paths on the ML service (`lbo.refine`, CPU), else in TypeScript after the response. Only on a person's click. |
+| Thesis ticks | hourly `15 * * * *`, `edge/agent.tick`; the daily pass without Inngest | Each due thesis in small slices under a deadline, one step per phase (idempotent by tick key), well under the 30-second statement timeout and the pool. Premium theses re-check the owner's plan before each tick. |
 
 Long ML calls are asynchronous:
 1. The job starts the call and waits for `edge/ml.done` with the call id (`step.waitForEvent`).
@@ -109,6 +112,10 @@ At a limit, runs queue or fall back:
   (answer context, default 32,000 characters). Paid or keyed upgrades: `VOYAGE_API_KEY`,
   `COHERE_API_KEY`, `EDGE_ANSWER_MODEL`, `PLANET_API_KEY`, `FIRMS_MAP_KEY`, `CARBON_MAPPER_LICENSED`;
   the full list with prices is in `src/lib/edge/premium.ts` and `docs/edge-roadmap.md`.
+  Edge next's second half: `EDGE_CALLS_EVA=1` (Eva-4B, with `EDGE_EVA_REPO` and `EDGE_EVA_REVISION` on the
+  Modal side), `EDGE_REDTEAM_MODEL` (the thesis red team, default claude-sonnet-5-5 when both providers have
+  keys), `AI_DEEP_MODEL` (the weekly deep synthesis), `EDGE_VOICE_REALTIME=1` and `EDGE_REALTIME_MODEL`
+  (live voice, default gpt-realtime-2.1).
 
 - **R2:** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`.
 - **Inngest:** `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`; `INNGEST_DEV` for local work.

@@ -1262,9 +1262,9 @@ from the latest `desktop-v*` GitHub Release and says in plain words what the app
   agent's settings). The site cannot reach files, programs or the keychain through it.
 ### Edge: precedents, alternative data and sale odds
 
-Edge's next round ([docs/edge-next.md](docs/edge-next.md)) adds three features on shared foundations (an entity
+Edge's next round ([docs/edge-next.md](docs/edge-next.md)) adds seven features on shared foundations (an entity
 crosswalk, a weekly signal store with change points that state their false-alarm rate, and a forecast ledger
-whose probabilities are scored when their windows close, shown under **Track record**). All three run on free
+whose probabilities are scored when their windows close, shown under **Track record**). All run on free
 public data; the paid layers follow [docs/premium.md](docs/premium.md).
 
 - **Deals (the Precedent Engine).** A precedent-transactions database built from EDGAR's own merger documents:
@@ -1297,6 +1297,35 @@ public data; the paid layers follow [docs/premium.md](docs/premium.md).
   every US-listed operating company). Forecasts for watched companies and the top 200 go into the ledger and
   are scored automatically. `ODDS` in the Terminal and the `odds.score` canvas block. It is a statistical
   estimate from public data, not a rumour or advice, and says so wherever it appears.
+- **Call Desk.** Earnings-call Q&A split into question and answer pairs (from filed transcripts or speaker-labelled
+  recordings), each answer scored as direct, partial or evasive by a 12-feature classifier calibrated by
+  temperature and per-class isotonic regression, with the reason in the answer's own words. Answers are
+  "evasive", never "lies". A company's evasion rate is a Beta-binomial posterior, and "rose" is said only when
+  the probability it rose is at least 0.9. Every quantified promise (revenue, EPS, EBITDA, capex; ranges, points
+  and growth) goes into the forecast ledger and is settled from the company's XBRL when the period's 10-Q or
+  10-K arrives; raised, lowered and withdrawn guidance are tracked, with a hit rate and its interval. The
+  Promises tab, `CALL` in the Terminal and the `calls.read` canvas block. Peer comparisons are premium; the
+  Eva-4B ensemble is a further premium path that stays off (`EDGE_CALLS_EVA=1`) until its training data's
+  licence is confirmed.
+- **LBO Stress Lab** (Scenarios, LBO tab). A buyout run over 1,000 synthetic monthly paths: operating drivers by
+  GJR-GARCH filtered historical simulation, the short rate from a two-regime model fitted to Treasury and SOFR
+  history, credit spreads that widen with leverage, and exit multiples from the Precedent Engine. It shows the
+  IRR and MOIC fans, covenant-breach probability by year, the highest entry price that still clears a target IRR,
+  what drives the losses, and the gentlest scenario that breaks the deal (Entropy Pooling, with how far it sits
+  from the base case). Studio's agent can run it on an LBO sheet. Refine (20,000 paths, seven years) is premium.
+- **Theses (the Thesis Agent).** State a thesis; the agent proposes a claim tree with priors, the evidence it
+  will look for and kill criteria, and runs once you approve. Each day it reads Edge's tools (precedents, Deal
+  Radar, Pulse, the signal store and the crosswalk), keeps only evidence the verifier finds in its source, and
+  moves each claim by a likelihood-ratio ladder; a model from a second provider argues the other side when a
+  claim moves 10 points, and kill criteria are watched as monitors. The memo says what changed. Probabilities
+  are labelled agent estimates; claims are logged to the forecast ledger and settled by you. Every step, its
+  cost and the budget are on the log. One free thesis per person (14 days); more, longer, twice-daily, weekly
+  deep synthesis and team theses are premium.
+- **Voice Analyst.** Hold the microphone button on any Edge view (or Alt+Shift+V) and ask: "odds Targa is sold",
+  "is NVDA hiring", "catch me up", "note on Targa: …". Speech is recognised and spoken by the browser itself, so
+  no audio leaves the device; answers are under 70 words with their sources on screen, and Edge never sends
+  anything by voice. "Commute brief" reads the feed, theses and watched companies with lock-screen controls.
+  A live spoken conversation over WebRTC is premium (`EDGE_VOICE_REALTIME=1`).
 
 ### Premium features
 
@@ -1325,6 +1354,13 @@ a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this
 | Second-provider claim check | Pro | Edge · Ask, "Cross-check" | The other provider's model judges each claim against its passages |
 | Daily Pulse | Pro | Edge · Pulse, "Refresh daily" | Up to 50 companies refreshed every day instead of every week |
 | Deal Radar screener | Pro | Edge · Deal Radar, Screener | Every scored company filtered by odds and sector, with CSV export |
+| Peer call comparison | Pro | Edge · Call Desk, Compare peers | Up to six companies' latest calls and promises side by side, with a written comparison |
+| Evasion ensemble (Eva-4B) | Pro | Edge · Call Desk, a call's "Add Eva-4B" | A GPU classifier averaged with the free one; off until its licence is confirmed (`EDGE_CALLS_EVA=1`) |
+| LBO refine | Pro | Edge · Scenarios, LBO, "Refine: 20,000 paths" | 20,000 paths over up to seven years |
+| More theses | Pro | Edge · Theses | Five active theses, 90-day horizons, checks twice a day |
+| Weekly deep synthesis | Pro | Edge · Theses, "Weekly deep pass" | A weekly synthesis on the flagship model at maximum reasoning |
+| Team theses | Deal Team | Edge · Theses | Shared with your team, who follow and add evidence |
+| Live voice analyst | Pro | Edge · voice sheet, "Live conversation" | A real-time spoken conversation, up to ten minutes, three a day |
 | Deep research | Pro | Terminal AI | See [AI assistant](#ai-assistant) |
 | Deep model builds | Pro | Studio, "Deep" | See [Watching the agent work](#watching-the-agent-work) |
 | More mailboxes, Autopilot, Campaigns | Deal Team | Relationships | See [Mailboxes](#mailboxes), [Campaigns](#campaigns), [Autopilot](#autopilot) |
