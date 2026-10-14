@@ -31,6 +31,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Company and filing data](#company-and-filing-data)
    - [Private markets](#private-markets)
    - [Crypto](#crypto)
+   - [Fund copies (13F)](#fund-copies-13f)
    - [Newsroom](#newsroom)
    - [AI assistant](#ai-assistant)
    - [Studio: live models and decks](#studio-live-models-and-decks)
@@ -307,6 +308,45 @@ checks the plan first):
 | Deep wallet analytics | Pro | Every token a wallet holds and its recent transfers and counterparties, from Alchemy (EVM) and Helius (Solana) | about $0.01 |
 | Pro crypto data | Pro | CoinGecko Pro and DefiLlama Pro on TOKEN, RAISE and UNLK | about $0.001 |
 | Dune queries | Deal Team | The latest results of any saved Dune query, sortable and exportable as CSV | about $0.05 |
+
+### Fund copies (13F)
+
+`/app/copy` follows hedge funds through their 13F filings and, with Pro, copies them in your own
+brokerage account. **YouBank builds the orders; you approve every batch. Nothing trades without your
+click, nothing trades from a schedule, and YouBank never holds your money.** The full design, data
+sources, rules and the compliance list are in [docs/copy-trading.md](docs/copy-trading.md).
+
+**Timing, said plainly in the product.** A 13F arrives once a quarter, up to 45 days after the quarter
+ends. "Real time" means: the moment a new 13F or 13F/A is filed, we turn it into orders for you to
+review. Every backtest shows the filing lag.
+
+**Free:**
+- Funds: a curated list (Berkshire Hathaway, Pershing Square, Appaloosa, Baupost, Greenlight, Third
+  Point, Scion, Lone Pine, Tiger Global, Duquesne Family Office and others) and a search of every 13F
+  filer by name or CIK, filled from EDGAR's indexes.
+- Fund pages: holdings and weights (a treemap), quarter-over-quarter changes (new, added, trimmed,
+  exited, with stock splits between filings adjusted), concentration, turnover, sectors, top ideas,
+  every filing with its lag, amendments (restatements and new holdings), confidential treatment, and
+  options listed but never copied.
+- The clone backtest: buy each filing's top N at the first close after its filing date and hold to the
+  next, against SPY and against an impossible "quarter end, no lag" line. CAGR, volatility, maximum
+  drawdown, Sharpe and beta, with the assumptions and the hypothetical-performance disclosure beside it.
+- Paper copies (up to 10) with their record against SPY, rebalanced when the fund files.
+- Alerts in the bell (and push) when a followed fund files.
+
+**Pro and up** (registered in `src/lib/billing/features/copytrade.ts`; the server checks the plan):
+
+| Feature | Plan | What it does | Cost to us |
+|---|---|---|---|
+| Copy trading with your broker | Pro | Connect about 20 brokers through SnapTrade; review and approve each batch of orders | SnapTrade's charge per connected user, about $2 a month |
+| Fund blends | Deal Team | One copy of several funds, weighted as you choose | none |
+| More live copies | Deal Team | Up to 10 live copies (Pro runs 2) | none |
+
+**Safety rails.** Real orders need `COPYTRADE_TRADING_ENABLED=1` (off by default; paper copies work
+either way). Limit orders by default with a band, per-order and per-day limits, market orders refused
+while the market is closed, a typed confirmation for large batches, positions you
+hold outside a copy never sold unless you opt in, consents stored at first use, and an append-only
+audit log of every consent, proposal, approval and order payload (downloadable as CSV).
 
 ### Newsroom
 
@@ -1378,6 +1418,7 @@ All tables are in `src/db/schema.ts`.
 | Desktop app | `desktop_pairings` (as for Office), `desktop_devices` (connected computers: the hashed token, system, app version, the scheduled-task switches, last use, revocation), `desktop_files` (each indexed local file: a hash of its path, its name, content hash and Edge document) |
 | Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | Calendar | `calendar_accounts` (connected accounts; OAuth tokens and app passwords encrypted), `calendar_calendars` (shown or hidden, sync token, push channel), `calendar_events` (occurrences in the 30-days-back, 90-ahead window, with linked contact and deal ids), `calendar_prefs` (zone, working hours, default calendar, meeting link, the auto-brief switch), `calendar_briefs` (AI meeting briefs) |
+| Fund copies | `copy_filers` (every 13F filer seen, for search), `copy_filings` (each 13F-HR and 13F-HR/A as read, holdings as JSON), `copy_securities` (CUSIP to ticker and sector, with the source), `copy_cusip_overrides` (the owner's corrections), `copy_follows`, `copy_portfolios` (paper and live copies), `copy_brokers` (the SnapTrade user, secret encrypted), `copy_consents`, `copy_batches` and `copy_orders` (proposals and what was sent), `copy_audit` (append-only by rule) |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
 **Migrations.**
@@ -1398,6 +1439,7 @@ All tables are in `src/db/schema.ts`.
   - `0017_desktop`
   - `0018_calendar`
   - `0019_meetings`
+  - `0023_copytrade`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1507,6 +1549,10 @@ bash scripts/preflight.sh                                         # everything t
 | `NIGHTFIRE_USER`, `NIGHTFIRE_PASSWORD` | for Nightfire | An EOG account under its data licence; `NIGHTFIRE_CLIENT_SECRET`, `NIGHTFIRE_URL_TEMPLATE` and `NIGHTFIRE_TOKEN_URL` only if EOG changes its download client |
 | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_APPLICATION_CREDENTIALS_JSON` | for TimesFM | A service account key with BigQuery Job User; `TIMESFM_MODEL` (default `TimesFM 2.5`), `BIGQUERY_LOCATION` (default `US`) |
 | `EDGE_ML_GPU=1` | for GPU retraining | After deploying the ML service's `graph.train.gpu` task |
+| `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY` | for live copies | SnapTrade keys; without them the brokerage panel reads "Not set up yet". The SnapTrade user secret is encrypted with `EMAIL_TOKEN_SECRET` |
+| `COPYTRADE_TRADING_ENABLED` | for real orders | `1` lets approved batches go to brokers; anything else keeps real trading off (paper copies work regardless) |
+| `COPYTRADE_MAX_ORDER_USD`, `COPYTRADE_MAX_DAY_USD` | no | Server-wide ceilings per order and per person per day; defaults `25000` and `50000` |
+| `OPENFIGI_API_KEY` | no | Raises OpenFIGI's rate limit for CUSIP-to-ticker mapping (it works without one) |
 
 ---
 
@@ -1604,7 +1650,17 @@ Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet
 8. **The desktop app.** Apply `drizzle/0017_desktop.sql`, then push a tag `desktop-v<version>`: the
    `Desktop` workflow builds the installers into a draft GitHub Release; publish it and `/download` offers
    it. Signing and update keys are optional secrets, listed in `desktop/README.md`.
-9. **Verify.**
+9. **Fund copies.** Apply `drizzle/0023_copytrade.sql`. `vercel.json` runs `/api/cron/copytrade` daily;
+   for the 15-minute pass around the 13F deadlines, have a scheduler call it with the bearer secret, for
+   example the included Neon Functions relay:
+   ```bash
+   neon functions deploy copytrade --src neon/copytrade.ts \
+     --env YOUBANK_URL=https://<your-domain> --env AUTOPILOT_SECRET=<secret>
+   neon triggers create --function-slug copytrade --name copytrade-heartbeat --cron '*/15 * * * *'
+   ```
+   Live copies need SnapTrade keys and, for real orders, `COPYTRADE_TRADING_ENABLED=1` after counsel's
+   review (docs/copy-trading.md lists what to review).
+10. **Verify.**
    - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
      the app serves but something is missing (the tables, a production setting, an optional service half
      set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
@@ -1630,6 +1686,7 @@ Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet
 | Billing (65 tests) | `pnpm exec tsx scripts/test-billing.ts` (`--table` prints the cost model) | Every paid plan's margin at typical use against the target, the worst case at the full AI allowance, Free and Campus cost ceilings; AI caps by plan and their overrides; the monthly-allowance message; checkout requests; the row a Stripe subscription writes and stale cancellations; webhook signatures, tampering and replay |
 | Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
 | 3D maps (71 tests) | `pnpm exec tsx scripts/test-maps.ts` | The sun's position and light; procedural tank, stack, flame and tube meshes and the glTF writer; lidar octree selection under a budget and the point cloud wire format; terrain tiles; OpenStreetMap parsing; the digital twin's merging and flame placement; change, land-use and footprint cells; the layer registry; the maps plan features |
+| Copy trading (121 tests) | `pnpm exec tsx scripts/test-copytrade.ts` | 13F primary documents and information tables (units, amendments, confidential treatment, options, notices); CUSIP check digits, SEC's 13(f) list, share classes and OpenFIGI answers; splits and quarter-over-quarter changes; clone weights and blends; the lag-aware backtest's arithmetic; the rebalance diff (fractional and whole shares, cash limits, protected outside positions, the opt-in); one-tap approval (two simultaneous taps place each order once, unknown outcomes never retried, the daily limit, typed confirmations, market orders while closed); US market hours; SnapTrade request signatures against ones the official SDK computed; paper copies and polling |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Premium (56 tests) | `pnpm exec tsx scripts/test-premium.ts` | The feature registry (unique ids, plans, a cost for every metered feature, every keyed upgrade built and tied to a feature); the premium scope (nothing premium outside it, async propagation, 402 before work, the client's plan message); per-person and administrator views of the upgrades (no setting values); Citations' spans to claims; MP3 frames and WAV headers for cutting audio; diarized pieces in time; LlamaParse jobs and Markdown tables; Nightfire's CSV, grouping and volumes; weekly levels, the drift forecast and the TimesFM query |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
@@ -1864,6 +1921,7 @@ YouBank/
     terminal/              command bar, panels, screens (DES FA COMPS PREC CAP FIL EVT INS XBRL AI PG TOOLS,
                            and the crypto screens CRYP TOKEN DEFI STBL YLD BTCN RAISE UNLK TRSY RWA WALLET)
     crypto/                the Crypto page, wallet connection, portfolio, notarizing, the mining map, Dune
+    copy/                  Fund copies: fund pages, the treemap and backtest charts, copies, order review
     workflows/             tool gallery, runner, form, output blocks
     theme/  charts/  motion/  ui/
   src/db/schema.ts         every table
@@ -1885,6 +1943,8 @@ YouBank/
     crypto/                crypto data (CoinGecko, DefiLlama, mempool.space, public nodes, SEC frames),
                            addresses, portfolio risk, valuation, notarization, mining sites and the map
                            layer, Newsroom signals, assistant tools
+    copytrade/             13F parsing and EDGAR ingestion, CUSIP mapping, clone weights, the backtest,
+                           paper copies, the rebalance, SnapTrade, one-tap approval, the cron pass
     workflows/             tool contract, prompt builder, registry, a pack per role
     teams/  collab/  auth/ teams and roles, live collaboration, sign-in
     themes.ts calc.ts roles.ts metrics.ts company.ts
@@ -1899,6 +1959,7 @@ YouBank/
 | [docs/calendar.md](docs/calendar.md) | The calendar: provider setup, sync and push, the iCalendar engine, briefs, scheduling, and the meeting copilot API |
 | [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
+| [docs/copy-trading.md](docs/copy-trading.md) | Fund copies: 13F ingestion and CUSIP mapping, the backtest, paper and live copies, SnapTrade, safety rails, and what counsel must review before real trading |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
 | [docs/05-tool-pack-authoring.md](docs/05-tool-pack-authoring.md) | How to add tools for a role |

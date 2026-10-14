@@ -31,6 +31,11 @@ export type PremiumFeature = {
    * budget rather than on top of it. Costs paid outside the ledger (imagery, GPU time) leave this unset.
    */
   inAiAllowance?: boolean;
+  /**
+   * A flat fee per person per month while they use it (a per-connected-user charge), instead of a cost
+   * per use. The pricing model counts it once a month, weighted by how many people on the plan use it.
+   */
+  flatMonthlyUsd?: number;
   /** What one use is, for reading `costPerUseUsd` (e.g. "an hour-long call at $0.006 a minute"). */
   perUse?: string;
 };

@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -43,6 +43,10 @@ export const FEATURES: NavFeature[] = [
   {
     id: "crypto", href: "/app/crypto", label: "Crypto", icon: "Coins", blurb: "Tokens, DeFi, crypto deals, a read-only portfolio and on-chain records",
     links: [tab("/app/crypto", "tab", "markets", "Markets", true), tab("/app/crypto", "tab", "defi", "DeFi"), tab("/app/crypto", "tab", "rounds", "Rounds"), tab("/app/crypto", "tab", "portfolio", "Portfolio"), tab("/app/crypto", "tab", "notarize", "Notarize"), tab("/app/crypto", "tab", "map", "Mining map")],
+  },
+  {
+    id: "copy", href: "/app/copy", label: "Fund copies", icon: "Copy", blurb: "Hedge funds' 13F portfolios: follow, backtest and copy them",
+    links: [tab("/app/copy", "tab", "discover", "Discover", true), tab("/app/copy", "tab", "copies", "My copies"), tab("/app/copy", "tab", "following", "Following"), tab("/app/copy", "tab", "broker", "Brokerage"), tab("/app/copy", "tab", "activity", "Activity")],
   },
   {
     id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",

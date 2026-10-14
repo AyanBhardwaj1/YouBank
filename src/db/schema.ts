@@ -1695,3 +1695,168 @@ export const meetingSettings = pgTable("meeting_settings", {
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+/* ---------------- Copy trading (drizzle/0023_copytrade.sql) ---------------- */
+
+/** Every 13F filer seen in EDGAR's indexes, for search by name or CIK; curated managers marked. */
+export const copyFilers = pgTable("copy_filers", {
+  cik: text("cik").primaryKey(),
+  name: text("name").notNull(),
+  latestFiled: date("latest_filed"),
+  latestPeriod: date("latest_period"),
+  curated: boolean("curated").notNull().default(false),
+  checkedAt: ts("checked_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_filers_latest_idx").on(t.latestFiled)]);
+
+/** A 13F-HR or 13F-HR/A as read, its holdings summed per security. */
+export const copyFilings = pgTable("copy_filings", {
+  accession: text("accession").primaryKey(),
+  cik: text("cik").notNull(),
+  form: text("form").notNull(),
+  filedOn: date("filed_on").notNull(),
+  period: date("period").notNull(),
+  reportType: text("report_type").notNull().default("HOLDINGS"), // HOLDINGS | NOTICE | COMBINATION
+  amendmentType: text("amendment_type"), // RESTATEMENT | NEW HOLDINGS
+  confidentialOmitted: boolean("confidential_omitted").notNull().default(false),
+  unitCorrected: boolean("unit_corrected").notNull().default(false),
+  entryTotal: integer("entry_total"),
+  valueTotal: doublePrecision("value_total"),
+  holdings: jsonb("holdings").$type<import("@/lib/copytrade/thirteenf").Holding[]>().notNull().default([]),
+  lines: integer("lines").notNull().default(0),
+  docUrl: text("doc_url").notNull().default(""),
+  tableUrl: text("table_url").notNull().default(""),
+  status: text("status").notNull().default("ok"), // ok | error
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("copy_filings_cik_idx").on(t.cik, t.filedOn)]);
+
+/** CUSIP to ticker and where the answer came from (manual | builtin | openfigi | name | none). */
+export const copySecurities = pgTable("copy_securities", {
+  cusip: text("cusip").primaryKey(),
+  ticker: text("ticker"),
+  issuer: text("issuer").notNull().default(""),
+  title: text("title").notNull().default(""),
+  cik: text("cik"),
+  figi: text("figi"),
+  sic: integer("sic"),
+  sector: text("sector"),
+  source: text("source").notNull().default("none"),
+  hasOptions: boolean("has_options"),
+  on13fList: text("on_13f_list"),
+  checkedAt: ts("checked_at").notNull().defaultNow(),
+}, (t) => [index("copy_securities_ticker_idx").on(t.ticker)]);
+
+/** The owner's CUSIP corrections, which always win. */
+export const copyCusipOverrides = pgTable("copy_cusip_overrides", {
+  cusip: text("cusip").primaryKey(),
+  ticker: text("ticker").notNull(),
+  note: text("note").notNull().default(""),
+  createdBy: text("created_by").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+/** Funds a person follows (alerts on a new 13F). */
+export const copyFollows = pgTable("copy_follows", {
+  userId: text("user_id").notNull(),
+  cik: text("cik").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.cik] }), index("copy_follows_cik_idx").on(t.cik)]);
+
+/** A copy of one fund or a blend: paper (free) or live (a brokerage account). */
+export const copyPortfolios = pgTable("copy_portfolios", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  mode: text("mode").notNull().default("paper"), // paper | live
+  status: text("status").notNull().default("active"), // active | paused | closed
+  funds: jsonb("funds").$type<{ cik: string; name: string; weight: number }[]>().notNull().default([]),
+  rules: jsonb("rules").$type<Record<string, unknown>>().notNull().default({}),
+  sizing: jsonb("sizing").$type<Record<string, unknown>>().notNull().default({}),
+  trading: jsonb("trading").$type<Record<string, unknown>>().notNull().default({}),
+  accountId: text("account_id"),
+  managed: jsonb("managed").$type<Record<string, number>>().notNull().default({}),
+  paper: jsonb("paper").$type<Record<string, unknown>>().notNull().default({}),
+  lastAccession: text("last_accession"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_portfolios_user_idx").on(t.userId, t.status)]);
+
+/** A person's SnapTrade user; the secret encrypted at rest. */
+export const copyBrokers = pgTable("copy_brokers", {
+  userId: text("user_id").primaryKey(),
+  snaptradeUser: text("snaptrade_user").notNull(),
+  secretEnc: text("secret_enc").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastSyncedAt: ts("last_synced_at"),
+}, (t) => [uniqueIndex("copy_brokers_snap_uq").on(t.snaptradeUser)]);
+
+/** Consents as given (kind and version of the text, when, from where). */
+export const copyConsents = pgTable("copy_consents", {
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(),
+  version: text("version").notNull(),
+  textHash: text("text_hash").notNull().default(""),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind, t.version] })]);
+
+/** A reviewed set of orders for one copy. */
+export const copyBatches = pgTable("copy_batches", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  portfolioId: integer("portfolio_id").notNull(),
+  accountId: text("account_id").notNull(),
+  status: text("status").notNull().default("proposed"), // proposed | placing | placed | partial | failed | canceled | expired
+  idemKey: text("idem_key"),
+  buyValue: doublePrecision("buy_value").notNull().default(0),
+  sellValue: doublePrecision("sell_value").notNull().default(0),
+  orderCount: integer("order_count").notNull().default(0),
+  proposal: jsonb("proposal").$type<Record<string, unknown>>().notNull().default({}),
+  accession: text("accession"),
+  expiresAt: ts("expires_at").notNull(),
+  approvedAt: ts("approved_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_batches_user_idx").on(t.userId, t.createdAt)]);
+
+/** One order of a batch; client_order_id is unique. */
+export const copyOrders = pgTable("copy_orders", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull(),
+  userId: text("user_id").notNull(),
+  portfolioId: integer("portfolio_id").notNull(),
+  seq: integer("seq").notNull(),
+  clientOrderId: text("client_order_id").notNull(),
+  ticker: text("ticker").notNull(),
+  symbolId: text("symbol_id"),
+  action: text("action").notNull(), // BUY | SELL
+  units: doublePrecision("units").notNull(),
+  orderType: text("order_type").notNull().default("Limit"),
+  limitPrice: doublePrecision("limit_price"),
+  estValue: doublePrecision("est_value").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | submitting | unknown | rejected | the broker's status
+  brokerageOrderId: text("brokerage_order_id"),
+  filledUnits: doublePrecision("filled_units").notNull().default(0),
+  fillPrice: doublePrecision("fill_price"),
+  error: text("error"),
+  impact: jsonb("impact"),
+  response: jsonb("response"),
+  sentAt: ts("sent_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("copy_orders_client_uq").on(t.clientOrderId), index("copy_orders_batch_idx").on(t.batchId, t.seq), index("copy_orders_user_idx").on(t.userId, t.sentAt)]);
+
+/** Append-only log of consents, connections, proposals, approvals and orders (UPDATE and DELETE are ruled out in SQL). */
+export const copyAudit = pgTable("copy_audit", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  portfolioId: integer("portfolio_id"),
+  batchId: integer("batch_id"),
+  orderId: integer("order_id"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("copy_audit_user_idx").on(t.userId, t.createdAt)]);
