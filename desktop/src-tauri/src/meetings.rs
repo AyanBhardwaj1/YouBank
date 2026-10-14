@@ -186,6 +186,8 @@ pub async fn start(app: &AppHandle, args: StartArgs) -> Result<Session, String> 
         "platform": args.platform, "appTitle": args.app_title, "title": args.title,
         "consent": { "noticeCopied": args.notice_copied, "auto": args.auto },
         "contactIds": args.contact_ids, "dealIds": args.deal_ids,
+        // For due dates in the notes: "Friday" means this computer's Friday.
+        "utcOffsetMin": chrono::Local::now().offset().local_minus_utc() / 60,
     });
     let r: Started = state.api().post("/api/desktop/meetings", &body).await.inspect_err(|e| state::on_error(app, e))?;
     let id = r.meeting.id;
@@ -261,6 +263,8 @@ pub async fn stop(app: &AppHandle, discard: bool) -> Result<(), String> {
     let dir = root(app).join(session.id.to_string());
     if discard {
         let _ = std::fs::remove_dir_all(&dir);
+        // "Stop and delete" deletes the copy kept on this computer too.
+        let _ = std::fs::remove_dir_all(kept_dir(app, session.id));
     }
     let _ = write_json(&dir.join("end.json"), &EndMarker { discard });
     tray::set_recording(app, false);
@@ -513,16 +517,28 @@ async fn look(app: &AppHandle, sys: &mut sysinfo::System) {
         return;
     }
     if server.auto_start_apps().iter().any(|a| a == d.app) {
-        let args = StartArgs { platform: d.app.into(), app_title: d.title.clone(), auto: true, ..Default::default() };
-        match start(app, args).await {
-            Ok(_) => alerts::show(
-                app,
-                "Meeting copilot started",
-                &format!("Recording this {} call, as you set. Stop it from the pill or the tray.", app_label(d.app)),
-            ),
-            Err(e) => alerts::show(app, "Meeting copilot", &e),
+        // The rule may have changed on the site since the last refresh: check it again before
+        // recording without asking (the server refuses a stale one too).
+        let fresh = refresh(app).await.unwrap_or(server);
+        if fresh.auto_start_apps().iter().any(|a| a == d.app) && refused(&fresh.never_apps(), &fresh.never_keywords(), d.app, &d.title).is_none() {
+            let args = StartArgs { platform: d.app.into(), app_title: d.title.clone(), auto: true, ..Default::default() };
+            match start(app, args).await {
+                Ok(_) => alerts::show(
+                    app,
+                    "Meeting copilot started",
+                    &format!("Recording this {} call, as you set. Stop it from the pill or the tray.", app_label(d.app)),
+                ),
+                Err(e) => {
+                    // Not again for this call (a refusal would otherwise repeat every 15 seconds).
+                    state.meetings.dismissed.lock().unwrap().insert(d.app.to_string(), Instant::now());
+                    alerts::show(app, "Meeting copilot", &e);
+                }
+            }
+            return;
         }
-        return;
+        if refused(&fresh.never_apps(), &fresh.never_keywords(), d.app, &d.title).is_some() {
+            return;
+        }
     }
     *state.meetings.prompt.lock().unwrap() = Some(Prompt { kind: "offer".into(), app: d.app.into(), title: d.title.clone() });
     alerts::show(app, &format!("{} call detected", app_label(d.app)), "Start the meeting copilot? Choose Start in the small YouBank window, or from the tray.");
@@ -574,6 +590,15 @@ pub async fn save_server_settings(app: &AppHandle, settings: serde_json::Value) 
 
 /// The background work: the sender, the notes check, noticing calls, and the settings refresh.
 pub fn start_background(app: AppHandle) {
+    // A recording cut off by a crash or a forced quit has no end marker, so its meeting would stay
+    // "listening" on YouBank for ever: nothing is recording at start-up, so end each one once its
+    // audio is through.
+    for dir in std::fs::read_dir(root(&app)).into_iter().flatten().flatten().map(|e| e.path()) {
+        let is_meeting = dir.file_name().is_some_and(|n| n.to_string_lossy().parse::<i64>().is_ok());
+        if is_meeting && dir.is_dir() && !dir.join("end.json").exists() {
+            let _ = write_json(&dir.join("end.json"), &EndMarker { discard: false });
+        }
+    }
     // Sending: whenever a chunk is written, and every 20 seconds for anything left from before.
     let a = app.clone();
     tauri::async_runtime::spawn(async move {

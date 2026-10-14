@@ -235,7 +235,8 @@ Off until the person accepts its screen (desktop agent → Meetings). Then:
    Teams, Meet (a browser tab), Webex or a Slack huddle brings up the **pill**, a small window on top in
    the top right corner: "Zoom call detected. Start the meeting copilot?", with Not now and Never for
    Zoom. Apps and words the person chose never to record are never offered. An app the person set (on
-   the site) to start on its own starts without asking, with the indicator.
+   the site) to start on its own starts without asking, with the indicator; the app re-reads that rule
+   from the site first, and the server refuses an unasked start for an app not set to auto-start.
 2. **Consent.** Start shows the reminder that some places require everyone's consent before a call is
    recorded, and a Copy notice button with the text to paste in the meeting chat (set on the site). Only
    "Start recording" records. The tray's "Start meeting copilot…" goes to the same step.
@@ -251,14 +252,15 @@ Off until the person accepts its screen (desktop agent → Meetings). Then:
    person's own).
 4. **While it records** the tray icon has a red dot, its tooltip says so, and its menu offers Stop; the
    pill shows a pulsing dot, the time, what has been sent, a Copilot button and Stop (Stop, Stop and
-   delete, Keep recording). The copilot window shows the rolling transcript, the people and deals
+   delete, Keep recording). The pill cannot be hidden while a recording runs. The copilot window shows the rolling transcript, the people and deals
    (pick them from Relationships), what YouBank knows about them (free), live suggestions (Pro, a switch
    for this meeting only, about once a minute) and an ask box.
 5. **Sending** (`meetings.rs`). Chunks are written to the app data folder (`meetings/<id>/`) and sent in
    order to `PUT /api/desktop/meetings/:id/chunks/:seq`; each is deleted once YouBank has transcribed it,
    or moved to `Documents/YouBank/Meetings` if the person keeps a local copy. Offline, chunks wait and
    are retried with a back-off. A stopped meeting is ended on YouBank only after its last chunk is
-   through, even across a restart; Stop and delete removes the local chunks and the meeting.
+   through, even across a restart (a recording cut off by a crash is ended once its audio is through);
+   Stop and delete removes the local chunks, any local copy kept in Documents, and the meeting.
 6. **Notes ready.** The app checks every 20 seconds until the notes are written, then shows "Meeting
    notes ready" with the summary; "Open latest alert" in the tray opens the meeting in Relationships.
    Notes for meetings recorded elsewhere (the notetaker, another computer) arrive with the alerts, if

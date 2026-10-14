@@ -330,7 +330,13 @@ pub fn show_pill(app: &AppHandle) {
     let _ = w.emit("meeting://changed", ());
 }
 
+/// Hide the pill, unless a meeting is being recorded: then it is the recording indicator and stays
+/// (stopping the recording clears the session before hiding it).
 pub fn hide_pill(app: &AppHandle) {
+    if app.state::<crate::state::AppState>().meetings.session.lock().unwrap().is_some() {
+        show_pill(app);
+        return;
+    }
     if let Some(w) = app.get_webview_window(PILL) {
         let _ = w.hide();
     }
