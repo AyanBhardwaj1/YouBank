@@ -915,8 +915,10 @@ to you with the reasons written down.
 
 Vercel's Hobby plan runs cron at most once a day, which is too slow for an agent that answers email.
 Instead:
-- A **Neon Function** (`neon/autopilot.ts`) with a schedule trigger (`*/5 * * * *`) calls
-  `/api/cron/autopilot` every five minutes with a bearer secret.
+- A **Neon Function** (`neon/autopilot.ts`) with a schedule trigger (`0,20,40 * * * *`) calls
+  `/api/cron/autopilot` with a bearer secret; `neon/news.ts` calls `/api/cron/news` a minute later. Every
+  twenty minutes, so the free plan's compute can sleep between passes. On Supabase, `scripts/db-setup.mts
+  finish` creates pg_cron jobs instead.
 - The function relays only genuine trigger deliveries. Neon strips any `x-neon-*` header a caller sends, so
   an `x-neon-trigger-invocation-id` that matches the body's `invocation_id` can only come from the trigger.
 
@@ -1185,7 +1187,7 @@ and the steps to switch it on.
   - live demos: trading comps, an assistant answer with citations, and the startup directory;
   - segments, the planned plans, a style gallery, data and method, and an FAQ.
 - **Per-career pages** at `/for/<role>`.
-- **Sign-in** with Google through Neon Auth, then a six-step onboarding survey: role, group, experience,
+- **Sign-in** with Google through Better Auth (self-hosted, its tables in our database), then a six-step onboarding survey: role, group, experience,
   focus, style and goals.
 - **14 styles:**
   - Dark: Terminal, Midnight, Aurora, Graphite, Phosphor, Evergreen, Nordic.
@@ -1242,14 +1244,14 @@ and the steps to switch it on.
    │   Cron 06:00 UTC ─► /api/cron/sync     startup directory and Form D refresh
    │   Cron 11:00 UTC ─► /api/cron/agent    morning agent run (drafts only)
    │
-   ├──► Neon Postgres (Drizzle ORM)
+   ├──► Neon Postgres (Drizzle ORM, postgres.js through the pooler; also runs on Supabase)
    ├──► OpenAI Responses API  /  Anthropic Messages API
    ├──► SEC EDGAR (submissions, XBRL company facts, full-text search) · Financial Modeling Prep
    └──► Mailboxes: IMAP + SMTP (app password)  or  Gmail API (OAuth)
 
-  Neon Function "autopilot" ◄── schedule trigger (every 5 min)
+  Neon Function "autopilot" ◄── schedule trigger (every 20 min)
         └──► POST /api/cron/autopilot  (Authorization: Bearer AUTOPILOT_SECRET)
-  Neon Function "news" ◄── schedule trigger (every 10 min)
+  Neon Function "news" ◄── schedule trigger (every 20 min, a minute later)
         └──► POST /api/cron/news       (the Newsroom: sources, stories, alerts, briefs)
 ```
 
@@ -1326,9 +1328,9 @@ All tables are in `src/db/schema.ts`.
 |---|---|
 | Framework | Next.js 16.3 (App Router, Turbopack), React 19.2, TypeScript 5 |
 | Styling | Tailwind CSS v4 with design tokens, 14 generated themes, motion, lucide-react icons |
-| Database | Neon Postgres through `@neondatabase/serverless` |
+| Database | Neon Postgres (free plan) through `postgres` (postgres.js) and the pooler; portable to Supabase (`scripts/db-setup.mts`) |
 | ORM | Drizzle ORM 0.45, drizzle-kit |
-| Auth | Neon Auth (managed Better Auth) with Google sign-in |
+| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications` |
 | AI | OpenAI Responses API (`openai` 7), Anthropic Messages API (`@anthropic-ai/sdk`), zod 4 for structured output |
 | Mail | imapflow (IMAP), nodemailer (SMTP), mailparser (MIME), Gmail REST API |
 | Data | SEC EDGAR (submissions, XBRL company facts, full-text search), Financial Modeling Prep, Y Combinator, a16z, Thiel Fellows, Show HN |
@@ -1370,9 +1372,12 @@ bash scripts/preflight.sh                                         # everything t
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | yes | Neon connection string (pooled) |
-| `DATABASE_URL_UNPOOLED` | yes | Direct connection, for migrations |
-| `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET`, `NEON_AUTH_JWKS_URL` | yes | Sign-in (from `neon env pull`; cookie secret via `openssl rand -base64 32`) |
+| `DATABASE_URL` | yes | Pooled connection string (Neon's `-pooler` host, or Supabase's transaction pooler); no `channel_binding` parameter |
+| `DATABASE_URL_UNPOOLED` | for schema pushes | Direct connection (Neon) or Supabase's session pooler; `drizzle-kit push` and `scripts/db-setup.mts` need it |
+| `BETTER_AUTH_SECRET` | yes | Signs session cookies and encrypts stored OAuth tokens (`openssl rand -base64 48`) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_SIGNIN=1` | no | Google sign-in alongside email and password: an OAuth client (Web) with redirect URI `<site>/api/auth/callback/google`; all three or none |
+| `BETTER_AUTH_URL` | no | Sign-in's base address when it is not `NEXT_PUBLIC_SITE_URL` (local development) |
+| `AUTH_SESSION_DATA_TTL` | no | Seconds the session cookie is trusted before a database read (default 900) |
 | `AI_PROVIDER` | yes | `openai` or `anthropic` |
 | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes | The key for the chosen provider |
 | `OPENAI_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_REASONING_EFFORT`, `ANTHROPIC_MODEL` | no | Defaults: `gpt-6-astra`, `gpt-5.4-mini`, `medium`, `claude-opus-5` |

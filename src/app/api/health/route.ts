@@ -2,13 +2,13 @@ import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { cronAuthorized, isAdmin } from "@/lib/auth/admin";
 import { currentUser } from "@/lib/auth/user";
-import { checkEnv } from "@/lib/env";
+import { checkEnv, REQUIRED } from "@/lib/env";
 import { logError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
-/** Long enough for a Neon compute to wake from suspend (a few seconds), short enough for an uptime probe. */
+/** Long enough for a cold database connection (a few seconds), short enough for an uptime probe. */
 const DB_TIMEOUT_MS = 8_000;
 
 /** Optional services, each on when all of its settings are present. Names only; values never leave here. */
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
   const { missing, invalid } = checkEnv(process.env, production);
   const [dbCheck, user] = await Promise.all([database(), currentUser().catch(() => null)]);
   // Settings every page needs (checkEnv's REQUIRED), as opposed to production-only feature settings.
-  const fatal = missing.filter((k) => ["DATABASE_URL", "NEON_AUTH_BASE_URL", "NEON_AUTH_COOKIE_SECRET"].includes(k));
+  const fatal = missing.filter((k) => REQUIRED.includes(k));
   const status = !dbCheck.ok || fatal.length ? "down" : dbCheck.schema === false || missing.length || invalid.length ? "degraded" : "ok";
   const operator = !production || cronAuthorized(req) || isAdmin(user);
   const body = {
