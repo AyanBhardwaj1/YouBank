@@ -64,14 +64,19 @@ export function readerFromParts(profile: Profile, prefs: NewsPrefs, network: Map
   return { desk, ownDesk, watchlist, reader: { desk, watch: new Set(watchlist), follows: prefs.follows, mutes: prefs.mutes, network, ...(affinity ? { affinity } : {}) } };
 }
 
-export async function readerFor(userId: string): Promise<ReaderContext | null> {
+/**
+ * `learned: false` skips the affinity model (one join over the person's last 60 days of reading). The
+ * background passes that only need prefs, the desk, the watchlist or the network (alerts, the desk
+ * list, delivery checks) pass it, so they do not read every person's history every ten minutes.
+ */
+export async function readerFor(userId: string, opts: { learned?: boolean } = {}): Promise<ReaderContext | null> {
   const [p] = await requireDb().select().from(schema.profiles).where(eq(schema.profiles.userId, userId));
   if (!p) return null;
   const profile = profileOf(p);
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const prefs = normalizeNewsPrefs(extra.news, profile);
   // Contacts change slowly, and every news pass and feed poll asks: an hour of reuse per instance.
-  const [network, affinity] = await Promise.all([memo(`news:network:${userId}`, 3_600_000, () => networkOf(userId)).catch(() => new Map()), affinityOf(userId)]);
+  const [network, affinity] = await Promise.all([memo(`news:network:${userId}`, 3_600_000, () => networkOf(userId)).catch(() => new Map()), opts.learned === false ? undefined : affinityOf(userId)]);
   const parts = readerFromParts(profile, prefs, network, affinity);
   return { userId, email: p.email, name: p.name, profile, prefs, extra, ...parts };
 }

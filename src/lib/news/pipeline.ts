@@ -21,7 +21,7 @@ import { briefEmail, briefSlack, emailSelf, pushToUser, slackPost } from "./deli
 import { FEEDS, FILING_FORMS, allDesks, type Desk } from "./desks";
 import { enrichCluster } from "./enrich";
 import { briefDue, localParts } from "./prefs";
-import { readerFor } from "./reader";
+import { affinityOf, readerFor } from "./reader";
 import { currentFeedUrl, fetchFilings } from "./sources/edgar";
 import { fetchGdelt } from "./sources/gdelt";
 import { federalRegisterUrl, fetchFederalRegister } from "./sources/gov";
@@ -140,7 +140,7 @@ async function enrichTop(deadline: number, report: TickReport) {
 /** The desks people are on (their own or the one they chose to read). */
 async function activeDesks(users: string[]): Promise<Desk[]> {
   const byId = new Map<string, Desk>();
-  for (const u of users) { const ctx = await readerFor(u).catch(() => null); if (ctx) byId.set(ctx.desk.id, ctx.desk); }
+  for (const u of users) { const ctx = await readerFor(u, { learned: false }).catch(() => null); if (ctx) byId.set(ctx.desk.id, ctx.desk); }
   return [...byId.values()];
 }
 
@@ -159,7 +159,7 @@ async function briefs(users: string[], origin: string, deadline: number, report:
   let recent: Awaited<ReturnType<typeof recentClusters>> | null = null;
   for (const u of users) {
     if (Date.now() > deadline) return;
-    const ctx = await readerFor(u).catch(() => null);
+    const ctx = await readerFor(u, { learned: false }).catch(() => null);
     if (!ctx?.prefs.brief.enabled) continue;
     const due = briefDue(now, ctx.prefs);
     if (!due.due) continue;
@@ -169,7 +169,8 @@ async function briefs(users: string[], origin: string, deadline: number, report:
     const brief = await deskBrief(ctx.desk).catch(() => null);
     if (!brief?.items.length) continue;
     recent ??= await recentClusters(30, 600, 0.2);
-    const mine = forYou(ctx.reader, recent, 5);
+    // The person's picks are ranked with what their reading has taught the page, read only now that the brief goes out.
+    const mine = forYou({ ...ctx.reader, affinity: await affinityOf(u) }, recent, 5);
     const [row] = await requireDb().insert(schema.newsNotifications).values({
       userId: u, key: `brief:${due.date}`, kind: "brief", title: `${brief.deskLabel} brief: ${brief.title}`, body: brief.intro || brief.items[0]?.headline || "", url: "/app/news?view=brief",
     }).onConflictDoNothing().returning();
@@ -200,7 +201,7 @@ async function dailyAudio(deadline: number, report: TickReport) {
   let made = 0;
   for (const { userId } of rows) {
     if (made >= 3 || Date.now() > deadline) return;
-    const ctx = await readerFor(userId).catch(() => null);
+    const ctx = await readerFor(userId, { learned: false }).catch(() => null);
     if (!ctx?.prefs.audio.daily || !briefDue(now, ctx.prefs).due) continue;
     const slot = audioSlot(ctx, now);
     const tried = `news:audio-daily:${userId}:${slot}`;
@@ -212,7 +213,7 @@ async function dailyAudio(deadline: number, report: TickReport) {
     await cacheSet(tried, "1", 3 * 3_600_000);
     made++;
     try {
-      const b = await runAsUser(userId, () => makeBriefing(ctx, "daily", now), { admin: isAdmin(user) });
+      const b = await runAsUser(userId, async () => makeBriefing({ ...ctx, reader: { ...ctx.reader, affinity: await affinityOf(userId) } }, "daily", now), { admin: isAdmin(user) });
       const minutes = Math.max(1, Math.round(b.chapters.reduce((n, c) => n + c.seconds, 0) / 60));
       const [row] = await requireDb().insert(schema.newsNotifications).values({
         userId, key: `audio:${slot}`, kind: "brief", title: `Your ${ctx.desk.label} audio briefing is ready`, body: `${b.chapters.filter((c) => c.clusterId).length} stories, about ${minutes} minutes.`, url: "/app/news?listen=1",

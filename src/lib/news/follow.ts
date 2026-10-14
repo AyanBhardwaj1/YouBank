@@ -106,7 +106,7 @@ export async function followUpdates(deadline: number, now = new Date()): Promise
     perUser.set(f.userId, n + 1);
     sent++;
     // Push to the person's devices (they asked to follow this story), unless it is their quiet hours.
-    const ctx = await readerFor(f.userId).catch(() => null);
+    const ctx = await readerFor(f.userId, { learned: false }).catch(() => null);
     if (ctx && !inQuietHours(now, ctx.prefs)) {
       const pushed = await pushToUser(f.userId, { title: row.title, body: row.body.slice(0, 180), url: row.url, tag: `follow:${c.id}` }).catch(() => 0);
       if (pushed) await db.update(schema.newsNotifications).set({ delivered: { push: new Date().toISOString() } }).where(eq(schema.newsNotifications.id, row.id));
