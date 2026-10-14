@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { canUse } from "@/lib/billing/entitlements";
-import { requestMeta } from "@/lib/copytrade/access";
+import { CROSS_SITE, requestMeta, sameSiteJson } from "@/lib/copytrade/access";
 import { copyTargets } from "@/lib/copytrade/analytics";
 import { batchesOf } from "@/lib/copytrade/live";
 import { closeCopy, cleanCopy, getCopy, paperPerformance, updateCopy } from "@/lib/copytrade/portfolios";
@@ -30,6 +30,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 /** PATCH — change settings, or { status: "paused" | "active" }. */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     const row = await updateCopy(user, await idOf(ctx), (await req.json().catch(() => ({}))) as Record<string, unknown>, requestMeta(req));
     return NextResponse.json({ id: row.id, status: row.status });
@@ -38,6 +39,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 /** DELETE — close the copy (unsent proposals are canceled; shares already bought stay in the account). */
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     await closeCopy(user, await idOf(ctx), requestMeta(req));
     return NextResponse.json({ ok: true });

@@ -2,6 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { CROSS_SITE, sameSiteJson } from "@/lib/copytrade/access";
 import { padCik } from "@/lib/copytrade/funds";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function GET() {
 
 /** POST { cik } — follow a fund. DELETE { cik } — stop. */
 export async function POST(req: Request) {
+  if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     const cik = padCik(String(((await req.json().catch(() => ({}))) as { cik?: unknown }).cik ?? ""));
     if (!cik) return NextResponse.json({ error: "Choose a fund to follow." }, { status: 400 });
@@ -29,6 +31,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     const cik = padCik(String(((await req.json().catch(() => ({}))) as { cik?: unknown }).cik ?? ""));
     await requireDb().delete(schema.copyFollows).where(and(eq(schema.copyFollows.userId, user.id), eq(schema.copyFollows.cik, cik)));

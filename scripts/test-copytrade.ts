@@ -18,7 +18,7 @@ import { paperCurve, paperRebalance } from "@/lib/copytrade/paper";
 import { parseFormIndex } from "@/lib/copytrade/edgar13f";
 import { inFilingSeason, pollDue } from "@/lib/copytrade/thirteenf";
 import { cleanCopy } from "@/lib/copytrade/portfolios";
-import { auditCsv } from "@/lib/copytrade/access";
+import { auditCsv, sameSiteJson } from "@/lib/copytrade/access";
 import { CURATED, padCik } from "@/lib/copytrade/funds";
 import { COPYTRADE_FEATURES } from "@/lib/billing/features/copytrade";
 import { featureById } from "@/lib/billing/features";
@@ -342,6 +342,9 @@ async function main() {
       await approveBatch(mkt.store, mkBroker().broker, { ...req, market: marketState(new Date("2026-10-10T15:00:00Z")) }).catch((e) => { mmsg = e.message; });
       check("market orders are refused while the market is closed", /market is closed/.test(mmsg), mmsg);
     }
+    const mk = (h: Record<string, string>) => new Request("https://youbank.test/api/copy/batches/7", { method: "POST", headers: h });
+    check("approvals only from YouBank's own pages: JSON, not marked cross-site", sameSiteJson(mk({ "content-type": "application/json", "sec-fetch-site": "same-origin" })) && sameSiteJson(mk({ "content-type": "application/json" }))
+      && !sameSiteJson(mk({ "content-type": "application/json", "sec-fetch-site": "same-site" })) && !sameSiteJson(mk({ "content-type": "application/json", "sec-fetch-site": "cross-site" })) && !sameSiteJson(mk({ "content-type": "text/plain" })));
     const id = clientOrderId(7, 0);
     check("client order ids are canonical UUIDs, stable per order, distinct per position", /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id) && id === clientOrderId(7, 0) && id !== clientOrderId(7, 1) && id !== clientOrderId(8, 0));
   }

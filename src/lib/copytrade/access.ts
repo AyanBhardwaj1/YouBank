@@ -86,6 +86,21 @@ export function auditCsv(rows: { createdAt: Date; actor: string; action: string;
   return ["time,actor,action,copy,batch,order,ip,details", ...rows.map((r) => [r.createdAt.toISOString(), r.actor, r.action, r.portfolioId, r.batchId, r.orderId, r.ip, r.payload].map(esc).join(","))].join("\n");
 }
 
+/**
+ * Whether a request that changes copies, consents, connections or orders came from YouBank's own pages.
+ * The session cookie rides along on any request the browser makes, so a page elsewhere (or on a sibling
+ * subdomain, which SameSite=Lax does not stop) could otherwise post to these routes. Browsers mark
+ * cross-site requests in Sec-Fetch-Site, and a JSON body cannot be sent cross-origin without a CORS
+ * preflight, which these routes never answer. Our pages always send JSON. Pure.
+ */
+export function sameSiteJson(req: Request): boolean {
+  const site = req.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return false;
+  return (req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json");
+}
+
+export const CROSS_SITE = { error: "Make this change on YouBank itself." } as const;
+
 /** The caller's address and browser, for consents and approvals. */
 export function requestMeta(req: Request): { ip: string | null; userAgent: string | null } {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || null;

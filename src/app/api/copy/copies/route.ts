@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { canUse } from "@/lib/billing/entitlements";
-import { consentsOf, limits, liveCopyLimit, requestMeta, tradingEnabled } from "@/lib/copytrade/access";
+import { consentsOf, CROSS_SITE, limits, liveCopyLimit, requestMeta, sameSiteJson, tradingEnabled } from "@/lib/copytrade/access";
 import { CONSENTS } from "@/lib/copytrade/disclosures";
 import { brokerSetup } from "@/lib/copytrade/live";
 import { createCopy, listCopies } from "@/lib/copytrade/portfolios";
@@ -29,6 +29,7 @@ const summary = (p: Record<string, unknown>) => {
 
 /** POST — create a copy (paper is free; live needs copytrade.broker, a blend copytrade.blends). */
 export async function POST(req: Request) {
+  if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     const row = await createCopy(user, body, requestMeta(req));
