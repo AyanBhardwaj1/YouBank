@@ -10,13 +10,20 @@ import type { PremiumFeature } from "./types";
  * out for one use as `perUse` says. Perks that cost us nothing measurable are not metered and cost 0 (the
  * screener reads stored scores; the daily Pulse reads free APIs). Ids marked `planned` are registered so the
  * pricing work can tier them; no route checks them yet, and the work that builds one removes the flag.
+ *
+ * `inAiAllowance` marks the features whose spend is a model call recorded in the AI usage ledger
+ * (`recordUsage`, through `structured()` and the answer paths): that spend draws down the person's AI
+ * allowance and credits, so the pricing model counts it inside the allowance rather than on top. GPU and
+ * Modal time (the Eva-4B ensemble, the LBO refine) is paid outside the ledger and leaves it unset. The
+ * planned ids that set it (the private library, peer calls, theses, live voice) must record their model
+ * spend through `recordUsage` when they are built, or drop the flag.
  */
 export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   /* ---------------- Precedent Engine (E1) ---------------- */
   {
     id: "edge.deals-reread", area: "edge", name: "Re-read a deal with the stronger model",
     description: "One deal's merger documents read again by the stronger model, with every term re-quoted and re-checked.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.24,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.24,
     perUse: "a deal: about 40,000 tokens in at $4 and 4,000 out at $20 per million on gpt-5.6-sol",
   },
   {
@@ -28,14 +35,14 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   {
     id: "edge.deals-private", area: "edge", name: "Private precedent library",
     description: "Your own CIMs and closing memos read into private precedents beside the public ones.",
-    minPlan: "team", metered: true, costPerUseUsd: 0.05, planned: true,
+    minPlan: "team", metered: true, inAiAllowance: true, costPerUseUsd: 0.05, planned: true,
     perUse: "a document: about four sections on the small model plus embeddings",
   },
   /* ---------------- Calibrated Claims (E2) ---------------- */
   {
     id: "edge.claims-crosscheck", area: "edge", name: "Second-provider claim check",
     description: "Each claim in an answer judged again by a second provider's model, as one more verification signal.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.03,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.03,
     perUse: "an answer: about 10,000 tokens in at $2 and 1,000 out at $10 per million on Claude Sonnet 5.5",
   },
   /* ---------------- Alt-Data Pulse (E3) ---------------- */
@@ -74,7 +81,7 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   {
     id: "edge.calls-peers", area: "edge", name: "Peer call comparison",
     description: "Evasion and promises compared across up to six peers' latest earnings calls.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.05, planned: true,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.05, planned: true,
     perUse: "six calls' summaries on the small model plus the comparison",
   },
   /* ---------------- LBO Stress Lab (E6), next ---------------- */
@@ -88,13 +95,13 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   {
     id: "edge.thesis-plus", area: "edge", name: "More theses",
     description: "Up to five active theses with 90-day horizons and twice-daily checks on filing days.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.25, planned: true,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.25, planned: true,
     perUse: "a tick: routing and extraction on the small model plus about one document question",
   },
   {
     id: "edge.thesis-deep", area: "edge", name: "Weekly deep synthesis",
     description: "A weekly deep-research pass on the flagship model for each thesis.",
-    minPlan: "pro", metered: true, costPerUseUsd: 2.5, planned: true,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 2.5, planned: true,
     perUse: "a pass, priced as ai.deep-research",
   },
   {
@@ -107,7 +114,7 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   {
     id: "edge.voice-realtime", area: "edge", name: "Live voice analyst",
     description: "A real-time spoken conversation with Edge, answers cited as on screen.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.1, planned: true,
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.1, planned: true,
     perUse: "a minute of gpt-realtime-2.1, about $0.06 to $0.11",
   },
 ];

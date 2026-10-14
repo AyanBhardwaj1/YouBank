@@ -90,7 +90,8 @@ export const UPGRADES: Upgrade[] = [
     id: "deals-reread", module: "deals", name: "Re-read a deal with the stronger model", built: true, feature: "edge.deals-reread",
     improves: "One deal's merger documents re-read by a larger model (EDGE_REREAD_MODEL, gpt-5.6-sol by default), every term re-quoted and re-checked; the earlier reading is kept in the audit trail.",
     cost: "About $0.24 a deal (40,000 tokens in at $4 and 4,000 out at $20 per million), on the OpenAI key Edge already has.",
-    needs: ["OPENAI_API_KEY"], steps: ["Optionally set EDGE_REREAD_MODEL. People whose plan includes it see 'Re-read with the stronger model' on a deal's page; nothing runs unless they press it."],
+    needs: ["OPENAI_API_KEY"], flag: { name: "EDGE_REREAD_MODEL", value: null },
+    steps: ["Set EDGE_REREAD_MODEL to the stronger model (gpt-5.6-sol, or any model id the account can use) in Vercel and redeploy.", "People whose plan includes it see 'Re-read with the stronger model' on a deal's page; nothing runs unless they press it. The earlier reading stays in the deal's audit trail."],
   },
   {
     id: "deals-backfill", module: "deals", name: "Faster deal-database backfill", built: true,
