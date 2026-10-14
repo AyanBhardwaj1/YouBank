@@ -142,3 +142,118 @@ export function StoryArt({ story, sparks, height = 64, size = "md" }: { story: S
     </div>
   );
 }
+
+/* ---------------- Generated thumbnails ---------------- */
+
+/** A small deterministic random sequence from a story's id, so its art is the same on every visit. */
+export function seeded(seed: number): () => number {
+  let a = (seed * 2654435761) >>> 0 || 1;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** What a thumbnail needs: a story card, or a public page's card. */
+export type ThumbStory = Pick<StoryCard, "id" | "headline" | "tags" | "tickers" | "filing" | "sourceCount" | "names" | "categoryLabel"> & { deal: { valueUsd: number | null; premium?: number | null; kind: string } | null };
+
+/**
+ * A generated thumbnail for a story with no picture of its own (none have licensed photos): a
+ * composition drawn from its data on its sector's colour, the same every time.
+ * - a company story: its 30-day price line as a filled ridge, with the move;
+ * - a deal: rings for the deal's size against a $1B ring, the value set large;
+ * - a filing: the form number stamped over ruled lines;
+ * - anything else: one arc per outlet covering it, fanned around the company's initials, so a widely
+ *   covered story visibly radiates.
+ * Theme tokens throughout, so it fits every style, light or dark.
+ */
+export function ArtThumb({ story, sparks, height = 120, className = "", label = true }: { story: ThumbStory; sparks: Map<string, Spark | null>; height?: number; className?: string; label?: boolean }) {
+  const uid = useId().replace(/:/g, "");
+  const motion = useMotionLevel();
+  const hue = hueOf(story.tags);
+  const rnd = seeded(story.id);
+  const W = 320, H = 180;
+  const ticker = story.tickers.find((t) => sparks.get(t)?.closes?.length);
+  const spark = ticker ? sparks.get(ticker)! : null;
+  const bg = (
+    <>
+      <defs>
+        <radialGradient id={`a${uid}`} cx={`${30 + rnd() * 50}%`} cy={`${10 + rnd() * 30}%`} r="95%"><stop offset="0%" stopColor={hue} stopOpacity="0.34" /><stop offset="70%" stopColor={hue} stopOpacity="0.06" /><stop offset="100%" stopColor={hue} stopOpacity="0" /></radialGradient>
+        <linearGradient id={`f${uid}`} x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor={hue} stopOpacity="0.5" /><stop offset="100%" stopColor={hue} stopOpacity="0.02" /></linearGradient>
+        <pattern id={`p${uid}`} width="12" height="12" patternUnits="userSpaceOnUse" patternTransform={`rotate(${Math.round(rnd() * 90)})`}><line x1="0" y1="0" x2="0" y2="12" stroke={hue} strokeOpacity="0.09" strokeWidth="1" /></pattern>
+      </defs>
+      <rect width={W} height={H} fill="var(--elevated)" />
+      <rect width={W} height={H} fill={`url(#p${uid})`} />
+      <rect width={W} height={H} fill={`url(#a${uid})`} />
+    </>
+  );
+  let body: React.ReactNode;
+  let caption = "";
+  if (spark) {
+    const c = spark.closes, min = Math.min(...c), max = Math.max(...c), span = max - min || 1;
+    const pts = c.map((v, i) => [(i / (c.length - 1)) * W, H - 22 - ((v - min) / span) * (H - 70)] as const);
+    const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+    const up = (spark.month ?? 0) >= 0;
+    body = (
+      <>
+        <path d={`${d} L${W},${H} L0,${H} Z`} fill={`url(#f${uid})`} />
+        <path d={d} fill="none" stroke={up ? "var(--pos)" : "var(--neg)"} strokeWidth="2.25" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={motion === "rich" ? "draw" : ""} />
+        <circle cx={pts[pts.length - 1][0] - 2} cy={pts[pts.length - 1][1]} r="4" fill={up ? "var(--pos)" : "var(--neg)"} stroke="var(--elevated)" strokeWidth="2" />
+      </>
+    );
+    caption = `${ticker} ${fmtPct(spark.month, 0)} 30d`;
+  } else if (story.deal && story.deal.valueUsd) {
+    const v = story.deal.valueUsd;
+    const r = (x: number) => 8 + Math.max(0, (Math.log10(x) - 6) / 5) * 70;
+    const cx = W * (0.62 + rnd() * 0.12), cy = H * 0.58;
+    body = (
+      <>
+        {[1e8, 1e9, 1e10, 1e11].map((ref) => <circle key={ref} cx={cx} cy={cy} r={r(ref)} fill="none" stroke="var(--line-strong)" strokeDasharray={ref === 1e9 ? "0" : "2 4"} strokeWidth={ref === 1e9 ? 1.2 : 1} />)}
+        <circle cx={cx} cy={cy} r={r(v)} fill={hue} fillOpacity="0.28" stroke={hue} strokeWidth="2" className={motion === "rich" ? "grow-y" : ""} style={{ transformOrigin: `${cx}px ${cy}px`, transformBox: "view-box" }} />
+        <text x={cx + r(1e9) + 4} y={cy - r(1e9) + 2} fontSize="10" fill="var(--faint)" fontFamily="var(--font-mono)">$1B</text>
+        <text x="16" y={H - 22} fontSize="34" fontWeight="700" fill="var(--fg)" fontFamily="var(--font-mono)" letterSpacing="-1">{fmtUsd(v)}</text>
+      </>
+    );
+    caption = story.deal.premium !== null && story.deal.premium !== undefined ? `${fmtPct(story.deal.premium, 0)} premium` : story.deal.kind.replace("_", " ");
+  } else if (story.filing) {
+    body = (
+      <>
+        {Array.from({ length: 9 }, (_, i) => <line key={i} x1="22" x2={W - 22 - rnd() * 90} y1={30 + i * 15} y2={30 + i * 15} stroke="var(--line-strong)" strokeWidth="3" strokeLinecap="round" opacity={0.5} />)}
+        <g transform={`rotate(${-8 + rnd() * 6} ${W * 0.62} ${H * 0.52})`}>
+          <rect x={W * 0.38} y={H * 0.3} width={W * 0.48} height={H * 0.42} rx="6" fill="var(--bg)" fillOpacity="0.7" stroke={hue} strokeWidth="3" strokeDasharray="7 4" />
+          <text x={W * 0.62} y={H * 0.56} textAnchor="middle" fontSize="30" fontWeight="700" fill={hue} fontFamily="var(--font-mono)">{story.filing.form || "SEC"}</text>
+          {story.filing.items[0] && <text x={W * 0.62} y={H * 0.67} textAnchor="middle" fontSize="11" fill="var(--muted)" fontFamily="var(--font-mono)">Item {story.filing.items[0]}</text>}
+        </g>
+      </>
+    );
+    caption = "SEC filing";
+  } else {
+    const n = Math.max(1, Math.min(14, story.sourceCount));
+    const cx = W * (0.25 + rnd() * 0.5), cy = H * (0.45 + rnd() * 0.15);
+    const base = rnd() * Math.PI * 2;
+    const arcs = Array.from({ length: n }, (_, i) => {
+      const rr = 26 + i * 9;
+      const a0 = base + i * 0.55 + rnd() * 0.4, sweep = 0.9 + rnd() * 1.6;
+      const p = (a: number) => `${(cx + rr * Math.cos(a)).toFixed(1)},${(cy + rr * Math.sin(a)).toFixed(1)}`;
+      return <path key={i} d={`M${p(a0)} A${rr},${rr} 0 ${sweep > Math.PI ? 1 : 0} 1 ${p(a0 + sweep)}`} fill="none" stroke={hue} strokeOpacity={0.85 - i * 0.045} strokeWidth={i === 0 ? 3 : 2} strokeLinecap="round" className={motion === "rich" ? "draw" : ""} style={{ animationDelay: `${i * 60}ms` }} />;
+    });
+    const name = story.names?.[0] ?? story.headline;
+    body = (
+      <>
+        {arcs}
+        <circle cx={cx} cy={cy} r="20" fill="var(--bg)" fillOpacity="0.75" stroke={hue} strokeWidth="1.5" />
+        <text x={cx} y={cy + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill={hue} fontFamily="var(--font-sans)">{monogramOf(name)}</text>
+      </>
+    );
+    caption = story.sourceCount > 1 ? `${story.sourceCount} outlets` : story.categoryLabel;
+  }
+  return (
+    <div className={`relative overflow-hidden ${className}`} style={{ height, borderRadius: "calc(var(--nr-radius, 12px) * 0.75)" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice" width="100%" height="100%" aria-hidden className="block">{bg}{body}</svg>
+      {label && caption && <span className="num absolute bottom-2 right-2 rounded-full bg-bg/80 px-2 py-0.5 text-[10px] text-fg backdrop-blur-sm">{caption}</span>}
+    </div>
+  );
+}

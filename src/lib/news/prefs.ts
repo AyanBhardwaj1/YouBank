@@ -1,23 +1,26 @@
 /**
  * How each person likes their Newsroom: the edition (a look paired with a layout), or, with the advanced
  * switch, any look with any layout; how a story opens; how much motion; when the morning brief comes
- * and where alerts go. Kept in profiles.extra.news, defaulted from the role.
+ * and where alerts go; the audio briefing's voice and whether it is made each morning. Kept in
+ * profiles.extra.news, defaulted from the role.
  */
 import type { Profile, RoleId } from "@/lib/roles";
 import { SECTOR_KEYS, type SectorKey } from "./desks";
 
-export type LookId = "terminal" | "editorial" | "brief" | "modern";
-export type LayoutId = "wire" | "magazine" | "hybrid" | "dashboard";
+export type LookId = "front" | "terminal" | "editorial" | "brief" | "modern";
+export type LayoutId = "front" | "wire" | "magazine" | "hybrid" | "dashboard";
 export type EditionId = LookId;
 
 export const EDITIONS: Record<EditionId, { label: string; look: LookId; layout: LayoutId; inspired: string; blurb: string }> = {
+  front: { label: "Front page", look: "front", layout: "front", inspired: "a data-led front page", blurb: "A hero story, data art on every card, the day in charts, and a globe of where it is happening." },
   terminal: { label: "Terminal", look: "terminal", layout: "wire", inspired: "Bloomberg Terminal", blurb: "Dense rows, monospaced numbers, colour only where it means something. Keyboard first." },
   editorial: { label: "Editorial", look: "editorial", layout: "magazine", inspired: "The Information, the FT", blurb: "Serif headlines, a lead story, room to read. Calm and considered." },
   brief: { label: "Brief", look: "brief", layout: "hybrid", inspired: "Axios, Morning Brew", blurb: "The morning brief up top, bold lead-ins, why it matters first, the wire alongside." },
   modern: { label: "Modern", look: "modern", layout: "dashboard", inspired: "Apple News, Linear", blurb: "Soft depth, crisp type, tiles you can scan: market watch, deals, calendar, stories." },
 };
-export const LOOKS: Record<LookId, string> = { terminal: "Terminal", editorial: "Editorial", brief: "Brief", modern: "Modern" };
+export const LOOKS: Record<LookId, string> = { front: "Front page", terminal: "Terminal", editorial: "Editorial", brief: "Brief", modern: "Modern" };
 export const LAYOUTS: Record<LayoutId, { label: string; blurb: string }> = {
+  front: { label: "Front page", blurb: "A hero, data-art cards, charts that draw as you scroll, the globe." },
   wire: { label: "Wire", blurb: "One fast, dense column of stories as they land." },
   magazine: { label: "Magazine", blurb: "A lead story, the next three, then sections." },
   hybrid: { label: "Hybrid", blurb: "The brief on top, story rails below, the wire beside." },
@@ -25,6 +28,10 @@ export const LAYOUTS: Record<LayoutId, { label: string; blurb: string }> = {
 };
 
 export type Channel = "email" | "push" | "slack";
+
+/** Neural voices for the AI audio briefing (OpenAI's built-in set); the free briefing uses the browser's own. */
+export const VOICES = { marin: "Marin (warm, natural)", cedar: "Cedar (deep, calm)", alloy: "Alloy (neutral)", coral: "Coral (bright)", sage: "Sage (measured)", verse: "Verse (expressive)" } as const;
+export type VoiceId = keyof typeof VOICES;
 export type NewsPrefs = {
   edition: EditionId;
   /** When true, `look` and `layout` are chosen separately; otherwise they follow the edition. */
@@ -38,6 +45,11 @@ export type NewsPrefs = {
   /** The sector radar to show ("tech", "energy", ...). Empty means your desk's sector. */
   radar: SectorKey | "";
   brief: { enabled: boolean; time: string; timezone: string; channels: Channel[] };
+  /**
+   * The audio briefing. `daily` makes it each morning at the brief time (premium, background AI the
+   * person switched on; the server checks the plan both when it is switched on and when it runs).
+   */
+  audio: { daily: boolean; voice: VoiceId; speed: number };
   alerts: {
     enabled: boolean; watchlist: boolean; network: boolean; filings: boolean; bigDeals: boolean;
     /** 0 to 1: how important a desk story must be to alert on its own. */
@@ -50,7 +62,7 @@ export type NewsPrefs = {
 };
 
 const ROLE_EDITION: Record<RoleId, EditionId> = {
-  banker: "brief", corpfin: "brief", accountant: "brief", markets: "terminal", vc: "editorial", consultant: "editorial", student: "editorial", pe: "modern",
+  banker: "brief", corpfin: "brief", accountant: "brief", markets: "terminal", vc: "front", consultant: "front", student: "front", pe: "modern",
 };
 
 export function defaultNewsPrefs(p: Pick<Profile, "role">): NewsPrefs {
@@ -58,6 +70,7 @@ export function defaultNewsPrefs(p: Pick<Profile, "role">): NewsPrefs {
   return {
     edition, advanced: false, look: EDITIONS[edition].look, layout: EDITIONS[edition].layout, reading: "peek", motion: "rich", desk: "", radar: "",
     brief: { enabled: true, time: "07:00", timezone: "America/New_York", channels: [] },
+    audio: { daily: false, voice: "marin", speed: 1 },
     alerts: { enabled: true, watchlist: true, network: true, filings: true, bigDeals: true, threshold: 0.8, channels: [], quiet: { from: 22, to: 7 } },
     follows: { tickers: [], topics: [] },
     mutes: { sources: [], topics: [] },
@@ -78,6 +91,7 @@ export function normalizeNewsPrefs(raw: unknown, p: Pick<Profile, "role">): News
   const edition = isEdition(r.edition) ? r.edition : d.edition;
   const advanced = r.advanced === true;
   const b = (r.brief && typeof r.brief === "object" ? r.brief : {}) as Record<string, unknown>;
+  const au = (r.audio && typeof r.audio === "object" ? r.audio : {}) as Record<string, unknown>;
   const a = (r.alerts && typeof r.alerts === "object" ? r.alerts : {}) as Record<string, unknown>;
   const f = (r.follows && typeof r.follows === "object" ? r.follows : {}) as Record<string, unknown>;
   const m = (r.mutes && typeof r.mutes === "object" ? r.mutes : {}) as Record<string, unknown>;
@@ -96,6 +110,11 @@ export function normalizeNewsPrefs(raw: unknown, p: Pick<Profile, "role">): News
       time: typeof b.time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(b.time) ? b.time : d.brief.time,
       timezone: validTz(b.timezone) ? b.timezone : d.brief.timezone,
       channels: channels(b.channels),
+    },
+    audio: {
+      daily: au.daily === true,
+      voice: typeof au.voice === "string" && au.voice in VOICES ? (au.voice as VoiceId) : d.audio.voice,
+      speed: typeof au.speed === "number" && au.speed >= 0.75 && au.speed <= 1.5 ? Math.round(au.speed * 100) / 100 : d.audio.speed,
     },
     alerts: {
       enabled: a.enabled !== false, watchlist: a.watchlist !== false, network: a.network !== false, filings: a.filings !== false, bigDeals: a.bigDeals !== false,

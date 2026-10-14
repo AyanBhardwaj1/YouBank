@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { requireFeature } from "@/lib/billing/entitlements";
+import { withinRate } from "@/lib/locks";
 import { noteNewsForNetwork } from "@/lib/news/crm";
+import { follow, unfollow } from "@/lib/news/follow";
+import { storyPlaces } from "@/lib/news/geo";
+import { mattersToYou } from "@/lib/news/matters";
 import { normCompany, type NetworkPerson } from "@/lib/news/rank";
 import { readerFor } from "@/lib/news/reader";
 import { itemsOf } from "@/lib/news/store";
-import { storyView } from "@/lib/news/views";
+import { matterContext, storyView } from "@/lib/news/views";
 import { whyForMe } from "@/lib/news/why";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +25,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   });
 }
 
-/** { action: "read" | "save" | "unsave" | "hide" | "unhide" | "why" | "reach-out" } */
+/**
+ * { action: "read" | "save" | "unsave" | "hide" | "unhide" | "follow" | "unfollow" | "why" | "reach-out" }.
+ * "why" (the AI note) needs news.why-ai unless the note was already written; "follow" past the free
+ * five needs news.follows. Both are checked here, before anything is spent or stored.
+ */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = await idOf(ctx);
@@ -35,9 +44,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await db.insert(schema.newsUserItems).values({ userId: user.id, clusterId: id, ...set, updatedAt: now }).onConflictDoUpdate({ target: [schema.newsUserItems.userId, schema.newsUserItems.clusterId], set: { ...set, updatedAt: now } });
       return NextResponse.json({ ok: true });
     }
+    if (body.action === "follow" || body.action === "unfollow") {
+      // Following and unfollowing are cheap, but a script toggling them could churn alerts and the table.
+      if (!(await withinRate(`news-follow:${user.id}`, 120, 3_600_000))) return NextResponse.json({ error: "Too many follow changes in the last hour. Try again later." }, { status: 429 });
+      if (body.action === "follow") return NextResponse.json(await follow(user, c));
+      await unfollow(user.id, id);
+      return NextResponse.json({ following: false });
+    }
     const reader = await readerFor(user.id);
     if (!reader) return NextResponse.json({ error: "Finish onboarding first" }, { status: 409 });
-    if (body.action === "why") return NextResponse.json(await whyForMe(reader, id));
+    if (body.action === "why") {
+      const places = storyPlaces({ headline: c.headline, text: (c.summary?.bullets ?? []).join(". "), tickers: [] }).ids;
+      const matches = mattersToYou({ headline: c.headline, tickers: c.tickers, entities: c.entities, places }, await matterContext(reader)).map((m) => m.label);
+      return NextResponse.json(await whyForMe(reader, id, () => requireFeature(user, "news.why-ai"), matches));
+    }
     if (body.action === "reach-out") {
       const people: NetworkPerson[] = [];
       for (const e of c.entities) if (e.kind !== "person") for (const p of reader.reader.network.get(normCompany(e.name)) ?? []) people.push(p);
