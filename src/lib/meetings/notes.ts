@@ -67,7 +67,8 @@ export function resolveDue(raw: string, meetingDate: Date): string | null {
   const s = raw.trim().toLowerCase().replace(/^(by|before|on|due)\s+/, "").replace(/[.,]$/, "");
   if (!s) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (m) return Number.isNaN(Date.parse(`${s}T00:00:00Z`)) ? null : s;
+  // A real calendar day only: Date.parse turns "2026-02-31" into March 3rd.
+  if (m) { const t = Date.parse(`${s}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === s ? s : null; }
   const base = new Date(Date.UTC(meetingDate.getUTCFullYear(), meetingDate.getUTCMonth(), meetingDate.getUTCDate()));
   if (s === "today" || s === "eod" || s === "end of day") return iso(base);
   if (s === "tomorrow") return iso(addDays(base, 1));
@@ -84,6 +85,25 @@ export function resolveDue(raw: string, meetingDate: Date): string | null {
     return iso(addDays(base, ahead));
   }
   return null;
+}
+
+/**
+ * The calendar day a meeting happened on where the person was, as midnight UTC of that date (what
+ * resolveDue and the notes prompt read). A meeting at 6 pm in San Francisco is already the next day in
+ * UTC, so "Friday" or "tomorrow" would land a day late without this. Uses an IANA zone when given and
+ * valid, else a UTC offset in minutes, else UTC. Pure.
+ */
+export function meetingDay(startedAt: Date, zone: { tz?: unknown; offsetMin?: unknown } = {}): Date {
+  if (typeof zone.tz === "string" && zone.tz) {
+    try {
+      const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: zone.tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(startedAt).map((x) => [x.type, x.value]));
+      const d = new Date(Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day)));
+      if (!Number.isNaN(d.getTime())) return d;
+    } catch { /* not a zone: fall through */ }
+  }
+  const off = Number(zone.offsetMin);
+  const shifted = new Date(startedAt.getTime() + (Number.isFinite(off) && Math.abs(off) <= 14 * 60 ? off : 0) * 60_000);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
 }
 
 const SELF_OWNER = /^(you|me|i|myself|self|the user)$/i;

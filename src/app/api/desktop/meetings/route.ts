@@ -22,13 +22,13 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   return guardedDesktop(req, async (user, device) => {
-    const body = (await req.json().catch(() => null)) as { platform?: unknown; appTitle?: unknown; title?: unknown; consent?: { noticeCopied?: unknown; auto?: unknown }; contactIds?: unknown; dealIds?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { platform?: unknown; appTitle?: unknown; title?: unknown; consent?: { noticeCopied?: unknown; auto?: unknown }; contactIds?: unknown; dealIds?: unknown; tz?: unknown; utcOffsetMin?: unknown } | null;
     if (!body?.consent || typeof body.consent !== "object") return NextResponse.json({ error: "Agree to the recording notice first." }, { status: 400 });
     const m = await startDesktopMeeting(user, device?.id ?? null, {
       platform: typeof body.platform === "string" ? body.platform : "other",
       appTitle: typeof body.appTitle === "string" ? body.appTitle : "", title: typeof body.title === "string" ? body.title : "",
       consent: { noticeCopied: body.consent.noticeCopied === true, auto: body.consent.auto === true },
-      contactIds: body.contactIds, dealIds: body.dealIds,
+      contactIds: body.contactIds, dealIds: body.dealIds, tz: body.tz, utcOffsetMin: body.utcOffsetMin,
     });
     return NextResponse.json({ meeting: publicMeeting(m) });
   }, { device: "required" });

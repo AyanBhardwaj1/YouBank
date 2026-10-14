@@ -23,7 +23,7 @@ import { botProvider } from "./bot";
 import { applyMeetingToCrm, removeMeetingEntry, type CrmReport } from "./crm";
 import { manualSource, meetingContext } from "./context";
 import { isMeetingUrl, isPlatform, platformOfUrl, type MeetingNotes, type Segment } from "./model";
-import { NotesSchema, parseNotes } from "./notes";
+import { meetingDay, NotesSchema, parseNotes } from "./notes";
 import { labelSelf, renderTranscript, stitch, type Activity } from "./stitch";
 import { NOTES_FEATURE, patchLive, createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
 import { NO_TRANSCRIBER, pickTranscriber, wavSeconds } from "./transcribe";
@@ -39,11 +39,24 @@ export const MAX_CHUNK_SEC = 125;
 const status = (message: string, code: number) => Object.assign(new Error(message), { status: code });
 const ids = (v: unknown) => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 50) : []);
 
+/** A reported time zone, kept on the meeting only when it is a real zone or a sane offset. */
+function zoneOf(input: { tz?: unknown; utcOffsetMin?: unknown }): { tz?: string; utcOffsetMin?: number } {
+  const out: { tz?: string; utcOffsetMin?: number } = {};
+  if (typeof input.tz === "string" && input.tz.length <= 64) {
+    try { new Intl.DateTimeFormat("en-US", { timeZone: input.tz }); out.tz = input.tz; } catch { /* not a zone */ }
+  }
+  const off = Number(input.utcOffsetMin);
+  if (input.utcOffsetMin != null && Number.isInteger(off) && Math.abs(off) <= 14 * 60) out.utcOffsetMin = off;
+  return out;
+}
+
 /* ---------------- Desktop capture ---------------- */
 
 export type StartInput = {
   title?: string; platform?: string; appTitle?: string;
   consent: { noticeCopied?: boolean; auto?: boolean };
+  /** Where the person is: an IANA zone, or the computer's UTC offset in minutes (for due dates). */
+  tz?: unknown; utcOffsetMin?: unknown;
   contactIds?: unknown; dealIds?: unknown;
 };
 
@@ -61,7 +74,7 @@ export async function startDesktopMeeting(user: User, deviceId: number | null, i
   return createMeeting(user.id, {
     source: "desktop", platform, title: (input.title ?? "").trim() || ctx.title, deviceId,
     consent: { at: new Date().toISOString(), by: user.email, noticeCopied: !!input.consent.noticeCopied, auto: !!input.consent.auto },
-    context: { ...ctx, appTitle: (input.appTitle ?? "").slice(0, 200) },
+    context: { ...ctx, appTitle: (input.appTitle ?? "").slice(0, 200), ...zoneOf(input) },
     participants: ctx.people.map((p) => ({ name: p.name, email: p.email })),
   });
 }
@@ -131,8 +144,11 @@ export async function notesAllowance(user: Pick<User, "id" | "email">): Promise<
 export async function writeNotes(user: User, m: MeetingRow, segments: Segment[]): Promise<MeetingNotes> {
   const [ctx, crm] = await Promise.all([loadUserContext(user.id), getCrmSettings(user.id)]);
   const people = m.participants.filter((p) => !p.self).map((p) => `- ${p.name}${p.email ? ` <${p.email}>` : ""}`).join("\n");
-  const date = m.startedAt.toISOString().slice(0, 10);
-  const weekday = m.startedAt.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+  // The day where the person was: the zone their app or browser reported, else their autopilot zone.
+  const zone = m.context as { tz?: unknown; utcOffsetMin?: unknown };
+  const day = meetingDay(m.startedAt, { tz: zone.tz ?? (zone.utcOffsetMin === undefined ? crm.autopilot.window.tz : undefined), offsetMin: zone.utcOffsetMin });
+  const date = day.toISOString().slice(0, 10);
+  const weekday = day.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
   const system = [
     `You write meeting notes for ${user.name || "the person"} (shown as "You" in the transcript). About them: ${personaFor(ctx, crm) || "not given"}.`,
     "Write from the transcript only. Never invent names, numbers, dates or commitments; when the transcript is unclear, leave the field empty.",
@@ -146,7 +162,7 @@ export async function writeNotes(user: User, m: MeetingRow, segments: Segment[])
     `Transcript:\n${renderTranscript(segments)}`,
   ].join("\n\n");
   const { data } = await structured(NotesSchema, NOTES_FEATURE, system, prompt, { prefs: ctx.prefs, task: "draft", maxTokens: 12_000, timeoutMs: 240_000 });
-  return parseNotes(data, { meetingDate: m.startedAt, selfName: user.name });
+  return parseNotes(data, { meetingDate: day, selfName: user.name });
 }
 
 /**
@@ -197,7 +213,7 @@ export async function finishMeeting(user: User, meetingId: number, opts: { force
 const BOT_USD_PER_HOUR = 0.65;
 
 /** Send the notetaker to a meeting link: a person's click (or an auto-join rule they switched on). */
-export async function sendBot(user: User, input: { meetingUrl: string; title?: string; contactIds?: unknown; dealIds?: unknown }, how: "click" | "auto" = "click"): Promise<MeetingRow> {
+export async function sendBot(user: User, input: { meetingUrl: string; title?: string; contactIds?: unknown; dealIds?: unknown; tz?: unknown }, how: "click" | "auto" = "click"): Promise<MeetingRow> {
   await requireFeature(user, "meetings.bot");
   const provider = botProvider();
   if (!provider.ready()) throw status("The notetaker is not set up on this YouBank yet.", 503);
@@ -208,7 +224,7 @@ export async function sendBot(user: User, input: { meetingUrl: string; title?: s
   const ctx = await meetingContext(user.id, new Date(), { meetingUrl: url, platform: platformOfUrl(url) ?? "other", contactIds: ids(input.contactIds), dealIds: ids(input.dealIds) });
   const m = await createMeeting(user.id, {
     source: "bot", status: "joining", platform: platformOfUrl(url) ?? "other", meetingUrl: url, title: (input.title ?? "").trim() || ctx.title,
-    consent: { at: new Date().toISOString(), by: user.email, auto: how === "auto" }, context: { ...ctx },
+    consent: { at: new Date().toISOString(), by: user.email, auto: how === "auto" }, context: { ...ctx, ...zoneOf(input) },
     participants: ctx.people.map((p) => ({ name: p.name, email: p.email })),
   });
   try {

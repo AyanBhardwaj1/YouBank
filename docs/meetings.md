@@ -63,7 +63,7 @@ on, within the free monthly allowance (`MEETINGS_FREE_NOTES`, 3) or the plan (`m
 
 1. The transcript is stitched from its chunks.
 2. One model pass (the `draft` route: a mid-size model at low effort) writes the notes: summary,
-   decisions, action items with owners and dates (relative dates worked out from the meeting date),
+   decisions, action items with owners and dates (relative dates worked out from the meeting's date where the person was: the zone the browser or the computer reported, else their autopilot time zone),
    open questions, speaker names for anonymous labels, each participant's sentiment, interest, signals,
    new facts and topics, deal terms stated, and follow-up emails. `parseNotes` checks every field.
 3. `applyMeetingToCrm` files it, the way the email agent stores what it reads:

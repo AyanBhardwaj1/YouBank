@@ -61,7 +61,7 @@ export function MeetingsPanel({ ctx, initialMeeting, onDrafted }: { ctx: PanelCt
 
   const send = () => ctx.run("send-bot", async () => {
     if (!sending) return;
-    const r = await api<{ meeting: { id: number } }>("/api/meetings", { method: "POST", body: JSON.stringify({ meetingUrl: sending.url, title: sending.title }) });
+    const r = await api<{ meeting: { id: number } }>("/api/meetings", { method: "POST", body: JSON.stringify({ meetingUrl: sending.url, title: sending.title, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }) });
     setSending(null);
     ctx.say("The notetaker is on its way. It asks to join; admit it from the meeting's waiting room if asked.");
     ctx.refresh();

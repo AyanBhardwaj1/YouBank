@@ -45,7 +45,8 @@ export function isoDay(v: string | null | undefined): string | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(text(v));
   if (!m) return null;
   const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? null : `${m[1]}-${m[2]}-${m[3]}`;
+  const day = `${m[1]}-${m[2]}-${m[3]}`;
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day ? day : null;
 }
 
 /**

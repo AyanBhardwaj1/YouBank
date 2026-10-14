@@ -16,7 +16,7 @@ import { entryBody } from "@/lib/meetings/crm";
 import { dealPatch, describeChanges, isoDay, parseMoney, proposeDealChanges, type DealLite } from "@/lib/meetings/diff";
 import { dedupePeople, matchParticipants, nameScore, nameTokens } from "@/lib/meetings/match";
 import { durationLabel, isMeetingUrl, normalizeSettings, platformOfUrl, refusedBy } from "@/lib/meetings/model";
-import { parseNotes, resolveDue } from "@/lib/meetings/notes";
+import { meetingDay, parseNotes, resolveDue } from "@/lib/meetings/notes";
 import { chunkLabel, dropRepeatedPrefix, labelSelf, nameSpeakers, parseLevels, renderTranscript, stitch, turns, type Chunk } from "@/lib/meetings/stitch";
 import { pickTranscriber, segmentsFromMl, segmentsFromOpenAi, wavSeconds } from "@/lib/meetings/transcribe";
 import { DEAL_STAGES } from "@/lib/crm/model";
@@ -159,6 +159,18 @@ function notes() {
   check("a contact's timeline entry carries their signals, facts and the summary", body.startsWith("Ledgerline Series A · 2026-10-05 · 31 min") && body.includes("Asked for a term sheet") && body.includes("Closing a $2M bridge") && body.includes("Summary:"));
 }
 
+function zones() {
+  console.log("the meeting's day where the person was");
+  // Monday 6 pm in San Francisco is Tuesday 01:00 UTC.
+  const at = new Date("2026-10-06T01:00:00Z");
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  check("an IANA zone gives the local date", iso(meetingDay(at, { tz: "America/Los_Angeles" })) === "2026-10-05" && iso(meetingDay(at, { tz: "Asia/Tokyo" })) === "2026-10-06");
+  check("an offset in minutes does too", iso(meetingDay(at, { offsetMin: -420 })) === "2026-10-05" && iso(meetingDay(at, { offsetMin: 540 })) === "2026-10-06");
+  check("an impossible date is no date", resolveDue("2026-02-31", at) === null && isoDay("2026-02-30") === null && resolveDue("2026-02-28", at) === "2026-02-28");
+  check("nothing, a bad zone or a wild offset: UTC", iso(meetingDay(at)) === "2026-10-06" && iso(meetingDay(at, { tz: "Mars/Olympus" })) === "2026-10-06" && iso(meetingDay(at, { offsetMin: 5000 })) === "2026-10-06");
+  check("\"Friday\" said on that Monday evening is that week's Friday", resolveDue("Friday", meetingDay(at, { tz: "America/Los_Angeles" })) === "2026-10-09" && resolveDue("tomorrow", meetingDay(at, { tz: "America/Los_Angeles" })) === "2026-10-06");
+}
+
 function diffing() {
   console.log("proposed deal changes");
   check("money: $8M, 12.5 million, 1.2bn, 800k, $3,000,000, plain numbers", parseMoney("$8M") === 8e6 && parseMoney("12.5 million") === 12.5e6 && parseMoney("1.2bn") === 1.2e9
@@ -278,6 +290,7 @@ function premium() {
 stitching();
 matching();
 notes();
+zones();
 diffing();
 webhooks();
 contextAndModel();

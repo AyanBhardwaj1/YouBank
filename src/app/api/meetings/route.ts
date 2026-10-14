@@ -19,9 +19,9 @@ export async function GET(req: Request) {
 /** Send the notetaker to a meeting link: { meetingUrl, title?, contactIds?, dealIds? }. Premium; billed per hour. */
 export async function POST(req: Request) {
   return guarded(async (user) => {
-    const body = (await req.json().catch(() => null)) as { meetingUrl?: unknown; title?: unknown; contactIds?: unknown; dealIds?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { meetingUrl?: unknown; title?: unknown; contactIds?: unknown; dealIds?: unknown; tz?: unknown } | null;
     if (typeof body?.meetingUrl !== "string") return NextResponse.json({ error: "Paste the meeting link." }, { status: 400 });
-    const m = await sendBot(user, { meetingUrl: body.meetingUrl, title: typeof body.title === "string" ? body.title : "", contactIds: body.contactIds, dealIds: body.dealIds });
+    const m = await sendBot(user, { meetingUrl: body.meetingUrl, title: typeof body.title === "string" ? body.title : "", contactIds: body.contactIds, dealIds: body.dealIds, tz: body.tz });
     return NextResponse.json({ meeting: publicMeeting(m) });
   });
 }
