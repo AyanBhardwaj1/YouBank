@@ -38,6 +38,22 @@ function speak(text: string, onEnd?: () => void) {
   u.onerror = () => onEnd?.();
   window.speechSynthesis.speak(u);
 }
+/**
+ * Whether this document's Permissions-Policy lets it use the microphone. The header opens it on /app/edge
+ * only (next.config.ts), and a client-side navigation into Edge keeps the policy of the page the tab loaded
+ * first, so after one the microphone stays off until Edge is loaded fresh. Browsers without the API say yes.
+ */
+const micAllowedHere = (): boolean => {
+  if (typeof document === "undefined") return true;
+  const d = document as unknown as { permissionsPolicy?: { allowsFeature(f: string): boolean }; featurePolicy?: { allowsFeature(f: string): boolean } };
+  const p = d.permissionsPolicy ?? d.featurePolicy;
+  try { return p ? p.allowsFeature("microphone") : true; } catch { return true; }
+};
+const MIC_RELOAD = "The microphone turns on when Edge is loaded directly. Reload Edge to talk, or type the question.";
+const ReloadForMic = () => (
+  <button type="button" onClick={() => window.location.reload()} className="ml-1 underline underline-offset-2">Reload Edge</button>
+);
+
 const hush = () => { try { window.speechSynthesis?.cancel(); } catch { /* nothing to stop */ } };
 
 export function VoiceButton({ tickers = [] }: { tickers?: string[] }) {
@@ -50,6 +66,7 @@ export function VoiceButton({ tickers = [] }: { tickers?: string[] }) {
   const [typed, setTyped] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [canHear, setCanHear] = useState<boolean | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
   const rec = useRef<Recognition | null>(null);
   const finalText = useRef("");
   const interimRef = useRef("");
@@ -77,6 +94,7 @@ export function VoiceButton({ tickers = [] }: { tickers?: string[] }) {
     const Ctor = recognitionCtor();
     setOpen(true);
     if (!Ctor) { setCanHear(false); return; }
+    if (!micAllowedHere()) { setNeedsReload(true); setNote(MIC_RELOAD); return; }
     hush(); setSpeaking(false); commute.current.on = false;
     try {
       const r = new Ctor();
@@ -178,7 +196,7 @@ export function VoiceButton({ tickers = [] }: { tickers?: string[] }) {
             <LiveConversation onCaption={(heard, script) => setTurns((t) => [{ heard, answer: { intent: "live", reason: "", ticker: null, company: null, script, citations: [], answerId: null, heard }, at: Date.now() }, ...t].slice(0, 12))} />
           </div>
           {listening && <p className="rounded-md border border-accent/40 bg-accent-soft px-2.5 py-2 text-fg" aria-live="polite">{interim || "Listening…"}</p>}
-          {note && <p className="text-[12px] text-neg" role="alert">{note}</p>}
+          {note && <p className="text-[12px] text-neg" role="alert">{note}{needsReload && note === MIC_RELOAD && <ReloadForMic />}</p>}
           {turns.length === 0 && !listening && (
             <div className="text-muted">
               <p>Ask about a company or your work. Answers come from Edge&apos;s data with their sources, and say so when nothing answers.</p>
@@ -252,6 +270,8 @@ function LiveConversation({ onCaption }: { onCaption: (heard: string, script: st
   }, [state, end]);
 
   const startLive = async () => {
+    // Checked before a key is minted, so a session (and its two-minute minimum) is not spent on a page that cannot hear.
+    if (!micAllowedHere()) { setErr(MIC_RELOAD); return; }
     setErr(null); setState("starting"); hush();
     try {
       const s = await post<LiveSession>("/api/edge/voice/session", {});
@@ -308,7 +328,7 @@ function LiveConversation({ onCaption }: { onCaption: (heard: string, script: st
         </button>
       )}
       <PremiumBadge feature="edge.voice-realtime" />
-      {err && <PlanNotice error={err} className="basis-full" />}
+      {err && (err === MIC_RELOAD ? <p className="basis-full text-[12px] text-neg" role="alert">{err}<ReloadForMic /></p> : <PlanNotice error={err} className="basis-full" />)}
     </span>
   );
 }
