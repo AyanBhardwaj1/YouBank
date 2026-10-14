@@ -24,7 +24,7 @@ import { searchTickers } from "@/lib/edgar/tickers";
 import { rateLimit } from "@/lib/locks";
 import type { MeetingNotes } from "./model";
 import { renderTranscript } from "./stitch";
-import { getMeeting, meetingLinks, transcriptOf, transcriptTail, updateMeeting, type MeetingRow } from "./store";
+import { getMeeting, meetingLinks, patchLive, tickLive, transcriptOf, transcriptTail, type MeetingRow } from "./store";
 
 const status = (message: string, code: number) => Object.assign(new Error(message), { status: code });
 
@@ -109,7 +109,7 @@ export async function meetingBrief(userId: string, m: MeetingRow, fresh = false)
   const cached = (m.live as { brief?: Brief }).brief;
   if (cached && !fresh && Date.now() - Date.parse(cached.builtAt) < 10 * 60_000) return cached;
   const brief = await buildBrief(userId, await meetingRefs(m));
-  await updateMeeting(m.id, { live: { ...m.live, brief } });
+  await patchLive(m.id, { brief });
   return brief;
 }
 
@@ -129,7 +129,7 @@ export async function setLive(user: { id: string; email: string }, meetingId: nu
     await requireFeature(user, "meetings.live");
     if (m.status !== "live") throw status("Live suggestions work while a meeting is running.", 409);
   }
-  await updateMeeting(m.id, { live: { ...m.live, on, ...(on ? { since: new Date().toISOString() } : {}) } });
+  await patchLive(m.id, { on, ...(on ? { since: new Date().toISOString() } : {}) });
   return { on };
 }
 
@@ -143,6 +143,8 @@ export async function liveSuggestions(user: { id: string; email: string; name: s
   if (m.status !== "live") throw status("This meeting has ended.", 409);
   await requireFeature(user, "meetings.live");
   await rateLimit(`meetings-live:${m.id}`, 2, 60_000, "Suggestions refresh about once a minute.");
+  // Per person too, so several meetings left "live" cannot multiply the rate.
+  await rateLimit(`meetings-live-user:${user.id}`, 3, 60_000, "Suggestions refresh about once a minute.");
   const tail = (await transcriptTail(m.id, 8)).filter((s) => s.end >= Math.max(0, (m.durationSec || 0) - 240));
   if (!tail.length) return { questions: [], facts: [], watch: [], minutes: m.live.minutes ?? 0 };
   const [brief, ctx] = await Promise.all([meetingBrief(user.id, m), loadUserContext(user.id)]);
@@ -150,8 +152,7 @@ export async function liveSuggestions(user: { id: string; email: string; name: s
     `You help ${user.name || "the person"} during a live meeting${m.title ? ` (“${m.title}”)` : ""}. Suggest what to ask and what to remember, drawing only on the brief and the transcript. Be brief and concrete; never invent facts. "You" in the transcript is the person you help.`,
     `Brief:\n${briefLines(brief).map((l) => `- ${l}`).join("\n") || "- nothing on file"}\n\nThe last few minutes:\n${renderTranscript(tail, 12_000)}`,
     { prefs: ctx.prefs, task: "extract", maxTokens: 1500, timeoutMs: 45_000 });
-  const minutes = (m.live.minutes ?? 0) + 1;
-  await updateMeeting(m.id, { live: { ...m.live, minutes, lastAt: new Date().toISOString() } });
+  const minutes = await tickLive(m.id);
   return {
     questions: data.questions.map((q) => q.trim()).filter(Boolean).slice(0, 3),
     facts: data.facts.filter((f) => f.text.trim()).slice(0, 4),

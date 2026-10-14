@@ -63,6 +63,23 @@ export async function updateMeeting(id: number, set: Partial<typeof schema.meeti
   return row;
 }
 
+/**
+ * Merge keys into a meeting's `live` state in the database, so concurrent writers (a suggestions round
+ * in flight, the person switching suggestions off, the brief being cached) never put back a stale copy.
+ */
+export async function patchLive(id: number, patch: Record<string, unknown>): Promise<void> {
+  await requireDb().update(schema.meetings).set({ live: sql`${schema.meetings.live} || ${JSON.stringify(patch)}::jsonb`, updatedAt: new Date() }).where(eq(schema.meetings.id, id));
+}
+
+/** Count one more minute of live suggestions, atomically; returns the new count. */
+export async function tickLive(id: number): Promise<number> {
+  const [row] = await requireDb().update(schema.meetings).set({
+    live: sql`${schema.meetings.live} || jsonb_build_object('minutes', coalesce((${schema.meetings.live}->>'minutes')::int, 0) + 1, 'lastAt', ${new Date().toISOString()}::text)`,
+    updatedAt: new Date(),
+  }).where(eq(schema.meetings.id, id)).returning({ live: schema.meetings.live });
+  return row?.live.minutes ?? 0;
+}
+
 export async function meetingByBot(botId: string): Promise<MeetingRow | null> {
   const [row] = await requireDb().select().from(schema.meetings).where(eq(schema.meetings.botId, botId));
   return row ?? null;

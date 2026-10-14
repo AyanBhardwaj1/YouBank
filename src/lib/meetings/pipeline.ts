@@ -25,7 +25,7 @@ import { meetingContext } from "./context";
 import { isMeetingUrl, isPlatform, platformOfUrl, type MeetingNotes, type Segment } from "./model";
 import { NotesSchema, parseNotes } from "./notes";
 import { labelSelf, renderTranscript, stitch, type Activity } from "./stitch";
-import { NOTES_FEATURE, createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
+import { NOTES_FEATURE, patchLive, createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
 import { NO_TRANSCRIBER, pickTranscriber, wavSeconds } from "./transcribe";
 
 type User = { id: string; email: string; name: string };
@@ -105,7 +105,8 @@ export async function endMeeting(user: User, meetingId: number, opts: { discard?
     return { ...m, status: "cancelled" };
   }
   if (m.status !== "live" && m.status !== "joining") return m;
-  const row = await updateMeeting(m.id, { status: "processing", endedAt: new Date(), live: { ...m.live, on: false } });
+  await patchLive(m.id, { on: false });
+  const row = await updateMeeting(m.id, { status: "processing", endedAt: new Date() });
   later(user, () => finishMeeting(user, m.id), m.id);
   return row;
 }
