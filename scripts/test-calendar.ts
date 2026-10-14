@@ -116,6 +116,9 @@ console.log("\nWriting and editing events");
   const back = expandCalendar(text, { start: Date.parse("2026-10-01T00:00:00Z"), end: Date.parse("2026-11-01T00:00:00Z") });
   ok("a built event reads back", back.map((b) => [b.uid === uid, b.summary, iso(b.start), iso(b.end), b.videoUrl, b.attendees.map((a) => a.email), b.organizer?.email]), [[true, "Intro, Ledgerline; diligence", "2026-10-20T15:00:00Z", "2026-10-20T15:30:00Z", "https://meet.google.com/abc-defg-hij", ["maya@ledgerline.io"], "me@youbank.test"]]);
 
+  const forged = serializeICal(buildEventCalendar({ title: "x", start, end, timezone: "UTC", attendees: [{ email: "a@b.io", name: "Eve\r\nATTENDEE:mailto:victim@example.com" }] }, { organizer: null }).calendar);
+  ok("a line break in a name cannot forge a property", [/^ATTENDEE:mailto:victim/m.test(forged), expandCalendar(forged, { start: Date.parse("2026-10-01T00:00:00Z"), end: Date.parse("2026-11-01T00:00:00Z") })[0]?.attendees.map((a) => a.email)], [false, ["a@b.io"]]);
+
   const series = parseCalendar(fixture("recurring.ics"));
   cancelOccurrence(series, "weekly-ny@test", "2026-10-26T13:00:00.000Z");
   const master = series.components.find((c) => c.name === "VEVENT" && c.props.some((p) => p.name === "UID" && p.value === "weekly-ny@test") && !c.props.some((p) => p.name === "RECURRENCE-ID"))!;

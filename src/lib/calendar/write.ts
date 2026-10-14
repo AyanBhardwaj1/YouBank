@@ -37,6 +37,22 @@ export type CreateInput = {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
 
+const MAX_ATTENDEES = 100;
+
+/**
+ * Attendees as written to a provider: valid addresses, short names, at most MAX_ATTENDEES. A new
+ * meeting refuses a bad address; an edit drops it (the provider may have listed odd ones).
+ */
+function cleanAttendees(list: { email?: unknown; name?: unknown }[], opts: { dropInvalid?: boolean } = {}): { email: string; name?: string }[] {
+  if (!Array.isArray(list)) throw plain("Attendees must be a list.");
+  let out = list.map((a) => ({ email: String(a?.email ?? "").trim().toLowerCase(), name: typeof a?.name === "string" ? a.name.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, 120) || undefined : undefined })).filter((a) => a.email);
+  const bad = out.find((a) => !EMAIL.test(a.email));
+  if (bad && !opts.dropInvalid) throw plain(`"${bad.email.slice(0, 120)}" is not an email address.`);
+  out = out.filter((a) => EMAIL.test(a.email));
+  if (out.length > MAX_ATTENDEES) throw plain(`At most ${MAX_ATTENDEES} people can be invited from here.`);
+  return [...new Map(out.map((a) => [a.email, a])).values()];
+}
+
 function times(startIso: string, endIso: string): { start: Date; end: Date } {
   const start = new Date(startIso), end = new Date(endIso);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) throw plain("Pick a start and an end time.");
@@ -61,10 +77,7 @@ export async function createMeeting(user: Pick<CurrentUser, "id" | "email">, inp
   const title = input.title.trim().slice(0, 300);
   if (!title) throw plain("Give the meeting a title.");
   const { start, end } = times(input.start, input.end);
-  const attendees = (input.attendees ?? []).map((a) => ({ email: a.email.trim().toLowerCase(), name: a.name?.trim().slice(0, 120) })).filter((a) => a.email);
-  const bad = attendees.find((a) => !EMAIL.test(a.email));
-  if (bad) throw plain(`"${bad.email}" is not an email address.`);
-  if (attendees.length > 100) throw plain("At most 100 people can be invited from here.");
+  const attendees = cleanAttendees(input.attendees ?? []);
   if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be an https:// address.");
 
   const cal = await targetCalendar(user.id, input.calendarId);
@@ -120,7 +133,8 @@ export async function changeMeeting(userId: string, eventId: number, input: Chan
     if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be an https:// address.");
     patch.videoUrl = input.videoUrl;
   }
-  if (input.attendees) patch.attendees = input.attendees.filter((a) => EMAIL.test(a.email.trim())).map((a) => ({ email: a.email.trim().toLowerCase(), name: a.name }));
+  // The same limits as a new meeting: an edit must not be a way round the invitation cap.
+  if (input.attendees) patch.attendees = cleanAttendees(input.attendees, { dropInvalid: true });
   try {
     await w.provider.updateEvent({ remoteId: w.cal.remoteId, timezone: w.cal.timezone }, w.ref, patch, { sendInvites: input.sendInvites !== false, scope });
   } catch (e) {

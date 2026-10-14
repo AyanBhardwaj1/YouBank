@@ -174,7 +174,8 @@ export function parseUtcOffset(v: string): number | null {
 const needsQuotes = /[:;,]/;
 
 function formatParams(params: Record<string, string>): string {
-  return Object.entries(params).map(([k, v]) => `;${k}=${needsQuotes.test(v) && !/^".*"$/.test(v) ? `"${v.replace(/"/g, "'")}"` : v}`).join("");
+  // Control characters (a line break in a name) would end the content line and start a forged property.
+  return Object.entries(params).map(([k, raw]) => { const v = raw.replace(/[\x00-\x08\x0a-\x1f\x7f]/g, " "); return `;${k}=${needsQuotes.test(v) && !/^".*"$/.test(v) ? `"${v.replace(/"/g, "'")}"` : v}`; }).join("");
 }
 
 /**
