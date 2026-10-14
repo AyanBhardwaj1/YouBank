@@ -258,7 +258,9 @@ export function splitBetween(prev: { value: number; shares: number }, cur: { val
   const ratio = SPLIT_CANDIDATES.find((c) => Math.abs(Math.log(r / c)) <= 0.03);
   if (!ratio) return null;
   const priceDrop = (prev.value / prev.shares) / (cur.value / cur.shares);
-  return Math.abs(Math.log(priceDrop / ratio)) < 0.5 ? ratio : null;
+  // The price must have moved by about the split ratio: within half the split's own size (in logs), so a
+  // 1.5-for-1 split is told apart from buying half as many again at an unchanged price.
+  return Math.abs(Math.log(priceDrop / ratio)) < Math.min(0.5, 0.5 * Math.abs(Math.log(ratio))) ? ratio : null;
 }
 
 export type ChangeKind = "new" | "added" | "trimmed" | "exited" | "unchanged";
