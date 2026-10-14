@@ -57,7 +57,7 @@ async function activeCount(userId: string, mode: "paper" | "live", except?: numb
 }
 
 /** The plan and limit checks for a copy's settings; throws a plain 402/400 when they do not fit. */
-async function checkAllowed(user: Person, c: CopyInput, except?: number): Promise<void> {
+export async function checkAllowed(user: Person, c: CopyInput, except?: number): Promise<void> {
   await requireConsent(user.id, "terms");
   if (c.funds.length > 1) await requireFeature(user, "copytrade.blends");
   if (c.mode === "live") {

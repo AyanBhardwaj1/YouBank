@@ -269,12 +269,13 @@ async function main() {
       const tick = () => new Promise((r) => setTimeout(r, 1));
       const store: CopyStore = {
         batch: async (id, user) => { await tick(); return id === batch.id && user === batch.userId ? { ...batch } : null; },
-        claimBatch: async (_id, _u, key) => { await tick(); if (batch.status !== "proposed") return false; batch.status = "placing"; batch.idemKey = key; return true; },
+        claimBatch: async (_id, _u, key, at) => { await tick(); if (batch.status !== "proposed" || batch.expiresAt.getTime() <= at.getTime()) return false; batch.status = "placing"; batch.idemKey = key; return true; },
+        releaseBatch: async (_id, key) => { if (batch.status === "placing" && batch.idemKey === key) { batch.status = "proposed"; batch.idemKey = null; } },
         orders: async () => orders.map((o) => ({ ...o })),
         claimOrder: async (id) => { await tick(); const o = orders.find((x) => x.id === id)!; if (o.status !== "pending") return false; o.status = "submitting"; return true; },
         updateOrder: async (id, patch) => { Object.assign(orders.find((x) => x.id === id)!, patch); },
         finishBatch: async (_id, s) => { batch.status = s; },
-        sentValueSince: async () => 0,
+        committedValueSince: async () => 0,
         audit: async (e) => { audit.push(e); },
       };
       return { store, batch, orders, audit };
@@ -288,7 +289,7 @@ async function main() {
       };
       return { broker, placed };
     };
-    const req = { batchId: 7, user: { id: "u1", email: "a@b.co" }, idemKey: "key-0000-aaaa", confirmation: "", now, maxDayUsd: 50_000, market: open };
+    const req = { batchId: 7, user: { id: "u1", email: "a@b.co" }, idemKey: "key-0000-aaaa", confirmation: "", now, maxDayUsd: 50_000, maxOrderUsd: 25_000, market: open };
     {
       const { store, orders, audit } = mkStore();
       const { broker, placed } = mkBroker();
@@ -323,8 +324,18 @@ async function main() {
       check("typed confirmation accepted (case-insensitive)", ok.outcome === "placed");
       const day = mkStore();
       let dmsg = "";
-      await approveBatch({ ...day.store, sentValueSince: async () => 49_000 }, mkBroker().broker, req).catch((e) => { dmsg = e.message; });
+      await approveBatch({ ...day.store, committedValueSince: async () => 49_000 }, mkBroker().broker, req).catch((e) => { dmsg = e.message; });
       check("the daily limit counts what was already sent today", /daily limit/.test(dmsg));
+      // Another batch approved at the same moment: the first read sees nothing, the read after the claim sees both.
+      const race = mkStore();
+      const raceBroker = mkBroker();
+      let reads = 0, rmsg = "";
+      await approveBatch({ ...race.store, committedValueSince: async () => (reads++ === 0 ? 0 : 49_000 + 1_500) }, raceBroker.broker, req).catch((e) => { rmsg = e.message; });
+      check("a batch approved alongside another is checked again after its claim, and released when over the daily limit", /daily limit/.test(rmsg) && raceBroker.placed.length === 0 && race.batch.status === "proposed" && race.batch.idemKey === null, { rmsg, status: race.batch.status });
+      const capped = mkStore();
+      let cmsg = "";
+      await approveBatch(capped.store, mkBroker().broker, { ...req, maxOrderUsd: 400 }).catch((e) => { cmsg = e.message; });
+      check("the per-order limit is checked again at approval", /per-order limit/.test(cmsg) && capped.batch.status === "proposed", cmsg);
       const mkt = mkStore();
       mkt.orders[0].orderType = "Market";
       let mmsg = "";

@@ -35,15 +35,21 @@ export type AuditEntry = { userId: string; actor: string; action: string; batchI
 
 export interface CopyStore {
   batch(id: number, userId: string): Promise<BatchRow | null>;
-  /** proposed -> placing with the idempotency key, only when still proposed. True for the one caller that won. */
+  /** proposed -> placing with the idempotency key, only when still proposed and not expired at `at`. True for the one caller that won. */
   claimBatch(id: number, userId: string, idemKey: string, at: Date): Promise<boolean>;
+  /** placing -> proposed again, only for the claim with this key and before any order was sent (the daily limit's second check). */
+  releaseBatch(id: number, idemKey: string): Promise<void>;
   orders(batchId: number): Promise<OrderRow[]>;
   /** pending -> submitting. True for the one caller that won. */
   claimOrder(orderId: number): Promise<boolean>;
   updateOrder(orderId: number, patch: Partial<Pick<OrderRow, "status" | "brokerageOrderId" | "error">> & { impact?: unknown; response?: unknown }): Promise<void>;
   finishBatch(id: number, status: BatchStatus): Promise<void>;
-  /** Value of copy orders this person sent to brokers since `since` (for the daily limit). */
-  sentValueSince(userId: string, since: Date): Promise<number>;
+  /**
+   * Value of this person's copy orders in batches approved since `since` that were not turned down: sent,
+   * being sent, or claimed and about to be (for the daily limit). Counting claimed batches is what makes
+   * the limit hold when two batches are approved at the same moment.
+   */
+  committedValueSince(userId: string, since: Date): Promise<number>;
   audit(e: AuditEntry): Promise<void>;
 }
 
@@ -82,6 +88,8 @@ export type ApproveRequest = {
   ip?: string | null;
   userAgent?: string | null;
   maxDayUsd: number;
+  /** The per-order ceiling now (the copy's and the server's, whichever is lower), checked again at approval. */
+  maxOrderUsd: number;
   market: MarketState;
 };
 
@@ -111,14 +119,25 @@ export async function approveBatch(store: CopyStore, broker: OrderBroker, req: A
   const orders = (await store.orders(b.id)).filter((o) => o.status === "pending");
   if (!orders.length) throw refuse("There are no orders to place in this batch.", 400);
   if (!req.market.open && orders.some((o) => o.orderType === "Market")) throw refuse(`The market is closed (${req.market.reason}). Market orders can only go while it is open; it next opens ${req.market.nextOpen}. Switch this copy to limit orders, or come back then.`, 409);
+  const tooBig = req.maxOrderUsd > 0 ? orders.find((o) => o.estValue > req.maxOrderUsd + 0.005) : undefined;
+  if (tooBig) throw refuse(`The ${tooBig.ticker} order is over the per-order limit of $${req.maxOrderUsd.toLocaleString("en-US")}. Review a fresh set.`, 409);
   const value = b.buyValue + b.sellValue;
-  const sent = await store.sentValueSince(req.user.id, startOfDay(req.now));
-  if (req.maxDayUsd > 0 && sent + value > req.maxDayUsd) throw refuse(`This would take today's copy orders to $${Math.round(sent + value).toLocaleString("en-US")}, over your daily limit of $${req.maxDayUsd.toLocaleString("en-US")}. Raise the limit in the copy's settings or wait until tomorrow.`, 400);
+  const overDay = (total: number) => refuse(`This would take today's copy orders to $${Math.round(total).toLocaleString("en-US")}, over your daily limit of $${req.maxDayUsd.toLocaleString("en-US")}. Raise the limit in the copy's settings or wait until tomorrow.`, 400);
+  const since = startOfDay(req.now);
+  const sent = await store.committedValueSince(req.user.id, since);
+  if (req.maxDayUsd > 0 && sent + value > req.maxDayUsd) throw overDay(sent + value);
 
   if (!(await store.claimBatch(b.id, req.user.id, req.idemKey, req.now))) {
     const now = await store.batch(b.id, req.user.id);
     if (now?.idemKey === req.idemKey) return { outcome: "already", status: now.status, orders: await store.orders(b.id), message: "Already approved. Nothing new was sent." };
-    throw refuse("This batch was already approved. Nothing new was sent.", 409);
+    throw refuse(now?.status === "proposed" ? "These orders are out of date (prices move). Review a fresh set." : "This batch was already approved. Nothing new was sent.", 409);
+  }
+  // The first check read before the claim, so a second batch approved at the same moment could pass it
+  // too. Read again now that this claim is committed: of two simultaneous claims, at least one sees the
+  // other, so both can never go over the limit. Nothing has been sent yet, so the claim is undone.
+  if (req.maxDayUsd > 0) {
+    const committed = await store.committedValueSince(req.user.id, since);
+    if (committed > req.maxDayUsd + 0.005) { await store.releaseBatch(b.id, req.idemKey); throw overDay(committed); }
   }
   await store.audit({ userId: req.user.id, actor: req.user.email, action: "approve", batchId: b.id, portfolioId: b.portfolioId, ip: req.ip, userAgent: req.userAgent,
     payload: { idemKey: req.idemKey, confirmation: phrase ? "typed" : "click", market: req.market, accountId: b.accountId, orders: orders.map((o) => ({ id: o.id, clientOrderId: o.clientOrderId, ticker: o.ticker, action: o.action, units: o.units, orderType: o.orderType, limitPrice: o.limitPrice, estValue: o.estValue })) } });

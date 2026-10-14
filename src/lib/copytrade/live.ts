@@ -7,7 +7,7 @@
  * runs a live copy from a schedule: a new 13F only produces a notice that a fresh proposal is ready.
  */
 import { createHash } from "node:crypto";
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
 import { decryptToken, encryptionReady, encryptToken } from "@/lib/crm/crypto";
@@ -17,7 +17,7 @@ import { copyTargets } from "./analytics";
 import { brokerTicker } from "./cusip";
 import { marketState } from "./markethours";
 import { approveBatch, clientOrderId, confirmationPhrase, type BatchRow, type CopyStore, type OrderBroker, type OrderRow } from "./orders";
-import { cleanCopy, getCopy } from "./portfolios";
+import { checkAllowed, cleanCopy, getCopy } from "./portfolios";
 import { latestPrices } from "./prices";
 import { proposeOrders, type Proposal } from "./rebalance";
 import { FINAL_STATUSES, positionsOf, snaptrade, snaptradeReady, type SnapAccount, type SnapSymbol, type SnapUser, type TradeForm } from "./snaptrade";
@@ -110,6 +110,28 @@ async function symbolId(u: SnapUser, accountId: string, ticker: string): Promise
   return null;
 }
 
+/** Order statuses after which nothing more will happen at the broker (or nothing was ever sent). */
+const SETTLED = [...FINAL_STATUSES, "pending", "rejected", "skipped"];
+const OPEN_DAYS = 4;
+
+/**
+ * Refuse a new proposal while an earlier one of this copy may still trade: a sent limit order that has not
+ * filled, or an order whose placement got no answer. Its shares are not in the account or in the copy's
+ * count yet, so a new proposal would order them a second time. Statuses are asked of the broker first.
+ */
+async function refuseWhileOpen(userId: string, copyId: number): Promise<void> {
+  const open = () => requireDb().select({ batchId: schema.copyOrders.batchId, ticker: schema.copyOrders.ticker, status: schema.copyOrders.status, brokerageOrderId: schema.copyOrders.brokerageOrderId }).from(schema.copyOrders)
+    .where(and(eq(schema.copyOrders.portfolioId, copyId), eq(schema.copyOrders.userId, userId), isNotNull(schema.copyOrders.sentAt), gte(schema.copyOrders.sentAt, new Date(Date.now() - OPEN_DAYS * 86_400_000)), notInArray(schema.copyOrders.status, SETTLED)));
+  let rows = await open();
+  const ask = [...new Set(rows.filter((r) => r.brokerageOrderId).map((r) => r.batchId))];
+  if (ask.length) { for (const id of ask) await refreshBatch(userId, id).catch(() => undefined); rows = await open(); }
+  if (!rows.length) return;
+  const tickers = [...new Set(rows.map((r) => r.ticker))].join(", ");
+  throw refuse(rows.some((r) => !r.brokerageOrderId)
+    ? `An earlier order (${tickers}) got no answer from your broker, so it may have been placed. Check your broker; new orders for this copy can be reviewed once that is settled, or after ${OPEN_DAYS} days.`
+    : `Earlier orders (${tickers}) are still open at your broker. New orders for this copy can be reviewed once they fill, are canceled or expire.`, 409);
+}
+
 /**
  * Build a batch of orders for a live copy from its account and the latest filings, for the person to
  * review. Nothing is sent. The batch expires after a few minutes, because prices move.
@@ -122,7 +144,10 @@ export async function propose(user: Person, copyId: number, meta: Meta): Promise
   if (row.status !== "active") throw refuse("This copy is paused. Resume it to review orders.");
   if (!row.accountId) throw refuse("Choose the brokerage account this copy trades in.");
   const c = cleanCopy({ ...row, mode: "live" } as unknown as Record<string, unknown>);
+  // The plan as it is today (a blend, more live copies), not as it was when the copy was made.
+  await checkAllowed(user, c, copyId);
   const u = await requireSnapUser(user.id);
+  await refuseWhileOpen(user.id, copyId);
   const { accounts: list } = await accounts(user);
   const account = list.find((a) => a.id === row.accountId) ?? null;
   if (!account) throw refuse("That brokerage account is no longer connected. Reconnect it, or choose another account in the copy's settings.", 409);
@@ -130,7 +155,7 @@ export async function propose(user: Person, copyId: number, meta: Meta): Promise
   const [holdings, t] = await Promise.all([snaptrade.holdings(u, row.accountId), copyTargets(c.funds, c.rules, true)]);
   if (!t.targets.length) throw refuse("This fund has no holdings we can copy yet.", 409);
   const acct = positionsOf(holdings);
-  const managed = row.managed ?? {};
+  const managed = await recountManaged(copyId);
   const scope = [...new Set([...t.targets.map((x) => x.ticker), ...Object.keys(managed)])];
   const quotes = await latestPrices(scope);
   const budget = c.sizing.kind === "pct" ? (acct.total * c.sizing.amount) / 100 : c.sizing.amount;
@@ -181,8 +206,12 @@ export const dbStore: CopyStore = {
   },
   async claimBatch(id, userId, idemKey, at) {
     const won = await requireDb().update(schema.copyBatches).set({ status: "placing", idemKey, approvedAt: at, updatedAt: at })
-      .where(and(eq(schema.copyBatches.id, id), eq(schema.copyBatches.userId, userId), eq(schema.copyBatches.status, "proposed"))).returning({ id: schema.copyBatches.id });
+      .where(and(eq(schema.copyBatches.id, id), eq(schema.copyBatches.userId, userId), eq(schema.copyBatches.status, "proposed"), gt(schema.copyBatches.expiresAt, at))).returning({ id: schema.copyBatches.id });
     return won.length === 1;
+  },
+  async releaseBatch(id, idemKey) {
+    await requireDb().update(schema.copyBatches).set({ status: "proposed", idemKey: null, approvedAt: null, updatedAt: new Date() })
+      .where(and(eq(schema.copyBatches.id, id), eq(schema.copyBatches.status, "placing"), eq(schema.copyBatches.idemKey, idemKey)));
   },
   async orders(batchId) {
     return (await requireDb().select().from(schema.copyOrders).where(eq(schema.copyOrders.batchId, batchId)).orderBy(schema.copyOrders.seq)).map(toOrder);
@@ -199,9 +228,10 @@ export const dbStore: CopyStore = {
   async finishBatch(id, status) {
     await requireDb().update(schema.copyBatches).set({ status, updatedAt: new Date() }).where(eq(schema.copyBatches.id, id));
   },
-  async sentValueSince(userId, since) {
+  async committedValueSince(userId, since) {
     const [r] = await requireDb().select({ v: sql<number>`coalesce(sum(${schema.copyOrders.estValue}), 0)::float8` }).from(schema.copyOrders)
-      .where(and(eq(schema.copyOrders.userId, userId), gte(schema.copyOrders.sentAt, since), sql`${schema.copyOrders.status} not in ('pending', 'rejected', 'skipped')`));
+      .innerJoin(schema.copyBatches, eq(schema.copyBatches.id, schema.copyOrders.batchId))
+      .where(and(eq(schema.copyBatches.userId, userId), gte(schema.copyBatches.approvedAt, since), notInArray(schema.copyOrders.status, ["rejected", "skipped"])));
     return Number(r?.v ?? 0);
   },
   audit,
@@ -227,6 +257,22 @@ function snapBroker(u: SnapUser, accountId: string): OrderBroker {
   };
 }
 
+/**
+ * The account as it is now must still hold every share a batch sells. The proposal was built from the
+ * holdings minutes ago; a sale made since (at the broker, or by another copy) would otherwise turn a sell
+ * into one for more than the account holds, which a margin account can fill as a short sale.
+ */
+async function checkSellsStillHeld(u: SnapUser, b: BatchRow): Promise<void> {
+  const sells = (await dbStore.orders(b.id)).filter((o) => o.status === "pending" && o.action === "SELL");
+  if (!sells.length) return;
+  const held = new Map<string, number>();
+  for (const p of positionsOf(await snaptrade.holdings(u, b.accountId)).positions) held.set(p.ticker, (held.get(p.ticker) ?? 0) + p.units);
+  const short = sells.filter((o) => o.units > (held.get(o.ticker.toUpperCase().replace(/[./]/g, "-")) ?? 0) + 1e-6);
+  if (!short.length) return;
+  await requireDb().update(schema.copyBatches).set({ status: "expired", updatedAt: new Date() }).where(and(eq(schema.copyBatches.id, b.id), eq(schema.copyBatches.status, "proposed")));
+  throw refuse(`Your account no longer holds the shares this batch would sell (${short.map((o) => o.ticker).join(", ")}). Nothing was sent. Review a fresh set.`, 409);
+}
+
 /** Approve a reviewed batch and send it, once. */
 export async function approve(user: Person, batchId: number, body: { idempotencyKey?: unknown; confirmation?: unknown }, meta: Meta) {
   await requireBroker(user);
@@ -239,9 +285,10 @@ export async function approve(user: Person, batchId: number, body: { idempotency
   if (copy.status !== "active") throw refuse("This copy is paused. Resume it before placing orders.", 409);
   const u = await requireSnapUser(user.id);
   const c = cleanCopy({ ...copy, mode: "live" } as unknown as Record<string, unknown>);
+  if (b.status === "proposed") await checkSellsStillHeld(u, b);
   const result = await approveBatch(dbStore, snapBroker(u, b.accountId), {
     batchId, user, idemKey: String(body.idempotencyKey ?? ""), confirmation: String(body.confirmation ?? ""), now: new Date(), ip: meta.ip, userAgent: meta.userAgent,
-    maxDayUsd: Math.min(c.trading.maxDayUsd, limits().maxDayUsd), market: marketState(),
+    maxDayUsd: Math.min(c.trading.maxDayUsd, limits().maxDayUsd), maxOrderUsd: Math.min(c.trading.maxOrderUsd, limits().maxOrderUsd), market: marketState(),
   });
   return result;
 }
@@ -270,7 +317,12 @@ export async function refreshBatch(userId: string, batchId: number): Promise<Ord
 /** A live copy's own shares: filled buys less filled sells across its orders. Recomputed, so it is never double-counted. */
 export async function recountManaged(copyId: number): Promise<Record<string, number>> {
   const db = requireDb();
-  const rows = await db.select({ ticker: schema.copyOrders.ticker, action: schema.copyOrders.action, filled: schema.copyOrders.filledUnits }).from(schema.copyOrders).where(eq(schema.copyOrders.portfolioId, copyId));
+  // Only orders in the account the copy trades in now: shares bought in an account it used before are not
+  // in this one, and counting them would let the copy sell the person's own shares here.
+  const [copy] = await db.select({ accountId: schema.copyPortfolios.accountId }).from(schema.copyPortfolios).where(eq(schema.copyPortfolios.id, copyId));
+  const rows = copy?.accountId ? await db.select({ ticker: schema.copyOrders.ticker, action: schema.copyOrders.action, filled: schema.copyOrders.filledUnits }).from(schema.copyOrders)
+    .innerJoin(schema.copyBatches, eq(schema.copyBatches.id, schema.copyOrders.batchId))
+    .where(and(eq(schema.copyOrders.portfolioId, copyId), eq(schema.copyBatches.accountId, copy.accountId))) : [];
   const m: Record<string, number> = {};
   for (const r of rows) m[r.ticker] = (m[r.ticker] ?? 0) + (r.action === "BUY" ? r.filled : -r.filled);
   for (const k of Object.keys(m)) if (m[k] <= 1e-6) delete m[k]; else m[k] = Math.round(m[k] * 1e4) / 1e4;
