@@ -56,6 +56,8 @@ export function parseLine(line: string): ICalProp | null {
  * Every top-level component in a file, normally one VCALENDAR. Unbalanced END lines are ignored and
  * unclosed components are closed at the end, so a truncated feed still yields what it has.
  */
+const MAX_DEPTH = 16;
+
 export function parseICal(text: string): ICalComponent[] {
   const roots: ICalComponent[] = [];
   const stack: ICalComponent[] = [];
@@ -63,6 +65,9 @@ export function parseICal(text: string): ICalComponent[] {
     const p = parseLine(line);
     if (!p) continue;
     if (p.name === "BEGIN") {
+      // Real calendars nest three or four deep (VCALENDAR > VEVENT > VALARM). A hostile file nested
+      // thousands deep would make every END scan the stack (quadratic) and the writer recurse.
+      if (stack.length >= MAX_DEPTH) continue;
       const c: ICalComponent = { name: p.value.trim().toUpperCase(), props: [], components: [] };
       (stack.length ? stack[stack.length - 1].components : roots).push(c);
       stack.push(c);

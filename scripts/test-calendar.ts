@@ -50,6 +50,11 @@ console.log("iCalendar reading and writing");
   ok("parse → serialize → parse is stable", JSON.stringify(twice), JSON.stringify(once));
   ok("serializer writes CRLF", serializeICal(once[0]).includes("\r\nEND:VCALENDAR\r\n"), true);
   ok("durations", [parseDuration("PT1H30M"), parseDuration("-P1D"), parseDuration("P2W"), parseDuration("P")], [5_400_000, -DAY, 14 * DAY, null]);
+  {
+    const t0 = Date.now();
+    parseICal(`BEGIN:VCALENDAR\n${"BEGIN:X\n".repeat(100_000)}${"END:Y\n".repeat(100_000)}`);
+    ok("a file nested thousands deep reads quickly", Date.now() - t0 < 2000, true);
+  }
   ok("truncated file still reads", parseICal("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:x\nSUMMARY:cut off").length, 1);
 }
 
