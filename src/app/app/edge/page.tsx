@@ -11,7 +11,7 @@ import type { EdgeState, FeedData } from "@/components/edge/client";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
 
-const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "deals", "pulse", "track"]);
+const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "deals", "pulse", "radar", "track"]);
 
 /**
  * Edge: ?view=feed|canvases|documents|networks|scenarios|map|whatif|deals|pulse|radar|track; Pulse and Deal Radar

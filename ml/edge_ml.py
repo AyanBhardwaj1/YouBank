@@ -76,6 +76,9 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     "synth.tabular": ("synth_tabular", 2.0, 4096, 1800, 1),
     "synth.series": ("synth_series", 2.0, 4096, 1800, 1),
     "topics.map": ("topics_map", 2.0, 4096, 600, 1),
+    # Deal Radar (E4): train monthly (a few CPU minutes), score the universe weekly and watched companies daily.
+    "odds.train": ("odds_train", 2.0, 4096, 1800, 1),
+    "odds.score": ("odds_score", 1.0, 2048, 300, 2),
 }
 SCALEDOWN_SECONDS = 60
 INNGEST_URL = "https://inn.gs/e/"
@@ -125,6 +128,8 @@ PINS = {
     "tokenizers": "0.23.2",
     "safetensors": "0.8.0",
     "pyarrow": "25.0.1",
+    # Deal Radar (E4): the hazard model (MIT)
+    "lightgbm": "4.6.0",
 }
 MODELS = {
     # geo.refine: the current pair, then the fallbacks for the pair below
@@ -330,6 +335,14 @@ graph_gpu_image = modal.Image.debian_slim(python_version=PY).pip_install(
     f"torch=={PINS['torch'].split('+')[0]}", *_pin("torch-geometric", "scikit-learn", "boto3"))
 
 synth_image = _torch_image().pip_install(*_pin("scikit-learn", "boto3"))
+
+# Deal Radar: LightGBM and scikit-learn (with scipy for the Jeffreys intervals); the pure logic lives in
+# ml/odds_core.py, added as local source so it is the same file the local tests import.
+odds_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(*_pin("lightgbm", "scikit-learn", "boto3"))
+    .add_local_python_source("odds_core")
+)
 
 topics_image = (
     modal.Image.debian_slim(python_version=PY)
@@ -3111,6 +3124,46 @@ def _topics_map(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
+# odds.train / odds.score: the Deal Radar's calibrated hazard model (ml/odds_core.py holds the logic).
+# ---------------------------------------------------------------------------------------------
+_ODDS_CACHE: dict = {}
+
+
+def _odds_train(inp: dict) -> dict:
+    """Read the panel (JSON lines from R2), train and validate LightGBM, calibrate, save model and calibration."""
+    import odds_core
+
+    features = inp.get("features") or []
+    if not features:
+        raise ValueError("input needs 'features' (the TypeScript feature list with monotone constraints)")
+    out_key = str(inp.get("outKey") or f"ml/odds/lgbm-{int(time.time())}")
+    if not out_key.startswith("ml/"):
+        raise ValueError("outKey must live under ml/")
+    text = _fetch_bytes(inp, "panelKey").decode("utf-8")
+    res = odds_core.train_odds(text, features, seed=int(inp.get("seed") or 0))
+    model_key = _r2_put(f"{out_key}.txt", res["model"].booster_.model_to_string().encode("utf-8"), "text/plain")
+    cal_key = _put_json(f"{out_key}-cal.json", res["calibration"])
+    return {"modelKey": model_key, "calibrationKey": cal_key, "scorecard": res["scorecard"], "calibration": res["calibrationSummary"],
+            "sectorRates": res["sectorRates"], "trainedThrough": res["trainedThrough"], "info": res["info"]}
+
+
+def _odds_score(inp: dict) -> dict:
+    """Score feature rows with a stored model: calibrated odds, Venn-Abers intervals, contributions, moves."""
+    import lightgbm as lgb
+    import odds_core
+
+    mk, ck = str(inp.get("modelKey") or ""), str(inp.get("calibrationKey") or "")
+    if not mk or not ck:
+        raise ValueError("input needs 'modelKey' and 'calibrationKey'")
+    if _ODDS_CACHE.get("key") != (mk, ck):
+        _ODDS_CACHE.update(key=(mk, ck), booster=lgb.Booster(model_str=_r2_get(mk).decode("utf-8")), cal=json.loads(_r2_get(ck)))
+    rows = inp.get("rows") or []
+    if not isinstance(rows, list) or len(rows) > 2000:
+        raise ValueError("rows must be a list of at most 2000 {id, x}")
+    return {"scores": odds_core.score_odds(_ODDS_CACHE["booster"], _ODDS_CACHE["cal"], rows)}
+
+
+# ---------------------------------------------------------------------------------------------
 # Modal functions: one per task
 # ---------------------------------------------------------------------------------------------
 @_task_function("health", api_image)
@@ -3178,6 +3231,16 @@ def topics_map(req: dict) -> dict:
     return _execute("topics.map", req, _topics_map)
 
 
+@_task_function("odds.train", odds_image)
+def odds_train(req: dict) -> dict:
+    return _execute("odds.train", req, _odds_train)
+
+
+@_task_function("odds.score", odds_image)
+def odds_score(req: dict) -> dict:
+    return _execute("odds.score", req, _odds_score)
+
+
 TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
@@ -3192,6 +3255,8 @@ TASK_FUNCTIONS = {
     "synth.tabular": synth_tabular,
     "synth.series": synth_series,
     "topics.map": topics_map,
+    "odds.train": odds_train,
+    "odds.score": odds_score,
 }
 
 

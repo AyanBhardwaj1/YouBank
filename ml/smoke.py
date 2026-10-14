@@ -443,6 +443,32 @@ def _vectors(seed: int = 3) -> dict:
     return {"ids": [f"doc-{i}" for i in range(360)], "vectors": np.round(V, 4).tolist()}
 
 
+ODDS_KEYS = ["logAssets", "logRevenue", "revGrowth", "roa", "leverage", "cashRatio", "mismatch", "wave", "sc13d", "sc13dA", "switch13g", "insider",
+             "officerChange", "rightsPlan", "bylaws", "agreements", "proxyFight", "lateFiling", "activity8k", "age"]
+ODDS_MONOTONE = {"mismatch": 1, "wave": 1, "sc13d": 1, "sc13dA": 1, "switch13g": 1, "proxyFight": 1}
+
+
+def _odds_panel(companies: int = 200, months: int = 120, seed: int = 9) -> str:
+    """A Deal Radar panel in the TypeScript layout for 200 companies, sales from a known logistic hazard (no numpy)."""
+    import math
+    import random
+
+    r = random.Random(seed)
+    lines = []
+    for c in range(companies):
+        base = [r.gauss(0, 1) for _ in ODDS_KEYS]
+        for m in range(months):
+            t = f"{2012 + m // 12}-{m % 12 + 1:02d}-01"
+            x = [b + r.gauss(0, 0.3) for b in base]
+            x[ODDS_KEYS.index("sc13d")] = float(r.random() < 0.12)
+            x[ODDS_KEYS.index("proxyFight")] = float(r.random() < 0.06)
+            x[ODDS_KEYS.index("wave")] = 1 + 0.5 * math.sin(m / 9)
+            z = -4.0 + 2.2 * x[ODDS_KEYS.index("sc13d")] + 2.0 * x[ODDS_KEYS.index("proxyFight")] + (x[ODDS_KEYS.index("wave")] - 1)
+            y = None if m >= months - 12 else float(r.random() < 1 / (1 + math.exp(-z)))
+            lines.append(json.dumps([str(c), t, ["1311", "7372", "2834"][c % 3], y, 1, *[round(v, 4) for v in x]]))
+    return "\n".join(lines)
+
+
 @app.function(image=image, secrets=[SECRET], timeout=900, cpu=1.0, memory=1024)
 def make_fixtures(run: str) -> dict:
     import os
@@ -483,11 +509,13 @@ def make_fixtures(run: str) -> dict:
     series_input = {"dataKey": put("returns.json", json.dumps(_returns()).encode(), "application/json"),
                     "window": 60, "n": 64, "seed": 3, "steps": 1500}
     topics_input = {"vectorsKey": put("vectors.json", json.dumps(_vectors()).encode(), "application/json")}
+    odds_input = {"panelKey": put("odds-panel.jsonl", _odds_panel().encode(), "application/x-ndjson"),
+                  "features": [{"key": k, "monotone": ODDS_MONOTONE.get(k, 0)} for k in ODDS_KEYS], "outKey": f"{prefix}odds-model"}
     return {"keys": keys, "docs": docs, "audio": audio_input, "audioFr": audio_fr, "audioSource": source,
             "graph": graph_input,
             "graphSize": {"nodes": len(g["nodes"]), "edges": len(g["edges"]), "deals": len(g["deals"])},
             "graphOracle": oracle,
-            "tabular": tab_input, "series": series_input, "topics": topics_input}
+            "tabular": tab_input, "series": series_input, "topics": topics_input, "odds": odds_input}
 
 
 @app.function(image=image, secrets=[SECRET], timeout=1200, cpu=0.5, memory=512)
@@ -634,6 +662,7 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         ("synth.tabular", "synth_tabular", fx["tabular"], []),
         ("synth.series", "synth_series", fx["series"], []),
         ("topics.map", "topics_map", fx["topics"], []),
+        ("odds.train", "odds_train", fx["odds"], []),
     ]
     report, lock = {"run": run, "target": target, "graphSize": fx["graphSize"], "graphOracle": fx["graphOracle"],
                     "audioSource": fx["audioSource"]}, threading.Lock()
@@ -675,6 +704,21 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         t.start()
     for t in threads:
         t.join()
+
+    # odds.score runs on the model odds.train just made, for a sample of rows (both tasks on a 200-company panel).
+    trained = (report.get("odds.train") or {}).get("result") or {}
+    if trained.get("modelKey") and (not wanted or "odds.score" in wanted or "odds.train" in wanted):
+        rows = [{"id": str(i), "x": [float(i % 2) if k == "sc13d" else 0.0 for k in ODDS_KEYS]} for i in range(200)]
+        try:
+            env, lat = call(modal.Function.from_name(target, "odds_score"), "odds.score", {"modelKey": trained["modelKey"], "calibrationKey": trained["calibrationKey"], "rows": rows})
+            res = env.get("result") or {}
+            scores = res.get("scores") or []
+            report["odds.score"] = {"latency": lat, "seconds": env["seconds"], "costUsd": env["costUsd"], "ok": env["ok"], "error": env["error"],
+                                    "rows": len(scores), "intervalsHold": all(s["low"] <= s["p"] <= s["high"] for s in scores),
+                                    "a13dRaisesOdds": bool(scores) and scores[1]["p"] >= scores[0]["p"]}
+        except Exception as e:
+            report["odds.score"] = {"exception": f"{type(e).__name__}: {e}"}
+        created.extend([trained["modelKey"], trained["calibrationKey"]])
 
     if not no_http:
         print("  http checks")

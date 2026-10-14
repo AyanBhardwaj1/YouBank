@@ -9,6 +9,8 @@
 import { executeRun } from "./canvas/engine";
 import { backfillSlice } from "./deals/jobs";
 import { measurePlacebo, seedStartups, setWeeklyCursor, weeklyCursor, weeklyStep } from "./pulse/jobs";
+import { finalize as oddsFinalize, scoreSlice } from "./odds/score";
+import { getPipeline, pipelineStep, setPipeline, startPipeline } from "./odds/train";
 import { newsroomDeals } from "./graph/deals";
 import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
@@ -202,4 +204,45 @@ export const pulseWeekly = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill, pulseWeekly];
+/** Score the whole universe a slice at a time, then log forecasts for watched companies and the top 200 and post cards. */
+async function scoreAll(s: Steps, refresh: boolean) {
+  let cursor = 0, scored = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = await s.run(`score-${i}`, async () => { const x = await scoreSlice(cursor, Date.now() + 230_000, { refresh }); await flushUsage(); return x; });
+    scored += r.scored; cursor = r.next;
+    if (!cursor) break;
+  }
+  const cards = await s.run("finalize", async () => { const ids = await oddsFinalize({ top: 200 }); if (ids.length) await notifyWatchers(ids).catch(() => undefined); return ids.length; });
+  return { scored, cards };
+}
+
+/**
+ * The Deal Radar's monthly run (E4): the universe scan, target events, the panel, training (LightGBM on the
+ * ML service, or the TypeScript model), then scoring. Resumable: each step advances the pipeline's stage;
+ * while the ML service trains, the run sleeps and asks again.
+ */
+export const oddsRefresh = inngest.createFunction(
+  { id: "edge-odds-refresh", triggers: [{ cron: "20 3 2 * *" }, { event: "edge/odds.refresh" }], concurrency: 1, retries: 1 },
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    await s.run("start", async () => { const p = await getPipeline(); return p.stage === "idle" || p.stage === "score" ? startPipeline() : p; });
+    for (let i = 0; i < 120; i++) {
+      const p = await s.run(`step-${i}`, async () => { const x = await pipelineStep(Date.now() + 230_000); await flushUsage(); return x; });
+      if (p.stage === "score" || p.stage === "idle") break;
+      if (p.wait) await s.sleep(`wait-${i}`, "2m");
+    }
+    const p = await s.run("stage", () => getPipeline());
+    if (p.stage !== "score") return { stage: p.stage, error: p.lastError ?? null };
+    const r = await scoreAll(s, false);
+    await s.run("done", () => setPipeline({ ...p, stage: "idle", finishedAt: new Date().toISOString() }));
+    return r;
+  },
+);
+
+/** Weekly re-scoring (E4): every in-scope company's filings re-read (new 13Ds and 8-Ks), scored, forecasts and cards. */
+export const oddsWeekly = inngest.createFunction(
+  { id: "edge-odds-weekly", triggers: [{ cron: "30 6 * * 1" }, { event: "edge/odds.score" }], concurrency: 1, retries: 1 },
+  async ({ step }) => scoreAll(metered(asSteps(step)), true),
+);
+
+export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill, pulseWeekly, oddsRefresh, oddsWeekly];

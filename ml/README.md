@@ -337,6 +337,23 @@ k by best silhouette over 4..12 unless given. Clusters are renumbered largest fi
 [0, 1] keeping the aspect ratio. Writes `{"points": [{"id", "x", "y", "cluster"}], "clusters": [{"id", "size", "x",
 "y"}], "k", "silhouette", "method"}`; returns `{"key", "k", "points", "silhouette"}`.
 
+### `odds.train`: the Deal Radar's calibrated hazard model (async)
+
+Input: `{panelKey, features: [{key, monotone}], outKey: "ml/odds/lgbm-<version>", seed?}`. The panel is the TypeScript
+feature builder's JSON lines (`[cik, t, sic, y, listed, ...features]`, `y` null while a window is open). LightGBM (MIT)
+with the monotone constraints given, rolling-origin validation by year with a one-horizon embargo, the base rate and a
+Palepu-style logit on the same splits, bootstrap 90% intervals, and inductive Venn-Abers calibration on the latest
+labelled year. Returns `{modelKey, calibrationKey, scorecard, calibration: {year, n, positives}, sectorRates,
+trainedThrough, info}`; the scorecard's words are written by the app. The logic is `ml/odds_core.py` (added to the image
+as local source), tested locally by `python ml/test_odds_core.py`.
+
+### `odds.score`: calibrated odds, intervals and reasons (sync)
+
+Input: `{modelKey, calibrationKey, rows: [{id, x}]}` (at most 2,000 rows; `null` for a missing value). Returns
+`{scores: [{id, p, low, high, contribs: [{feature, contrib, value}], moves: [{key, to, up}]}]}`: the Venn-Abers point
+estimate and interval, TreeSHAP contributions (`pred_contrib`, log odds) and the three changes that would move the
+calibrated probability most.
+
 ## Resources
 
 CPU only, no GPUs, no warm pools (`min_containers` unset), containers stop 60 s after their last input.

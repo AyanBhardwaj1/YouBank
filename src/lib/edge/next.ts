@@ -9,6 +9,7 @@ import { dealsDaily } from "./deals/jobs";
 import { resolveDue } from "./forecasts/ledger";
 import { jobsReady } from "./infra/jobs";
 import { pulseDaily } from "./pulse/jobs";
+import { oddsDaily } from "./odds/score";
 import { pruneSeries } from "./series/store";
 
 export type NextDaily = Record<string, unknown> & { created: number[] };
@@ -26,6 +27,9 @@ export async function dailyNext(deadline: number, now = new Date()): Promise<Nex
   // E3: daily lists (premium perk, plan re-checked) and watched companies not read for a week; free sources only.
   const pulse = await part("pulse", out, () => pulseDaily(Math.min(deadline, Date.now() + 60_000)));
   if (pulse) out.created.push(...pulse.created);
+  // E4: watched companies' filings re-read and their sale odds re-scored (cards and forecasts follow).
+  const odds = await part("odds", out, () => oddsDaily(Math.min(deadline, Date.now() + 50_000)));
+  if (odds) out.created.push(...odds.created);
   if (now.getUTCDay() === 0) await part("prune", out, async () => ({ series: await pruneSeries(now) }));
   return out;
 }

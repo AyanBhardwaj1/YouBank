@@ -54,8 +54,8 @@ export function PulseScreen({ ticker }: { ticker: string; onRun?: Run }) {
 }
 
 type OddsRow = { ticker: string; name: string; p: number; low: number | null; high: number | null; base: number | null; rise: number | null; reasons: { label: string; direction: "up" | "down" }[]; history: number[] };
-type OddsCompany = OddsRow & { version: string; scorecard: string; calibration: string; disclaimer: string; moves: { label: string; to: number }[]; buyers: { name: string; ticker: string }[] } | { error: string; covered: false };
-type OddsBoard = { watched: OddsRow[]; movers: OddsRow[]; disclaimer: string; version: string | null };
+type OddsCompany = (OddsRow & { covered: true; version: string; scorecard: string; calibration: string; disclaimer: string; moves: { label: string; to: number }[]; buyers: { name: string; ticker: string }[] }) | { covered: false; error: string };
+type OddsBoard = { rows: OddsRow[]; disclaimer: string; version: string | null };
 
 function Row({ r, onRun }: { r: OddsRow; onRun?: Run }) {
   return (
@@ -72,10 +72,11 @@ function Row({ r, onRun }: { r: OddsRow; onRun?: Run }) {
 export function OddsScreen({ ticker, onRun }: { ticker: string; onRun?: Run }) {
   const one = useApi<OddsCompany>(ticker ? `/api/edge/odds?ticker=${ticker}` : null);
   const board = useApi<OddsBoard>(ticker ? null : "/api/edge/odds/board?scope=watched");
+  const movers = useApi<OddsBoard>(ticker ? null : "/api/edge/odds/board?scope=movers");
   if (ticker) {
     if (!one.data) return <Wait error={one.error} what={`Deal Radar on ${ticker}`} />;
     const d = one.data;
-    if ("error" in d) return <div className="p-4 text-[11.5px] text-muted">{d.error}</div>;
+    if (!d.covered) return <div className="p-4 text-[11.5px] text-muted">{d.error}</div>;
     return (
       <div className="space-y-2 overflow-auto p-3 text-[11.5px]">
         <div className="flex items-baseline gap-2"><span className="text-[13px] font-semibold">{d.name}</span><span className="num text-[18px] font-semibold">{pct(d.p, 1)}</span><span className="text-muted">model probability of a sale announcement within 12 months · interval {pct(d.low, 1)} to {pct(d.high, 1)} · base rate {pct(d.base, 1)}</span></div>
@@ -98,7 +99,7 @@ export function OddsScreen({ ticker, onRun }: { ticker: string; onRun?: Run }) {
   );
   return (
     <div className="flex h-full flex-col">
-      <div className="table-scroll min-h-0 flex-1 overflow-auto">{table(b.watched, "Your watches")}{table(b.movers, "The week's movers")}</div>
+      <div className="table-scroll min-h-0 flex-1 overflow-auto">{table(b.rows, "Your watches")}{table(movers.data?.rows ?? [], "The week's movers")}</div>
       <div className="border-t border-line px-3 py-1 text-[10px] text-muted">{b.disclaimer}{b.version ? ` Model ${b.version}.` : ""}</div>
     </div>
   );

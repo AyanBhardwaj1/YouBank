@@ -10,8 +10,9 @@ import { companyNode } from "../../entities/resolve";
 import { falseAlarms, loadWarn, pulseOf, refreshCompany } from "../../pulse/ingest";
 import { changeVerdict, falseAlarmSentence } from "../../series/change";
 import { metricDef } from "../../series/metrics";
+import { oddsFor } from "../../odds/score";
 import { register } from "../engine";
-import type { Companies, DealsValue, Findings, ProformaValue, SeriesValue, Table } from "../values";
+import type { Companies, DealsValue, Findings, ProformaValue, Ranking, SeriesValue, Table } from "../values";
 
 const tickersIn = (values: unknown[] | undefined) => [...new Set((values ?? []).flatMap((v) => {
   const c = v as Companies & ProformaValue;
@@ -86,6 +87,35 @@ register("pulse.signals", {
       outputs: { series: value, findings: { items: found } satisfies Findings },
       summary: `${items.length} series, ${found.length} recent changes for ${tickers.join(", ")}`,
       preview: { kind: "chart", series: items.slice(0, 4).map((x) => ({ label: `${x.ticker} ${x.label}`, values: x.points.slice(-26).map((p) => p.value) })) },
+    };
+  },
+});
+
+register("odds.score", {
+  async start(ctx) {
+    const tickers = tickersIn(ctx.inputs.companies).slice(0, 25);
+    if (!tickers.length) throw Object.assign(new Error("Wire in the companies to score."), { status: 400 });
+    await ctx.progress("features");
+    const items: Ranking["items"] = [];
+    const rows: Table["rows"] = [];
+    let version = "", scorecard = "";
+    for (const t of tickers) {
+      const node = await companyNode(t);
+      const o = node ? await oddsFor(node.id) : null;
+      if (!o) continue;
+      version = o.version; scorecard = o.scorecard;
+      items.push({ name: o.name, ticker: o.ticker, nodeId: o.nodeId, score: o.p, reasons: [`model probability ${(o.p * 100).toFixed(1)}%${o.low !== null && o.high !== null ? ` (interval ${(o.low * 100).toFixed(0)}-${(o.high * 100).toFixed(0)}%)` : ""} against a ${(o.base * 100).toFixed(1)}% sector base rate`, ...o.reasons.map((r) => `${r.direction === "up" ? "raises" : "lowers"} it: ${r.label}`)] });
+      rows.push([o.ticker, o.name, o.p, o.low, o.high, o.base, o.reasons.map((r) => r.label).join("; ")]);
+    }
+    await ctx.progress("score");
+    await ctx.progress("explain");
+    const ranked = items.sort((a, b) => b.score - a.score);
+    const ranking: Ranking = { finding: "12-month sale odds (Deal Radar, model probability)", subject: tickers.join(", "), items: ranked, ...(scorecard ? { scorecard: `${scorecard} A statistical estimate from public filings, not a rumour or advice.` } : {}) };
+    const table: Table = { title: `Deal Radar ${version}`, columns: [{ name: "ticker", type: "cat" }, { name: "name", type: "text" }, { name: "probability_12m", type: "num" }, { name: "low", type: "num" }, { name: "high", type: "num" }, { name: "sector_base_rate", type: "num" }, { name: "reasons", type: "text" }], rows };
+    return {
+      outputs: { ranking, table },
+      summary: ranked.length ? `${ranked.length} scored; highest ${ranked[0].ticker} at ${(ranked[0].score * 100).toFixed(1)}% (model probability)` : "None of these companies is scored yet (this round covers energy, technology and healthcare)",
+      preview: { kind: "list", items: ranked.slice(0, 5).map((i) => ({ label: `${i.ticker ?? i.name}`, detail: i.reasons[0], score: i.score })) },
     };
   },
 });

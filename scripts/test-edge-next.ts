@@ -51,6 +51,12 @@ import { coverageText, evaluate, flaggedPeriods, pulseIsBig } from "@/lib/edge/p
 import { dailyListOf } from "@/lib/edge/pulse/jobs";
 import { noveltyOf } from "@/lib/edge/feed";
 import { isBig } from "@/lib/edge/notify";
+import { compactFacts, compactFilings, countForms, countSignal, evidenceFor, featureRow, FEATURE_KEYS, FEATURES as ODDS_FEATURES, instantAsOf, ltmAsOf, newSignals, waveOf, type FilingRow, type RawCompany } from "@/lib/edge/odds/features";
+import { buildPanel, dedupeEvents, eventsFromHits, inScope, labelAt, monthsFrom, sectorOf, universeMode, waveContext, type PanelRow } from "@/lib/edge/odds/labels";
+import { calibrate, calibrated, movesOf, reasonsOf as oddsReasons, rollingScorecard, scorecardText, scoreTs, trainFor, trainTs, DISCLAIMER } from "@/lib/edge/odds/model";
+import { cardReason, oddsCard, oddsQuestion } from "@/lib/edge/odds/cards";
+import { panelLines, parsePanel } from "@/lib/edge/odds/train";
+import { fromMl } from "@/lib/edge/odds/score";
 import { EDGE_NEXT_FEATURES } from "@/lib/billing/features/edge-next";
 import { FEATURES } from "@/lib/billing/features";
 import { isPlanId, PLAN_ORDER } from "@/lib/billing/plans";
@@ -586,6 +592,129 @@ async function main() {
     check("signal kinds have novelty 0.8 at age zero", near(noveltyOf("hiring_tell", 0), 0.8, 1e-9) && near(noveltyOf("deal_odds", 0), 0.8, 1e-9));
     check("isBig: a WARN notice of 250 or more, an award over $100 million, odds of 25% that rose 8 points", isBig({ kind: "layoff_notice", confidence: 0.9, magnitude: 0.3, visual: { employees: 312 } }) && !isBig({ kind: "contract_award", confidence: 0.9, magnitude: 0.3, visual: { amountUsd: 50e6 } }) && isBig({ kind: "deal_odds", confidence: 0.5, magnitude: 0.5, visual: { p: 0.27, rise: 0.09 } }) && !isBig({ kind: "deal_odds", confidence: 0.5, magnitude: 0.5, visual: { p: 0.27, rise: 0.05 } }));
     check("daily lists: tickers only, up to 50", dailyListOf({ edge: { pulseDaily: ["ACME", "bad ticker", 3, ...Array.from({ length: 60 }, (_, i) => `T${i}`)] } }).length === 50 && dailyListOf(null).length === 0);
+  }
+
+  console.log("E4 Deal Radar: features without look-ahead");
+  {
+    const facts = {
+      assets: [{ e: "2023-12-31", v: 1000e6, f: "2024-02-20" }, { e: "2024-12-31", v: 1200e6, f: "2025-02-20" }, { e: "2023-12-31", v: 9999e6, f: "2025-06-01" }],
+      liabilities: [{ e: "2024-12-31", v: 800e6, f: "2025-02-20" }], cash: [{ e: "2024-12-31", v: 60e6, f: "2025-02-20" }],
+      revenue: [{ s: "2023-01-01", e: "2023-12-31", v: 500e6, f: "2024-02-20" }, { s: "2024-01-01", e: "2024-12-31", v: 600e6, f: "2025-02-20" }],
+      netIncome: [{ s: "2024-01-01", e: "2024-12-31", v: 36e6, f: "2025-02-20" }],
+    };
+    const filings: FilingRow[] = [
+      { f: "SC 13G", d: "2024-02-01" }, { f: "SC 13D", d: "2025-03-01", u: "https://www.sec.gov/x/13d" }, { f: "8-K", d: "2025-04-10", i: "5.02,9.01", u: "https://www.sec.gov/x/8k" },
+      { f: "8-K", d: "2025-04-20", i: "1.01" }, { f: "PREC14A", d: "2025-05-01" }, { f: "4", d: "2025-05-02" }, { f: "10-K", d: "2015-03-01" },
+    ];
+    const raw = { sic: "1311", facts, filings };
+    const ctx = waveContext([{ cik: "9", date: "2025-02-01", sic: "1311", source: "" }, { cik: "8", date: "2024-11-01", sic: "1382", source: "" }, { cik: "7", date: "2016-01-01", sic: "1311", source: "" }], 120);
+    const row = featureRow(raw, "2025-06-01", ctx);
+    const v = (k: string) => row[FEATURE_KEYS.indexOf(k)];
+    check("as filed: the 2023 assets restated in June 2025 are not seen on 1 June", instantAsOf(facts.assets, "2025-06-01") === 1200e6 && instantAsOf(facts.assets, "2025-01-01") === 1000e6);
+    check("LTM revenue and growth from what was filed", ltmAsOf(facts.revenue, "2025-06-01")?.v === 600e6 && near(v("revGrowth"), 0.2, 1e-9), v("revGrowth"));
+    check("leverage, cash and return on assets", near(v("leverage"), 800 / 1200, 1e-9) && near(v("cashRatio"), 0.05, 1e-9) && near(v("roa"), 0.03, 1e-9));
+    check("8-K items: an officer change (5.02) and an agreement (1.01) in the year", v("officerChange") === 1 && v("agreements") === 1);
+    check("a 13G turned 13D, a new 13D, a proxy contest, insider filings", v("switch13g") === 1 && v("sc13d") === 1 && v("proxyFight") === 1 && v("insider") === 1);
+    check("the industry wave: deals in its SIC2 in the last 12 months against the long-run rate", near(v("wave"), 2 / (12 * (3 / 120)), 1e-9) && waveOf("1311", "2014-01-01", ctx) === 0, v("wave"));
+    check("years filing", near(v("age"), (Date.parse("2025-06-01") - Date.parse("2015-03-01")) / (365 * 86_400_000), 1e-9));
+    check("missing data is NaN, never zero", Number.isNaN(featureRow({ sic: "1311", facts: {}, filings }, "2025-06-01", ctx)[FEATURE_KEYS.indexOf("logAssets")]));
+    const future = { ...raw, filings: [...filings, { f: "SC 13D", d: "2025-07-01" }, { f: "8-K", d: "2025-06-15", i: "3.03" }], facts: { ...facts, assets: [...facts.assets, { e: "2025-03-31", v: 5000e6, f: "2025-08-01" }] } };
+    check("no look-ahead: filings and facts dated after the cut-off do not change the row", JSON.stringify(featureRow(future, "2025-06-01", ctx)) === JSON.stringify(row));
+    check("binary-search counts equal plain counts", countSignal(filings, "any8k", "2025-06-01", 91) === countForms(filings, "2025-06-01", 91, (x) => /^8-K/.test(x.f)) && countSignal(filings, "sc13d", "2025-06-01", 365) === 1);
+    check("a reason's evidence is the latest filing behind it", evidenceFor(raw, "officerChange", "2025-06-01")?.u === "https://www.sec.gov/x/8k" && evidenceFor(raw, "logAssets", "2025-06-01") === null);
+    check("new dated signals in the last week", newSignals(raw, "2025-04-15").join() === "officerChange" && newSignals(raw, "2025-06-01").join() === "");
+    const cf = compactFacts({ facts: { "us-gaap": { Assets: { units: { USD: [{ end: "2024-12-31", val: 5, filed: "2025-02-01", form: "10-K" }, { end: "2024-06-30", val: 4, filed: "2024-08-01", form: "S-1" }] } }, Revenues: { units: { USD: [{ start: "2024-01-01", end: "2024-12-31", val: 9, filed: "2025-02-01", form: "10-K" }] } } } } });
+    check("compact facts keep periodic reports' rows only", cf.assets?.length === 1 && cf.revenue?.[0].s === "2024-01-01");
+    const cfl = compactFilings("123", { form: ["SC 13D", "4"], filingDate: ["2025-01-02", "2025-01-03"], items: ["", ""], accessionNumber: ["0001-25-000001", "0002-25-000002"], primaryDocument: ["d.htm", "f4.xml"] });
+    check("compact filings keep URLs only for forms that can be reasons", cfl[0].u === "https://www.sec.gov/Archives/edgar/data/123/000125000001/d.htm" && !cfl[1].u);
+    check("every feature has words for both directions and a monotone sign", ODDS_FEATURES.every((f) => f.up && f.down && [-1, 0, 1].includes(f.monotone)));
+  }
+
+  console.log("E4 Deal Radar: labels, universe and panel");
+  {
+    const hits = [
+      { _id: "a:1.htm", _source: { ciks: ["0000000011"], form: "DEFM14A", file_date: "2024-05-01", sics: ["1311"] } },
+      { _id: "a:2.htm", _source: { ciks: ["0000000011"], form: "DEFM14A", file_date: "2024-05-01" } },
+      { _id: "b:1.htm", _source: { ciks: ["12", "13"], form: "DEFM14A", file_date: "2024-06-01" } },
+      { _id: "c:1.htm", _source: { ciks: ["14"], form: "SC 14D9", file_date: "2024-07-01", sics: ["2834"] } },
+      { _id: "d:1.htm", _source: { ciks: ["15"], form: "DEF 14A", file_date: "2024-07-01" } },
+    ];
+    const ev = eventsFromHits(hits);
+    check("events: single-company proxies and 14D-9s, once per filing; joint proxies and annual proxies left out", ev.length === 2 && ev[0].cik === "11" && ev[1].sic === "2834", ev);
+    check("one event per company within 270 days (proxy then 14D-9), earliest kept", dedupeEvents([{ cik: "1", date: "2024-05-01", sic: "", source: "" }, { cik: "1", date: "2024-09-01", sic: "", source: "" }, { cik: "1", date: "2026-01-01", sic: "", source: "" }]).map((e) => e.date).join() === "2024-05-01,2026-01-01");
+    check("labels: 1 inside the window, 0 once closed, null while open", labelAt(["2024-05-01"], "2023-06-01", 12, "2026-10-01") === 1 && labelAt(["2024-07-01"], "2023-06-01", 12, "2026-10-01") === 0 && labelAt([], "2026-03-01", 12, "2026-10-01") === null);
+    check("the scope this round: energy, software and hardware, health; never shells or funds", inScope("1311", "sectors") && inScope("7372", "sectors") && inScope("2834", "sectors") && !inScope("6022", "sectors") && inScope("6022", "all") && !inScope("6770", "all") && sectorOf("4922") === "energy");
+    check("the universe widens only with EDGE_ODDS_UNIVERSE=all", universeMode(undefined) === "sectors" && universeMode("ALL") === "all");
+    check("months between dates", monthsFrom("2024-11-15", "2025-02-01").join() === "2024-11-01,2024-12-01,2025-01-01,2025-02-01");
+    const mk = (cik: string, listed: boolean, last = "2026-09-01"): Pick<RawCompany, "cik" | "sic" | "facts" | "filings" | "listed"> => ({ cik, sic: "1311", listed, facts: {}, filings: [{ f: "10-K", d: "2014-03-01" }, { f: "10-K", d: last }] });
+    const panel = buildPanel([mk("1", true), mk("2", false, "2020-06-01")], [{ cik: "2", date: "2019-03-15", sic: "1311", source: "" }, { cik: "1", date: "2018-02-01", sic: "1311", source: "" }], { from: "2016-01-01", today: "2026-10-13" });
+    const c2 = panel.filter((r) => r.cik === "2");
+    check("a delisted company stops when its filings stop", c2[c2.length - 1].t <= "2020-06-01");
+    check("the months before an event are labelled 1, earlier ones 0", c2.find((r) => r.t === "2018-04-01")?.y === 1 && c2.find((r) => r.t === "2018-02-01")?.y === 0);
+    check("the 18 months after an event are left out, then a still-filing company returns", !panel.some((r) => r.cik === "1" && r.t > "2018-02-01" && r.t < "2019-08-01") && panel.some((r) => r.cik === "1" && r.t === "2019-09-01"));
+    check("recent months are scored, not trained on (open windows)", panel.filter((r) => r.cik === "1" && r.t >= "2025-11-01").every((r) => r.y === null));
+    const back = parsePanel(panelLines(panel.slice(0, 50)));
+    check("the panel survives its JSON lines, NaN as missing", back.length === 50 && back[0].cik === panel[0].cik && back.every((r, i) => r.x.every((v, j) => (Number.isNaN(v) && Number.isNaN(panel[i].x[j])) || near(v, panel[i].x[j], 1e-4))));
+  }
+
+  console.log("E4 Deal Radar: the model, its baselines and calibration");
+  {
+    // A synthetic panel whose sales follow a known hazard in the 13D, proxy-contest and wave features.
+    const R = rng(41), Z = normals(R);
+    const rows: PanelRow[] = [];
+    for (let c = 0; c < 700; c++) {
+      const base = FEATURE_KEYS.map(() => Z());
+      for (let m = 0; m < 120; m++) {
+        const t = `${2012 + Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, "0")}-01`;
+        const x = base.map((b) => b + 0.3 * Z());
+        x[FEATURE_KEYS.indexOf("sc13d")] = R() < 0.12 ? 1 : 0;
+        x[FEATURE_KEYS.indexOf("proxyFight")] = R() < 0.06 ? 1 : 0;
+        x[FEATURE_KEYS.indexOf("wave")] = 1 + 0.5 * Math.sin(m / 9);
+        const z = -4.6 + 2.2 * x[FEATURE_KEYS.indexOf("sc13d")] + 2 * x[FEATURE_KEYS.indexOf("proxyFight")] + (x[FEATURE_KEYS.indexOf("wave")] - 1);
+        rows.push({ cik: String(c), t, sic: ["1311", "7372", "2834"][c % 3], x, y: m >= 108 ? null : R() < 1 / (1 + Math.exp(-z)) ? 1 : 0, listed: true });
+      }
+    }
+    check("training rows embargo one horizon before the test year", trainFor(rows, 2018).every((r) => r.t < "2017-01-01" && r.y !== null));
+    const m = trainTs(rows, "test", { draws: 60 });
+    if ("error" in m) { check("the TypeScript model trains", false, m.error); }
+    else {
+      const sc = m.scorecard;
+      check("beats the base rate (Brier skill interval above zero)", (sc.model.skill.value ?? 0) > 0 && (sc.model.skill.ci?.[0] ?? -1) > 0, sc.model.skill);
+      check("beats the Palepu-style logit, which lacks the holder and proxy features", sc.beats.palepu === true, [sc.model.auroc, sc.palepu.auroc]);
+      check("the scorecard states metrics with intervals, top-1% lift and the years", sc.years[0] === 2014 && sc.model.lift.n > 0 && /AUROC [\d.]+ \(90% interval/.test(sc.text) && /top 1%/.test(sc.text), sc.text);
+      const s = scoreTs(m, rows[rows.length - 1].x);
+      check("a company's odds sit inside their Venn-Abers interval", s.low !== null && s.high !== null && s.low <= s.p + 1e-9 && s.p <= s.high + 1e-9, s);
+      const x0 = [...rows[0].x]; x0[FEATURE_KEYS.indexOf("sc13d")] = 0; x0[FEATURE_KEYS.indexOf("proxyFight")] = 0;
+      const x1 = [...x0]; x1[FEATURE_KEYS.indexOf("sc13d")] = 1;
+      const a = scoreTs(m, x0), b = scoreTs(m, x1);
+      check("a new 13D raises the odds and shows as a reason with its words", b.p > a.p && b.reasons.some((r) => r.key === "sc13d" && r.direction === "up" && r.label === "a new 13D (an active holder)"), b.reasons);
+      check("what would move it includes the 13D for a company without one", a.moves.some((mv) => mv.key === "sc13d" && mv.to > a.p), a.moves);
+      check("sector base rates for each sector", ["energy", "tech", "health"].every((k) => (m.sectorRates[k] ?? 0) > 0));
+    }
+    // Calibration on synthetic scores with known probabilities.
+    const ps = Array.from({ length: 6000 }, () => R() * 0.4), ys = ps.map((p) => (R() < p ? 1 : 0));
+    const cal = calibrate(ps, ys, 2025, 4000);
+    check("a large calibration year is subsampled uniformly (its base rate kept)", cal.n === 4000 && near(cal.positives / 4000, ys.filter((v) => v === 1).length / ys.length, 0.02));
+    const c = calibrated(cal, 0.3);
+    check("calibrated probabilities match the truth within their interval's reach", near(c.p, 0.3, 0.06) && c.low! <= c.p && c.p <= c.high!, c);
+    check("reasons in words, largest first", oddsReasons([{ feature: "sc13d", contrib: 0.9, value: 1 }, { feature: "leverage", contrib: -0.2, value: 0.3 }, { feature: "age", contrib: 0, value: 3 }]).map((r) => `${r.direction}:${r.key}`).join() === "up:sc13d,down:leverage");
+    const moves = movesOf(FEATURE_KEYS.map(() => 0), (x) => 0.02 + 0.1 * x[FEATURE_KEYS.indexOf("proxyFight")], {});
+    check("moves: an event that has not happened, happening", moves[0].key === "proxyFight" && near(moves[0].to, 0.12, 1e-9));
+    check("the scorecard admits when the model does not beat a baseline", /does not beat the Palepu-style logit/.test(scorecardText({ model: { auroc: { value: 0.6, ci: [0.55, 0.65] }, prAuc: { value: 0.1, ci: null }, brier: { value: 0.02, ci: null }, skill: { value: -0.01, ci: [-0.02, 0.001] }, lift: { rate: 0.05, base: 0.02, lift: 2.5, n: 10, ci: null } }, palepu: { auroc: { value: 0.62, ci: null }, skill: { value: 0, ci: null } }, base: { brier: 0.02 }, years: [2020, 2021], n: 1000, positives: 20, bins: [], beats: { palepu: false, base: false }, text: "" })));
+    void rollingScorecard;
+  }
+
+  console.log("E4 Deal Radar: cards, wording and the ML service's answers");
+  {
+    const s = { nodeId: 3, ticker: "ACME", name: "Acme Co", p: 0.22, low: 0.17, high: 0.28, base: 0.03, previous: 0.15, reasons: [{ key: "sc13d", label: "a new 13D (an active holder)", direction: "up" as const, contrib: 0.9, url: "u" }], signals: ["sc13d"], history: [0.1, 0.15], version: "v1", week: "2026-10-12" };
+    check("card rules: a rise of 5 points with a new dated signal", cardReason(s) === "rise" && cardReason({ ...s, signals: [] }) === null && cardReason({ ...s, signals: [], previous: 0.08 }) === "level");
+    check("card rules: a level card when odds first pass twice the base rate and 10%", cardReason({ p: 0.11, base: 0.03, previous: 0.08, signals: [] }) === "level" && cardReason({ p: 0.11, base: 0.07, previous: 0.08, signals: [] }) === null && cardReason({ p: 0.12, base: 0.03, previous: 0.11, signals: [] }) === null);
+    const card = oddsCard(s, "rise");
+    check("the card is a model probability with its interval, base rate and disclaimer; it never says 'will'", /Model probability/.test(card.summary) && /interval 17% to 28%/.test(card.summary) && /3\.0% base rate/.test(card.summary) && card.summary.includes(DISCLAIMER) && !/\bwill\b/i.test(card.title + card.summary.replace(DISCLAIMER, "")), card.summary);
+    check("the card's visual feeds isBig: odds and the week's rise", near(card.visual.p as number, 0.22, 1e-9) && near(card.visual.rise as number, 0.07, 1e-9));
+    check("the ledger question", oddsQuestion("Acme Co", "ACME", new Date("2027-11-01T00:00:00Z")) === "Acme Co (ACME) announces an agreement to be acquired by 2027-11-01");
+    const ml = fromMl({ id: "1", p: 0.1, low: 0.08, high: 0.12, contribs: [{ feature: "sc13d", contrib: 0.7, value: 1 }, { feature: "bogus", contrib: 9, value: 1 }, { feature: "leverage", contrib: -0.1, value: 0.4 }], moves: [{ key: "proxyFight", to: 0.2, up: true }] });
+    check("the ML service's TreeSHAP and moves become worded reasons (unknown features ignored)", ml.reasons[0].key === "sc13d" && !ml.reasons.some((r) => r.key === "bogus") && ml.moves[0].label === "a proxy contest");
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
