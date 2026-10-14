@@ -638,7 +638,7 @@ async function main() {
       { items: [{ id: 1, title: "Pad", kind: "ground_change", confidence: 0.8, tickers: ["ET"], observedAt: null, summary: "s", sources: [] }] },
     ]);
     check("a story runs from the ground to the memo and leaves out bare lists", sections.map((x) => x.kind).join() === "findings,scenario,answer,memo" && sections[0].title === "What changed on the ground" && sections[3].title === "Memo", sections.map((x) => x.kind));
-    const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "net.graph", "docs.ask", "scen.simulate", "source.documents", "docs.changes", "out.export"]);
+    const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "net.graph", "docs.ask", "scen.simulate", "source.documents", "docs.changes", "out.export", "odds.score"]);
     check("a banker's first canvas is the buyer finder once the model has trained, the asset watch before", starterTemplate("banker", true, all) === "buyer-finder" && starterTemplate("banker", false, all) === "asset-watch" && starterTemplate("student", true, all) === "asset-watch");
     check("a first canvas whose blocks are not ready falls back to the asset watch", starterTemplate("markets", true, new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo"])) === "asset-watch");
     check("section titles read naturally", sectionTitle("ranking", { finding: "Likely acquirers", subject: "Targa", items: [] }) === "Likely acquirers for Targa");

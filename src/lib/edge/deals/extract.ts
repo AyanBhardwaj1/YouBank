@@ -157,20 +157,22 @@ export async function readDeal(dealId: number, opts: { deadline: number; model?:
   });
 
   // The same deal found twice (a proxy and an earlier merger agreement) becomes one.
+  // The rest goes to the deal that survives the merge.
+  let finalId = dealId;
   if (parties.targetCik && announced) {
     const twin = await dealForTarget(parties.targetCik, announced);
-    if (twin && twin.id !== dealId) await mergeDeals(Math.min(twin.id, dealId), Math.max(twin.id, dealId));
+    if (twin && twin.id !== dealId) { finalId = Math.min(twin.id, dealId); await mergeDeals(finalId, Math.max(twin.id, dealId)); out.dealId = finalId; }
   }
 
   // Its vector: the target's business and the stated rationale.
   const bizText = [best.get("target_name")?.sectionText?.slice(0, 2500) ?? "", [...best.values()].find((b) => /reason|recommend/i.test(b.section))?.sectionText?.slice(0, 1500) ?? ""].join("\n").trim();
   if (bizText.length > 200 && embeddingsReady()) {
-    try { const [v] = await embedTexts([bizText], "edge-deals-embed"); if (v) await setEmbedding(dealId, v); } catch (e) { logError(e, { where: "edge-deals-embed" }); }
+    try { const [v] = await embedTexts([bizText], "edge-deals-embed"); if (v) await setEmbedding(finalId, v); } catch (e) { logError(e, { where: "edge-deals-embed" }); }
   }
-  const fresh = await dealById(dealId);
+  const fresh = await dealById(finalId);
   if (fresh) await syncLink(fresh.deal).catch((e) => logError(e, { where: "edge-deals-link" }));
   const now = new Date();
-  await record(`deal:${dealId}`, [
+  await record(`deal:${finalId}`, [
     ...read.map((r) => ({ sourceName: `SEC EDGAR: ${r.form} for ${parties.targetName || d.deal.targetName || "the target"}`, sourceUrl: r.url, license: "US government work (SEC EDGAR)", method: `sections read: ${r.sections.slice(0, 8).join("; ") || "none located"}`.slice(0, 300), modelVersion: override.model, retrievedAt: now })),
     ...(facts ? [{ sourceName: "SEC XBRL company facts (the target's)", sourceUrl: `https://data.sec.gov/api/xbrl/companyfacts/CIK${parties.targetCik.padStart(10, "0")}.json`, license: "US government work (SEC EDGAR)", method: facts.source, modelVersion: "", retrievedAt: now }] : []),
     ...(computedPremium ? [{ sourceName: `Prices for ${parties.targetTicker}`, sourceUrl: "", license: "Market data (Nasdaq; FMP as backup)", method: `premium of the offer to the last close before ${announced} (${computedPremium.unaffected})`, modelVersion: "", retrievedAt: now }] : []),

@@ -174,3 +174,9 @@ CREATE TABLE IF NOT EXISTS "edge_job_state" (
   "state"       jsonb NOT NULL DEFAULT '{}'::jsonb,
   "updated_at"  timestamp with time zone NOT NULL DEFAULT now()
 );
+
+-- The Deal Radar's board and screener read one kind of prediction by score (E4); the deal model's
+-- predictions share the table, so the kind leads.
+CREATE INDEX IF NOT EXISTS "edge_predictions_kind_score_idx" ON "edge_predictions" ("kind", "score" DESC);
+-- The Precedent Engine finds a document's deal by its target within nine months (E1).
+CREATE INDEX IF NOT EXISTS "edge_deals_target_cik_idx" ON "edge_deals" ("target_cik", "announced_at") WHERE "owner_id" IS NULL;
