@@ -26,13 +26,15 @@ import { isMeetingUrl, isPlatform, platformOfUrl, type MeetingNotes, type Segmen
 import { NotesSchema, parseNotes } from "./notes";
 import { labelSelf, renderTranscript, stitch, type Activity } from "./stitch";
 import { createMeeting, deleteMeeting, getMeeting, getMeetingSettings, linkMeeting, loadChunks, meetingByBot, notesUsedThisMonth, putChunk, unlinkMeeting, updateMeeting, type MeetingRow } from "./store";
-import { NO_TRANSCRIBER, pickTranscriber } from "./transcribe";
+import { NO_TRANSCRIBER, pickTranscriber, wavSeconds } from "./transcribe";
 
 type User = { id: string; email: string; name: string };
 
 /** Longest meeting the copilot will record, and the largest chunk it accepts (under the host's request limit). */
 export const MAX_MEETING_SEC = 4 * 3600;
 export const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
+/** The longest a chunk may be (the app sends about 31 s). */
+export const MAX_CHUNK_SEC = 125;
 
 const status = (message: string, code: number) => Object.assign(new Error(message), { status: code });
 const ids = (v: unknown) => (Array.isArray(v) ? v.map(Number).filter((n) => Number.isInteger(n) && n > 0).slice(0, 50) : []);
@@ -50,6 +52,11 @@ export async function startDesktopMeeting(user: User, deviceId: number | null, i
   if (!pickTranscriber()) throw status(NO_TRANSCRIBER, 503);
   await rateLimit(`meetings-start:${user.id}`, 30, 86_400_000, "Many meetings today already. The copilot will be available again tomorrow.");
   const platform = isPlatform(input.platform) ? input.platform : "other";
+  // Starting without the consent prompt is only for an app the person set to start on its own; the
+  // app's copy of that setting can be minutes old, so the server's copy decides.
+  if (input.consent.auto && !(await getMeetingSettings(user.id)).autoStartApps.some((a) => a === platform)) {
+    throw status("This app is not set to start the copilot on its own. Agree to the recording prompt first.", 403);
+  }
   const ctx = await meetingContext(user.id, new Date(), { title: input.appTitle, platform, contactIds: ids(input.contactIds), dealIds: ids(input.dealIds) });
   return createMeeting(user.id, {
     source: "desktop", platform, title: (input.title ?? "").trim() || ctx.title, deviceId,
@@ -64,9 +71,15 @@ export type ChunkInput = { seq: number; startSec: number; durationSec: number; b
 /** Transcribe one chunk and keep its segments (a chunk sent twice replaces itself). The audio is not kept. */
 export async function recordChunk(user: User, meetingId: number, c: ChunkInput): Promise<{ segments: Segment[]; engine: string }> {
   if (!Number.isInteger(c.seq) || c.seq < 0 || c.seq > 20_000) throw status("bad chunk number", 400);
-  if (!(c.durationSec > 0 && c.durationSec <= 120) || !(c.startSec >= 0) || c.startSec > MAX_MEETING_SEC) throw status("bad chunk timing", 400);
+  if (!(c.durationSec > 0 && c.durationSec <= MAX_CHUNK_SEC) || !(c.startSec >= 0) || c.startSec > MAX_MEETING_SEC) throw status("bad chunk timing", 400);
   if (!c.bytes.length) throw status("empty chunk", 400);
   if (c.bytes.length > MAX_CHUNK_BYTES) throw status("That piece of audio is too large.", 413);
+  // Only the app's own format: uncompressed WAV, whose length the header proves. Transcription is
+  // billed by the minute, so a chunk may not hold more audio than it says (or than a chunk can).
+  if (!/^audio\/(x-)?wav(e)?$/i.test(c.mime)) throw status("Send meeting audio as WAV.", 415);
+  const seconds = wavSeconds(c.bytes);
+  if (seconds === null) throw status("That piece of audio could not be read.", 400);
+  if (seconds > MAX_CHUNK_SEC || seconds > c.durationSec + 5) throw status("That piece of audio is longer than a chunk.", 413);
   const m = await getMeeting(user.id, meetingId);
   if (m.status === "cancelled" || m.status === "failed") throw status("This meeting was stopped.", 409);
   if (m.source !== "desktop") throw status("This meeting is recorded by the notetaker.", 409);

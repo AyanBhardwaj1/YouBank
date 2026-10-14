@@ -18,7 +18,7 @@ import { dedupePeople, matchParticipants, nameScore, nameTokens } from "@/lib/me
 import { durationLabel, isMeetingUrl, normalizeSettings, platformOfUrl, refusedBy } from "@/lib/meetings/model";
 import { parseNotes, resolveDue } from "@/lib/meetings/notes";
 import { chunkLabel, dropRepeatedPrefix, labelSelf, nameSpeakers, parseLevels, renderTranscript, stitch, turns, type Chunk } from "@/lib/meetings/stitch";
-import { pickTranscriber, segmentsFromMl, segmentsFromOpenAi } from "@/lib/meetings/transcribe";
+import { pickTranscriber, segmentsFromMl, segmentsFromOpenAi, wavSeconds } from "@/lib/meetings/transcribe";
 import { DEAL_STAGES } from "@/lib/crm/model";
 
 let pass = 0, fail = 0;
@@ -251,6 +251,18 @@ function contextAndModel() {
     && pickTranscriber({ OPENAI_API_KEY: "sk-test", EDGE_ML_URL: "https://ml.test", EDGE_ML_SECRET: "s", MEETINGS_TRANSCRIBE: "ml" })?.id === "ml"
     && pickTranscriber({ OPENAI_API_KEY: "sk-test", MEETINGS_TRANSCRIBE_MODEL: "gpt-4o-mini-transcribe" })?.diarizes === false
     && pickTranscriber({}) === null && pickTranscriber({ MEETINGS_TRANSCRIBE: "ml" }) === null);
+
+  // The desktop app's chunks: 16 kHz mono 16-bit PCM, as capture.rs writes them.
+  const wav = (seconds: number, rate = 16_000, format = 1, bits = 16) => {
+    const data = Math.round(seconds * rate) * (bits / 8);
+    const b = Buffer.alloc(44 + data);
+    b.write("RIFF", 0); b.writeUInt32LE(36 + data, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16);
+    b.writeUInt16LE(format, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * bits / 8, 28); b.writeUInt16LE(bits / 8, 32); b.writeUInt16LE(bits, 34);
+    b.write("data", 36); b.writeUInt32LE(data, 40);
+    return new Uint8Array(b);
+  };
+  check("a WAV chunk's length comes from its header and bytes", Math.abs((wavSeconds(wav(31)) ?? 0) - 31) < 0.01 && Math.abs((wavSeconds(wav(10, 8000, 1, 8)) ?? 0) - 10) < 0.01);
+  check("not a WAV, or compressed inside one: unreadable", wavSeconds(new Uint8Array(Buffer.from("OggS".padEnd(100, "x")))) === null && wavSeconds(wav(5, 8000, 7, 8)) === null && wavSeconds(new Uint8Array(10)) === null);
 }
 
 function premium() {

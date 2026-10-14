@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guardedDesktop } from "@/lib/desktop/auth";
-import { recordChunk } from "@/lib/meetings/pipeline";
+import { MAX_CHUNK_BYTES, recordChunk } from "@/lib/meetings/pipeline";
 import { parseLevels } from "@/lib/meetings/stitch";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +17,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq
     const p = await ctx.params;
     const id = Number(p.id), seq = Number(p.seq);
     if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(seq)) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    // Refuse an oversized body before reading it into memory.
+    if (Number(req.headers.get("content-length") ?? 0) > MAX_CHUNK_BYTES) return NextResponse.json({ error: "That piece of audio is too large." }, { status: 413 });
     const q = new URL(req.url).searchParams;
     const frame = Number(q.get("frame"));
     const mic = parseLevels(q.get("mic")), sys = parseLevels(q.get("sys"));

@@ -74,6 +74,33 @@ export function segmentsFromMl(doc: unknown): Segment[] {
     .map((s) => ({ start: Math.max(0, Number(s.start) || 0), end: Math.max(Number(s.end) || 0, Number(s.start) || 0), text: String(s.text).trim() }));
 }
 
+/**
+ * How many seconds of audio a WAV file holds, from its own header: uncompressed PCM (or float) only,
+ * the length worked out from the bytes and the sample format, so a small file cannot claim to be short
+ * while holding hours of compressed audio. Null for anything that is not such a WAV. Pure.
+ */
+export function wavSeconds(bytes: Uint8Array): number | null {
+  if (bytes.length < 44) return null;
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = (at: number) => String.fromCharCode(bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]);
+  if (tag(0) !== "RIFF" || tag(8) !== "WAVE") return null;
+  let at = 12, perSecond = 0;
+  while (at + 8 <= bytes.length) {
+    const id = tag(at), size = v.getUint32(at + 4, true), body = at + 8;
+    if (id === "fmt " && body + 16 <= bytes.length) {
+      const format = v.getUint16(body, true), channels = v.getUint16(body + 2, true), rate = v.getUint32(body + 4, true), bits = v.getUint16(body + 14, true);
+      // 1 PCM, 3 IEEE float, 0xFFFE extensible (PCM or float inside).
+      if (![1, 3, 0xfffe].includes(format) || !channels || channels > 8 || rate < 4000 || rate > 192_000 || ![8, 16, 24, 32].includes(bits)) return null;
+      perSecond = rate * channels * (bits / 8);
+    } else if (id === "data") {
+      if (!perSecond) return null;
+      return Math.min(size, bytes.length - body) / perSecond;
+    }
+    at = body + size + (size % 2);
+  }
+  return null;
+}
+
 const extension = (mime: string) => (/wav/.test(mime) ? "wav" : /webm/.test(mime) ? "webm" : /ogg|opus/.test(mime) ? "ogg" : /mpeg|mp3/.test(mime) ? "mp3" : /mp4|m4a/.test(mime) ? "m4a" : "wav");
 
 export const openAiTranscriber = (apiKey: string, model = DEFAULT_OPENAI_MODEL): Transcriber => ({
