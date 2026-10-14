@@ -134,6 +134,11 @@ const INFRA: Record<Level, Usage> = {
 
 /** Uses a month of each metered premium feature a plan unlocks, by level. */
 export const PREMIUM_USES: Record<Level, number> = { light: 0, typical: 4, heavy: 20 };
+/**
+ * The share of a plan's people who use a feature with a flat monthly fee (`flatMonthlyUsd`, such as a
+ * connected brokerage): none of the light persona, about a third at typical use, everyone at heavy use.
+ */
+export const FLAT_ADOPTION: Record<Level, number> = { light: 0, typical: 0.35, heavy: 1 };
 
 /**
  * What one person does in a month (about 21 working days), per plan and level. Heavy is set high on
@@ -196,7 +201,8 @@ export function costToServe(plan: PlanId, level: Level, usage: Usage = USAGE[pla
   const aiUncapped = unitCost(usage, (u) => u.inAiAllowance) + (level === "heavy" ? premiumUse(true) : 0);
   const ai = Math.min(aiUncapped, PLANS[plan].ai.monthlyUsd);
   const other = unitCost(usage, (u) => !u.inAiAllowance && u.area !== "infra");
-  const premium = premiumUse(false);
+  const flat = meteredFeatures(plan).reduce((s, f) => s + (f.flatMonthlyUsd ?? 0) * FLAT_ADOPTION[level], 0);
+  const premium = premiumUse(false) + flat;
   const infra = unitCost(INFRA[level], () => true);
   const fixed = PLANS[plan].monthlyUsd || PLANS[plan].yearlyMonthlyUsd ? fixedMonthlyUsd() / PAYING_SEATS : 0;
   return { aiUncapped, ai, other, premium, infra, fixed, total: ai + other + premium + infra + fixed };

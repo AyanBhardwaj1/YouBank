@@ -11,8 +11,8 @@ import type { PremiumFeature } from "./types";
  *   per connected user per month (about $2 on its pay-as-you-go plan with trading, at list price in
  *   October 2026; volume plans are lower), whether or not that person trades that month. The pricing
  *   model (lib/billing/costs.ts) multiplies costPerUseUsd by uses a month (4 at typical use), so a flat
- *   monthly fee is entered as a quarter of it per "use": $0.50 a week, $2 a month at typical use, exactly
- *   SnapTrade's charge. Paid outside the AI ledger, so not in the AI allowance. A connection is made only
+ *   monthly fee is entered as flatMonthlyUsd ($2), which the model counts once a month, weighted by how
+ *   many people on a plan connect a broker. Paid outside the AI ledger, so not in the AI allowance. A connection is made only
  *   when the person clicks Connect, and deleted when they disconnect, which stops the charge.
  * - copytrade.blends and copytrade.multi are perks of the plan, with no cost per use.
  */
@@ -20,8 +20,8 @@ export const COPYTRADE_FEATURES: PremiumFeature[] = [
   {
     id: "copytrade.broker", area: "platform", name: "Copy trading with your broker",
     description: "Connect Schwab, Fidelity, Robinhood, IBKR and about 20 other brokers, and place a fund copy's orders after you approve each batch.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.5,
-    perUse: "a week of one connected brokerage user: SnapTrade charges about $2 per connected user per month while the connection exists, and the pricing model counts 4 uses a month at typical use (20 at heavy, which overstates a flat monthly fee)",
+    minPlan: "pro", metered: true, costPerUseUsd: 0, flatMonthlyUsd: 2,
+    perUse: "a month of one connected brokerage user: SnapTrade charges about $2 per connected user per month while the connection exists",
   },
   {
     id: "copytrade.blends", area: "platform", name: "Fund blends",
