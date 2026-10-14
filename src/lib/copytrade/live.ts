@@ -9,7 +9,6 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
-import { auth } from "@/lib/auth/server";
 import type { CurrentUser } from "@/lib/auth/user";
 import { decryptToken, encryptionReady, encryptToken } from "@/lib/crm/crypto";
 import { siteLink } from "@/lib/site";
@@ -228,19 +227,6 @@ function snapBroker(u: SnapUser, accountId: string): OrderBroker {
   };
 }
 
-/** When the session began, for the re-sign-in rule on large batches. Null when it cannot be told. */
-async function sessionStartedAt(): Promise<Date | null> {
-  if (process.env.NODE_ENV !== "production" && process.env.YOUBANK_DEV_USER) return new Date();
-  try {
-    const { data } = await auth.getSession();
-    const t = (data as { session?: { createdAt?: string | Date } } | null)?.session?.createdAt;
-    return t ? new Date(t) : null;
-  } catch { return null; }
-}
-
-/** Large batches need a session started in the last 12 hours, besides the typed confirmation. */
-const FRESH_SESSION_MS = 12 * 3_600_000;
-
 /** Approve a reviewed batch and send it, once. */
 export async function approve(user: Person, batchId: number, body: { idempotencyKey?: unknown; confirmation?: unknown }, meta: Meta) {
   await requireBroker(user);
@@ -249,10 +235,6 @@ export async function approve(user: Person, batchId: number, body: { idempotency
   await requireConsent(user.id, "trading");
   const b = await dbStore.batch(batchId, user.id);
   if (!b) throw refuse("That batch of orders was not found.", 404);
-  if (b.status === "proposed" && confirmationPhrase(b)) {
-    const started = await sessionStartedAt();
-    if (started && Date.now() - started.getTime() > FRESH_SESSION_MS) throw refuse("For a large batch, sign out and sign in again first (your session is more than 12 hours old). The batch will wait until it expires.", 403);
-  }
   const copy = await getCopy(user.id, b.portfolioId);
   if (copy.status !== "active") throw refuse("This copy is paused. Resume it before placing orders.", 409);
   const u = await requireSnapUser(user.id);

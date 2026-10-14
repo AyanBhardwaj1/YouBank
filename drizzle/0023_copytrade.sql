@@ -3,7 +3,8 @@
 -- stored consents, order batches and their orders, and an append-only audit log. New tables only; nothing
 -- existing changes.
 --
--- Apply with:  DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0023_copytrade.sql
+-- Plain Postgres: tables, indexes and two rules. New databases get it from the replay of drizzle/*.sql;
+-- an existing one with:  DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0023_copytrade.sql
 
 -- Every 13F filer seen in EDGAR's indexes, for search by name or CIK. Curated managers are marked.
 CREATE TABLE IF NOT EXISTS "copy_filers" (
