@@ -180,3 +180,6 @@ CREATE TABLE IF NOT EXISTS "edge_job_state" (
 CREATE INDEX IF NOT EXISTS "edge_predictions_kind_score_idx" ON "edge_predictions" ("kind", "score" DESC);
 -- The Precedent Engine finds a document's deal by its target within nine months (E1).
 CREATE INDEX IF NOT EXISTS "edge_deals_target_cik_idx" ON "edge_deals" ("target_cik", "announced_at") WHERE "owner_id" IS NULL;
+
+-- The Thesis Agent's (E7) hourly pass finds running theses whose next tick is due, by the time in their state.
+CREATE INDEX IF NOT EXISTS "edge_agents_due_idx" ON "edge_agents" (("memo"->>'nextTickAt')) WHERE "status" = 'running';
