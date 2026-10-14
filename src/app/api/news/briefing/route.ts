@@ -38,7 +38,8 @@ export async function POST(req: Request) {
     if (!ctx) return NextResponse.json({ error: "Finish onboarding first" }, { status: 409 });
     const existing = await todaysBriefing(ctx);
     if (existing && !body.remake) return NextResponse.json(await withAudioUrls(existing));
-    if (!(await withinRate(`news-audio:${user.id}`, existing ? 3 : 4, 20 * 3_600_000))) {
+    // Four makes in the window: today's first and three remakes (the count is shared, so one limit for both).
+    if (!(await withinRate(`news-audio:${user.id}`, 4, 20 * 3_600_000))) {
       return NextResponse.json({ error: "You have made today's briefing several times already. It can be made again tomorrow." }, { status: 429 });
     }
     return NextResponse.json(await makeBriefing(ctx, "ai"));

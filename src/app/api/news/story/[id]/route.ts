@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { requireFeature } from "@/lib/billing/entitlements";
+import { withinRate } from "@/lib/locks";
 import { noteNewsForNetwork } from "@/lib/news/crm";
 import { follow, unfollow } from "@/lib/news/follow";
 import { storyPlaces } from "@/lib/news/geo";
@@ -43,8 +44,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await db.insert(schema.newsUserItems).values({ userId: user.id, clusterId: id, ...set, updatedAt: now }).onConflictDoUpdate({ target: [schema.newsUserItems.userId, schema.newsUserItems.clusterId], set: { ...set, updatedAt: now } });
       return NextResponse.json({ ok: true });
     }
-    if (body.action === "follow") return NextResponse.json(await follow(user, c));
-    if (body.action === "unfollow") { await unfollow(user.id, id); return NextResponse.json({ following: false }); }
+    if (body.action === "follow" || body.action === "unfollow") {
+      // Following and unfollowing are cheap, but a script toggling them could churn alerts and the table.
+      if (!(await withinRate(`news-follow:${user.id}`, 120, 3_600_000))) return NextResponse.json({ error: "Too many follow changes in the last hour. Try again later." }, { status: 429 });
+      if (body.action === "follow") return NextResponse.json(await follow(user, c));
+      await unfollow(user.id, id);
+      return NextResponse.json({ following: false });
+    }
     const reader = await readerFor(user.id);
     if (!reader) return NextResponse.json({ error: "Finish onboarding first" }, { status: 409 });
     if (body.action === "why") {
