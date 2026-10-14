@@ -32,6 +32,10 @@ export function isBig(d: Pick<Detection, "kind" | "confidence" | "magnitude" | "
     case "hiring_tell": case "layoff_notice": case "contract_award": return pulseIsBig(d.kind, d.visual);
     // Deal Radar: 12-month odds of at least 25% that rose by 8 points or more.
     case "deal_odds": { const v = d.visual as { p?: number; rise?: number }; return (v.p ?? 0) >= 0.25 && (v.rise ?? 0) >= 0.08; }
+    // Call Desk: a promise settled outside its range by more than 5%.
+    case "guidance_result": { const v = d.visual as { status?: string; missPct?: number }; return v.status !== "hit" && (v.missPct ?? 0) > 0.05; }
+    // Thesis Agent: a kill criterion fired.
+    case "thesis_update": return ((d.visual as { fired?: unknown[] }).fired ?? []).length > 0;
     default: return false;
   }
 }

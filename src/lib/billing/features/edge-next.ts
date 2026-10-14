@@ -2,8 +2,8 @@ import type { PremiumFeature } from "./types";
 
 /**
  * Premium features of Edge's next round (docs/edge-next.md, section 6): the Precedent Engine, Calibrated
- * Claims, the Alt-Data Pulse and the Deal Radar, built now, and the Call Desk, LBO Stress Lab, Thesis Agent
- * and Voice Analyst, built next on this branch. Every free core of these features stays free; these are
+ * Claims, the Alt-Data Pulse, the Deal Radar, the Call Desk, the LBO Stress Lab and the Thesis Agent, and the
+ * Voice Analyst (stretch). Every free core of these features stays free; these are
  * the layers on top.
  *
  * Costs are list prices checked on 5 October 2026 (src/lib/ai/pricing.ts and the providers' pages), worked
@@ -14,9 +14,9 @@ import type { PremiumFeature } from "./types";
  * `inAiAllowance` marks the features whose spend is a model call recorded in the AI usage ledger
  * (`recordUsage`, through `structured()` and the answer paths): that spend draws down the person's AI
  * allowance and credits, so the pricing model counts it inside the allowance rather than on top. GPU and
- * Modal time (the Eva-4B ensemble, the LBO refine) is paid outside the ledger and leaves it unset. The
- * planned ids that set it (the private library, peer calls, theses, live voice) must record their model
- * spend through `recordUsage` when they are built, or drop the flag.
+ * Modal time (the Eva-4B ensemble, the LBO refine) is paid outside the ledger and leaves it unset. Peer
+ * calls and theses record their model calls through `structured()` (and so `recordUsage`); the planned
+ * private library must do the same when it is built, or drop the flag.
  */
 export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
   /* ---------------- Precedent Engine (E1) ---------------- */
@@ -71,44 +71,44 @@ export const EDGE_NEXT_FEATURES: PremiumFeature[] = [
     minPlan: "pro", metered: false, costPerUseUsd: 0, planned: true,
     perUse: "a perk: stored acquirer odds combined with the deal model's pair score",
   },
-  /* ---------------- Call Desk (E5), next ---------------- */
+  /* ---------------- Call Desk (E5) ---------------- */
   {
     id: "edge.calls-eva", area: "edge", name: "Evasion ensemble (Eva-4B)",
-    description: "Earnings-call answers scored by the Eva-4B classifier on a GPU, combined with the free rubric.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.03, planned: true,
-    perUse: "a call: about 90 seconds of a Modal T4 at $0.59 an hour, with its CPU and memory",
+    description: "Earnings-call answers also scored by the Eva-4B classifier on a GPU and averaged with the free classifier (off until its licence is confirmed).",
+    minPlan: "pro", metered: true, costPerUseUsd: 0.03,
+    perUse: "a call: about 90 seconds of a Modal T4 at $0.59 an hour with its CPU and memory, cold start included; paid outside the AI ledger",
   },
   {
     id: "edge.calls-peers", area: "edge", name: "Peer call comparison",
-    description: "Evasion and promises compared across up to six peers' latest earnings calls.",
-    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.05, planned: true,
-    perUse: "six calls' summaries on the small model plus the comparison",
+    description: "Evasion and promises compared across up to six companies' latest earnings calls, with a written comparison.",
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.002,
+    perUse: "a comparison: the stored call summaries (read by the free classifier) and one small-model call, about 2,000 tokens in and 400 out on gpt-6-luna, recorded in the AI ledger",
   },
-  /* ---------------- LBO Stress Lab (E6), next ---------------- */
+  /* ---------------- LBO Stress Lab (E6) ---------------- */
   {
     id: "edge.lbo-refine", area: "edge", name: "LBO refine",
-    description: "An LBO stress run over 20,000 paths and seven years on the ML service.",
-    minPlan: "pro", metered: true, costPerUseUsd: 0.01, planned: true,
-    perUse: "one refine: a few CPU minutes on Modal",
+    description: "An LBO stress test rerun over 20,000 synthetic paths and up to seven years.",
+    minPlan: "pro", metered: true, costPerUseUsd: 0.003,
+    perUse: "a refine: about a minute of two Modal CPU cores with 4 GiB, cold start included (about $0.002), or a few seconds of Vercel CPU when the ML service is not set up; paid outside the AI ledger",
   },
-  /* ---------------- Thesis Agent (E7), next ---------------- */
+  /* ---------------- Thesis Agent (E7) ---------------- */
   {
     id: "edge.thesis-plus", area: "edge", name: "More theses",
-    description: "Up to five active theses with 90-day horizons and twice-daily checks on filing days.",
-    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.25, planned: true,
-    perUse: "a tick: routing and extraction on the small model plus about one document question",
+    description: "Up to five active theses with 90-day horizons and checks twice a day.",
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 0.02,
+    perUse: "a tick: Edge's tool reads (free) plus evidence extraction on gpt-6-luna (about 8,000 tokens in, 1,000 out) and, when a claim moves 10 points, a red team on a second provider (Claude Sonnet, about 6,000 in and 600 out); recorded in the AI ledger",
   },
   {
     id: "edge.thesis-deep", area: "edge", name: "Weekly deep synthesis",
-    description: "A weekly deep-research pass on the flagship model for each thesis.",
-    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 2.5, planned: true,
-    perUse: "a pass, priced as ai.deep-research",
+    description: "A weekly deep synthesis of each thesis on the flagship model at maximum reasoning.",
+    minPlan: "pro", metered: true, inAiAllowance: true, costPerUseUsd: 1.2,
+    perUse: "a weekly pass: about 40,000 tokens in at $10 and 15,000 out at $50 per million on the flagship model at maximum effort, recorded in the AI ledger",
   },
   {
     id: "edge.thesis-team", area: "edge", name: "Team theses",
-    description: "Theses shared with and edited by your team.",
-    minPlan: "team", metered: false, costPerUseUsd: 0, planned: true,
-    perUse: "a perk",
+    description: "Theses shared with your team, who can follow them and add evidence.",
+    minPlan: "team", metered: false, costPerUseUsd: 0,
+    perUse: "a perk: the same ticks, shared",
   },
   /* ---------------- Voice Analyst (E13), stretch ---------------- */
   {

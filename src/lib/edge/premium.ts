@@ -145,6 +145,29 @@ export const UPGRADES: Upgrade[] = [
     cost: "BigQuery ML prediction rates: $6.25 per TiB with a 10 MB minimum, about $0.0001 a forecast.",
     needs: ["GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON"], steps: ["In Google Cloud, enable the BigQuery API on a project with billing and create a service account with the BigQuery Job User role.", "Set GOOGLE_CLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS_JSON (the key file's JSON) in Vercel; optionally TIMESFM_MODEL (default 'TimesFM 2.5') and BIGQUERY_LOCATION (default US). Redeploy.", "People whose plan includes it see 'Forecast with TimesFM' under Scenarios' drivers; nothing is sent to BigQuery unless they press it."],
   },
+  // Call Desk (E5)
+  {
+    id: "calls-eva", module: "documents", name: "Eva-4B evasion ensemble", built: true, feature: "edge.calls-eva",
+    improves: "Scores each earnings-call answer with the Eva-4B classifier (Apache-2.0 weights on Qwen3-4B) on a GPU and averages its probabilities with the free classifier's.",
+    cost: "Modal T4 $0.59/h: about 90 seconds a call with its cold start, about $0.03.",
+    needs: ["EDGE_ML_URL", "EDGE_ML_SECRET"], flag: { name: "EDGE_CALLS_EVA", value: "1" },
+    steps: ["Have counsel confirm that Eva-4B, whose training data came from licensed S&P Capital IQ transcripts, may be used commercially (docs/edge-next.md, open question 4). Until then leave it off.", "Redeploy the ML service (modal deploy ml/edge_ml.py) so its calls.evasion task exists, and smoke-test it on staging.", "Set EDGE_CALLS_EVA=1 in Vercel and redeploy. People whose plan includes it see 'Add Eva-4B' on Call Desk; it runs only when they press it."],
+  },
+  // LBO Stress Lab (E6)
+  {
+    id: "lbo-refine", module: "scenarios", name: "LBO refine on the ML service", built: true, feature: "edge.lbo-refine",
+    improves: "Runs an LBO stress test over 20,000 paths and up to seven years on the ML service (lbo.refine) instead of the 1,000-path preview; without the ML service the same refine runs in the background job.",
+    cost: "A few CPU minutes on Modal, about $0.01 a refine.",
+    needs: [], steps: ["Redeploy the ML service (modal deploy ml/edge_ml.py) so its lbo.refine task exists; until then refines run in the Inngest job.", "People whose plan includes it see 'Refine: 20,000 paths' in the LBO lab."],
+  },
+  // Voice Analyst (E13)
+  {
+    id: "voice-realtime", module: "platform", name: "Live voice analyst", built: true, feature: "edge.voice-realtime",
+    improves: "A real-time spoken conversation with Edge over WebRTC, with the same tools as hold-to-talk; the free path uses the browser's own speech recognition and voice.",
+    cost: "OpenAI's realtime model, about $0.06 to $0.11 a minute; sessions are capped at 10 minutes and 30 minutes a day per person.",
+    needs: ["OPENAI_API_KEY"], flag: { name: "EDGE_VOICE_REALTIME", value: "1" },
+    steps: ["Set EDGE_VOICE_REALTIME=1 in Vercel (optionally EDGE_REALTIME_MODEL, default gpt-realtime-2.1) and redeploy.", "People whose plan includes it see 'Live conversation' in the voice sheet; a session key is minted only when they press it."],
+  },
   // Platform
   {
     id: "modal-budget", module: "platform", name: "A larger ML budget", built: true,

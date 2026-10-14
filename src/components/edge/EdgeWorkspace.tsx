@@ -30,11 +30,13 @@ const TrackRecord = dynamic(() => import("./next/TrackRecord").then((m) => m.Tra
 const DealsView = dynamic(() => import("./next/DealsView").then((m) => m.DealsView), { loading: ViewLoading });
 const PulseView = dynamic(() => import("./next/PulseView").then((m) => m.PulseView), { loading: ViewLoading });
 const RadarView = dynamic(() => import("./next/RadarView").then((m) => m.RadarView), { loading: ViewLoading });
+const CallsView = dynamic(() => import("./next/CallsView").then((m) => m.CallsView), { loading: ViewLoading });
+const ThesesView = dynamic(() => import("./next/ThesesView").then((m) => m.ThesesView), { loading: ViewLoading });
 
-export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif" | "deals" | "pulse" | "radar" | "track";
-const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }, { id: "deals", label: "Deals" }, { id: "pulse", label: "Pulse" }, { id: "radar", label: "Deal Radar" }, { id: "track", label: "Track record" }];
+export type EdgeView = "feed" | "canvases" | "documents" | "networks" | "scenarios" | "map" | "whatif" | "deals" | "pulse" | "radar" | "calls" | "theses" | "track";
+const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" }, { id: "canvases", label: "Canvases" }, { id: "documents", label: "Documents" }, { id: "networks", label: "Networks" }, { id: "scenarios", label: "Scenarios" }, { id: "map", label: "Map" }, { id: "whatif", label: "Deal what-if" }, { id: "deals", label: "Deals" }, { id: "pulse", label: "Pulse" }, { id: "radar", label: "Deal Radar" }, { id: "calls", label: "Call Desk" }, { id: "theses", label: "Theses" }, { id: "track", label: "Track record" }];
 
-export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null, initialDeal = null, initialTicker = null, initialState, initialFeed, seededAt }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null; initialDeal?: { parties: string[]; place: string } | null; initialTicker?: string | null; initialState?: EdgeState; initialFeed?: FeedData; seededAt?: string }) {
+export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null, initialDeal = null, initialTicker = null, initialTab = null, initialThesis = null, initialState, initialFeed, seededAt }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null; initialDeal?: { parties: string[]; place: string } | null; initialTicker?: string | null; initialTab?: string | null; initialThesis?: number | null; initialState?: EdgeState; initialFeed?: FeedData; seededAt?: string }) {
   const [view, setViewState] = useState<EdgeView>(initialView);
   // The feed page that came with the page is used once; coming back to the feed later fetches it fresh.
   const [feedSeed, setFeedSeed] = useState(initialFeed);
@@ -120,12 +122,14 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
               {view === "canvases" && <CanvasHome />}
               {view === "documents" && <DocumentsView key={docs?.key ?? 0} tickers={watchedTickers} open={docs} />}
               {view === "networks" && <NetworksView key={net.key} tickers={watchedTickers} initial={net.ticker} />}
-              {view === "scenarios" && <ScenariosView tickers={watchedTickers} />}
+              {view === "scenarios" && <ScenariosView tickers={watchedTickers} initialTab={initialTab === "lbo" ? "lbo" : null} initialTicker={initialTab === "lbo" ? initialTicker : null} />}
               {view === "map" && <MapView key={focus?.key ?? 0} state={state} focus={focus} onOpenDeal={openDeal} />}
               {view === "whatif" && <WhatIf key={deal?.key ?? 0} state={state} initial={deal} />}
               {view === "deals" && <DealsView tickers={watchedTickers} />}
               {view === "pulse" && <PulseView tickers={watchedTickers} initial={initialTicker} />}
               {view === "radar" && <RadarView tickers={watchedTickers} initial={initialTicker} />}
+              {view === "calls" && <CallsView tickers={watchedTickers} initial={initialTicker} />}
+              {view === "theses" && <ThesesView tickers={watchedTickers} initial={initialThesis} />}
               {view === "track" && <TrackRecord />}
             </main>
             {view === "feed" && (

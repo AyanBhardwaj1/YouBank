@@ -47,11 +47,14 @@ export function sizeOf(kind: string, magnitude: number): number {
 }
 
 /** Kinds that rarely reach the news: the Alt-Data Pulse's signals and the Deal Radar's odds (base 0.8). */
-const SIGNAL_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds"]);
+const SIGNAL_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds", "call_evasion"]);
 
-/** Satellite changes, radar, flaring and methane are rarely in the news; permits are public records few read; a deal is news, though not its map; a filing is public, its edits rarely reported; alternative-data signals and model odds rarely reach the news. Fades over a month. Pure. */
+/** Satellite changes, radar, flaring and methane are rarely in the news; permits are public records few read; a deal is news, though not its map; a filing is public, its edits rarely reported; alternative-data signals, model odds and call evasion rarely reach the news; settled promises are half news; a person's thesis updates are theirs. Fades over a month. Pure. */
 export function noveltyOf(kind: string, ageDays: number): number {
-  const base = kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : 0.6;
+  // Call Desk's evasion readings are rarely reported (0.8, with the Pulse); a settled promise is half news (0.5:
+  // the results are reported, the promise against them rarely); a promise falling due 0.55; a person's own
+  // thesis update is theirs alone, so it is new to them (0.7).
+  const base = kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : kind === "thesis_update" ? 0.7 : kind === "commitment_due" ? 0.55 : kind === "guidance_result" ? 0.5 : 0.6;
   return base * (0.5 + 0.5 * Math.exp(-ageDays / 30));
 }
 
@@ -73,7 +76,8 @@ async function candidates(userId: string, watches: Watch[]): Promise<Light[]> {
   for (const [x0, y0, x1, y1] of boxes) {
     any.push(sql`(${schema.edgeDetections.bbox} is not null and (${schema.edgeDetections.bbox}->>0)::float < ${x1} and (${schema.edgeDetections.bbox}->>2)::float > ${x0} and (${schema.edgeDetections.bbox}->>1)::float < ${y1} and (${schema.edgeDetections.bbox}->>3)::float > ${y0})`);
   }
-  if (!any.length) return [];
+  // A person's own findings (their Thesis Agent's updates) reach their feed whether or not they watch the companies.
+  any.push(sql`(${schema.edgeDetections.ownerId} = ${userId} and ${schema.edgeDetections.kind} = 'thesis_update')`);
   return requireDb().select(LIGHT).from(schema.edgeDetections)
     .where(sql`${since(365)} and (${schema.edgeDetections.ownerId} is null or ${schema.edgeDetections.ownerId} = ${userId}) and (${sql.join(any, sql` or `)})`)
     .orderBy(sql`${schema.edgeDetections.detectedAt} desc`).limit(300);
@@ -138,6 +142,8 @@ async function rankAll(userId: string, watches: Watch[], blend: Blend): Promise<
   const scored = new Map<number, Ranked>();
   for (const d of own) {
     const hit = matches(d, watches);
+    // The person's own thesis updates (candidates only holds their own) count as theirs, watched or not.
+    if (!hit.length && d.kind === "thesis_update") { scored.set(d.id, rankOf(d, "mine", 1, ["Your thesis"], blend, now)); continue; }
     if (!hit.length) continue;
     const mine = hit.filter((w) => w.mine);
     const best = mine.find((w) => w.kind === "company") ?? mine[0] ?? hit[0];

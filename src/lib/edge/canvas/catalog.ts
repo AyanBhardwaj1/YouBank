@@ -170,6 +170,15 @@ export const NODES: NodeDef[] = [
     defaults: {},
   },
 
+  {
+    type: "calls.read", module: "signals", label: "Call Desk", tech: "Calibrated classifier", icon: "AudioLines", blurb: "Earnings-call answers scored for evasion with calibrated probabilities, and management's promises against what was reported",
+    inputs: [{ name: "in", label: "Companies or documents", kinds: ["companies", "docs"], required: true }],
+    outputs: [{ name: "table", label: "Promises and calls", kind: "table" }, { name: "memo", label: "Summary", kind: "memo" }],
+    steps: [{ id: "calls", label: "Find read calls" }, { id: "promises", label: "Promises ledger" }, { id: "write", label: "Summarise" }],
+    fields: [{ key: "read", label: "Read unread filed transcripts now (free)", type: "toggle" }],
+    defaults: { read: false },
+  },
+
   /* ---------- Scenarios · Synthetic data ---------- */
   {
     type: "scen.simulate", module: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", blurb: "Simulated paths for what could happen, always labeled synthetic",
@@ -184,6 +193,19 @@ export const NODES: NodeDef[] = [
       { key: "method", label: "Method", type: "select", options: [{ value: "auto", label: "Chosen by data type" }, { value: "statistical", label: "Statistical (bootstrap, GARCH, regimes)" }, { value: "diffusion", label: "Deep generative (diffusion)" }] },
     ],
     defaults: { driver: "replay", replay: "2022", shock: "", horizon: 60, method: "auto" },
+  },
+  {
+    type: "scen.lbo", module: "scenarios", label: "LBO Stress Lab", tech: "Synthetic data", icon: "Coins", blurb: "A buyout over 1,000 synthetic macro and operating paths: IRR fan, covenant-breach odds, the most a sponsor can pay, and the gentlest scenario that breaks it",
+    inputs: [{ name: "companies", label: "Company", kinds: ["companies"], required: true }, { name: "deals", label: "Precedents (optional)", kinds: ["deals"] }],
+    outputs: [{ name: "scenario", label: "Stress test", kind: "scenario" }, { name: "table", label: "Breach odds by year", kind: "table" }],
+    steps: [{ id: "inputs", label: "Company and multiples" }, { id: "simulate", label: "Simulate paths" }, { id: "stress", label: "Run the buyout" }],
+    fields: [
+      { key: "leverage", label: "Term loan (x EBITDA)", type: "number", min: 0, max: 8, step: 0.25 },
+      { key: "notes", label: "Senior notes (x EBITDA)", type: "number", min: 0, max: 4, step: 0.25 },
+      { key: "maxLeverage", label: "Net leverage covenant (x)", type: "number", min: 2, max: 12, step: 0.25 },
+      { key: "years", label: "Hold (years)", type: "number", min: 2, max: 5 },
+    ],
+    defaults: { leverage: 4, notes: 1.5, maxLeverage: 7, years: 5 },
   },
   {
     type: "scen.synthetic", module: "scenarios", label: "Synthetic data", tech: "Synthetic data", icon: "FlaskConical", blurb: "A realistic synthetic copy of a table, labeled with its recipe and seed",

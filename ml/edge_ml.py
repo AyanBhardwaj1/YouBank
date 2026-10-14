@@ -5,7 +5,7 @@ One authenticated HTTP entry point (``api``) dispatches to one Modal function pe
 plus a ``status`` endpoint for async calls. Tasks:
 
     health, geo.refine, geo.embed_change, geo.footprints, docs.parse, docs.rerank, docs.verify, audio.transcribe,
-    graph.train, synth.tabular, synth.series, topics.map, odds.train, odds.score
+    graph.train, synth.tabular, synth.series, topics.map, odds.train, odds.score, calls.evasion, lbo.refine
 
 CPU only. Every task reports wall seconds and an estimated cost at Modal list prices.
 Large outputs go to Cloudflare R2 under ``ml/``; results carry the R2 key.
@@ -57,7 +57,7 @@ SECRET_KEYS = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEM_USD_PER_GIB_SECOND = 0.00000222
 # GPU tasks: Modal's GPU and its list price per second (T4 $0.59 an hour), added to the CPU and memory above.
-GPU_TASKS: dict[str, tuple[str, float]] = {"graph.train.gpu": ("T4", 0.59 / 3600)}
+GPU_TASKS: dict[str, tuple[str, float]] = {"graph.train.gpu": ("T4", 0.59 / 3600), "calls.evasion": ("T4", 0.59 / 3600)}
 
 # task name -> (Modal function name, CPU cores, memory MiB, timeout seconds, max containers)
 TASKS: dict[str, tuple[str, float, int, int, int]] = {
@@ -79,6 +79,11 @@ TASKS: dict[str, tuple[str, float, int, int, int]] = {
     # Deal Radar (E4): train monthly (a few CPU minutes), score the universe weekly and watched companies daily.
     "odds.train": ("odds_train", 2.0, 4096, 1800, 1),
     "odds.score": ("odds_score", 1.0, 2048, 300, 2),
+    # Call Desk (E5): the optional Eva-4B ensemble on a T4, used only when a person asks (premium edge.calls-eva)
+    # and only once EDGE_CALLS_EVA=1 is set on the app (the weights' training-data licence is unconfirmed).
+    "calls.evasion": ("calls_evasion", 2.0, 16384, 600, 1),
+    # LBO Stress Lab (E6): 20,000 paths over up to seven years (premium edge.lbo-refine); logic in ml/lbo_core.py.
+    "lbo.refine": ("lbo_refine", 2.0, 4096, 600, 2),
 }
 SCALEDOWN_SECONDS = 60
 INNGEST_URL = "https://inn.gs/e/"
@@ -130,6 +135,9 @@ PINS = {
     "pyarrow": "25.0.1",
     # Deal Radar (E4): the hazard model (MIT)
     "lightgbm": "4.6.0",
+    # Call Desk (E5): Eva-4B through transformers (Apache-2.0); confirm these pins on the first staging deploy
+    "transformers": "5.6.0",
+    "accelerate": "1.13.0",
 }
 MODELS = {
     # geo.refine: the current pair, then the fallbacks for the pair below
@@ -156,6 +164,10 @@ MODELS = {
     # `health`; pin it here to that commit after the first staging deploy.
     "nli": {"repo": os.environ.get("EDGE_NLI_REPO", "Xenova/nli-deberta-v3-small"), "revision": os.environ.get("EDGE_NLI_REVISION", "main"),
             "origin": "cross-encoder/nli-deberta-v3-small", "license": "Apache-2.0"},
+    # calls.evasion (optional, off until the licence question is answered): Eva-4B, Apache-2.0 weights on
+    # Qwen3-4B-Instruct-2507. Only the weights; never the EvasionBench dataset. Pin the revision after staging.
+    "eva": {"repo": os.environ.get("EDGE_EVA_REPO", "FutureMa/Eva-4B"), "revision": os.environ.get("EDGE_EVA_REVISION", "main"),
+            "base": "Qwen/Qwen3-4B-Instruct-2507", "license": "Apache-2.0"},
     # docs.rerank
     "reranker": {"repo": "cross-encoder/ettin-reranker-32m-v1", "revision": "b33e5ceb5110773ea9cf5e00c9bedc83a8c2afdd",
                  "license": "Apache-2.0"},
@@ -343,6 +355,16 @@ odds_image = (
     .pip_install(*_pin("lightgbm", "scikit-learn", "boto3"))
     .add_local_python_source("odds_core")
 )
+
+# Call Desk's optional Eva-4B: PyPI's torch wheel (with CUDA) and transformers; the pure logic in ml/calls_core.py.
+calls_image = (
+    modal.Image.debian_slim(python_version=PY)
+    .pip_install(f"torch=={PINS['torch'].split('+')[0]}", *_pin("transformers", "accelerate", "safetensors", "tokenizers", "huggingface-hub", "boto3"))
+    .add_local_python_source("calls_core")
+)
+
+# LBO Stress Lab: numpy only; the engine lives in ml/lbo_core.py, the same file the local tests import.
+lbo_image = modal.Image.debian_slim(python_version=PY).pip_install("numpy==2.4.6").add_local_python_source("lbo_core")
 
 topics_image = (
     modal.Image.debian_slim(python_version=PY)
@@ -3164,6 +3186,63 @@ def _odds_score(inp: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------------------------
+# calls.evasion: Eva-4B's class probabilities for Q&A pairs (ml/calls_core.py holds the prompt and maths).
+# ---------------------------------------------------------------------------------------------
+_EVA: dict = {}
+
+
+def _eva_model():
+    if "model" not in _EVA:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        spec = MODELS["eva"]
+        tok = AutoTokenizer.from_pretrained(spec["repo"], revision=spec["revision"])
+        model = AutoModelForCausalLM.from_pretrained(spec["repo"], revision=spec["revision"], torch_dtype=torch.float16, device_map="cuda")
+        model.eval()
+        # The first token of each label, as the tokenizer splits it after "Label:" and a space.
+        firsts = [tok.encode(" " + label, add_special_tokens=False)[0] for label in __import__("calls_core").LABELS]
+        _EVA.update(tok=tok, model=model, firsts=firsts)
+    return _EVA
+
+
+def _calls_evasion(inp: dict) -> dict:
+    """Eva-4B probabilities of (direct, intermediate, fully_evasive) for each pair, from the labels' first-token logits."""
+    import torch
+    import calls_core
+
+    pairs = calls_core.clean_pairs(inp.get("pairs"))
+    m = _eva_model()
+    tok, model = m["tok"], m["model"]
+    probs = []
+    for i in range(0, len(pairs), 8):
+        batch = pairs[i:i + 8]
+        texts = [tok.apply_chat_template(calls_core.build_messages(p["question"], p["answer"]), tokenize=False, add_generation_prompt=True) for p in batch]
+        enc = tok(texts, return_tensors="pt", padding=True, truncation=True, max_length=4096).to("cuda")
+        with torch.no_grad():
+            logits = model(**enc).logits
+        last = enc["attention_mask"].sum(dim=1) - 1
+        for j in range(len(batch)):
+            row = logits[j, last[j]].float()
+            probs.append(calls_core.label_probs([float(row[t]) for t in m["firsts"]]))
+    return {"probs": probs, "model": MODELS["eva"]["repo"], "revision": MODELS["eva"]["revision"]}
+
+
+# ---------------------------------------------------------------------------------------------
+# lbo.refine: the LBO Stress Lab's 20,000-path run (ml/lbo_core.py holds the engine, mirroring scen/lbo.ts).
+# ---------------------------------------------------------------------------------------------
+def _lbo_refine(inp: dict) -> dict:
+    import lbo_core
+
+    out_key = str(inp.get("outKey") or f"ml/lbo/refine-{int(time.time())}")
+    if not out_key.startswith("ml/"):
+        raise ValueError("outKey must live under ml/")
+    res = lbo_core.refine(inp)
+    key = _put_json(f"{out_key}.json", res)
+    return {"key": key, "paths": res["paths"], "summary": res["summary"]}
+
+
+# ---------------------------------------------------------------------------------------------
 # Modal functions: one per task
 # ---------------------------------------------------------------------------------------------
 @_task_function("health", api_image)
@@ -3241,6 +3320,16 @@ def odds_score(req: dict) -> dict:
     return _execute("odds.score", req, _odds_score)
 
 
+@_task_function("calls.evasion", calls_image)
+def calls_evasion(req: dict) -> dict:
+    return _execute("calls.evasion", req, _calls_evasion)
+
+
+@_task_function("lbo.refine", lbo_image)
+def lbo_refine(req: dict) -> dict:
+    return _execute("lbo.refine", req, _lbo_refine)
+
+
 TASK_FUNCTIONS = {
     "health": health,
     "geo.refine": geo_refine,
@@ -3257,6 +3346,8 @@ TASK_FUNCTIONS = {
     "topics.map": topics_map,
     "odds.train": odds_train,
     "odds.score": odds_score,
+    "calls.evasion": calls_evasion,
+    "lbo.refine": lbo_refine,
 }
 
 

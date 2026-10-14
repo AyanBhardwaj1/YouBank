@@ -5,7 +5,12 @@
  * attention, federal awards, layoffs, patents) with each series' change probability and the tells. ODDS:
  * the Deal Radar's model probability of a sale announcement within 12 months, with its interval, the
  * sector base rate and the reasons; ODDS alone is the board of watched companies and the week's movers.
+ * CALL: Call Desk on the company's latest read call and its promises ledger. LBO: the LBO Stress Lab's
+ * 1,000-path preview on the company, run when the person presses Run (free), with a link to the full lab.
  */
+import { useState } from "react";
+import { post } from "@/components/news/client";
+import { errorMessage } from "@/lib/client/errors";
 import { useApi } from "@/components/news/client";
 import { ProbBar, Sparkline } from "@/components/edge/next/charts";
 import type { Command } from "@/lib/functions";
@@ -101,6 +106,70 @@ export function OddsScreen({ ticker, onRun }: { ticker: string; onRun?: Run }) {
     <div className="flex h-full flex-col">
       <div className="table-scroll min-h-0 flex-1 overflow-auto">{table(b.rows, "Your watches")}{table(movers.data?.rows ?? [], "The week's movers")}</div>
       <div className="border-t border-line px-3 py-1 text-[10px] text-muted">{b.disclaimer}{b.version ? ` Model ${b.version}.` : ""}</div>
+    </div>
+  );
+}
+
+type CallList = { calls: { id: number; title: string; filed: string; createdAt: string; summary: { mean: number; low: number; high: number; scored: number } | null; read: boolean }[] };
+type CallRead = { read: boolean; title?: string; said?: string; summary?: { mean: number; low: number; high: number; scored: number } | null; comparison?: { sentence: string } | null; avoided?: { topic: string; n: number }[]; pairs?: { n: number; analyst: string; firm: string; cls?: string; p?: { evasive: number }; question: string }[]; disclaimer?: string };
+type Promises = { name: string; rows: { label: string; period: { fy: number; q?: number } | null; status: string; low: number | null; high: number | null; unit: string }[]; hitRate: { text: string; n: number } };
+
+/** The company's promises and their hit rate, compact (for CALL and the EE screen). Shows nothing without Edge. */
+export function PromisesKept({ ticker, compact = false }: { ticker: string; compact?: boolean }) {
+  const q = useApi<Promises>(ticker ? `/api/edge/commitments?ticker=${ticker}` : null);
+  if (!q.data) return compact ? null : <Wait error={q.error} what={`${ticker}'s promises`} />;
+  const d = q.data;
+  if (compact && !d.rows.length) return null;
+  return (
+    <div className="text-[11.5px]">
+      <div className="text-[10px] uppercase tracking-wider text-muted">Promises kept (Call Desk)</div>
+      <p className="mt-0.5">{d.hitRate.text}</p>
+      <ul className="mt-1 space-y-0.5">{d.rows.slice(0, compact ? 4 : 12).map((r, i) => <li key={i} className="flex justify-between gap-2"><span className="truncate">{r.label}{r.period ? ` ${r.period.q ? `Q${r.period.q} ` : ""}FY${r.period.fy}` : ""}</span><span className={r.status === "hit" ? "text-pos" : r.status.startsWith("missed") ? "text-neg" : "text-muted"}>{r.status.replace("_", " ")}</span></li>)}</ul>
+    </div>
+  );
+}
+
+export function CallScreen({ ticker }: { ticker: string; onRun?: Run }) {
+  const list = useApi<CallList>(ticker ? `/api/edge/calls?ticker=${ticker}` : null);
+  const latest = list.data?.calls.find((c) => c.read && c.summary) ?? null;
+  const call = useApi<CallRead>(latest ? `/api/edge/calls/${latest.id}` : null);
+  if (!list.data) return <Wait error={list.error} what={`${ticker}'s calls`} />;
+  return (
+    <div className="space-y-3 overflow-auto p-3 text-[11.5px]">
+      {!latest ? <p className="text-muted">No call of {ticker} has been read yet. Open Edge, Call Desk, to read a filed transcript or an uploaded recording. <a href={`/app/edge?view=calls&ticker=${ticker}`} className="text-info hover:underline">Call Desk</a></p> : !call.data ? <Wait error={call.error} what="the call" /> : (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-baseline gap-2"><span className="text-[13px] font-semibold">{call.data.title}</span>{call.data.summary && <span className="num text-[18px] font-semibold">{pct(call.data.summary.mean)}</span>}<span className="text-muted">of answers did not address the question{call.data.summary ? ` (80% interval ${pct(call.data.summary.low)} to ${pct(call.data.summary.high)}, ${call.data.summary.scored} scored)` : ""}</span></div>
+          {call.data.comparison && <p className="text-muted">{call.data.comparison.sentence}</p>}
+          {call.data.avoided?.length ? <p>Most avoided: {call.data.avoided.map((a) => `${a.topic} (${a.n})`).join(", ")}.</p> : null}
+          <table className="w-full text-[11px]"><tbody>{(call.data.pairs ?? []).slice(0, 12).map((p) => <tr key={p.n} className="border-b border-line/50"><td className="py-0.5 pr-2 text-muted">Q{p.n}</td><td className="truncate pr-2">{p.analyst}{p.firm ? `, ${p.firm}` : ""}</td><td className="num pr-2 text-right">{p.p ? pct(p.p.evasive) : "—"}</td><td className="text-muted">{p.cls ?? "not scored"}</td></tr>)}</tbody></table>
+          <p className="text-faint">{call.data.disclaimer}</p>
+        </div>
+      )}
+      <PromisesKept ticker={ticker} />
+      <a href={`/app/edge?view=calls&ticker=${ticker}`} className="text-info hover:underline">Open Call Desk</a>
+    </div>
+  );
+}
+
+type LboQuick = { result: { title: string; recipe: string; seed: number; result: { paths: number; irr: { p10: number; p50: number; p90: number }; odds: { moicBelowOne: number; breachAny: number }; breachByYear: number[]; maxPrice: { multiple: number | null; hurdle: number; confidence: number }; reverse: { sentence: string } }; entry: { multiple: number; source: string } } };
+
+export function LboScreen({ ticker }: { ticker: string; onRun?: Run }) {
+  const [busy, setBusy] = useState(false), [err, setErr] = useState(""), [res, setRes] = useState<LboQuick["result"] | null>(null);
+  const run = async () => { setBusy(true); setErr(""); try { setRes((await post<LboQuick>("/api/edge/scenarios", { kind: "lbo", ticker })).result); } catch (e) { setErr(errorMessage(e)); } finally { setBusy(false); } };
+  return (
+    <div className="space-y-2 overflow-auto p-3 text-[11.5px]">
+      <p className="text-muted">The LBO Stress Lab runs {ticker}&apos;s buyout (default structure: a 4.0x term loan, 1.5x notes, a revolver; entry from similar sponsor deals) over 1,000 SYNTHETIC macro and operating paths. Free.</p>
+      <div className="flex gap-2"><button type="button" onClick={run} disabled={busy} className="ctl border border-line px-2.5 py-1 hover:border-accent/50 disabled:opacity-50">{busy ? "Running…" : "Run 1,000 paths"}</button><a href={`/app/edge?view=scenarios&tab=lbo&ticker=${ticker}`} className="ctl border border-line px-2.5 py-1 text-info">Open the lab</a></div>
+      {err && <p className="text-neg">{err}</p>}
+      {res && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-accent">Synthetic · seed {res.seed} · {res.result.paths.toLocaleString("en-US")} paths · entry {res.entry.multiple.toFixed(1)}x</p>
+          <p>Median IRR <span className="num font-semibold">{pct(res.result.irr.p50, 1)}</span> (10th to 90th: {pct(res.result.irr.p10)} to {pct(res.result.irr.p90)}); chance of MOIC under 1x {pct(res.result.odds.moicBelowOne)}.</p>
+          <p>Covenant breach by year: {res.result.breachByYear.map((b, k) => `Y${k + 1} ${pct(b)}`).join(" · ")}.</p>
+          <p>Most a sponsor can pay for {pct(res.result.maxPrice.hurdle)} IRR with {pct(res.result.maxPrice.confidence)} probability: {res.result.maxPrice.multiple ? `${res.result.maxPrice.multiple.toFixed(1)}x EBITDA` : "no price clears it"}.</p>
+          <p className="text-muted">Gentlest scenario that breaks it: {res.result.reverse.sentence}</p>
+        </div>
+      )}
     </div>
   );
 }

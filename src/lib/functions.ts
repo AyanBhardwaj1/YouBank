@@ -66,6 +66,8 @@ export const FUNCTIONS = {
   ASK: { label: "Ask filings", hint: "Ask its filings and your documents, with quotes: ASK what drove volumes?", group: "edge", args: true },
   PULSE: { label: "Pulse", hint: "Its hiring, attention, federal awards, layoff notices and patents, with change points", group: "edge" },
   ODDS: { label: "Deal Radar", hint: "A model probability of a sale announcement within 12 months; ODDS alone for the board", group: "edge" },
+  CALL: { label: "Call Desk", hint: "Its latest earnings call question by question, scored for evasion, and its promises against what it reported", group: "edge" },
+  LBO: { label: "LBO stress", hint: "Its buyout over 1,000 synthetic paths: breach odds, the IRR range, the most a sponsor can pay", group: "edge" },
 } as const satisfies Record<string, FnDef>;
 
 export type FunctionCode = keyof typeof FUNCTIONS;

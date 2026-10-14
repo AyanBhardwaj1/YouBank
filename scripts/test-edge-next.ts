@@ -2,7 +2,8 @@
  * Checks for Edge's next round (docs/edge-next.md): the entity crosswalk (F1), the change library and its
  * false-alarm rate (F2), the calibration library and the forecast ledger's rules (F3), Calibrated Claims
  * (E2), the Precedent Engine (E1), the Alt-Data Pulse (E3) and the Deal Radar (E4), plus the premium
- * registry for these features. No network, no database: parsers run on saved fixtures under
+ * registry for these features; Call Desk (E5), the LBO Stress Lab (E6), the Thesis Agent (E7) and the Voice
+ * Analyst (E13) are checked in scripts/edge-next-b-checks.ts, run from here. No network, no database: parsers run on saved fixtures under
  * scripts/fixtures/, models on synthetic data with known answers.
  *   pnpm exec tsx scripts/test-edge-next.ts
  */
@@ -60,6 +61,7 @@ import { fromMl } from "@/lib/edge/odds/score";
 import { EDGE_NEXT_FEATURES } from "@/lib/billing/features/edge-next";
 import { FEATURES } from "@/lib/billing/features";
 import { isPlanId, PLAN_ORDER } from "@/lib/billing/plans";
+import { checksB } from "./edge-next-b-checks";
 
 let pass = 0, fail = 0;
 export const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -86,8 +88,9 @@ async function main() {
     check("each needs a plan above Free", EDGE_NEXT_FEATURES.every((f) => isPlanId(f.minPlan) && PLAN_ORDER.indexOf(f.minPlan) > 0));
     check("metered features carry a cost and what a use is; perks cost nothing", EDGE_NEXT_FEATURES.every((f) => (f.metered ? (f.costPerUseUsd ?? 0) > 0 && !!f.perUse : f.costPerUseUsd === 0 && !!f.perUse)));
     check("descriptions are one plain sentence", EDGE_NEXT_FEATURES.every((f) => f.description.length < 200 && /\.$/.test(f.description)));
-    check("what this round built is not marked planned; the next round's is", ["edge.deals-reread", "edge.deals-export", "edge.claims-crosscheck", "edge.pulse-daily", "edge.odds-screener"].every((id) => !EDGE_NEXT_FEATURES.find((f) => f.id === id)?.planned) && ["edge.calls-eva", "edge.lbo-refine", "edge.thesis-plus", "edge.voice-realtime", "edge.odds-pairs", "edge.deals-private"].every((id) => EDGE_NEXT_FEATURES.find((f) => f.id === id)?.planned));
-    check("the costs are section 6's", EDGE_NEXT_FEATURES.find((f) => f.id === "edge.deals-reread")?.costPerUseUsd === 0.24 && EDGE_NEXT_FEATURES.find((f) => f.id === "edge.claims-crosscheck")?.costPerUseUsd === 0.03 && EDGE_NEXT_FEATURES.find((f) => f.id === "edge.thesis-deep")?.costPerUseUsd === 2.5);
+    check("what is built is not marked planned; what is not yet built is", ["edge.deals-reread", "edge.deals-export", "edge.claims-crosscheck", "edge.pulse-daily", "edge.odds-screener", "edge.calls-eva", "edge.calls-peers", "edge.lbo-refine", "edge.thesis-plus", "edge.thesis-deep", "edge.thesis-team"].every((id) => !EDGE_NEXT_FEATURES.find((f) => f.id === id)?.planned) && ["edge.odds-pairs", "edge.deals-private", "edge.pulse-licensed"].every((id) => EDGE_NEXT_FEATURES.find((f) => f.id === id)?.planned));
+    check("the costs are the measured ones", EDGE_NEXT_FEATURES.find((f) => f.id === "edge.deals-reread")?.costPerUseUsd === 0.24 && EDGE_NEXT_FEATURES.find((f) => f.id === "edge.claims-crosscheck")?.costPerUseUsd === 0.03 && EDGE_NEXT_FEATURES.find((f) => f.id === "edge.thesis-deep")?.costPerUseUsd === 1.2 && EDGE_NEXT_FEATURES.find((f) => f.id === "edge.calls-eva")?.costPerUseUsd === 0.03);
+    check("model-spend features record through the AI ledger; GPU and Modal time do not", ["edge.calls-peers", "edge.thesis-plus", "edge.thesis-deep"].every((id) => EDGE_NEXT_FEATURES.find((f) => f.id === id)?.inAiAllowance) && ["edge.calls-eva", "edge.lbo-refine"].every((id) => !EDGE_NEXT_FEATURES.find((f) => f.id === id)?.inAiAllowance));
   }
 
   console.log("F1 entity crosswalk: names");
@@ -716,6 +719,8 @@ async function main() {
     const ml = fromMl({ id: "1", p: 0.1, low: 0.08, high: 0.12, contribs: [{ feature: "sc13d", contrib: 0.7, value: 1 }, { feature: "bogus", contrib: 9, value: 1 }, { feature: "leverage", contrib: -0.1, value: 0.4 }], moves: [{ key: "proxyFight", to: 0.2, up: true }] });
     check("the ML service's TreeSHAP and moves become worded reasons (unknown features ignored)", ml.reasons[0].key === "sc13d" && !ml.reasons.some((r) => r.key === "bogus") && ml.moves[0].label === "a proxy contest");
   }
+
+  await checksB(check);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

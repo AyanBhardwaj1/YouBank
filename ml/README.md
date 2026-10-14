@@ -354,6 +354,26 @@ Input: `{modelKey, calibrationKey, rows: [{id, x}]}` (at most 2,000 rows; `null`
 estimate and interval, TreeSHAP contributions (`pred_contrib`, log odds) and the three changes that would move the
 calibrated probability most.
 
+### `calls.evasion`: Eva-4B evasion probabilities (sync, GPU, optional)
+
+Input: `{pairs: [{question, answer}]}` (at most 80). Returns `{probs: [[direct, intermediate, fully_evasive]], model,
+revision}`: Eva-4B (`FutureMa/Eva-4B`, Apache-2.0 weights on Qwen3-4B-Instruct-2507) on a T4, the probabilities from the
+three labels' first-token logits after a fixed prompt. Only the weights are used, never the EvasionBench dataset (built
+from licensed S&P Capital IQ transcripts). The app calls it only when `EDGE_CALLS_EVA=1` (off until the owner confirms the
+weights may be used commercially, docs/edge-next.md open question 4) and the person's plan includes `edge.calls-eva`; it
+averages these probabilities with its free classifier's. Pin `EDGE_EVA_REVISION` after the first staging deploy. The
+prompt and maths are `ml/calls_core.py`, tested by `python ml/test_calls_core.py`; the smoke test runs it only with
+`--only calls.evasion`.
+
+### `lbo.refine`: the LBO Stress Lab's 20,000-path run (sync)
+
+Input: the app's stress spec (`structure`, `macro` {GJR-GARCH fits, standardised residual months}, `rates` {two-regime
+AR(1)}, `op`, `exit`, `spread`, `paths` ≤ 20,000, `seed`, `hurdle`, `confidence`, `breakYear`, `outKey` under `ml/`).
+Simulates every path (vectorised in numpy), runs the buyout down each, searches the most a sponsor can pay at the hurdle,
+and writes the per-path outcomes to R2; the app summarises them exactly as it summarises its 1,000-path preview. Returns
+`{key, paths, summary}`. The engine is `ml/lbo_core.py`, checked against the TypeScript engine's fixture
+(`scripts/fixtures/lbo/engine.json`) by `python ml/test_lbo_core.py`.
+
 ## Resources
 
 CPU only, no GPUs, no warm pools (`min_containers` unset), containers stop 60 s after their last input.
@@ -370,6 +390,8 @@ CPU only, no GPUs, no warm pools (`min_containers` unset), containers stop 60 s 
 | graph_train | 2 | 4 GiB | 1800 s | 1 | 0.126 |
 | synth_tabular, synth_series | 2 | 4 GiB | 1800 s | 1 each | 0.126 |
 | topics_map | 2 | 4 GiB | 600 s | 1 | 0.126 |
+| lbo_refine | 2 | 4 GiB | 600 s | 2 | 0.126 |
+| calls_evasion (T4 GPU, optional) | 2 | 16 GiB | 600 s | 1 | 0.72 (0.59 of it the T4) |
 
 Threads: Modal's `cpu=N` is N physical cores, 2N hyperthreads, while every container sees the host's 18-20 CPUs, so
 thread pools are set explicitly. `geo_refine`, `docs_rerank` and Parakeet use one thread per hyperthread (4, 8, 8),

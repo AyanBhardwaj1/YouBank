@@ -470,6 +470,40 @@ def _odds_panel(companies: int = 200, months: int = 120, seed: int = 9) -> str:
 
 
 @app.function(image=image, secrets=[SECRET], timeout=900, cpu=1.0, memory=1024)
+def _lbo_input(paths: int = 2000) -> dict:
+    """A small LBO Stress Lab refine (ml/lbo_core.py): a synthetic two-factor history and the default structure."""
+    import math
+    import random
+    rnd = random.Random(3)
+    v, H = 0.0016, []
+    for _ in range(240):
+        z = rnd.gauss(0, 1)
+        e = math.sqrt(v) * z
+        v = 0.0001 + 0.1 * e * e + 0.85 * v
+        H.append([0.006 + e, 0.1 * rnd.gauss(0, 1)])
+    means = [sum(r[j] for r in H) / len(H) for j in range(2)]
+    sds = [math.sqrt(sum((r[j] - means[j]) ** 2 for r in H) / (len(H) - 1)) for j in range(2)]
+    Z = [[(r[j] - means[j]) / sds[j] for j in range(2)] for r in H]
+    tranches = [{"name": "Term loan B", "kind": "tlb", "turns": 4, "floating": True, "spreadBps": 350, "floorPct": 0.5, "oid": 99, "amortPct": 1, "prepayable": True},
+                {"name": "Senior notes", "kind": "notes", "turns": 1.5, "floating": False, "fixedPct": 8.5, "amortPct": 0, "prepayable": False},
+                {"name": "Revolver", "kind": "revolver", "turns": 1, "floating": True, "spreadBps": 325, "floorPct": 0, "amortPct": 0, "prepayable": True}]
+    return {
+        "structure": {"ebitda0": 2e8, "entryMultiple": 11, "tranches": tranches, "financeFeePct": 2, "txnFeePct": 2, "minCash": 2e7, "daPct": 30, "capexPct": 40, "nwcPct": 10, "tax": 25, "sweep": 75, "years": 5, "periodsPerYear": 4,
+                      "covenants": {"maxNetLeverage": 7, "minInterestCover": 1.75, "springing": False, "springAt": 0.35}},
+        "macro": {"fits": [{"mu": 0.006, "omega": 0.0001, "alpha": 0.1, "gamma": 0.05, "beta": 0.8, "lastVar": 0.0016}, {"mu": 0.0, "omega": 0.001, "alpha": 0.1, "gamma": 0.0, "beta": 0.8, "lastVar": 0.01}], "Z": Z, "market": 0, "rates": 1, "sector": -1},
+        "rates": {"regimes": [{"mu": 2.75, "phi": 0.03, "sigma": 0.12}, {"mu": 2.0, "phi": 0.06, "sigma": 0.45}], "P": [[0.97, 0.03], [0.15, 0.85]], "start": 4.0, "startRegime": 0, "basis": 0.05, "rho": 0.5},
+        "op": {"revenue0": 1e9, "ebitda0": 2e8, "growthQ": math.log(1.05) / 4, "betaMarket": 0.5, "betaSector": 0, "residSd": 0.04, "residuals": [], "fixedShare": 0.3, "costInflQ": math.log(1.025) / 4, "marginKappa": 0.25, "marginSd": 0.01},
+        "exit": {"base": 10, "sigma": 0.2, "elasticity": 0.5}, "spread": {"baseBps": 350, "slopeBpsPerPct": 25, "capBps": 1500},
+        "paths": paths, "seed": 11, "hurdle": 0.2, "confidence": 0.6, "breakYear": 3, "outKey": "ml/smoke/lbo-refine",
+    }
+
+
+CALLS_INPUT = {"pairs": [
+    {"question": "Can you quantify the margin expansion you expect next year, in basis points?", "answer": "Sure. We expect about 120 basis points next year, roughly half in the first quarter."},
+    {"question": "What capex range are you assuming for 2027?", "answer": "We don't provide guidance on that. We'll share more at our investor day."},
+]}
+
+
 def make_fixtures(run: str) -> dict:
     import os
 
@@ -663,7 +697,12 @@ def main(only: str = "", no_http: bool = False, keep: bool = False, report_path:
         ("synth.series", "synth_series", fx["series"], []),
         ("topics.map", "topics_map", fx["topics"], []),
         ("odds.train", "odds_train", fx["odds"], []),
+        # LBO Stress Lab (E6): a 2,000-path refine on a synthetic history (the app sends 20,000).
+        ("lbo.refine", "lbo_refine", _lbo_input(), []),
     ]
+    # Call Desk's Eva-4B (GPU) runs only when asked for by name: its use is off until its licence is confirmed.
+    if wanted and "calls.evasion" in wanted:
+        plan.append(("calls.evasion", "calls_evasion", CALLS_INPUT, []))
     report, lock = {"run": run, "target": target, "graphSize": fx["graphSize"], "graphOracle": fx["graphOracle"],
                     "audioSource": fx["audioSource"]}, threading.Lock()
 

@@ -21,6 +21,7 @@ const KINDS: { id: string; label: string }[] = [
   { id: "filing_change", label: "Filings" }, { id: "graph_flag", label: "Red flags" }, { id: "graph_prediction", label: "Model picks" },
   { id: "hiring_shift", label: "Hiring" }, { id: "hiring_tell", label: "Tells" }, { id: "attention_spike", label: "Attention" }, { id: "contract_award", label: "Awards" },
   { id: "layoff_notice", label: "Layoffs" }, { id: "patent_shift", label: "Patents" }, { id: "deal_odds", label: "Sale odds" },
+  { id: "call_evasion", label: "Call Desk" }, { id: "guidance_result", label: "Promises" }, { id: "commitment_due", label: "Promises due" }, { id: "thesis_update", label: "Your theses" },
 ];
 const SIGNALS: { key: keyof Blend; label: string; hint: string }[] = [
   { key: "relevance", label: "Relevance", hint: "How closely it touches what you watch" },

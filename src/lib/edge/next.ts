@@ -11,6 +11,8 @@ import { jobsReady } from "./infra/jobs";
 import { pulseDaily } from "./pulse/jobs";
 import { oddsDaily } from "./odds/score";
 import { pruneSeries } from "./series/store";
+import { callsDaily } from "./calls/store";
+import { ticksDue } from "./agent/store";
 
 export type NextDaily = Record<string, unknown> & { created: number[] };
 
@@ -30,6 +32,11 @@ export async function dailyNext(deadline: number, now = new Date()): Promise<Nex
   // E4: watched companies' filings re-read and their sale odds re-scored (cards and forecasts follow).
   const odds = await part("odds", out, () => oddsDaily(Math.min(deadline, Date.now() + 50_000)));
   if (odds) out.created.push(...odds.created);
+  // E5: watched companies' filed releases and transcripts read for Call Desk; promises due within 30 days and those just settled carded.
+  const calls = await part("calls", out, () => callsDaily(Math.min(deadline, Date.now() + 50_000)));
+  if (calls) out.created.push(...calls.created);
+  // E7: theses whose tick is due, here only when Inngest is not there to run them hourly.
+  if (!jobsReady()) await part("agents", out, () => ticksDue(Math.min(deadline, Date.now() + 60_000)));
   if (now.getUTCDay() === 0) await part("prune", out, async () => ({ series: await pruneSeries(now) }));
   return out;
 }

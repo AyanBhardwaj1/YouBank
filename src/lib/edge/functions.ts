@@ -16,6 +16,9 @@ import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
 import { graphUniverse } from "./graph/universe";
 import { finishRefine as finishScenario, startRefine as startScenario } from "./scen/run";
+import { finishLabRefine, startLabRefine } from "./scen/lab";
+import { dueAgents, tickAgent } from "./agent/store";
+import { updateScenario } from "./scen/store";
 import { sendDigests } from "./digest";
 import { notifyWatchers } from "./notify";
 import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
@@ -163,6 +166,49 @@ export const scenarioRefine = inngest.createFunction(
 );
 
 /**
+ * Refine an LBO stress test (E6, premium edge.lbo-refine): the person's plan is re-checked first (they asked
+ * when they pressed Refine); 20,000 paths on the ML service, or here when it is not set up.
+ */
+export const lboRefine = inngest.createFunction(
+  { id: "edge-lbo-refine", triggers: { event: "edge/lbo.refine" }, concurrency: 2, retries: 0 },
+  async ({ event, step }) => {
+    const s = metered(asSteps(step));
+    const { id, userId } = event.data as { id: number; userId: string };
+    const allowed = await s.run("plan-check", () => canUseById(userId, "edge.lbo-refine"));
+    if (!allowed) { await s.run("refused", () => updateScenario(Number(id), { status: "preview" })); return { id, refused: true }; }
+    const started = await s.run("start", async () => {
+      try { return await startLabRefine(userId, Number(id)); }
+      catch (e) { await updateScenario(Number(id), { status: "preview" }); throw e; }
+    });
+    if ("done" in started) return { id, done: true };
+    const ev = await s.waitForEvent("wait-ml", { event: "edge/ml.done", timeout: "20m", if: doneFor(started.callId) });
+    return s.run("finish", async () => { const done = (ev?.data as MlDone | undefined) ?? null; noteMlCost(done?.costUsd); await finishLabRefine(userId, Number(id), started.specKey, done); await flushUsage(); return { id }; });
+  },
+);
+
+/**
+ * Thesis Agent ticks (E7): hourly, the theses whose tick is due (four a run), each tick in slices of a few
+ * minutes so it fits a step; also on request (a plan just approved, a thesis resumed). A premium thesis
+ * re-checks its owner's plan before it ticks; free theses never open a premium scope.
+ */
+export const agentTick = inngest.createFunction(
+  { id: "edge-agent-tick", triggers: [{ cron: "15 * * * *" }, { event: "edge/agent.tick" }], concurrency: 1, retries: 1 },
+  async ({ event, step }) => {
+    const s = metered(asSteps(step));
+    const one = Number((event?.data as { id?: number } | undefined)?.id);
+    const ids = Number.isInteger(one) && one > 0 ? [one] : await s.run("due", () => dueAgents(4));
+    let ticked = 0;
+    for (const id of ids) {
+      for (let k = 0; k < 4; k++) {
+        const r = await s.run(`tick-${id}-${k}`, async () => { const x = await tickAgent(id, Date.now() + 200_000); await flushUsage(); return x; });
+        if (r.done) { ticked++; break; }
+      }
+    }
+    return { ticked };
+  },
+);
+
+/**
  * The deal database's backfill (E1): daily, and when an administrator asks. Each slice discovers a few months
  * of merger documents (free) and reads unread deals while the day's platform ceiling lasts; it does nothing
  * but discovery while reading is switched off, and stops on the AI caps. Resumes from its cursor.
@@ -245,4 +291,4 @@ export const oddsWeekly = inngest.createFunction(
   async ({ step }) => scoreAll(metered(asSteps(step)), true),
 );
 
-export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill, pulseWeekly, oddsRefresh, oddsWeekly];
+export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, lboRefine, agentTick, dealsBackfill, pulseWeekly, oddsRefresh, oddsWeekly];
