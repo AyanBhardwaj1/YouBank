@@ -260,3 +260,10 @@ capped AI budget: at light and typical use it replaces ordinary AI work the pers
 at heavy use it is added and the allowance cap bounds the total. Features paid outside the ledger
 (imagery bought per km², GPU time, other licences) leave the flag unset and are added on top of the plan's
 cost at every level.
+
+### Flat monthly fees
+
+Some costs are a flat charge per person per month while they use a feature, not a cost per use (SnapTrade
+bills about $2 per connected brokerage user). A registry entry gives these as `flatMonthlyUsd`; the model
+counts it once a month, weighted by `FLAT_ADOPTION` (none of the light persona, about a third at typical use,
+everyone at heavy use), instead of multiplying it by uses.

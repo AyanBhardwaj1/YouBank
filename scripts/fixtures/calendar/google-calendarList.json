@@ -1,0 +1,11 @@
+{
+  "kind": "calendar#calendarList",
+  "etag": "\"p33gdsk1ra4kpu0o\"",
+  "nextSyncToken": "CMDl6uqP5YgDEhJtZUB5b3ViYW5rLnRlc3Q=",
+  "items": [
+    { "kind": "calendar#calendarListEntry", "id": "me@youbank.test", "summary": "me@youbank.test", "timeZone": "America/New_York", "backgroundColor": "#9fe1e7", "accessRole": "owner", "primary": true },
+    { "kind": "calendar#calendarListEntry", "id": "team_abc@group.calendar.google.com", "summary": "Deal team", "summaryOverride": "Deal team (shared)", "timeZone": "America/New_York", "backgroundColor": "#f83a22", "accessRole": "writer" },
+    { "kind": "calendar#calendarListEntry", "id": "en.usa#holiday@group.v.calendar.google.com", "summary": "Holidays in United States", "timeZone": "America/New_York", "backgroundColor": "#16a765", "accessRole": "reader" },
+    { "kind": "calendar#calendarListEntry", "id": "boss@youbank.test", "summary": "boss@youbank.test", "timeZone": "America/New_York", "accessRole": "freeBusyReader" }
+  ]
+}

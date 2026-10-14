@@ -1,15 +1,66 @@
 //! The tray (menu bar on a Mac): the app keeps running there with the window closed, so alerts and
-//! scheduled tasks carry on. Quick actions sit in its menu.
+//! scheduled tasks carry on. Quick actions sit in its menu. While the meeting copilot records, the icon
+//! carries a red dot and the menu offers Stop.
 
 use crate::state::AppState;
-use crate::{alerts, files, tasks, updater, windows};
+use crate::{alerts, files, meetings, tasks, updater, windows};
+use std::sync::Mutex;
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Wry};
+
+/// The menu item that starts or stops the meeting copilot; its text follows the recording.
+static MEETING_ITEM: Mutex<Option<MenuItem<Wry>>> = Mutex::new(None);
+
+const START_MEETING: &str = "Start meeting copilot…";
+const STOP_MEETING: &str = "Stop meeting copilot";
+
+/// Paint a red recording dot in the lower right of an RGBA icon. Pure.
+pub fn with_dot(rgba: &mut [u8], w: u32, h: u32) {
+    let r = (w.min(h) as f32) * 0.22;
+    let (cx, cy) = (w as f32 - r - 1.0, h as f32 - r - 1.0);
+    for y in 0..h {
+        for x in 0..w {
+            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let i = ((y * w + x) * 4) as usize;
+            if i + 3 >= rgba.len() {
+                continue;
+            }
+            if d <= r {
+                rgba[i..i + 4].copy_from_slice(&[226, 52, 64, 255]);
+            } else if d <= r + 1.2 {
+                // A light ring, so the dot shows on dark and light menu bars alike.
+                rgba[i..i + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
+    }
+}
+
+/// Show (or clear) the recording state in the tray: the dot, the tooltip and the menu item.
+pub fn set_recording(app: &AppHandle, on: bool) {
+    if let Some(item) = MEETING_ITEM.lock().unwrap().as_ref() {
+        let _ = item.set_text(if on { STOP_MEETING } else { START_MEETING });
+    }
+    let Some(tray) = app.tray_by_id("main") else { return };
+    let _ = tray.set_tooltip(Some(if on { "YouBank · recording a meeting" } else { "YouBank" }));
+    if let Some(icon) = app.default_window_icon() {
+        let image = if on {
+            let mut rgba = icon.rgba().to_vec();
+            with_dot(&mut rgba, icon.width(), icon.height());
+            Image::new_owned(rgba, icon.width(), icon.height())
+        } else {
+            icon.clone().to_owned()
+        };
+        let _ = tray.set_icon(Some(image));
+    }
+}
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let hotkey = app.state::<AppState>().settings().hotkey;
     let item = |id: &str, label: &str, accel: Option<&str>| MenuItem::with_id(app, id, label, true, accel);
+    let meeting = item("meeting", START_MEETING, None)?;
+    *MEETING_ITEM.lock().unwrap() = Some(meeting.clone());
     let menu = Menu::with_items(
         app,
         &[
@@ -20,6 +71,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &item("check-alerts", "Check for alerts now", None)?,
             &item("brief", "Morning brief now", None)?,
             &item("files", "Add new and changed files", None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &meeting,
             &PredefinedMenuItem::separator(app)?,
             &item("agent", "Desktop agent settings…", None)?,
             &item("update", "Check for updates…", None)?,
@@ -82,6 +135,19 @@ fn on_menu(app: &AppHandle, id: &str) {
                 alerts::show(&a, "Local files", &msg);
             });
         }
+        "meeting" => {
+            let state = app.state::<AppState>();
+            if state.meetings.session.lock().unwrap().is_some() {
+                tauri::async_runtime::spawn(async move {
+                    let _ = meetings::stop(&a, false).await;
+                    alerts::show(&a, "Meeting copilot stopped", "The rest of the audio is being sent; you'll be told when the notes are ready.");
+                });
+            } else if !state.settings().meetings.enabled {
+                windows::open_agent(app, Some("meetings".into()));
+            } else {
+                meetings::ask_consent(app, None);
+            }
+        }
         "agent" => windows::open_agent(app, None),
         "update" => {
             tauri::async_runtime::spawn(async move {
@@ -101,5 +167,20 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         "quit" => app.exit(0),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dot_in_the_corner() {
+        let (w, h) = (32u32, 32u32);
+        let mut rgba = vec![0u8; (w * h * 4) as usize];
+        with_dot(&mut rgba, w, h);
+        let px = |x: u32, y: u32| &rgba[((y * w + x) * 4) as usize..((y * w + x) * 4 + 4) as usize];
+        assert_eq!(px(25, 25), &[226, 52, 64, 255]);
+        assert_eq!(px(2, 2), &[0, 0, 0, 0]);
     }
 }

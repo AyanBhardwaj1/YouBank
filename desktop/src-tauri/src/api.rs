@@ -92,6 +92,15 @@ impl Api {
         json(send(self.authed(Method::PUT, path)?.json(body)).await?).await
     }
 
+    pub async fn patch<B: Serialize + ?Sized, T: DeserializeOwned>(&self, path: &str, body: &B) -> Result<T, ApiError> {
+        json(send(self.authed(Method::PATCH, path)?.json(body)).await?).await
+    }
+
+    /// Send raw bytes (a chunk of meeting audio), with a longer time limit: the server answers once it is transcribed.
+    pub async fn put_bytes<T: DeserializeOwned>(&self, path: &str, content_type: &str, bytes: Vec<u8>, timeout: Duration) -> Result<T, ApiError> {
+        json(send(self.authed(Method::PUT, path)?.header(header::CONTENT_TYPE, content_type).body(bytes).timeout(timeout)).await?).await
+    }
+
     pub async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
         json(send(self.authed(Method::DELETE, path)?).await?).await
     }

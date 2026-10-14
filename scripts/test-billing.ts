@@ -82,7 +82,7 @@ async function main() {
   check("a default-model answer costs between 5 and 100 cents", UNITS["ai.answer"].usd > 0.05 && UNITS["ai.answer"].usd < 1, UNITS["ai.answer"].usd);
 
   console.log("premium features flow into the cost model");
-  check("every metered premium feature states its cost per use", FEATURES.every((f) => !f.metered || (typeof f.costPerUseUsd === "number" && f.costPerUseUsd > 0)), FEATURES.filter((f) => f.metered && !f.costPerUseUsd).map((f) => f.id));
+  check("every metered premium feature states its cost per use or a flat monthly fee", FEATURES.every((f) => !f.metered || (f.costPerUseUsd ?? 0) > 0 || (f.flatMonthlyUsd ?? 0) > 0), FEATURES.filter((f) => f.metered && !f.costPerUseUsd && !f.flatMonthlyUsd).map((f) => f.id));
   {
     const before = { pro: costToServe("pro", "typical").premium, free: costToServe("free", "typical").premium, ent: costToServe("enterprise", "heavy").premium };
     // Registered the way another area's file would: pushed into the shared list, nothing else edited.

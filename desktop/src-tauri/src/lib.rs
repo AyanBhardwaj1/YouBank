@@ -1,15 +1,19 @@
 //! YouBank for desktop: the YouBank site in its own window, with native extras (tray, notifications,
 //! youbank:// links, quick ask on a global hotkey, updates) and a local agent that works with the
-//! person's files, Excel and PowerPoint, and runs scheduled briefs and checks, each only once switched on.
+//! person's files, Excel and PowerPoint, runs scheduled briefs and checks, and listens to meetings
+//! with the meeting copilot, each only once switched on.
 //!
 //! See ../README.md for the architecture and the permission model.
 
 mod alerts;
 mod api;
 mod ask;
+mod capture;
 mod commands;
 mod deeplink;
+mod detect;
 mod files;
+mod meetings;
 mod office;
 mod pairing;
 mod settings;
@@ -73,7 +77,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_log::Builder::new().level(log::LevelFilter::Info).build())
-        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&[windows::QUICK]).build())
+        .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&[windows::QUICK, windows::PILL]).build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -125,6 +129,7 @@ pub fn run() {
             tasks::start(handle.clone());
             files::start(handle.clone());
             updater::start(handle.clone());
+            meetings::start_background(handle.clone());
             let h = handle.clone();
             tauri::async_runtime::spawn(async move {
                 let _ = state::refresh_account(&h).await;
@@ -168,6 +173,22 @@ pub fn run() {
             commands::check_alerts,
             commands::check_update,
             commands::install_update,
+            commands::meeting_state,
+            commands::meeting_prompt,
+            commands::meeting_start,
+            commands::meeting_stop,
+            commands::meeting_dismiss,
+            commands::meeting_refresh,
+            commands::meeting_server_settings,
+            commands::meeting_live,
+            commands::meeting_suggest,
+            commands::meeting_brief,
+            commands::meeting_tail,
+            commands::meeting_ask,
+            commands::meeting_search,
+            commands::meeting_link,
+            commands::open_copilot,
+            commands::hide_pill,
         ])
         .build(tauri::generate_context!())
         .expect("error while building YouBank")

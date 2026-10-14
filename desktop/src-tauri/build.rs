@@ -41,6 +41,23 @@ const COMMANDS: &[&str] = &[
     "check_alerts",
     "check_update",
     "install_update",
+    // The meeting copilot (agent, pill and copilot windows).
+    "meeting_state",
+    "meeting_prompt",
+    "meeting_start",
+    "meeting_stop",
+    "meeting_dismiss",
+    "meeting_refresh",
+    "meeting_server_settings",
+    "meeting_live",
+    "meeting_suggest",
+    "meeting_brief",
+    "meeting_tail",
+    "meeting_ask",
+    "meeting_search",
+    "meeting_link",
+    "open_copilot",
+    "hide_pill",
 ];
 
 fn main() {

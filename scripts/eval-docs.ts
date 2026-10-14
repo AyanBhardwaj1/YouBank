@@ -19,9 +19,8 @@
  * would bring without writing anything.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { neonConfig } from "@neondatabase/serverless";
 import { sql } from "drizzle-orm";
-import { requireDb } from "@/db";
+import { pgClient, requireDb } from "@/db";
 import { docLabel, passageHeader } from "@/lib/edge/docs/chunk";
 import { embedTexts } from "@/lib/edge/docs/embed";
 
@@ -89,13 +88,13 @@ const arg = (name: string) => { const i = process.argv.indexOf(`--${name}`); ret
 
 /** Refuse writes at the driver: the eval must leave the database as it found it. */
 function readOnly() {
-  const inner = neonConfig.fetchFunction as ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | undefined;
-  neonConfig.fetchFunction = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const body = typeof init?.body === "string" ? init.body : "";
-    let queries: string[] = [];
-    try { const j = JSON.parse(body) as { query?: string; queries?: { query: string }[] }; queries = j.queries ? j.queries.map((x) => x.query) : [j.query ?? ""]; } catch { /* not a query */ }
-    if (queries.some((q) => /^\s*(with\b[\s\S]*?\b)?(insert|update|delete|create|drop|alter|truncate|grant|vacuum)\b/i.test(q))) throw new Error("eval-docs is read-only");
-    return (inner ?? fetch)(input, init);
+  // Drizzle sends every query through the client's unsafe(); a write is refused there.
+  const c = pgClient as unknown as { unsafe: (query: string, ...rest: unknown[]) => unknown } | null;
+  if (!c) return;
+  const inner = c.unsafe.bind(c);
+  c.unsafe = (query: string, ...rest: unknown[]) => {
+    if (/^\s*(with\b[\s\S]*?\b)?(insert|update|delete|create|drop|alter|truncate|grant|vacuum)\b/i.test(query)) throw new Error("eval-docs is read-only");
+    return inner(query, ...rest);
   };
 }
 

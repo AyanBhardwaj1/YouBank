@@ -3,6 +3,57 @@ import { bigint, bigserial, boolean, customType, date, doublePrecision, halfvec,
 
 export type MemberJson = { ticker: string; tier: "core" | "adjacent"; rationale: string };
 
+/* ---------------- Sign-in (Better Auth, src/lib/auth/server.ts) ---------------- */
+
+/** People who have signed in. Every `user_id` in the app is one of these ids. */
+export const authUsers = pgTable("auth_users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const authSessions = pgTable("auth_sessions", {
+  id: text("id").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  token: text("token").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+}, (t) => [index("auth_sessions_user_idx").on(t.userId)]);
+
+/** How each person signs in (Google today). OAuth tokens are stored encrypted. */
+export const authAccounts = pgTable("auth_accounts", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull(),
+  providerId: text("provider_id").notNull(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  idToken: text("id_token"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+  scope: text("scope"),
+  password: text("password"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("auth_accounts_user_idx").on(t.userId)]);
+
+/** Short-lived values: the OAuth state while someone is away at Google. */
+export const authVerifications = pgTable("auth_verifications", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("auth_verifications_identifier_idx").on(t.identifier)]);
+
 /** Saved peer groups (user-created or saved from an AI proposal). */
 export const peerGroups = pgTable("peer_groups", {
   id: serial("id").primaryKey(),
@@ -366,7 +417,7 @@ export const crmDrafts = pgTable("crm_drafts", {
   contactId: integer("contact_id"),
   campaignLeadId: integer("campaign_lead_id"),
   /** Which step of a campaign, which nurture rule, which signal: whatever produced it. */
-  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[] }>().notNull().default({}),
+  meta: jsonb("meta").$type<{ step?: number; ruleId?: number; signalId?: number; actionId?: number; audience?: string; category?: string; ticker?: string; path?: string[]; meetingId?: number }>().notNull().default({}),
   /** Set when autopilot will send it: the time it goes, unless someone stops it first. */
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   /** Why autopilot handed it to a person instead of sending, in plain words. */
@@ -542,11 +593,14 @@ export const crmActions = pgTable("crm_actions", {
   dealId: integer("deal_id"),
   threadId: integer("thread_id"),
   draftId: integer("draft_id"),
+  /** The meeting a suggestion came from (a change a participant stated, a new person to add). */
+  meetingId: integer("meeting_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("crm_actions_user_dedupe_uidx").on(t.userId, t.dedupeKey),
   index("crm_actions_user_status_idx").on(t.userId, t.status),
+  index("crm_actions_meeting_idx").on(t.meetingId),
 ]);
 
 /** Something that happened to a contact's company, found in YouBank's own data (a Form D, for now). */
@@ -935,6 +989,37 @@ export const newsPushSubs = pgTable("news_push_subs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("news_push_subs_endpoint_uidx").on(t.endpoint), index("news_push_subs_user_idx").on(t.userId)]);
+
+/** A developing story someone follows: what they last heard about it, so each update alerts once. */
+export const newsFollows = pgTable("news_follows", {
+  userId: text("user_id").notNull(),
+  clusterId: integer("cluster_id").notNull(),
+  /** The story's source count when last told (or when followed). */
+  seenSources: integer("seen_sources").notNull().default(1),
+  /** The story's last update when last told. */
+  seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  updates: integer("updates").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.clusterId] }), index("news_follows_cluster_idx").on(t.clusterId)]);
+
+export type BriefingChapter = { id: string; title: string; text: string; clusterId?: number; tickers?: string[]; seconds: number };
+export type BriefingAudio = { key: string; bytes: number; seconds: number }[];
+
+/** A personal audio briefing: chapters with their scripts, and storage keys for a neural voice's audio. */
+export const newsBriefings = pgTable("news_briefings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  slot: text("slot").notNull(),
+  kind: text("kind").notNull(), // ai | daily
+  desk: text("desk").notNull().default(""),
+  chapters: jsonb("chapters").$type<BriefingChapter[]>().notNull().default([]),
+  audio: jsonb("audio").$type<BriefingAudio | null>(),
+  voice: text("voice").notNull().default(""),
+  model: text("model").notNull().default(""),
+  costUsd: doublePrecision("cost_usd").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("news_briefings_user_slot_kind_uidx").on(t.userId, t.slot, t.kind)]);
 
 /* ---------------- Edge ---------------- */
 
@@ -1573,3 +1658,357 @@ export const desktopFiles = pgTable("desktop_files", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("desktop_files_path_uidx").on(t.userId, t.deviceId, t.pathKey), index("desktop_files_user_sha_idx").on(t.userId, t.sha256)]);
+
+
+/* ---------------- Calendar ---------------- */
+
+/** Settings for a connected calendar account. Never the password or tokens. */
+export type CalendarAccountSettings = { serverUrl?: string; homeUrl?: string; username?: string; preset?: string; url?: string };
+/** A push channel (Google watch) or subscription (Microsoft Graph). The secret is encrypted. */
+export type CalendarPush = { kind: "google" | "microsoft"; id: string; resourceId: string; expiresAt: string; secret: string };
+export type CalendarAttendee = { email: string; name: string; response: string; optional?: boolean; organizer?: boolean; self?: boolean };
+
+/**
+ * A connected calendar account: Google or Microsoft (OAuth), CalDAV (app password) or an ICS link.
+ * Tokens and the app password are encrypted like mailbox tokens (src/lib/crm/crypto.ts).
+ */
+export const calendarAccounts = pgTable("calendar_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  provider: text("provider").notNull(), // google | microsoft | caldav | ics
+  address: text("address").notNull(),
+  displayName: text("display_name").notNull().default(""),
+  accessToken: text("access_token").notNull().default(""),
+  refreshToken: text("refresh_token").notNull().default(""),
+  tokenExpiresAt: ts("token_expires_at"),
+  secret: text("secret").notNull().default(""),
+  settings: jsonb("settings").$type<CalendarAccountSettings>().notNull().default({}),
+  scopes: jsonb("scopes").$type<string[]>().notNull().default([]),
+  status: text("status").notNull().default("connected"), // connected | needs_reauth | error
+  lastError: text("last_error").notNull().default(""),
+  lastSyncAt: ts("last_sync_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_accounts_user_provider_address_uidx").on(t.userId, t.provider, t.address)]);
+
+/** A calendar inside an account: shown or hidden, and where its sync and push notifications stand. */
+export const calendarCalendars = pgTable("calendar_calendars", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => calendarAccounts.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  remoteId: text("remote_id").notNull(),
+  name: text("name").notNull().default(""),
+  color: text("color").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  canWrite: boolean("can_write").notNull().default(false),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  visible: boolean("visible").notNull().default(true),
+  syncToken: text("sync_token").notNull().default(""),
+  /** When the current incremental window began; Microsoft's delta windows are restarted daily. */
+  windowStart: ts("window_start"),
+  lastSyncedAt: ts("last_synced_at"),
+  pushId: text("push_id"),
+  push: jsonb("push").$type<CalendarPush | null>(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_calendars_account_remote_uidx").on(t.accountId, t.remoteId),
+  index("calendar_calendars_user_idx").on(t.userId),
+  index("calendar_calendars_push_idx").on(t.pushId),
+]);
+
+/** One occurrence of an event in the sync window, with the Relationships contacts and deals it involves. */
+export const calendarEvents = pgTable("calendar_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  calendarId: integer("calendar_id").notNull().references(() => calendarCalendars.id, { onDelete: "cascade" }),
+  remoteId: text("remote_id").notNull(),
+  groupKey: text("group_key").notNull().default(""),
+  icalUid: text("ical_uid").notNull().default(""),
+  recurrenceId: text("recurrence_id"),
+  seriesId: text("series_id"),
+  title: text("title").notNull().default(""),
+  description: text("description").notNull().default(""),
+  location: text("location").notNull().default(""),
+  startsAt: ts("starts_at").notNull(),
+  endsAt: ts("ends_at").notNull(),
+  allDay: boolean("all_day").notNull().default(false),
+  timezone: text("timezone").notNull().default(""),
+  status: text("status").notNull().default("confirmed"), // confirmed | tentative | cancelled
+  busy: boolean("busy").notNull().default(true),
+  organizer: jsonb("organizer").$type<CalendarAttendee | null>(),
+  attendees: jsonb("attendees").$type<CalendarAttendee[]>().notNull().default([]),
+  videoUrl: text("video_url").notNull().default(""),
+  htmlLink: text("html_link").notNull().default(""),
+  etag: text("etag").notNull().default(""),
+  href: text("href").notNull().default(""),
+  contactIds: jsonb("contact_ids").$type<number[]>().notNull().default([]),
+  dealIds: jsonb("deal_ids").$type<number[]>().notNull().default([]),
+  external: boolean("external").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("calendar_events_calendar_remote_uidx").on(t.calendarId, t.remoteId),
+  index("calendar_events_user_start_idx").on(t.userId, t.startsAt),
+  index("calendar_events_group_idx").on(t.calendarId, t.groupKey),
+  index("calendar_events_contacts_idx").using("gin", sql`${t.contactIds} jsonb_path_ops`),
+  index("calendar_events_deals_idx").using("gin", sql`${t.dealIds} jsonb_path_ops`),
+]);
+
+/** Each person's scheduling preferences, and whether their external meetings are briefed each morning. */
+export const calendarPrefs = pgTable("calendar_prefs", {
+  userId: text("user_id").primaryKey(),
+  /** Kept so background work (the morning briefs) can check the plan, which administrators bypass by email. */
+  email: text("email").notNull().default(""),
+  timezone: text("timezone").notNull().default(""),
+  workHours: jsonb("work_hours").$type<{ start?: string; end?: string; days?: number[] }>().notNull().default({}),
+  defaultCalendarId: integer("default_calendar_id"),
+  defaultDuration: integer("default_duration").notNull().default(30),
+  /** A personal meeting room link, offered when creating a meeting. */
+  videoUrl: text("video_url").notNull().default(""),
+  autoBrief: boolean("auto_brief").notNull().default(false),
+  /** The local date of the last morning run, YYYY-MM-DD. */
+  autoBriefLast: text("auto_brief_last").notNull().default(""),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** An AI meeting brief. Made only on a click, or by the morning run the person switched on. */
+export const calendarBriefs = pgTable("calendar_briefs", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  eventId: bigint("event_id", { mode: "number" }).notNull().references(() => calendarEvents.id, { onDelete: "cascade" }),
+  trigger: text("trigger").notNull().default("click"), // click | morning
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  provider: text("provider").notNull().default(""),
+  model: text("model").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("calendar_briefs_event_uidx").on(t.eventId), index("calendar_briefs_user_idx").on(t.userId, t.createdAt)]);
+/* ---------------- The meeting copilot ---------------- */
+
+/**
+ * A meeting the copilot listened to: captured by the desktop app (microphone and system audio, after a
+ * consent prompt) or by a notetaker bot sent to the meeting link. `participants` is who was there and
+ * which contact each became; `notes` is what was produced after the meeting (summary, decisions, action
+ * items, per-person signals, follow-ups). Audio is never kept here: each chunk is transcribed and
+ * dropped. `purgedAt` marks a transcript removed under the person's retention setting.
+ */
+export const meetings = pgTable("meetings", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  deviceId: integer("device_id"),
+  source: text("source").notNull().default("desktop"), // desktop | bot
+  platform: text("platform").notNull().default(""), // zoom | teams | meet | webex | slack | other
+  title: text("title").notNull().default(""),
+  status: text("status").notNull().default("live"), // joining | live | processing | ready | failed | cancelled
+  meetingUrl: text("meeting_url").notNull().default(""),
+  botId: text("bot_id"),
+  bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string; hours?: number; costUsd?: number }>().notNull().default({}),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
+  consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
+  live: jsonb("live").$type<{ on?: boolean; since?: string; minutes?: number; lastAt?: string; brief?: unknown }>().notNull().default({}),
+  notes: jsonb("notes").$type<Record<string, unknown>>(),
+  notesAt: ts("notes_at"),
+  transcriber: text("transcriber").notNull().default(""),
+  durationSec: integer("duration_sec").notNull().default(0),
+  error: text("error").notNull().default(""),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  endedAt: ts("ended_at"),
+  purgedAt: ts("purged_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("meetings_user_started_idx").on(t.userId, t.startedAt), uniqueIndex("meetings_bot_uidx").on(t.botId)]);
+
+export type MeetingParticipantJson = { name: string; email?: string; contactId?: number | null; how?: string; self?: boolean };
+
+/** One piece of a meeting's transcript: the segments of one audio chunk (or a bot's whole transcript), times relative to `startSec`. */
+export const meetingChunks = pgTable("meeting_chunks", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  startSec: doublePrecision("start_sec").notNull().default(0),
+  durationSec: doublePrecision("duration_sec").notNull().default(0),
+  segments: jsonb("segments").$type<{ start: number; end: number; text: string; speaker?: string }[]>().notNull().default([]),
+  engine: text("engine").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_chunks_seq_uidx").on(t.meetingId, t.seq)]);
+
+/** Which contacts and deals a meeting is about, and how each was linked (email, name, new, manual, bot). */
+export const meetingLinks = pgTable("meeting_links", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(), // contact | deal
+  refId: integer("ref_id").notNull(),
+  how: text("how").notNull().default("manual"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("meeting_links_uidx").on(t.meetingId, t.kind, t.refId), index("meeting_links_ref_idx").on(t.userId, t.kind, t.refId)]);
+
+/** Each person's copilot settings (see MeetingSettings in lib/meetings/model); normalized on every read. */
+export const meetingSettings = pgTable("meeting_settings", {
+  userId: text("user_id").primaryKey(),
+  settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+/* ---------------- Copy trading (drizzle/0023_copytrade.sql) ---------------- */
+
+/** Every 13F filer seen in EDGAR's indexes, for search by name or CIK; curated managers marked. */
+export const copyFilers = pgTable("copy_filers", {
+  cik: text("cik").primaryKey(),
+  name: text("name").notNull(),
+  latestFiled: date("latest_filed"),
+  latestPeriod: date("latest_period"),
+  curated: boolean("curated").notNull().default(false),
+  checkedAt: ts("checked_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_filers_latest_idx").on(t.latestFiled)]);
+
+/** A 13F-HR or 13F-HR/A as read, its holdings summed per security. */
+export const copyFilings = pgTable("copy_filings", {
+  accession: text("accession").primaryKey(),
+  cik: text("cik").notNull(),
+  form: text("form").notNull(),
+  filedOn: date("filed_on").notNull(),
+  period: date("period").notNull(),
+  reportType: text("report_type").notNull().default("HOLDINGS"), // HOLDINGS | NOTICE | COMBINATION
+  amendmentType: text("amendment_type"), // RESTATEMENT | NEW HOLDINGS
+  confidentialOmitted: boolean("confidential_omitted").notNull().default(false),
+  unitCorrected: boolean("unit_corrected").notNull().default(false),
+  entryTotal: integer("entry_total"),
+  valueTotal: doublePrecision("value_total"),
+  holdings: jsonb("holdings").$type<import("@/lib/copytrade/thirteenf").Holding[]>().notNull().default([]),
+  lines: integer("lines").notNull().default(0),
+  docUrl: text("doc_url").notNull().default(""),
+  tableUrl: text("table_url").notNull().default(""),
+  status: text("status").notNull().default("ok"), // ok | error
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("copy_filings_cik_idx").on(t.cik, t.filedOn)]);
+
+/** CUSIP to ticker and where the answer came from (manual | builtin | openfigi | name | none). */
+export const copySecurities = pgTable("copy_securities", {
+  cusip: text("cusip").primaryKey(),
+  ticker: text("ticker"),
+  issuer: text("issuer").notNull().default(""),
+  title: text("title").notNull().default(""),
+  cik: text("cik"),
+  figi: text("figi"),
+  sic: integer("sic"),
+  sector: text("sector"),
+  source: text("source").notNull().default("none"),
+  hasOptions: boolean("has_options"),
+  on13fList: text("on_13f_list"),
+  checkedAt: ts("checked_at").notNull().defaultNow(),
+}, (t) => [index("copy_securities_ticker_idx").on(t.ticker)]);
+
+/** The owner's CUSIP corrections, which always win. */
+export const copyCusipOverrides = pgTable("copy_cusip_overrides", {
+  cusip: text("cusip").primaryKey(),
+  ticker: text("ticker").notNull(),
+  note: text("note").notNull().default(""),
+  createdBy: text("created_by").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});
+
+/** Funds a person follows (alerts on a new 13F). */
+export const copyFollows = pgTable("copy_follows", {
+  userId: text("user_id").notNull(),
+  cik: text("cik").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.cik] }), index("copy_follows_cik_idx").on(t.cik)]);
+
+/** A copy of one fund or a blend: paper (free) or live (a brokerage account). */
+export const copyPortfolios = pgTable("copy_portfolios", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  mode: text("mode").notNull().default("paper"), // paper | live
+  status: text("status").notNull().default("active"), // active | paused | closed
+  funds: jsonb("funds").$type<{ cik: string; name: string; weight: number }[]>().notNull().default([]),
+  rules: jsonb("rules").$type<Record<string, unknown>>().notNull().default({}),
+  sizing: jsonb("sizing").$type<Record<string, unknown>>().notNull().default({}),
+  trading: jsonb("trading").$type<Record<string, unknown>>().notNull().default({}),
+  accountId: text("account_id"),
+  managed: jsonb("managed").$type<Record<string, number>>().notNull().default({}),
+  paper: jsonb("paper").$type<Record<string, unknown>>().notNull().default({}),
+  lastAccession: text("last_accession"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_portfolios_user_idx").on(t.userId, t.status)]);
+
+/** A person's SnapTrade user; the secret encrypted at rest. */
+export const copyBrokers = pgTable("copy_brokers", {
+  userId: text("user_id").primaryKey(),
+  snaptradeUser: text("snaptrade_user").notNull(),
+  secretEnc: text("secret_enc").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastSyncedAt: ts("last_synced_at"),
+}, (t) => [uniqueIndex("copy_brokers_snap_uq").on(t.snaptradeUser)]);
+
+/** Consents as given (kind and version of the text, when, from where). */
+export const copyConsents = pgTable("copy_consents", {
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(),
+  version: text("version").notNull(),
+  textHash: text("text_hash").notNull().default(""),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind, t.version] })]);
+
+/** A reviewed set of orders for one copy. */
+export const copyBatches = pgTable("copy_batches", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  portfolioId: integer("portfolio_id").notNull(),
+  accountId: text("account_id").notNull(),
+  status: text("status").notNull().default("proposed"), // proposed | placing | placed | partial | failed | canceled | expired
+  idemKey: text("idem_key"),
+  buyValue: doublePrecision("buy_value").notNull().default(0),
+  sellValue: doublePrecision("sell_value").notNull().default(0),
+  orderCount: integer("order_count").notNull().default(0),
+  proposal: jsonb("proposal").$type<Record<string, unknown>>().notNull().default({}),
+  accession: text("accession"),
+  expiresAt: ts("expires_at").notNull(),
+  approvedAt: ts("approved_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("copy_batches_user_idx").on(t.userId, t.createdAt)]);
+
+/** One order of a batch; client_order_id is unique. */
+export const copyOrders = pgTable("copy_orders", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull(),
+  userId: text("user_id").notNull(),
+  portfolioId: integer("portfolio_id").notNull(),
+  seq: integer("seq").notNull(),
+  clientOrderId: text("client_order_id").notNull(),
+  ticker: text("ticker").notNull(),
+  symbolId: text("symbol_id"),
+  action: text("action").notNull(), // BUY | SELL
+  units: doublePrecision("units").notNull(),
+  orderType: text("order_type").notNull().default("Limit"),
+  limitPrice: doublePrecision("limit_price"),
+  estValue: doublePrecision("est_value").notNull().default(0),
+  status: text("status").notNull().default("pending"), // pending | submitting | unknown | rejected | the broker's status
+  brokerageOrderId: text("brokerage_order_id"),
+  filledUnits: doublePrecision("filled_units").notNull().default(0),
+  fillPrice: doublePrecision("fill_price"),
+  error: text("error"),
+  impact: jsonb("impact"),
+  response: jsonb("response"),
+  sentAt: ts("sent_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("copy_orders_client_uq").on(t.clientOrderId), index("copy_orders_batch_idx").on(t.batchId, t.seq), index("copy_orders_user_idx").on(t.userId, t.sentAt)]);
+
+/** Append-only log of consents, connections, proposals, approvals and orders (UPDATE and DELETE are ruled out in SQL). */
+export const copyAudit = pgTable("copy_audit", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  portfolioId: integer("portfolio_id"),
+  batchId: integer("batch_id"),
+  orderId: integer("order_id"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("copy_audit_user_idx").on(t.userId, t.createdAt)]);
