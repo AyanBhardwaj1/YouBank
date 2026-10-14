@@ -114,7 +114,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
 
   return (
     <MotionContext value={motionLevel}>
-      <div className="nr flex h-full flex-col" data-look={look} data-motion={motionLevel}>
+      <div className="nr relative flex h-full flex-col" data-look={look} data-motion={motionLevel}>
         <header className="glass z-20 border-b border-line bg-bg/85 px-4 py-2.5">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex min-w-0 items-center gap-2">
@@ -219,9 +219,9 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
           )}
         </div>
         <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />
-        {/* On a phone, Brief mode is one tap away. */}
+        {/* On a phone, Brief mode is one tap away, just above the tab bar (the pane ends where the bar starts). */}
         {data && stories.length > 0 && !overlay && view === "today" && (
-          <button type="button" onClick={() => setOverlay("brief")} className="fixed bottom-5 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-fg shadow-float md:hidden" aria-label="Open Brief mode">
+          <button type="button" onClick={() => setOverlay("brief")} className="absolute bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-fg shadow-float md:hidden" aria-label="Open Brief mode">
             <Icon name="GalleryVerticalEnd" className="h-4 w-4" />Brief
           </button>
         )}

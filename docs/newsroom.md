@@ -155,6 +155,9 @@ for energy; jobless claims for markets desks; watchlist earnings dates).
 
 Everything else (the front page, globe, charts, timelines, maps, Brief mode, the recap, the browser
 briefing, rule-based matches, five follows, public pages) is free. Administrators can use all of it.
+The three metered features record their spend through `recordUsage`, so they set `inAiAllowance` and
+count against the plan's AI allowance and credits (docs/pricing.md). Public pages, link previews, the
+sitemap and share links take their address from `siteUrl()` / `siteLink()` (`NEXT_PUBLIC_SITE_URL`).
 
 ![Brief mode on a phone](newsroom/brief-phone-dark.png)
 
@@ -248,7 +251,7 @@ JSON-LD, a generated link preview (`opengraph-image.tsx`: the headline beside a 
 data), share buttons, and an invitation to sign up (signing in returns to the story). The last week's
 notable stories are in the sitemap, and `/news` is open to crawlers.
 
-![A public story page](newsroom/public-desktop-light.png)
+![A public story page](newsroom/public-phone-dark.png)
 
 ## Editions
 
@@ -276,6 +279,6 @@ always off when the system asks for reduced motion.
 |---|---|
 | ![Front page, desktop, dark](newsroom/front-desktop-dark.png) | ![Front page, phone, light](newsroom/front-phone-light.png) |
 | ![The globe](newsroom/globe-desktop-dark.png) | ![A story: chart, deal and "why you're seeing this"](newsroom/story-desktop-light.png) |
-| ![Brief mode on a phone](newsroom/brief-phone-dark.png) | ![A public story page](newsroom/public-desktop-light.png) |
+| ![Brief mode on a phone](newsroom/brief-phone-dark.png) | ![A public story page](newsroom/public-phone-dark.png) |
 
 Taken from fictional stories in a local harness (no real companies or figures).

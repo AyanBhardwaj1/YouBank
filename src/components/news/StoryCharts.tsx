@@ -111,7 +111,7 @@ export function DealChart({ valueUsd, premium, evEbitda, label }: { valueUsd: nu
           <div className="flex items-baseline justify-between gap-2 text-[11px] text-muted"><span>{label ?? "Deal value"}, log scale</span><span className="num text-[18px] font-semibold text-fg">{fmtUsd(valueUsd)}</span></div>
           <div className="relative mt-1.5 h-3 rounded-full bg-line/60" onPointerEnter={() => setTip(`${fmtUsd(valueUsd)}: ${valueUsd >= 1e10 ? "a megadeal" : valueUsd >= 1e9 ? "a billion-dollar deal" : "a mid-market deal"}`)} onPointerLeave={() => setTip(null)}>
             <motion.div className="absolute inset-y-0 left-0 rounded-full bg-accent" style={{ width: animate ? undefined : `${share * 100}%` }} {...grow(share)} />
-            {ticks.map((t) => <span key={t.l} className="absolute top-full mt-1 -translate-x-1/2 text-[9.5px] text-faint" style={{ left: `${((Math.log10(t.v) - 7) / 4) * 100}%` }}>{t.l}</span>)}
+            {ticks.map((t) => <span key={t.l} className={`absolute top-full mt-1 text-[9.5px] text-faint ${t.v >= 1e11 ? "-translate-x-full" : "-translate-x-1/2"}`} style={{ left: `${((Math.log10(t.v) - 7) / 4) * 100}%` }}>{t.l}</span>)}
             {ticks.map((t) => <span key={`l${t.l}`} className="absolute inset-y-0 w-px bg-bg/70" style={{ left: `${((Math.log10(t.v) - 7) / 4) * 100}%` }} />)}
           </div>
         </div>
