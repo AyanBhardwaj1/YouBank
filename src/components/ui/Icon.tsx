@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Upload, ChevronLeft, MapPin, ExternalLink,
+  Upload, MapPin,
   Sun, Box, Orbit, Pause, Video, ScanSearch, Boxes, Satellite, LoaderCircle,
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, Briefcase, Building2, Calculator, Calendar, CheckSquare, ClipboardList, Coins, Compass,
   CreditCard, Database, DollarSign, FileSearch, FileSpreadsheet, FileText, Flame, Globe, GraduationCap, Handshake, Landmark, Layers, LineChart, ListChecks,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 const MAP: Record<string, React.ComponentType<LucideProps>> = {
-  Upload, ChevronLeft, MapPin, ExternalLink,
+  Upload, MapPin,
   Sun, Box, Orbit, Pause, Video, ScanSearch, Boxes, Satellite, LoaderCircle, Loader: LoaderCircle,
   Activity, AlertTriangle, ArrowLeftRight, BarChart3, BookOpen, Briefcase, Building2, Calculator, Calendar, CheckSquare, ClipboardList, Coins, Compass,
   CreditCard, Database, DollarSign, FileSearch, FileSpreadsheet, FileText, Flame, Globe, GraduationCap, Handshake, Landmark, Layers, LineChart, ListChecks,
