@@ -10,7 +10,7 @@
  * anyone's watchlist, network, pipeline or Edge watches. These functions take no user at all, so they
  * cannot leak one. Results are cached per instance for a few minutes.
  */
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, inArray, sql } from "drizzle-orm";
 import { db as maybeDb, requireDb, schema } from "@/db";
 import type { NewsSummary } from "@/db/schema";
 import { historyFrom } from "@/lib/market/data";
@@ -51,6 +51,9 @@ export async function publicSpark(ticker: string): Promise<PublicSpark | null> {
   }).catch(() => null);
 }
 
+/** Story columns without the clustering centroid, which no public page uses. */
+const clusterCols = () => ({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` });
+
 const cardOf = (c: ClusterRow, dealUsd: number | null, bullet: string): PublicCard => ({
   id: c.id, slug: slugFor(c.id, c.headline), headline: c.headline, category: c.category, categoryLabel: CATEGORY_LABEL[c.category as Category] ?? "News",
   tags: c.desks, tickers: c.tickers, names: c.entities.filter((e) => e.kind !== "person").map((e) => e.name).slice(0, 3),
@@ -62,7 +65,7 @@ export async function publicStory(id: number): Promise<PublicStory | null> {
   if (!maybeDb) return null;
   return memo(`news:public-story:${id}`, 5 * 60_000, async () => {
     const db = requireDb();
-    const [c] = await db.select().from(schema.newsClusters).where(eq(schema.newsClusters.id, id));
+    const [c] = await db.select(clusterCols()).from(schema.newsClusters).where(eq(schema.newsClusters.id, id));
     if (!c) return null;
     const items = await itemsOf([id]);
     if (!isPublicStory(c, items)) return null;
@@ -101,13 +104,18 @@ export async function publicStories(hours = 72, limit = 60, minImportance = 0.3)
   if (!maybeDb) return [];
   return memo(`news:public-list:${hours}:${limit}:${minImportance}`, 5 * 60_000, async () => {
     const db = requireDb();
-    const rows = await db.select().from(schema.newsClusters)
+    const rows = await db.select(clusterCols()).from(schema.newsClusters)
       .where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - hours * 3_600_000)), gte(schema.newsClusters.importance, minImportance)))
       .orderBy(desc(schema.newsClusters.importance)).limit(limit * 2);
     if (!rows.length) return [];
     const ids = rows.map((r) => r.id);
-    const [items, deals] = await Promise.all([itemsOf(ids), db.select({ clusterId: schema.newsDeals.clusterId, valueUsd: schema.newsDeals.valueUsd }).from(schema.newsDeals).where(inArray(schema.newsDeals.clusterId, ids))]);
-    return rows.filter((c) => isPublicStory(c, items.filter((i) => i.clusterId === c.id))).slice(0, limit)
-      .map((c) => cardOf(c, deals.find((d) => d.clusterId === c.id)?.valueUsd ?? null, c.summary?.bullets?.[0] ?? items.find((i) => i.clusterId === c.id && i.snippet)?.snippet ?? ""));
+    // Only what the check and the card use: the sitemap asks for up to 500 stories' items at once.
+    const [items, deals] = await Promise.all([
+      db.select({ clusterId: schema.newsItems.clusterId, kind: schema.newsItems.kind, url: schema.newsItems.url, snippet: schema.newsItems.snippet }).from(schema.newsItems).where(inArray(schema.newsItems.clusterId, ids)).orderBy(schema.newsItems.publishedAt),
+      db.select({ clusterId: schema.newsDeals.clusterId, valueUsd: schema.newsDeals.valueUsd }).from(schema.newsDeals).where(inArray(schema.newsDeals.clusterId, ids))]);
+    const byCluster = new Map<number, typeof items>();
+    for (const i of items) if (i.clusterId !== null) { const list = byCluster.get(i.clusterId); if (list) list.push(i); else byCluster.set(i.clusterId, [i]); }
+    return rows.filter((c) => isPublicStory(c, byCluster.get(c.id) ?? [])).slice(0, limit)
+      .map((c) => cardOf(c, deals.find((d) => d.clusterId === c.id)?.valueUsd ?? null, c.summary?.bullets?.[0] ?? byCluster.get(c.id)?.find((i) => i.snippet)?.snippet ?? ""));
   }).catch(() => []);
 }
