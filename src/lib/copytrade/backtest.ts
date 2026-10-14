@@ -21,7 +21,7 @@
 export type Close = { date: string; close: number };
 export type RebalanceEvent = { date: string; weights: Record<string, number>; label?: string };
 export type CurvePoint = { date: string; value: number };
-export type Trade = { date: string; label?: string; held: string[]; missing: string[] };
+export type Trade = { date: string; label?: string; held: string[]; missing: string[]; /** Share of the event's weight that had a price and was bought. */ pricedWeight: number };
 
 /** The index of the first trading day on (or, with `after`, strictly after) a date. -1 when there is none. */
 export function tradingIndex(calendar: string[], date: string, after: boolean): number {
@@ -69,7 +69,8 @@ export function simulate(events: RebalanceEvent[], prices: Record<string, Close[
         cash = v; // nothing priced yet: start in cash
       }
       started = true;
-      trades.push({ date: d, label: ev.label, held: held.map(([t]) => t), missing });
+      const total = Object.values(ev.weights).reduce((s, w) => s + Math.max(0, w), 0);
+      trades.push({ date: d, label: ev.label, held: held.map(([t]) => t), missing, pricedWeight: total > 0 ? wsum / total : 0 });
     }
     if (started) curve.push({ date: d, value: value() });
   }

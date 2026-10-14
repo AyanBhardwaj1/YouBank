@@ -140,5 +140,13 @@ export const snaptrade = {
   recentOrders: (user: SnapUser, accountId: string, days = 3) => call<SnapOrder[]>("GET", `/accounts/${encodeURIComponent(accountId)}/orders`, { user, query: [["state", "all"], ["days", days]] }),
 };
 
+/** Positions and cash of one account, in the shape the rebalance takes. */
+export function positionsOf(h: SnapHoldings): { cash: number; positions: { ticker: string; units: number; price: number }[]; total: number } {
+  const usd = (h.balances ?? []).find((b) => (b.currency?.code ?? "USD") === "USD") ?? h.balances?.[0];
+  const cash = Math.max(0, usd?.cash ?? 0);
+  const positions = (h.positions ?? []).filter((p) => !p.cash_equivalent && p.symbol?.symbol?.symbol).map((p) => ({ ticker: String(p.symbol!.symbol!.symbol).toUpperCase().replace(/[./]/g, "-"), units: (p.units ?? 0) + (p.units ? 0 : p.fractional_units ?? 0), price: p.price ?? 0 }));
+  return { cash, positions, total: cash + positions.reduce((s, p) => s + p.units * p.price, 0) };
+}
+
 /** Statuses after which an order will not change again. */
 export const FINAL_STATUSES = new Set(["EXECUTED", "CANCELED", "PARTIAL_CANCELED", "REJECTED", "FAILED", "EXPIRED", "REPLACED"]);

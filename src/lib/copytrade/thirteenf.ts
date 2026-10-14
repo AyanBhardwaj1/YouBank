@@ -343,3 +343,21 @@ export function quarterEndOf(date: string): string {
 
 /** Days from the quarter end to the filing. */
 export const lagDays = (period: string, filedOn: string) => Math.round((Date.parse(`${filedOn}T00:00:00Z`) - Date.parse(`${period}T00:00:00Z`)) / 86_400_000);
+
+/* ---------------- Polling around the deadlines ---------------- */
+
+/** Whether a date falls in the busy weeks: from 15 days before a 45-day deadline to 5 days after. Pure. */
+export function inFilingSeason(date: string): boolean {
+  const y = Number(date.slice(0, 4));
+  for (const qe of [`${y - 1}-12-31`, `${y}-03-31`, `${y}-06-30`, `${y}-09-30`, `${y}-12-31`]) {
+    const dl = Date.parse(`${filingDeadline(qe)}T00:00:00Z`), t = Date.parse(`${date}T00:00:00Z`);
+    if (t >= dl - 15 * 86_400_000 && t <= dl + 5 * 86_400_000) return true;
+  }
+  return false;
+}
+
+/** Whether to poll now: every pass in season, else every three hours. Pure. */
+export function pollDue(now: Date, lastPoll: number | null): boolean {
+  if (inFilingSeason(now.toISOString().slice(0, 10))) return true;
+  return !lastPoll || now.getTime() - lastPoll >= 3 * 3_600_000 - 60_000;
+}

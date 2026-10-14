@@ -13,7 +13,15 @@ import { beta, indexFrom, maxDrawdown, metrics, simulate, thin, tradingIndex, ty
 import { limitPrice, proposeOrders, roundUnits, type RebalanceInput } from "@/lib/copytrade/rebalance";
 import { approveBatch, clientOrderId, confirmationPhrase, type BatchRow, type CopyStore, type OrderBroker, type OrderRow } from "@/lib/copytrade/orders";
 import { earlyCloses, easter, holidays, isTradingDay, marketState, nextTradingDay } from "@/lib/copytrade/markethours";
-import { brokerReason, buildQuery, canonicalJson, signRequest } from "@/lib/copytrade/snaptrade";
+import { brokerReason, buildQuery, canonicalJson, positionsOf, signRequest } from "@/lib/copytrade/snaptrade";
+import { paperCurve, paperRebalance } from "@/lib/copytrade/paper";
+import { parseFormIndex } from "@/lib/copytrade/edgar13f";
+import { inFilingSeason, pollDue } from "@/lib/copytrade/thirteenf";
+import { cleanCopy } from "@/lib/copytrade/portfolios";
+import { auditCsv } from "@/lib/copytrade/access";
+import { CURATED, padCik } from "@/lib/copytrade/funds";
+import { COPYTRADE_FEATURES } from "@/lib/billing/features/copytrade";
+import { featureById } from "@/lib/billing/features";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -349,6 +357,41 @@ async function main() {
     check("order impact (nested body)", signRequest(KEY, "/trade/impact", "clientId=YOUBANK-TEST&userId=yb-abc123&userSecret=s3cr%2Bt&timestamp=1760000000", { account_id: "acc-1", action: "BUY", universal_symbol_id: "sym-1", order_type: "Limit", time_in_force: "Day", price: 101.25, units: 3, nested: { b: 2, a: [{ z: 1, y: 2 }] } }) === "5kjxjtU+hNp/IuT3U/JFG9e1DqzklmFhvZ7+PyM3YbA=");
     check("the query is built in the order it is signed", buildQuery("YOUBANK-TEST", { userId: "yb-abc123", userSecret: "s3cr+t" }, [["state", "all"], ["skip", undefined]], 1760000000) === "clientId=YOUBANK-TEST&userId=yb-abc123&userSecret=s3cr%2Bt&state=all&timestamp=1760000000");
     check("broker reasons pass when plain, not when they look internal", brokerReason({ detail: "Insufficient buying power" }) === "Insufficient buying power" && brokerReason({ detail: "Traceback (most recent call last)" }) === "" && brokerReason({ message: "see https://x" }) === "");
+  }
+
+
+  console.log("\npaper copies, polling and settings");
+  {
+    const s0 = paperRebalance(null, [{ ticker: "A", weight: 0.5 }, { ticker: "B", weight: 0.5 }], { A: 100, B: 50 }, "2026-01-05", null, "Started", 10_000);
+    check("a paper copy starts fully invested at the day's prices", near(s0.events[0].units.A, 50) && near(s0.events[0].units.B, 100) && near(s0.events[0].cash, 0));
+    const s1 = paperRebalance(s0, [{ ticker: "C", weight: 1 }], { A: 110, B: 50, C: 20 }, "2026-02-14", "acc-1", "New 13F", 10_000);
+    check("a new filing rebalances at that day's prices (gains carried over)", near(s1.events[1].units.C, (50 * 110 + 100 * 50) / 20) && !s1.events[1].units.A && s1.startedAt === "2026-01-05");
+    const s2 = paperRebalance(s1, [{ ticker: "D", weight: 1 }], { D: 10 }, "2026-05-15", "acc-2", "New 13F", 10_000);
+    check("a holding with no price that day is kept, not sold at zero", near(s2.events[2].units.C, s1.events[1].units.C) && !s2.events[2].units.D);
+    const cal = ["2026-01-05", "2026-01-06", "2026-02-14", "2026-02-15"];
+    const curve = paperCurve(s1, { A: cal.map((date, i) => ({ date, close: 100 + i * 10 })), B: cal.map((date) => ({ date, close: 50 })), C: cal.map((date, i) => ({ date, close: i < 3 ? 20 : 22 })) }, cal);
+    check("the paper record values each day's holdings", curve.length === 4 && near(curve[0].value, 10_000) && near(curve[1].value, 50 * 110 + 5000) && near(curve[3].value, s1.events[1].units.C * 22), curve);
+    check("filing season: the weeks around 14 November, not mid-October", inFilingSeason("2026-11-10") && inFilingSeason("2026-11-18") && !inFilingSeason("2026-10-14") && inFilingSeason("2027-02-14"));
+    check("polling: every pass in season, every three hours otherwise", pollDue(new Date("2026-11-10T12:00:00Z"), Date.now()) && !pollDue(new Date("2026-10-14T12:00:00Z"), Date.parse("2026-10-14T11:00:00Z")) && pollDue(new Date("2026-10-14T12:00:00Z"), Date.parse("2026-10-14T08:00:00Z")));
+    const idx = parseFormIndex([
+      "Form Type   Company Name                                                  CIK         Date Filed  File Name",
+      "-------------------------------------------------------------------------------------------------------",
+      "13F-HR      BERKSHIRE HATHAWAY INC                                        1067983     20251114    edgar/data/1067983/0000950123-25-008343.txt",
+      "13F-HR/A    SCION ASSET MANAGEMENT, LLC                                   1649339     2025-11-20  edgar/data/1649339/0001649339-25-000007.txt",
+      "13F-NT      SOMEONE ELSE LLC                                              1234567     20251114    edgar/data/1234567/0001234567-25-000001.txt",
+    ].join("\n"));
+    check("EDGAR form index: 13F-HR and 13F-HR/A lines, daily and quarterly date formats", idx.length === 2 && idx[0].cik === "0001067983" && idx[0].filedOn === "2025-11-14" && idx[1].form === "13F-HR/A" && idx[1].name === "SCION ASSET MANAGEMENT, LLC" && idx[1].accession === "0001649339-25-000007", idx);
+    const c = cleanCopy({ funds: [{ cik: "1067983", name: "Berkshire", weight: 1 }], sizing: { kind: "pct", amount: 500 }, trading: { maxOrderUsd: 1e9, orderType: "Market" } }, { maxOrderUsd: 25_000, maxDayUsd: 50_000, paperCopies: 10, liveCopies: 2, liveCopiesMulti: 10, proposalMinutes: 15 });
+    check("copy settings: paper copies are sized in dollars; per-order limits capped by the server", c.mode === "paper" && c.sizing.kind === "usd" && c.trading.maxOrderUsd === 25_000 && c.trading.orderType === "Market" && c.funds[0].cik === "0001067983" && c.name === "Berkshire Hathaway copy");
+    let threw = false; try { cleanCopy({ funds: [] }); } catch { threw = true; }
+    check("a copy needs a fund", threw);
+    const live = cleanCopy({ mode: "live", funds: [{ cik: "1", weight: 1 }, { cik: "2", weight: 3 }], sizing: { kind: "pct", amount: 25 }, accountId: "acc" });
+    check("a live copy can be sized as a share of the account", live.sizing.kind === "pct" && live.sizing.amount === 25 && live.accountId === "acc" && live.trading.orderType === "Limit");
+    check("audit CSV escapes payloads", auditCsv([{ createdAt: new Date("2026-10-13T15:00:00Z"), actor: "a@b.co", action: "approve", portfolioId: 1, batchId: 2, orderId: null, ip: "1.2.3.4", payload: { orders: [{ ticker: "AAPL" }] } }]).split("\n")[1] === '2026-10-13T15:00:00.000Z,a@b.co,approve,1,2,,1.2.3.4,"{""orders"":[{""ticker"":""AAPL""}]}"');
+    const pos = positionsOf({ balances: [{ currency: { code: "USD" }, cash: 1234.5 }], positions: [{ symbol: { symbol: { id: "x", symbol: "BRK.B" } }, units: 3, price: 400 }, { symbol: { symbol: { id: "y", symbol: "SWVXX" } }, units: 100, price: 1, cash_equivalent: true }] });
+    check("broker positions: tickers in SEC form, money-market sweep left as cash", pos.cash === 1234.5 && pos.positions.length === 1 && pos.positions[0].ticker === "BRK-B" && near(pos.total, 2434.5), pos);
+    check("curated funds: ten-digit CIKs, no duplicates, the owner's starter list included", CURATED.every((f) => /^\d{10}$/.test(f.cik)) && new Set(CURATED.map((f) => f.cik)).size === CURATED.length && ["berkshire", "pershing", "appaloosa", "baupost", "greenlight", "third point", "scion", "lone pine", "tiger global", "duquesne"].every((m) => CURATED.some((f) => f.match === m)) && padCik("CIK1067983") === "0001067983" && padCik("abc") === "");
+    check("premium: broker is Pro and metered with its per-use note, blends and more copies are Deal Team perks", featureById("copytrade.broker")?.minPlan === "pro" && !!featureById("copytrade.broker")?.perUse && !featureById("copytrade.broker")?.inAiAllowance && featureById("copytrade.blends")?.minPlan === "team" && featureById("copytrade.multi")?.minPlan === "team" && COPYTRADE_FEATURES.length === 3);
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);
