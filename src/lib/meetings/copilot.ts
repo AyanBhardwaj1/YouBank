@@ -24,7 +24,7 @@ import { searchTickers } from "@/lib/edgar/tickers";
 import { rateLimit } from "@/lib/locks";
 import type { MeetingNotes } from "./model";
 import { renderTranscript } from "./stitch";
-import { getMeeting, meetingLinks, patchLive, tickLive, transcriptOf, transcriptTail, type MeetingRow } from "./store";
+import { getMeeting, meetingLinks, patchLive, purgeExpired, tickLive, transcriptOf, transcriptTail, type MeetingRow } from "./store";
 
 const status = (message: string, code: number) => Object.assign(new Error(message), { status: code });
 
@@ -172,6 +172,7 @@ export async function askMeeting(user: { id: string; name: string }, meetingId: 
   const q = question.trim().slice(0, 1000);
   if (!q) throw status("Ask a question about the meeting.", 400);
   await rateLimit(`meetings-ask:${user.id}`, 40, 3_600_000, "Many questions this hour; try again later.");
+  await purgeExpired(user.id).catch(() => 0);
   const m = await getMeeting(user.id, meetingId);
   const [segments, ctx] = await Promise.all([transcriptOf(m), loadUserContext(user.id)]);
   if (!segments.length) throw status(m.purgedAt ? "This meeting's transcript was deleted under your retention setting." : "Nothing has been transcribed yet.", 409);

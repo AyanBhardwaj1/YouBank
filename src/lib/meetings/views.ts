@@ -9,7 +9,7 @@ import { MEETINGS_FEATURES } from "@/lib/billing/features/meetings";
 import { botProvider } from "./bot";
 import type { MeetingNotes } from "./model";
 import { notesAllowance, syncBot } from "./pipeline";
-import { getMeeting, getMeetingSettings, listMeetings, meetingLinks, transcriptOf, type MeetingRow } from "./store";
+import { getMeeting, getMeetingSettings, listMeetings, meetingLinks, purgeExpired, transcriptOf, type MeetingRow } from "./store";
 import { turns } from "./stitch";
 import { pickTranscriber } from "./transcribe";
 
@@ -29,6 +29,8 @@ export function publicMeeting(m: MeetingRow) {
 /** One meeting for its page: transcript (speaker-labelled where known), links, proposals, drafts. */
 export async function meetingDetail(user: User, id: number) {
   const db = requireDb();
+  // A transcript past the person's retention is removed before it can be shown.
+  await purgeExpired(user.id).catch(() => 0);
   let m = await getMeeting(user.id, id);
   if (m.source === "bot") m = await syncBot(user, m).catch(() => m);
   const [segments, links, actions, drafts] = await Promise.all([

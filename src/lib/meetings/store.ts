@@ -111,6 +111,9 @@ export async function deleteMeeting(userId: string, id: number): Promise<void> {
   const db = requireDb();
   const m = await getMeeting(userId, id);
   // Its timeline entries in Relationships go too; contacts it created stay (they may have been kept).
+  // Follow-up drafts written from it and not yet sent are discarded: they quote the meeting.
+  await db.update(schema.crmDrafts).set({ status: "discarded", decidedAt: new Date() })
+    .where(and(eq(schema.crmDrafts.userId, userId), sql`(${schema.crmDrafts.meta}->>'meetingId')::int = ${m.id}`, eq(schema.crmDrafts.status, "pending")));
   await db.delete(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), sql`${schema.crmThreads.providerThreadId} like ${`meeting:${m.id}:%`}`));
   await db.update(schema.crmActions).set({ status: "dismissed", decidedAt: new Date() })
     .where(and(eq(schema.crmActions.userId, userId), eq(schema.crmActions.meetingId, m.id), eq(schema.crmActions.status, "pending")));
@@ -196,4 +199,16 @@ export async function purgeExpired(userId: string): Promise<number> {
   await db.delete(schema.meetingChunks).where(inArray(schema.meetingChunks.meetingId, ids));
   await db.update(schema.meetings).set({ purgedAt: new Date() }).where(inArray(schema.meetings.id, ids));
   return ids.length;
+}
+
+/** The nightly pass: remove expired transcripts for everyone who set a retention period. */
+export async function purgeAllExpired(deadline = Date.now() + 60_000): Promise<number> {
+  const users = await requireDb().select({ userId: schema.meetingSettings.userId }).from(schema.meetingSettings)
+    .where(sql`jsonb_typeof(${schema.meetingSettings.settings}->'retentionDays') = 'number' and (${schema.meetingSettings.settings}->>'retentionDays')::numeric > 0`);
+  let n = 0;
+  for (const u of users) {
+    if (Date.now() > deadline) break;
+    n += await purgeExpired(u.userId).catch(() => 0);
+  }
+  return n;
 }

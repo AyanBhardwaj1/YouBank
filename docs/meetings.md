@@ -82,8 +82,8 @@ on, within the free monthly allowance (`MEETINGS_FREE_NOTES`, 3) or the plan (`m
 4. Run again ("Rewrite notes", or after linking a contact), nothing is done twice.
 
 Unlinking a contact from a meeting removes its timeline entry and keeps it unlinked when the meeting is
-filed again. Deleting a meeting deletes its transcript and timeline entries; contacts it added stay.
-Transcripts older than the person's retention setting are deleted (notes stay).
+filed again. Deleting a meeting deletes its transcript and timeline entries and discards its unsent follow-up drafts; contacts it added stay.
+Transcripts older than the person's retention setting are deleted (notes stay): every night by the agent cron, and before a meeting list, a meeting page or a question about a meeting is answered.
 
 ## The notetaker bot
 
