@@ -2004,25 +2004,28 @@ Assumptions: 200 active beta users, 300 watched companies, and about 2,000 unive
 
 ## 6. Premium features proposed (for the pricing work)
 
-These are proposed entries for `src/lib/billing/features/premium.ts`, in its format. The minimum plan here is
-a **suggestion**; the pricing work decides. Costs are rough costs to us per use, from the list prices in this
-repo (`src/lib/ai/pricing.ts`, `docs/edge-roadmap.md`) and the providers' pages, as of 2026-10-05.
+These were proposed entries, now registered in `src/lib/billing/features/edge-next.ts`. **The pricing work
+decided the plans and costs on 2026-10-14** (`docs/pricing.md`, "Edge's next round: what's free, what's
+premium and why"): the table below shows the decision. Changes from the proposal: Eva-4B moved to Deal Team
+(GPU time outside the AI allowance) at $0.05 a call with its cold start, idle tail and ten a day; the LBO
+refine is $0.005 with 25 a day; More theses is costed per thesis-month ($0.35); the weekly deep pass is
+$1.00 (output capped at 12,000 tokens); and the daily Pulse is a flat $0.20 a month of background compute.
 
-| id | Name | Description | Suggested plan | Metered | Cost per use (USD) | Per use |
+| id | Name | Description | Plan | Metered | Cost per use (USD) | Per use |
 |---|---|---|---|---|---|---|
 | `edge.deals-reread` | Re-read a deal with the stronger model | One deal's documents re-read by gpt-5.6-sol (or with exact-span citations) | pro | yes | 0.24 | a deal: about 40K tokens in at $4 and 4K out at $20 per million |
 | `edge.deals-export` | Precedent exports | Export more than 50 precedents with quotes | pro | no | 0 | a perk |
 | `edge.deals-private` | Private precedent library | Your own CIMs and closing memos read into private precedents | team | yes | 0.05 | a document: about 4 sections on the small model plus embeddings |
 | `edge.claims-crosscheck` | Second-provider claim check | Each claim judged by a second provider's model, as an extra verification signal | pro | yes | 0.03 | an answer: about 10K tokens in at $2 and 1K out at $10 per million (Claude Sonnet 5.5) |
-| `edge.pulse-daily` | Daily Pulse | Daily instead of weekly refresh for up to 50 companies | pro | no | 0 | a perk (free APIs) |
+| `edge.pulse-daily` | Daily Pulse | Daily instead of weekly refresh for up to 50 companies | pro | flat | $0.20 a month | a full 50-company list: free APIs, about 1,500 refreshes of Vercel CPU and Neon |
 | `edge.pulse-licensed` | Licensed alternative data | Bring-your-own Revelio, Coresignal, Similarweb or Apptopia keys | enterprise | no | 0 | covered by the customer's own licence |
 | `edge.odds-screener` | Deal Radar screener | Filter and export the whole universe by sale or acquisition odds | pro | no | 0.001 | a screen: one database query over stored scores |
 | `edge.odds-pairs` | Buyer–target odds | Joint odds that a given buyer acquires a given target | pro | no | 0.001 | a pair: stored scores combined |
-| `edge.calls-eva` | Evasion ensemble (Eva-4B) | Call Q&A scored by the Eva-4B classifier on a GPU, ensembled with the free rubric | pro | yes | 0.03 | a call: about 90 s of a Modal T4 at $0.59 an hour plus CPU and memory |
+| `edge.calls-eva` | Evasion ensemble (Eva-4B) | Call Q&A scored by the Eva-4B classifier on a GPU, ensembled with the free rubric | **team** | yes | 0.05 | a call: about 3.5 minutes billed on a Modal T4 with 2 cores and 16 GiB (cold weight load, scoring, idle tail); ten a day |
 | `edge.calls-peers` | Peer call comparison | Evasion and promises compared across up to six peers' latest calls | pro | yes | 0.002 | stored call summaries (free classifier) and one small-model comparison, about 2,000 tokens in and 400 out (built) |
-| `edge.lbo-refine` | LBO refine | 20,000 paths over 7 years on the ML service | pro | yes | 0.003 | one refine: about a minute of two Modal CPU cores (built; TypeScript without the ML service) |
-| `edge.thesis-plus` | More theses | Up to 5 active theses, 90-day horizons, twice-daily ticks | pro | yes | 0.02 | a tick: free tool reads, small-model extraction and a red team when a claim moves 10 points (built) |
-| `edge.thesis-deep` | Weekly deep synthesis | A weekly deep-research pass on the flagship model for each thesis | pro | yes | 1.2 | a pass: about 40,000 tokens in and 15,000 out on the flagship model at maximum effort (built) |
+| `edge.lbo-refine` | LBO refine | 20,000 paths over 7 years on the ML service | pro | yes | 0.005 | one refine: about 130 s billed on two Modal CPU cores with 4 GiB (built; TypeScript without the ML service); 25 a day |
+| `edge.thesis-plus` | More theses | Up to 5 active theses, 90-day horizons, twice-daily ticks | pro | yes | 0.35 | a thesis-month: about 60 ticks of free tool reads, small-model extraction and a red team when a claim moves 10 points; bounded by the thesis's budget (built) |
+| `edge.thesis-deep` | Weekly deep synthesis | A weekly deep-research pass on the flagship model for each thesis | pro | yes | 1.0 | a pass: about 40,000 tokens in and at most 12,000 out on the flagship model at maximum effort (built) |
 | `edge.thesis-team` | Team theses | Theses shared and co-edited by a team | team | no | 0 | a perk |
 | `edge.voice-realtime` | Live voice analyst | Real-time spoken conversation with Edge (gpt-realtime-2.1) | pro | yes | 0.33 | a session of about three minutes at $0.11 a minute; two-minute minimum, ten-minute cap (built) |
 

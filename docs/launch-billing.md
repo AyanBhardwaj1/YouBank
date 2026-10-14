@@ -135,17 +135,18 @@ STRIPE_TERMS_CONSENT=1            (needs the terms URL from step 3.2; 0 otherwis
 
 ## 6. Apply the migrations
 
-Billing needs `drizzle/0015_plans.sql` (plans) and `drizzle/0022_credits.sql` (credit packs, seats and
-billing dates), plus any other numbered file in `drizzle/` that production has not had yet. They only add
-tables and columns, and are safe to run twice.
+Billing needs `drizzle/0015_plans.sql` (plans), `drizzle/0022_credits.sql` (credit packs, seats and
+billing dates) and `drizzle/0024_seat_cooldown.sql` (the seat history behind the 30-day reassignment
+cooldown), plus any other numbered file in `drizzle/` that production has not had yet. They only add
+tables and columns, and are safe to run twice. Seats work without 0024, but without the cooldown.
 
 1. Try them on a Neon branch of production first:
    ```
-   DATABASE_URL=<branch connection string> pnpm exec tsx scripts/apply-sql.mts drizzle/0015_plans.sql drizzle/0022_credits.sql
+   DATABASE_URL=<branch connection string> pnpm exec tsx scripts/apply-sql.mts drizzle/0015_plans.sql drizzle/0022_credits.sql drizzle/0024_seat_cooldown.sql
    ```
 2. Then on production (the direct, unpooled connection string):
    ```
-   DATABASE_URL=<production connection string> pnpm exec tsx scripts/apply-sql.mts drizzle/0015_plans.sql drizzle/0022_credits.sql
+   DATABASE_URL=<production connection string> pnpm exec tsx scripts/apply-sql.mts drizzle/0015_plans.sql drizzle/0022_credits.sql drizzle/0024_seat_cooldown.sql
    ```
 3. Now redeploy production (Deployments, Redeploy), so the variables from step 5 take effect.
 
@@ -174,7 +175,9 @@ uncapped, so they cannot see a plan change) and your own card.
      (`charge.refunded` and `customer.subscription.deleted` delivered with 200).
 6. Optional, for teams: with a colleague on a team you own (the Team page), buy Deal Team (three seats),
    give them a seat in Settings, under Plan, and check that their Plan tab says their seat comes from
-   you. Lower the seats in the portal and check the seat is taken back. Refund afterwards.
+   you. Take the seat back and try to give it to a second colleague: it is refused with the date 30 days
+   after you gave it, while giving it back to the first colleague works. Lower the seats in the portal and
+   check the seat is taken back. Refund afterwards.
 
 If a webhook shows a 4xx or 5xx: a 400 "Invalid signature" means `STRIPE_WEBHOOK_SECRET` is wrong; a 503
 means it is missing; a 500 carries a reference to find in the logs. Stripe retries failed deliveries for
@@ -232,6 +235,10 @@ Check: send it to yourself first, and that every link opens on `youbank.com`.
 - **Changing a price**: edit `PLANS` (or `CREDIT_PACKS`), run `pnpm exec tsx scripts/test-billing.ts`
   (it fails if a margin drops below target), rerun `stripe-setup --live`, set the printed price ids,
   redeploy. Existing subscribers keep their price until they change plan.
+- **Edge's background spend** is in the fixed bills (`docs/pricing.md`, "Edge's next round"): run the deal
+  backfill before launch (Edge, Deals; at most $0.50 a day unless `EDGE_BACKFILL_DAILY_USD` says more);
+  once the backlog is read it costs about $1.50 a month for each day's new deals. Keep `EDGE_CALLS_EVA` unset until counsel confirms Eva-4B's
+  licence; raise `EDGE_MODAL_MONTHLY_USD` (default $25, app-wide) only as paid GPU use grows.
 - **Turning billing off in an emergency**: delete `STRIPE_SECRET_KEY` in Vercel and redeploy. Checkout,
   the portal and the webhook stop (Stripe retries webhooks for three days); everyone keeps the plan that is
   stored, and nothing in Stripe is cancelled.

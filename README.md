@@ -1334,8 +1334,10 @@ data and models a key in the environment decides whether it can run at all. They
 someone whose plan includes them uses them on purpose (a click, a ticked option); crons, monitors,
 prefetches and page loads always get the free method. Administrators (`ADMIN_EMAILS`) may use everything.
 Locked features stay visible with their plan badge, and trying one shows the plan's message in line with
-a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this list is
-`src/lib/billing/features/premium.ts`, with each feature's cost per use for the pricing model.
+a link to the plans. The contract is in [docs/premium.md](docs/premium.md); the registry is
+`src/lib/billing/features/` (one file per area), with each feature's cost per use for the pricing model.
+Why each of Edge's newest features is free or premium, and on which plan, is in
+[docs/pricing.md](docs/pricing.md#edges-next-round-whats-free-whats-premium-and-why).
 
 | Feature | Plan | Where | What it adds |
 |---|---|---|---|
@@ -1355,8 +1357,8 @@ a link to the plans. The contract is in [docs/premium.md](docs/premium.md); this
 | Daily Pulse | Pro | Edge · Pulse, "Refresh daily" | Up to 50 companies refreshed every day instead of every week |
 | Deal Radar screener | Pro | Edge · Deal Radar, Screener | Every scored company filtered by odds and sector, with CSV export |
 | Peer call comparison | Pro | Edge · Call Desk, Compare peers | Up to six companies' latest calls and promises side by side, with a written comparison |
-| Evasion ensemble (Eva-4B) | Pro | Edge · Call Desk, a call's "Add Eva-4B" | A GPU classifier averaged with the free one; off until its licence is confirmed (`EDGE_CALLS_EVA=1`) |
-| LBO refine | Pro | Edge · Scenarios, LBO, "Refine: 20,000 paths" | 20,000 paths over up to seven years |
+| Evasion ensemble (Eva-4B) | Deal Team | Edge · Call Desk, a call's "Add Eva-4B" | A GPU classifier averaged with the free one, ten calls a day; off until its licence is confirmed (`EDGE_CALLS_EVA=1`) |
+| LBO refine | Pro | Edge · Scenarios, LBO, "Refine: 20,000 paths" | 20,000 paths over up to seven years, 25 a day |
 | More theses | Pro | Edge · Theses | Five active theses, 90-day horizons, checks twice a day |
 | Weekly deep synthesis | Pro | Edge · Theses, "Weekly deep pass" | A weekly synthesis on the flagship model at maximum reasoning |
 | Team theses | Deal Team | Edge · Theses | Shared with your team, who follow and add evidence |
@@ -1520,6 +1522,7 @@ All tables are in `src/db/schema.ts`.
   - `0018_calendar`
   - `0019_meetings`
   - `0023_copytrade`
+  - `0024_seat_cooldown`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1916,11 +1919,11 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 | Plan | Price | AI allowance per seat | For |
 |---|---|---|---|
-| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, with a taste of the assistant |
+| Free | $0 | $0.75 a day, $3 a month | The terminal, filings, comps and the Newsroom, Edge's free core (precedents, Deal Radar, the Pulse, Call Desk, the LBO lab, one thesis, hold-to-talk), with a taste of the assistant |
 | Campus | Free with a .edu address | $2 a day, $10 a month | Students: the full terminal and data, AI workflows, a recruiting pack |
-| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox |
-| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces, assignable seats |
-| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences |
+| Pro | $59 a month, or $49 a month billed yearly | $6 a day, $25 a month | Individuals: a working AI allowance, the relationships agent and one mailbox, AI meeting briefs, and most premium features: deep research and builds, Edge's premium layers (deal re-reads, claim cross-checks, the daily Pulse, the Radar screener, the LBO refine, five theses with the weekly deep pass, live voice) |
+| Deal Team | $149 per seat a month, or $125 billed yearly; three seats minimum | $12 a day, $60 a month | Teams: autopilot and campaigns, more mailboxes, the adaptive engine across the team, shared workspaces and team theses, the meeting notetaker, Planet imagery in 3D, Dune queries, Eva-4B on calls, fund blends, assignable seats |
+| Enterprise | $299 per seat a month, billed yearly; five seats minimum | $30 a day, $130 a month | Firms: regulated mode and audit exports, SSO and admin controls, data residency options, bring-your-own data licences (Nightfire), GPU retraining of the deal model |
 
 - **Where the numbers come from.** [docs/pricing.md](docs/pricing.md) has the unit costs with sources and
   dates, the light, typical and heavy personas, and the cost to serve and margin per plan.
@@ -1937,6 +1940,10 @@ Three earlier research reports are behind the adaptive engine, the website and t
 - **Team seats.** The buyer of Deal Team or Enterprise holds one seat and gives the others to members of
   a team they own or administer (Settings, under Plan). A seat count changed in the portal reaches
   YouBank through the webhook, which takes back the newest seats beyond it.
+  - A freed seat can go back to the same person at any time, but to someone else only 30 days after it
+    was last given, so one seat cannot pass a fresh AI allowance from person to person. The seats API
+    names the date and the Plan tab shows it; administrators are exempt
+    ([docs/pricing.md](docs/pricing.md#team-seats-and-the-reassignment-cooldown), `drizzle/0024_seat_cooldown.sql`).
 - **Billing is Stripe.**
   - `POST /api/billing/checkout` starts Checkout for a plan, monthly or yearly, with a seat count. Someone
     who already pays is sent to the portal; an open checkout for the same purchase is reused, others are
