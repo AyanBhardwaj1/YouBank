@@ -12,7 +12,10 @@ import { GoogleCalendar, googleAuthUrl } from "@/lib/calendar/providers/google";
 import { MicrosoftCalendar } from "@/lib/calendar/providers/microsoft";
 import { CalDavCalendar, parseMultistatus } from "@/lib/calendar/providers/caldav";
 import { IcsCalendar, normalizeFeedUrl } from "@/lib/calendar/providers/ics";
-import { isPrivateAddress } from "@/lib/calendar/net";
+import { createServer } from "node:http";
+import { lookup as dnsLookup } from "node:dns";
+import type { LookupFunction } from "node:net";
+import { guardedLookup, isPrivateAddress, pinnedFetch, publicFetch, requestVia } from "@/lib/calendar/net";
 import { parseCalendar, propsOf } from "@/lib/calendar/ical";
 
 type Ok = (label: string, got: unknown, want: unknown) => void;
@@ -203,5 +206,42 @@ export async function runAdapterTests(ok: Ok): Promise<void> {
 
   /* ---------------- Network guard ---------------- */
   ok("net: private and metadata addresses are refused", ["10.0.0.5", "127.0.0.1", "169.254.169.254", "172.20.1.1", "192.168.1.1", "100.64.0.1", "::1", "fd00::1", "fe80::1", "::ffff:10.0.0.1"].every(isPrivateAddress), true);
-  ok("net: public addresses pass", ["17.253.144.10", "8.8.8.8", "2606:4700::1111"].some(isPrivateAddress), false);
+  ok("net: public addresses pass", ["17.253.144.10", "8.8.8.8", "2606:4700::1111", "2a00:1450:4009:81f::200e", "64:ff9b::808:808"].some(isPrivateAddress), false);
+  // How URLs spell IPv4 inside IPv6 once parsed: new URL("http://[::ffff:127.0.0.1]/").hostname is "[::ffff:7f00:1]".
+  ok("net: IPv4 hidden in IPv6 is judged by the IPv4 address", ["::ffff:7f00:1", "::ffff:a9fe:a9fe", "::7f00:1", "::ffff:0:a00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:a9fe:a9fe::1", "0:0:0:0:0:ffff:7f00:1", "::"].every(isPrivateAddress), true);
+  ok("net: site-local, Teredo, documentation and reserved ranges are refused", ["fec0::1", "2001::1", "2001:db8::1", "100::1", "198.18.0.1", "192.0.0.8", "0.0.0.0", "255.255.255.255"].every(isPrivateAddress), true);
+  {
+    const stub: Fetch = async (url) => new Response(null, { status: 302, headers: { location: url.includes("first") ? "http://[::ffff:127.0.0.1]/latest/meta-data" : "/" } });
+    const hop = await publicFetch(stub)("https://17.253.144.10/first").then(() => "fetched", (e: Error) => e.message);
+    ok("net: a redirect to a private address (written as IPv6) is refused", hop, "That address points at a private network.");
+    const literal = await publicFetch(stub)("http://[::ffff:169.254.169.254]/").then(() => "fetched", (e: Error) => e.message);
+    ok("net: a metadata address written as IPv6 is refused", literal, "That address points at a private network.");
+  }
+  {
+    // DNS rebinding: the check happens in the connection's own lookup, so a name cannot change its answer in between.
+    const viaLookup = await new Promise<string>((resolve) => guardedLookup("localhost", { all: true }, (e) => resolve(e ? (e as NodeJS.ErrnoException).code ?? "error" : "allowed")));
+    ok("net: the connection's lookup refuses a name that resolves to a private address", viaLookup, "EPRIVATE");
+    const server = createServer((req, res) => {
+      if (req.url === "/big") { res.writeHead(200); res.end("x".repeat(5000)); return; }
+      if (req.url === "/same") { res.writeHead(304, { etag: '"v1"' }); res.end(); return; }
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => { res.writeHead(207, { "content-type": "application/xml", etag: '"e1"' }); res.end(`${req.method} ${req.headers.depth ?? ""} ${body}`); });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const refused = await pinnedFetch(`http://localhost:${port}/`).then(() => "connected", (e: Error) => e.message);
+      ok("net: the guarded transport will not connect to a private address", refused, "That address points at a private network.");
+      const open: LookupFunction = (host, opts, cb) => dnsLookup(host, opts, cb as never);
+      const r = await requestVia(open, 1000, `http://localhost:${port}/dav`, { method: "PROPFIND", headers: { depth: "1" }, body: "<x/>" });
+      ok("net: the transport carries method, headers, body and status", [r.status, r.headers.get("etag"), await r.text()], [207, '"e1"', "PROPFIND 1 <x/>"]);
+      const same = await requestVia(open, 1000, `http://localhost:${port}/same`);
+      ok("net: a 304 has no body", [same.status, same.body], [304, null]);
+      const big = await requestVia(open, 1000, `http://localhost:${port}/big`).then((x) => x.text()).then(() => "read", (e: Error) => e.message.startsWith("The server sent more than"));
+      ok("net: an oversized response is cut off", big, true);
+    } finally {
+      server.close();
+    }
+  }
 }
