@@ -20,7 +20,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { answersFor } from "@/lib/billing/costs";
 import { CREDIT_PACKS, packById } from "@/lib/billing/packs";
 import type { SeatBoard } from "@/lib/billing/seats";
-import { FEATURES, type FeatureArea } from "@/lib/billing/features";
+import { featuresByArea } from "@/lib/billing/features";
 import { intervalsFor, LIVE_STATUSES, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { refreshPlan, type ClientEntitlements } from "@/lib/client/plan";
 
@@ -39,11 +39,6 @@ type Confirmed = ClientEntitlements & { kind: "plan" | "credits"; paid: boolean;
 type Bills = {
   invoices: { id: string; number: string | null; status: string | null; created: string; amount: number; currency: string; url: string | null; pdf: string | null }[];
   receipts: { id: string; description: string; created: string; amount: number; refunded: number; currency: string; url: string | null }[];
-};
-
-const AREA_LABEL: Record<FeatureArea, string> = {
-  ai: "AI", edge: "Edge", maps: "3D maps and geospatial AI", crypto: "Blockchain and crypto", studio: "Studio",
-  relationships: "Relationships", desktop: "Desktop app", platform: "Platform",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -244,7 +239,7 @@ export function PlanSettings() {
   // Someone with a live subscription changes plan in the portal; a lapsed one buys anew.
   const paying = !!status?.subscription?.manageable && LIVE_STATUSES.includes(status.subscription.status);
   const unlocked = new Set(status?.features ?? []);
-  const areas = [...new Set(FEATURES.map((f) => f.area))];
+  const areas = featuresByArea();
   const anyYearlyOnly = PLAN_ORDER.some((p) => PLANS[p].selfServe && !PLANS[p].monthlyUsd);
 
   return (
@@ -335,7 +330,7 @@ export function PlanSettings() {
           const isCurrent = id === current;
           const below = !!current && !isCurrent && planAtLeast(current, id);
           const buyable = !!shown && (status?.billing.purchasable[id] ?? []).includes(shown);
-          const featureCount = FEATURES.filter((f) => planAtLeast(id, f.minPlan) && !planAtLeast("free", f.minPlan)).length;
+          const featureCount = areas.reduce((n, a) => n + a.features.filter((f) => planAtLeast(id, f.minPlan) && !planAtLeast("free", f.minPlan)).length, 0);
           return (
             <div key={id} className={`panel flex h-full flex-col p-4 ${isCurrent ? "border-accent/50" : ""}`}>
               <div className="flex items-center justify-between gap-2">
@@ -431,15 +426,15 @@ export function PlanSettings() {
       <div className="panel p-4">
         <h3 className="text-[13.5px] font-semibold">Premium features</h3>
         <p className="mt-1 max-w-[72ch] text-[12px] text-muted">Each is fully built; your plan decides whether you can use it. Ones that cost us money per use (large models, paid data) run only when you start them.</p>
-        {!status ? null : FEATURES.length === 0 ? (
+        {!status ? null : areas.length === 0 ? (
           <p className="mt-3 text-[12px] text-muted">Premium features appear here as they are added.</p>
         ) : (
           <div className="mt-3 space-y-3">
             {areas.map((a) => (
-              <div key={a}>
-                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">{AREA_LABEL[a] ?? a}</div>
+              <div key={a.area}>
+                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">{a.label}</div>
                 <ul className="divide-y divide-line rounded-lg border border-line">
-                  {FEATURES.filter((f) => f.area === a).map((f) => (
+                  {a.features.map((f) => (
                     <li key={f.id} className="flex items-start gap-2 px-3 py-2">
                       <Icon name={unlocked.has(f.id) ? "Check" : "Lock"} className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${unlocked.has(f.id) ? "text-pos" : "text-faint"}`} />
                       <div className="min-w-0 flex-1">

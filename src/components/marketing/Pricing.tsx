@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { answersFor } from "@/lib/billing/costs";
-import { FEATURES } from "@/lib/billing/features";
+import { featuresByArea } from "@/lib/billing/features";
 import { CREDIT_DAILY_USD, CREDIT_PACKS } from "@/lib/billing/packs";
 import { intervalsFor, PLAN_ORDER, PLANS, planAtLeast, usd, yearlySavingPct, type BillingInterval, type PlanId } from "@/lib/billing/plans";
 import { LEGAL } from "@/lib/site";
@@ -32,8 +32,10 @@ function priceFor(id: PlanId, period: BillingInterval): { amount: string; unit: 
   return { amount: usd(per), unit: seat, note: `${note}${p.minSeats > 1 ? `; ${p.minSeats} seats minimum` : ""}` };
 }
 
-/** The comparison rows: what each plan has, plan by plan. `true` is a tick; a string is shown as it is. */
-const ROWS: { label: string; get: (id: PlanId) => string | boolean }[] = [
+type Row = { label: string; get: (id: PlanId) => string | boolean };
+
+/** The comparison's first section: price, seats, the allowance and what every plan shares. `true` is a tick; a string is shown as it is. */
+const ROWS: Row[] = [
   { label: "Monthly price", get: (id) => (PLANS[id].selfServe ? (PLANS[id].monthlyUsd ? `${usd(PLANS[id].monthlyUsd!)}${PLANS[id].minSeats > 1 ? " / seat" : ""}` : "yearly only") : "Free") },
   { label: "Yearly price, per month", get: (id) => (PLANS[id].selfServe ? `${usd(PLANS[id].yearlyMonthlyUsd!)}${PLANS[id].minSeats > 1 ? " / seat" : ""}` : "Free") },
   { label: "Seats", get: (id) => (PLANS[id].minSeats > 1 ? `${PLANS[id].minSeats} or more, assignable` : "1") },
@@ -48,7 +50,13 @@ const ROWS: { label: string; get: (id: PlanId) => string | boolean }[] = [
   { label: "Shared workspaces, the adaptive engine across the team", get: (id) => planAtLeast(id, "team") },
   { label: "Regulated mode and audit exports", get: (id) => planAtLeast(id, "enterprise") },
   { label: "SSO, admin controls, data residency options", get: (id) => planAtLeast(id, "enterprise") },
-  ...FEATURES.map((f) => ({ label: f.name, get: (id: PlanId) => planAtLeast(id, f.minPlan) })),
+  { label: "Edge's free core: precedents, Deal Radar, the Pulse, Call Desk, the LBO lab, one thesis, hold-to-talk", get: () => true },
+];
+
+/** Then the premium features, grouped by area straight from the registry (features planned but not built are left out). */
+const SECTIONS: { label: string; rows: Row[] }[] = [
+  { label: "Plan", rows: ROWS },
+  ...featuresByArea().map((g) => ({ label: g.label, rows: g.features.map((f) => ({ label: f.name, get: (id: PlanId) => planAtLeast(id, f.minPlan) })) })),
 ];
 
 const FAQ = [
@@ -136,8 +144,14 @@ export function Pricing() {
                 {PLAN_ORDER.map((id) => <th key={id} scope="col" className="px-3 py-2 font-semibold">{PLANS[id].name}</th>)}
               </tr>
             </thead>
-            <tbody>
-              {ROWS.map((r) => (
+            {SECTIONS.map((sec) => (
+            <tbody key={sec.label}>
+              {sec.label !== "Plan" && (
+                <tr className="border-t border-line bg-elevated/30">
+                  <th scope="colgroup" colSpan={PLAN_ORDER.length + 1} className="px-3 py-1.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em] text-faint">{sec.label}</th>
+                </tr>
+              )}
+              {sec.rows.map((r) => (
                   <tr key={r.label} className="border-t border-line">
                     <th scope="row" className="px-3 py-2 text-left font-normal text-muted">{r.label}</th>
                     {PLAN_ORDER.map((id) => {
@@ -151,6 +165,7 @@ export function Pricing() {
                   </tr>
               ))}
             </tbody>
+            ))}
           </table>
         </div>
       </section>

@@ -44,7 +44,7 @@ export const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free", name: "Free", monthlyUsd: 0, yearlyMonthlyUsd: 0, minSeats: 1, selfServe: false,
     blurb: "The terminal and public data, with a small AI allowance to try the assistant.",
-    points: ["The terminal, filings, comps and the Newsroom", "Calculators and the tool gallery", "A small AI allowance to try the assistant"],
+    points: ["The terminal, filings, comps and the Newsroom", "Calculators and the tool gallery", "Edge's free core: precedents, Deal Radar, the Pulse, Call Desk, the LBO lab and one thesis", "A small AI allowance to try the assistant"],
     ai: { dailyUsd: 0.75, monthlyUsd: 3 },
   },
   campus: {
@@ -56,19 +56,19 @@ export const PLANS: Record<PlanId, Plan> = {
   pro: {
     id: "pro", name: "Pro", monthlyUsd: 59, yearlyMonthlyUsd: 49, minSeats: 1, selfServe: true,
     blurb: "Individuals: a working AI allowance, the relationships agent and one mailbox.",
-    points: ["Everything in Campus, with a larger AI allowance", "Relationships agent and one mailbox", "Nurture, signals and compose", "Top up with AI credit packs when you need more"],
+    points: ["Everything in Campus, with a larger AI allowance", "Relationships agent and one mailbox", "Nurture, signals, compose and AI meeting briefs", "Edge's premium layers: deal re-reads, claim cross-checks, the daily Pulse, the Radar screener, five theses, live voice", "Top up with AI credit packs when you need more"],
     ai: { dailyUsd: 6, monthlyUsd: 25 },
   },
   team: {
     id: "team", name: "Deal Team", monthlyUsd: 149, yearlyMonthlyUsd: 125, minSeats: 3, selfServe: true,
     blurb: "Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces.",
-    points: ["Autopilot and campaigns", "The adaptive engine across the team", "Shared workspaces and live collaboration", "Assign seats to people on your team"],
+    points: ["Autopilot and campaigns", "The adaptive engine across the team", "Shared workspaces, team theses and live collaboration", "The meeting notetaker, Planet imagery in 3D, Dune queries and Eva-4B on calls", "Assign seats to people on your team"],
     ai: { dailyUsd: 12, monthlyUsd: 60 },
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", monthlyUsd: null, yearlyMonthlyUsd: 299, minSeats: 5, selfServe: true,
     blurb: "Firms: regulated mode, SSO and admin controls, data residency, bring-your-own data licences.",
-    points: ["Regulated mode and audit exports", "SSO, admin controls, data residency options", "Bring your own data licences"],
+    points: ["Regulated mode and audit exports", "SSO, admin controls, data residency options", "Bring your own data licences (Nightfire flare volumes)", "GPU retraining of the deal model"],
     ai: { dailyUsd: 30, monthlyUsd: 130 },
   },
 };
