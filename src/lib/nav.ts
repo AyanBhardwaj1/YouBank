@@ -28,7 +28,7 @@ export const FEATURES: NavFeature[] = [
   },
   {
     id: "news", href: "/app/news", label: "Newsroom", icon: "Newspaper", blurb: "News for your desk, deals and filings",
-    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Radar"), tab("/app/news", "view", "saved", "Saved")],
+    links: [tab("/app/news", "view", "today", "Today", true), tab("/app/news", "view", "globe", "Globe"), tab("/app/news", "view", "deals", "Deals"), tab("/app/news", "view", "radar", "Radar"), tab("/app/news", "view", "saved", "Saved")],
   },
   { id: "tools", href: "/app/tools", label: "Tools", icon: "Wand2", blurb: "Calculators and AI workflows" },
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },
@@ -45,10 +45,10 @@ export const FEATURES: NavFeature[] = [
     links: [tab("/app/crypto", "tab", "markets", "Markets", true), tab("/app/crypto", "tab", "defi", "DeFi"), tab("/app/crypto", "tab", "rounds", "Rounds"), tab("/app/crypto", "tab", "portfolio", "Portfolio"), tab("/app/crypto", "tab", "notarize", "Notarize"), tab("/app/crypto", "tab", "map", "Mining map")],
   },
   {
-    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, pipeline and follow-ups",
+    id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",
     links: [
       tab("/app/crm", "tab", "drafts", "Review queue", true), tab("/app/crm", "tab", "inbox", "Inbox"), tab("/app/crm", "tab", "pipeline", "Pipeline"),
-      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
+      tab("/app/crm", "tab", "contacts", "Contacts"), tab("/app/crm", "tab", "meetings", "Meetings"), tab("/app/crm", "tab", "insights", "Insights"), tab("/app/crm", "tab", "campaigns", "Campaigns"),
       tab("/app/crm", "tab", "nurture", "Nurture"), tab("/app/crm", "tab", "agent", "Agent & autopilot"),
     ],
   },

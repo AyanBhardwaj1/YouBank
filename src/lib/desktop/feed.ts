@@ -7,15 +7,17 @@
  * - questions: the email agent waiting on an answer before it can finish a draft (`crm_questions`);
  * - deals: something new about a deal in the person's pipeline (`crm_signals` with a deal), such as an
  *   Edge finding or a filing about its company. A deal the person moved themselves is not news to them,
- *   so stage changes are not sent.
+ *   so stage changes are not sent;
+ * - meetings: a meeting's notes are ready (a notetaker meeting, or one captured on another computer;
+ *   the computer that captured a meeting also tells the person itself).
  */
-import { and, desc, eq, gt, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 
 export type DesktopNotice = {
   /** Stable per item, so the app shows each once: `n:12`, `q:4`, `d:9`. */
   id: string;
-  kind: "alert" | "brief" | "question" | "deal";
+  kind: "alert" | "brief" | "question" | "deal" | "meeting";
   title: string;
   body: string;
   /** A path on the site to open when the person clicks it. */
@@ -37,9 +39,9 @@ export function feedSince(raw: string | null, now = Date.now()): Date {
 /** Only paths on our own site go back to the app, so a notification can never open somewhere else. Pure. */
 export const sitePath = (url: string, fallback: string) => (/^\/(?![/\\])/.test(url) && !url.includes("\\") ? url.slice(0, 500) : fallback);
 
-export async function desktopFeed(userId: string, since: Date, kinds: { alerts: boolean; questions: boolean; deals: boolean }): Promise<DesktopNotice[]> {
+export async function desktopFeed(userId: string, since: Date, kinds: { alerts: boolean; questions: boolean; deals: boolean; meetings?: boolean }): Promise<DesktopNotice[]> {
   const db = requireDb();
-  const [alerts, questions, deals] = await Promise.all([
+  const [alerts, questions, deals, meetings] = await Promise.all([
     kinds.alerts
       ? db.select().from(schema.newsNotifications)
         .where(and(eq(schema.newsNotifications.userId, userId), gt(schema.newsNotifications.createdAt, since), isNull(schema.newsNotifications.readAt)))
@@ -56,6 +58,12 @@ export async function desktopFeed(userId: string, since: Date, kinds: { alerts: 
         .where(and(eq(schema.crmSignals.userId, userId), isNotNull(schema.crmSignals.dealId), gt(schema.crmSignals.createdAt, since)))
         .orderBy(desc(schema.crmSignals.createdAt)).limit(10)
       : [],
+    kinds.meetings
+      ? db.select({ id: schema.meetings.id, title: schema.meetings.title, notesAt: schema.meetings.notesAt, summary: sql<string | null>`${schema.meetings.notes}->>'summary'` }).from(schema.meetings)
+        .where(and(eq(schema.meetings.userId, userId), isNotNull(schema.meetings.notesAt), gt(schema.meetings.notesAt, since)))
+        .orderBy(desc(schema.meetings.notesAt)).limit(10)
+        .catch(() => []) // before the meetings migration
+      : [],
   ]);
   const out: DesktopNotice[] = [
     ...alerts.map((a): DesktopNotice => ({
@@ -69,6 +77,10 @@ export async function desktopFeed(userId: string, since: Date, kinds: { alerts: 
     ...deals.map((d): DesktopNotice => ({
       id: `d:${d.id}`, kind: "deal", title: `New on ${d.deal}`.slice(0, 200), body: [d.title, d.detail].filter(Boolean).join(": ").slice(0, 400),
       url: "/app/crm?tab=pipeline", urgent: false, at: d.createdAt.toISOString(),
+    })),
+    ...meetings.map((m): DesktopNotice => ({
+      id: `m:${m.id}:${m.notesAt?.getTime() ?? 0}`, kind: "meeting", title: "Meeting notes ready", body: [m.title, m.summary].filter(Boolean).join(": ").slice(0, 400),
+      url: `/app/crm?tab=meetings&meeting=${m.id}`, urgent: false, at: (m.notesAt ?? new Date()).toISOString(),
     })),
   ];
   return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30);

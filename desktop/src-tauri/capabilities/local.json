@@ -1,11 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "local",
-  "description": "The app's own screens: start-up, onboarding, offline, quick ask and the desktop agent's settings. Applies to pages bundled with the app only, never to the website.",
+  "description": "The app's own screens: start-up, onboarding, offline, quick ask, the desktop agent's settings and the meeting copilot's pill and window. Applies to pages bundled with the app only, never to the website.",
   "windows": [
     "main",
     "quickask",
-    "agent"
+    "agent",
+    "pill",
+    "copilot"
   ],
   "local": true,
   "permissions": [
@@ -47,6 +49,22 @@
     "allow-install-update",
     "allow-desktop-info",
     "allow-open-quick-ask",
-    "allow-open-agent"
+    "allow-open-agent",
+    "allow-meeting-state",
+    "allow-meeting-prompt",
+    "allow-meeting-start",
+    "allow-meeting-stop",
+    "allow-meeting-dismiss",
+    "allow-meeting-refresh",
+    "allow-meeting-server-settings",
+    "allow-meeting-live",
+    "allow-meeting-suggest",
+    "allow-meeting-brief",
+    "allow-meeting-tail",
+    "allow-meeting-ask",
+    "allow-meeting-search",
+    "allow-meeting-link",
+    "allow-open-copilot",
+    "allow-hide-pill"
   ]
 }

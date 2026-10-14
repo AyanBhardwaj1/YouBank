@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { secretsMatch } from "@/lib/crm/crypto";
 import { nightlyUsers, runAgent } from "@/lib/crm/run";
 import { runAsUser } from "@/lib/ai/usage";
-import { describeFailure, handled } from "@/lib/errors";
+import { describeFailure, handled, logError } from "@/lib/errors";
+import { purgeAllExpired } from "@/lib/meetings/store";
 import { pool, poolSize } from "@/lib/pool";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ export async function GET(req: Request) {
 
 async function nightly() {
   const deadline = Date.now() + 270_000;
+  // Meeting transcripts past each person's retention setting are removed first (no model, no spend).
+  const purged = await purgeAllExpired(Date.now() + 30_000).catch((e) => { logError(e, { where: "meetings-retention" }); return 0; });
   const results = await pool(await nightlyUsers(), poolSize(process.env.AGENT_POOL, 4), async (userId): Promise<{ userId: string; drafted?: number; suggestions?: number; errors?: number; error?: string }> => {
     try {
       const r = await runAsUser(userId, () => runAgent(userId, deadline - 10_000));
@@ -33,5 +36,5 @@ async function nightly() {
       return { userId, error: describeFailure(e, 500, "nightly-agent").message };
     }
   }, deadline - 20_000);
-  return NextResponse.json({ ok: true, visited: results.length, results });
+  return NextResponse.json({ ok: true, visited: results.length, meetingsPurged: purged, results });
 }
