@@ -17,6 +17,7 @@ import { recapMs, recapSlides, slideAt, wrapText, type RecapSlide, type RecapSto
 import { figureBars } from "@/lib/news/storyviz";
 import type { StoryCard as Story } from "@/lib/news/views";
 import { Icon } from "@/components/ui/Icon";
+import { siteLink } from "@/lib/site";
 import { fmtPct, fmtUsd, useMotionLevel, type Spark } from "./client";
 import { SECTOR_HUE, sectorOf } from "./DataArt";
 
@@ -168,7 +169,7 @@ export function Recap({ stories, sparks, deskLabel, deals, now, onClose }: Props
     });
     const movers = [...new Set(stories.slice(0, 60).flatMap((s) => s.tickers.slice(0, 1)))].map((sym) => ({ symbol: sym, change: sparks.get(sym)?.change ?? NaN })).filter((m) => Number.isFinite(m.change));
     const date = now ? new Date(now).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) : "";
-    return recapSlides({ desk: deskLabel, date, stories: top, deals: deals.map((d) => ({ label: d.headline, valueUsd: d.valueUsd, kind: d.kind })), movers, storyCount: stories.length, sourceCount: new Set(stories.flatMap((s) => s.sources.map((x) => x.name))).size, url: typeof window !== "undefined" ? `${window.location.origin}/news` : "youbank" });
+    return recapSlides({ desk: deskLabel, date, stories: top, deals: deals.map((d) => ({ label: d.headline, valueUsd: d.valueUsd, kind: d.kind })), movers, storyCount: stories.length, sourceCount: new Set(stories.flatMap((s) => s.sources.map((x) => x.name))).size, url: siteLink("/news") });
   }, [stories, sparks, deskLabel, deals, now]);
   const total = recapMs(slides);
   const at = slideAt(slides, t);

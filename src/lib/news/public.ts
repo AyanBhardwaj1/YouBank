@@ -20,8 +20,6 @@ import { slugFor } from "./slug";
 import { itemsOf, type ClusterRow } from "./store";
 import { storyGraph, storyTimeline, type StoryGraph, type TimelineEvent } from "./storyviz";
 
-export const SITE = "https://youbank-nu.vercel.app";
-
 /** Item kinds that come from public sources (all of the Newsroom's do; anything new must be added here on purpose). */
 const PUBLIC_KINDS = new Set(["article", "filing", "release", "gov", "paper", "repo", "model", "launch", "research"]);
 

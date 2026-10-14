@@ -13,6 +13,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState, useSyncExternalStore } from "react";
 import type { Explain } from "@/lib/news/rank";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage } from "@/lib/client/errors";
 import { post } from "./client";
 
 const PARTS: { key: keyof Explain; label: string; hint: string; tone: string }[] = [
@@ -71,7 +72,7 @@ export function FollowButton({ id, following, onChange, size = "md" }: { id: num
       setState({ id, on: r.following, busy: false, note: r.following ? "You'll get an alert when this story moves." : null });
       onChange?.(r.following);
     } catch (err) {
-      setState({ id, on, busy: false, note: err instanceof Error ? err.message : "Could not follow it right now." });
+      setState({ id, on, busy: false, note: errorMessage(err) });
     }
   };
   const pad = size === "sm" ? "px-2 py-0.5 text-[10.5px]" : "px-3 py-1.5 text-[12px]";

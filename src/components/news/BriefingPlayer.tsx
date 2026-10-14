@@ -19,6 +19,7 @@ import { PLANS } from "@/lib/billing/plans";
 import { useFeature } from "@/lib/client/plan";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage } from "@/lib/client/errors";
 import { post, useApi, useMotionLevel } from "./client";
 
 type Chapter = BriefingChapter & { audioUrl?: string };
@@ -129,13 +130,13 @@ export function BriefingPlayer({ onClose, onOpenCluster }: { onClose: () => void
       setState({ ch: 0, playing: false, progress: 0 });
       if (r.note) setNote(r.note);
     } catch (e) {
-      setNote(e instanceof Error ? e.message : "Could not make the briefing right now.");
+      setNote(errorMessage(e));
     } finally { setBusy(null); }
   };
   const setDailyOn = async (on: boolean) => {
     setDaily(on);
     try { await post("/api/news/prefs", { prefs: { audio: { ...(data?.settings ?? {}), voices: undefined, daily: on, speed: rate } } }); reload(); }
-    catch (e) { setDaily(!on); setNote(e instanceof Error ? e.message : "Could not change that setting."); }
+    catch (e) { setDaily(!on); setNote(errorMessage(e)); }
   };
   const setRate = (r: number) => {
     setSpeed(r);

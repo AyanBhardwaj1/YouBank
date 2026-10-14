@@ -24,6 +24,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { Icon } from "@/components/ui/Icon";
 import { useCoarsePointer } from "@/components/ui/useMedia";
 import { errorMessage } from "@/lib/client/errors";
+import { siteLink } from "@/lib/site";
 import { RelationshipMap } from "./RelationshipMap";
 import { FollowButton, ShareButtons, WhyShown } from "./StoryActions";
 import { CoverageChart, DealChart, FigureBars, PriceReaction } from "./StoryCharts";
@@ -186,7 +187,7 @@ export function StoryBody({ id, onClose, onStep, onChanged, mode }: Props) {
       {note?.id === id && <p className="mt-2 text-[11.5px] text-muted">{note.text}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted">
         <span>Share the public page (the story and its sources, nothing about you):</span>
-        <ShareButtons url={`${typeof window !== "undefined" ? window.location.origin : ""}/news/${s.slug}`} title={s.headline} compact />
+        <ShareButtons url={siteLink(`/news/${s.slug}`)} title={s.headline} compact />
       </div>
 
       {s.related.length > 0 && (

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { cache } from "react";
 import { PublicStoryView } from "@/components/news/public/PublicNews";
-import { publicStory, SITE } from "@/lib/news/public";
+import { publicStory } from "@/lib/news/public";
+import { siteLink, siteUrl } from "@/lib/site";
 import { idFromSlug } from "@/lib/news/slug";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -19,7 +20,7 @@ const describe = (s: NonNullable<Awaited<ReturnType<typeof publicStory>>>) =>
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const s = await load((await params).slug);
   if (!s) return { title: "Story not found", robots: { index: false } };
-  const url = `${SITE}/news/${s.slug}`;
+  const url = siteLink(`/news/${s.slug}`);
   const description = describe(s);
   return {
     title: s.headline,
@@ -43,7 +44,7 @@ export default async function PublicStoryPage({ params }: Params) {
   const s = await load(slug);
   if (!s) notFound();
   if (slug !== s.slug) permanentRedirect(`/news/${s.slug}`);
-  const url = `${SITE}/news/${s.slug}`;
+  const url = siteLink(`/news/${s.slug}`);
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "NewsArticle",
@@ -54,8 +55,8 @@ export default async function PublicStoryPage({ params }: Params) {
     articleSection: s.categoryLabel,
     mainEntityOfPage: url,
     image: [`${url}/opengraph-image`],
-    publisher: { "@type": "Organization", name: "YouBank", url: SITE },
-    author: { "@type": "Organization", name: "YouBank Newsroom", url: `${SITE}/news` },
+    publisher: { "@type": "Organization", name: "YouBank", url: siteUrl() },
+    author: { "@type": "Organization", name: "YouBank Newsroom", url: siteLink("/news") },
     isBasedOn: s.sources.slice(0, 8).map((x) => x.url),
     about: s.names.map((n) => ({ "@type": "Organization", name: n })),
   };

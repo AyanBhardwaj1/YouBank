@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { PublicIndex } from "@/components/news/public/PublicNews";
-import { publicStories, SITE } from "@/lib/news/public";
+import { publicStories } from "@/lib/news/public";
+import { siteLink } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Newsroom: what moved markets and deals today",
   description: "The day's most important finance stories from about ninety free sources, filings and regulators, each with its numbers, chart, timeline and sources. Free from YouBank.",
-  alternates: { canonical: `${SITE}/news` },
-  openGraph: { type: "website", url: `${SITE}/news`, title: "YouBank Newsroom", description: "What moved markets and deals today, with the numbers, charts and every source." },
+  alternates: { canonical: siteLink("/news") },
+  openGraph: { type: "website", url: siteLink("/news"), title: "YouBank Newsroom", description: "What moved markets and deals today, with the numbers, charts and every source." },
 };
 
 /** The public front of the Newsroom: the last day's most important stories, for anyone. */
