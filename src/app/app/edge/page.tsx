@@ -11,7 +11,7 @@ import type { EdgeState, FeedData } from "@/components/edge/client";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
 
-const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "track"]);
+const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "deals", "track"]);
 
 /**
  * Edge: ?view=feed|canvases|documents|networks|scenarios|map|whatif|track. Documents also opens a saved answer

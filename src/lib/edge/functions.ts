@@ -7,6 +7,7 @@
  * retraining) run only because a person asked, and re-check that person's plan first.
  */
 import { executeRun } from "./canvas/engine";
+import { backfillSlice } from "./deals/jobs";
 import { newsroomDeals } from "./graph/deals";
 import { ingestSlice, predictionCards } from "./graph/jobs";
 import { finishTraining, startTraining } from "./graph/train";
@@ -158,4 +159,23 @@ export const scenarioRefine = inngest.createFunction(
   },
 );
 
-export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine];
+/**
+ * The deal database's backfill (E1): daily, and when an administrator asks. Each slice discovers a few months
+ * of merger documents (free) and reads unread deals while the day's platform ceiling lasts; it does nothing
+ * but discovery while reading is switched off, and stops on the AI caps. Resumes from its cursor.
+ */
+export const dealsBackfill = inngest.createFunction(
+  { id: "edge-deals-backfill", triggers: [{ cron: "40 5 * * *" }, { event: "edge/deals.backfill" }], concurrency: 1, retries: 1 },
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    const slices: Awaited<ReturnType<typeof backfillSlice>>[] = [];
+    for (let i = 0; i < 6; i++) {
+      const r = await s.run(`slice-${i}`, async () => { const x = await backfillSlice(Date.now() + 230_000); await flushUsage(); return x; });
+      slices.push(r);
+      if (!r.on || r.error || (!r.read && !r.months.length) || r.budgetLeft < 0.01) break;
+    }
+    return { slices: slices.length, read: slices.reduce((n, r) => n + r.read, 0), months: slices.flatMap((r) => r.months) };
+  },
+);
+
+export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, dealsBackfill];

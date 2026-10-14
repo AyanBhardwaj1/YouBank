@@ -11,5 +11,6 @@ import "./scenarios";
 import "./outputs";
 import "./story";
 import "./studio";
+import "./signals";
 
 export { availableTypes } from "../engine";

@@ -1309,7 +1309,7 @@ export const edgeForecasts = pgTable("edge_forecasts", {
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [index("edge_forecasts_subject_idx").on(t.subject, t.createdAt)]);
 
-export type DealSource = { form: string; url: string; filed: string; role?: string };
+export type DealSource = { form: string; url: string; filed: string; role?: string; press?: string };
 
 /** F4: one deal (E1). Public deals have no owner; private precedents (later) carry one. */
 export const edgeDeals = pgTable("edge_deals", {

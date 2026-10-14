@@ -26,6 +26,20 @@ import { dotOf, fitCombiner, lineFor, strictFooter, supportOf, type Labelled } f
 import { combiner, crosscheckModel } from "@/lib/edge/claims/verify";
 import { askWants } from "@/lib/edge/docs/answer";
 import { loadFixture } from "./eval-claims";
+import { buyerTypeOf, considerationOf, fmtMoney, moneyAll, parseCount, parseDate, parseDays, parseMoney, parsePercent, parseRange, parseRatio, wordsToNumber } from "@/lib/edge/deals/parse";
+import { docKindOf, headingKey, locateSections, SECTIONS_BY_KIND } from "@/lib/edge/deals/sections";
+import { checkField, crossChecks, feeShare, readValue } from "@/lib/edge/deals/checks";
+import { confidenceOf, fitConfidence, MIN_LABELLED, priorAt, rawScore } from "@/lib/edge/deals/confidence";
+import { FIELD, FIELDS, fieldsFor } from "@/lib/edge/deals/fields";
+import { cosine, kernel, recallAtK, sicMatch, similarity, whyChips, type DealLite } from "@/lib/edge/deals/similar";
+import { bandSentence, conformalBand, knnPredict, trimmedStats } from "@/lib/edge/deals/range";
+import { docsFromHits, cleanName, monthEnd, nextMonth, type EftsHit } from "@/lib/edge/deals/discover";
+import { dealsLeft, readingPolicy } from "@/lib/edge/deals/jobs";
+import { byFamily, confidenceLine, footballField, shownFields, timeline, valueText } from "@/lib/edge/deals/view";
+import { factsAsOf } from "@/lib/edge/deals/facts";
+import { dealCsv } from "@/lib/edge/deals/export";
+import { partsFromHtml } from "@/lib/edge/docs/html";
+import { premiumOf } from "@/lib/news/deals";
 import { EDGE_NEXT_FEATURES } from "@/lib/billing/features/edge-next";
 import { FEATURES } from "@/lib/billing/features";
 import { isPlanId, PLAN_ORDER } from "@/lib/billing/plans";
@@ -309,6 +323,168 @@ async function main() {
     check("without the other provider's key there is no cross-check", crosscheckModel("gpt-5.6-luna") === null);
     if (keep.o === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = keep.o;
     if (keep.a !== undefined) process.env.ANTHROPIC_API_KEY = keep.a;
+  }
+
+  console.log("E1 Precedent Engine: number readers");
+  {
+    check("parseMoney: $1.2 billion is 1,200 (USD millions)", parseMoney("approximately $1.2 billion")?.value === 1200 && parseMoney("$1.2 billion")?.unit === "usd_mm");
+    check("parseMoney: $950 million is 950", parseMoney("a total of $950 million in cash")?.value === 950);
+    check("parseMoney: approximately $3.10 per share is USD per share", parseMoney("approximately $3.10 per share")?.value === 3.1 && parseMoney("approximately $3.10 per share")?.unit === "usd_per_share");
+    check("parseMoney: $42.50 in cash per share and 'for each share' read as per share", parseMoney("$42.50 in cash per share")?.unit === "usd_per_share" && parseMoney("$18.00 for each share")?.unit === "usd_per_share");
+    check("parseMoney: a plain figure in dollars becomes millions", near(parseMoney("$1,234,567")!.value, 1.234567, 1e-9));
+    check("parseMoney: $68 million and $2.1bn and $750m", parseMoney("$68 million")?.value === 68 && parseMoney("$2.1bn")?.value === 2100 && parseMoney("$750m")?.value === 750);
+    check("moneyAll finds every amount in order", moneyAll("between $36.00 and $41.00 per share, or $1.2 billion").map((m) => m.value).join() === "36,41,1200", moneyAll("between $36.00 and $41.00 per share, or $1.2 billion"));
+    check("parseMoney: no dollar sign, no money", parseMoney("1.2 billion shares") === null);
+    check("parsePercent: 31.4% and 31 percent and per cent", near(parsePercent("approximately 31.4%")!, 0.314, 1e-9) && parsePercent("31 percent") === 0.31 && parsePercent("3.5 per cent") === 0.035);
+    check("parseDays: 45 days, forty-five (45) days, thirty days", parseDays("within 45 days") === 45 && parseDays("forty-five (45) days after") === 45 && parseDays("a period of thirty days") === 30 && parseDays("35 calendar days") === 35);
+    check("parseDays: words and figures that disagree are not a number", parseDays("thirty (45) days") === null);
+    check("words to numbers", wordsToNumber("forty-five") === 45 && wordsToNumber("one hundred twenty") === 120 && wordsToNumber("twelve") === 12 && wordsToNumber("many") === null);
+    check("parseCount: digits, words and both, years and money ignored", parseCount("contacted 25 potential counterparties") === 25 && parseCount("nine parties entered into") === 9 && parseCount("twelve (12) parties") === 12 && parseCount("On October 3, 2023, five parties submitted bids of $36.00") === 5);
+    check("parseRatio: 0.4125 shares of Corvane common stock", parseRatio("and 0.4125 shares of Corvane common stock") === 0.4125 && parseRatio("an exchange ratio of 0.725") === 0.725);
+    check("parseDate: month day, year; day month year; ISO", parseDate("On March 3, 2024, the Company") === "2024-03-03" && parseDate("3 March 2024") === "2024-03-03" && parseDate("2024-03-03") === "2024-03-03" && parseDate("in March") === null);
+    const r = parseRange("an implied per share equity value reference range of $38.10 to $47.60");
+    check("parseRange: a per-share range, low first", !!r && r.low === 38.1 && r.high === 47.6 && r.unit === "usd_per_share", r);
+    check("consideration words: cash, stock, mixed", considerationOf("$42.50 in cash, without interest") === "cash" && considerationOf("an exchange ratio of 0.725 shares") === "stock" && considerationOf("$18.00 in cash, without interest, and 0.4125 shares of Corvane common stock") === "mixed");
+    check("buyer type from how the buyer is described", buyerTypeOf("formed by investment funds managed by Lantern Infrastructure Partners") === "sponsor" && buyerTypeOf("a portfolio company of Blue Ridge Capital") === "sponsor_backed" && buyerTypeOf("a publicly traded provider listed on the Nasdaq") === "strategic");
+    check("money in words: $1.2bn, $950m, $3.10/share", fmtMoney({ value: 1200, unit: "usd_mm" }) === "$1.20bn" && fmtMoney({ value: 950, unit: "usd_mm" }) === "$950m" && fmtMoney({ value: 3.1, unit: "usd_per_share" }) === "$3.10/share");
+  }
+
+  console.log("E1 Precedent Engine: finding sections in saved proxies");
+  {
+    const docs = ["proxy-workiva.html", "proxy-caps.html", "sc14d9.html"].map((f) => ({ f, parts: partsFromHtml(fixture("deals", f)) }));
+    const w = locateSections(docs[0].parts, SECTIONS_BY_KIND.proxy);
+    const keys = new Set(w.map((x) => x.key));
+    check("the Workiva-style proxy: every section found by its heading", ["summary", "parties", "background", "reasons", "opinion", "projections", "termination", "approvals"].every((k) => keys.has(k as never) && w.find((x) => x.key === k)!.via === "heading"), w.map((x) => `${x.key}:${x.via}:${x.chars}`));
+    check("contents entries and the summary's page references never start a section", headingKey("Opinion of Northgate Partners LLC (page 41)", ["opinion"]) === null && headingKey("Background of the Merger 24", ["background"]) === null && headingKey("Opinion of Northgate Partners LLC", ["opinion"]) === "opinion");
+    const bg = w.find((x) => x.key === "background")!;
+    check("the background section runs to the next section, no further", /executed the merger agreement/.test(bg.text) && !/In reaching its determination/.test(bg.text));
+    const op = w.find((x) => x.key === "opinion")!;
+    check("the opinion section keeps the selected transactions table whole", /Calder Energy \| Westbrook Gathering \| 9\.8x/.test(op.text), op.text.slice(0, 300));
+    const pj = w.find((x) => x.key === "projections")!;
+    check("the projections table keeps its units line and columns", /\(in millions\)/.test(pj.text) && /Adjusted EBITDA \| \$405 \| \$462 \| \$515/.test(pj.text), pj.text.slice(0, 300));
+    const c = locateSections(docs[1].parts, SECTIONS_BY_KIND.proxy);
+    check("the capitalised-heading proxy: consideration, background, opinion, termination and approvals found", ["consideration", "background", "opinion", "termination", "approvals"].every((k) => c.some((x) => x.key === k)), c.map((x) => `${x.key}:${x.via}`));
+    const t = locateSections(docs[2].parts, SECTIONS_BY_KIND.tender);
+    check("the 14D-9: the background of the offer, the reasons, the opinion and the fee", ["background", "reasons", "opinion", "termination"].every((k) => t.some((x) => x.key === k && x.via === "heading")), t.map((x) => `${x.key}:${x.via}`));
+    const none = locateSections(partsFromHtml("<p>The parties signed a confidentiality agreement and a non-binding proposal followed; the first contacted party declined.</p><p>Nothing else here at all, just filler words for the document body that go on.</p>"), ["background"], { minChars: 40 });
+    check("with no heading, keyword windows stand in and say so", none.length === 1 && none[0].via === "keywords");
+    check("forms map to document kinds", docKindOf("DEFM14A") === "proxy" && docKindOf("SC 14D9") === "tender" && docKindOf("S-4/A") === "s4" && docKindOf("8-K", "EX-2.1") === "agreement" && docKindOf("8-K", "EX-99.1") === "press" && docKindOf("10-K") === null);
+    check("every field is looked for in at least one section, and fields per section exist", FIELDS.every((f) => f.sections.length > 0) && fieldsFor("background").some((f) => f.field === "ndas") && fieldsFor("termination").some((f) => f.field === "go_shop_days"));
+  }
+
+  console.log("E1 Precedent Engine: checks and confidence on labelled fields");
+  {
+    const docs = Object.fromEntries(["proxy-workiva", "proxy-caps", "sc14d9"].map((d) => [d, locateSections(partsFromHtml(fixture("deals", `${d}.html`)), [...SECTIONS_BY_KIND.proxy, "reasons"])]));
+    const labels = fixture("deals", "labels.jsonl").trim().split("\n").map((l) => JSON.parse(l) as { deal: string; section: string; field: string; value: string; quote: string; truth: unknown });
+    let right = 0, stored = 0, wrongKept = 0, falseDrop = 0;
+    const labelled: { deal: string; field: string; raw: number; correct: boolean }[] = [];
+    for (const l of labels) {
+      const sec = docs[l.deal].find((x) => x.key === l.section) ?? docs[l.deal].find((x) => x.text.includes(l.quote.slice(0, 30)));
+      const c = checkField({ field: l.field, value: l.value, quote: l.quote }, sec?.text ?? "");
+      const ok = c.value !== null && JSON.stringify(c.value) === JSON.stringify(l.truth);
+      if (c.value !== null) { stored++; if (ok) right++; else wrongKept++; labelled.push({ deal: l.deal, field: l.field, raw: rawScore(c.checks, sec?.via ?? "keywords"), correct: ok }); }
+      else if (l.truth !== null) falseDrop++;
+    }
+    check("every stored value equals the hand-checked value (the quote's reading wins over a model's misreading)", wrongKept === 0 && right === stored, { right, stored, wrongKept });
+    check("quotes that are not in the document are dropped (an invented count, invented synergies, an invented go-shop)", labels.filter((l) => l.truth === null).length === 3 && labels.filter((l) => l.truth !== null).length - falseDrop === stored, { falseDrop, stored });
+    check("no true field is dropped by the checks", falseDrop === 0, falseDrop);
+    const misread = checkField({ field: "termination_fee", value: "$86 million", quote: "The Company will be required to pay Parent a termination fee of $68 million under specified circumstances" }, docs["proxy-workiva"].find((x) => x.key === "summary")!.text);
+    check("a model value the quote contradicts is noted, and the quote's value kept", misread.value === 68 && misread.checks.some((x) => x.name === "model" && x.ok === false));
+    check("a numeric field with no number in its quote is dropped", checkField({ field: "termination_fee", value: "$68 million", quote: "The Company will be required to pay Parent a termination fee" }, "The Company will be required to pay Parent a termination fee under specified circumstances.").dropped === "no number in the quote");
+    const fields = [
+      { field: "equity_value", value: 2100, quote: "", checks: [] }, { field: "enterprise_value", value: 3400, quote: "", checks: [] }, { field: "premium_unaffected", value: 0.314, quote: "", checks: [] },
+      { field: "termination_fee", value: 68, quote: "", checks: [] }, { field: "reverse_termination_fee", value: 136, quote: "", checks: [] }, { field: "per_share", value: 42.5, quote: "", checks: [] },
+    ];
+    const x = crossChecks(fields, { netDebtMm: 1290, sharesMm: 49.4, computedPremium: 0.31 });
+    const got = (f: string, n: string) => x.find((y) => y.field === f)!.checks.find((c) => c.name === n)?.ok;
+    check("EV against equity plus XBRL net debt within 5%", got("enterprise_value", "ev_bridge") === true && crossChecks([{ field: "equity_value", value: 2100, quote: "", checks: [] }, { field: "enterprise_value", value: 4000, quote: "", checks: [] }], { netDebtMm: 1290 })[1].checks[0].ok === false);
+    check("stated against computed premium within 2 points", got("premium_unaffected", "premium_prices") === true && crossChecks([{ field: "premium_unaffected", value: 0.4, quote: "", checks: [] }], { computedPremium: 0.31 })[0].checks[0].ok === false);
+    check("termination fee as a share of equity value (68 of 2,100 is 3.2%)", got("termination_fee", "fee_share") === true && near(feeShare(68, 2100)!, 0.0324, 0.0001) && crossChecks([{ field: "equity_value", value: 1000, quote: "", checks: [] }, { field: "termination_fee", value: 120, quote: "", checks: [] }], {})[1].checks[0].ok === false);
+    check("price per share times shares against equity value within 10%", got("equity_value", "per_share_x_shares") === true);
+    check("the premium arithmetic matches premiumOf", near(premiumOf(42.5, [{ date: "2024-02-29", close: 32.1 }, { date: "2024-03-01", close: 32.35 }, { date: "2024-03-04", close: 41.9 }], new Date("2024-03-04T00:00:00Z"))!.premium, 42.5 / 32.35 - 1, 1e-9));
+    check("raw score rises with cross-checks and a heading, falls with a conflict", rawScore([{ name: "quote", ok: true, detail: "" }, { name: "reparse", ok: true, detail: "" }, { name: "ev_bridge", ok: true, detail: "" }], "heading") > rawScore([{ name: "quote", ok: true, detail: "" }, { name: "reparse", ok: true, detail: "" }], "keywords") && rawScore([{ name: "quote", ok: true, detail: "" }, { name: "ev_bridge", ok: false, detail: "" }], "heading") < rawScore([{ name: "quote", ok: true, detail: "" }], "heading"));
+    const conf = confidenceOf("termination_fee", 0.8);
+    check("before a family has its labelled fields, confidence is a stated prior, never a measured rate", !conf.calibrated && conf.p === priorAt(0.8) && /prior estimate/.test(conf.note), conf);
+    const m = fitConfidence([...Array.from({ length: 40 }, (_, i) => ({ deal: `d${i}`, field: "termination_fee", raw: 0.9, correct: i % 20 !== 0 })), ...Array.from({ length: 40 }, (_, i) => ({ deal: `e${i}`, field: "go_shop_days", raw: 0.5, correct: i % 3 !== 0 }))], "test");
+    check("fitted per family: monotone, calibrated once a family reaches its labelled count", m.families.protection!.n === 80 && m.families.protection!.iso !== null && confidenceOf("termination_fee", 0.9, m).calibrated === (80 >= MIN_LABELLED) && confidenceOf("termination_fee", 0.9, m).p > confidenceOf("go_shop_days", 0.5, m).p && /were right \d+% of the time on 80 labelled protection fields \(80 deals\)/.test(confidenceOf("termination_fee", 0.9, m).note), confidenceOf("termination_fee", 0.9, m));
+    check("the labelled fixture yields its first calibration set (below the line, so still shown as a prior)", fitConfidence(labelled, "fixture").labelledDeals === 3 && labelled.length >= 30, labelled.length);
+    check("readValue by kind", readValue("per_share", "$27.00 per share in cash") === 27 && readValue("money_mm", "$52 million") === 52 && readValue("percent", "approximately 64%") === 0.64);
+  }
+
+  console.log("E1 Precedent Engine: similar deals and the multiple range");
+  {
+    const v = (seed: number) => Array.from({ length: 16 }, (_, i) => Math.sin(seed * 7.3 + i));
+    const a: DealLite = { id: 1, sic: "4922", evUsdMm: 3400, equityUsdMm: 2100, buyerType: "sponsor", year: 2024, country: "US", consideration: "cash", embedding: v(1) };
+    const b: DealLite = { id: 2, sic: "4922", evUsdMm: 2600, equityUsdMm: 1800, buyerType: "sponsor", year: 2023, country: "US", consideration: "cash", embedding: v(1.05) };
+    const c: DealLite = { id: 3, sic: "7372", evUsdMm: 900, equityUsdMm: 900, buyerType: "strategic", year: 2018, country: "US", consideration: "stock", embedding: v(9) };
+    check("the kernel and the score are symmetric", near(kernel(a, b).score, kernel(b, a).score, 1e-12) && near(similarity(a, c), similarity(c, a), 1e-12));
+    check("a same-industry, same-buyer, similar-size deal outranks a distant one", similarity(a, b) > similarity(a, c) && kernel(a, a).score > 0.95);
+    check("score is 0.6 cosine + 0.4 kernel with vectors; the kernel alone without", near(similarity(a, b), 0.6 * Math.max(0, cosine(a.embedding, b.embedding)) + 0.4 * kernel(a, b).score, 1e-12) && near(similarity({ ...a, embedding: null }, b), kernel(a, b).score, 1e-12));
+    check("SIC match: four digits 1, three 0.7, two 0.4", sicMatch("4922", "4922") === 1 && sicMatch("4922", "4923") === 0.7 && sicMatch("4922", "4911") === 0.4 && sicMatch("4922", "7372") === 0);
+    const why = whyChips(a, b);
+    check("why it matched, in chips", why.includes("same SIC 4922") && why.includes("sponsor buyer") && why.includes("cash deal"), why);
+    check("recall@10 of the bankers' choices", recallAtK([5, 6, 7, 8], [6, 8, 9], 10) === 2 / 3 && recallAtK([1], [], 10) === null);
+    const st = trimmedStats([8, 9, 10, 11, 12, 100]);
+    check("trimmed median and IQR resist one outlier", !!st && st.median >= 9.5 && st.median <= 11.5 && st.high < 100, st);
+    check("kNN needs three neighbours", knnPredict([{ score: 1, multiple: 10 }, { score: 1, multiple: 10 }]) === null && near(Math.exp(knnPredict([{ score: 1, multiple: 10 }, { score: 1, multiple: 10 }, { score: 1, multiple: 10 }])!), 10, 1e-9));
+    // Synthetic deals whose log multiple is a smooth function of a latent position plus noise: the 80% band must cover about 80%.
+    const R = rng(29), Z = normals(R), noise = Array.from({ length: 800 }, () => Z());
+    const pool = Array.from({ length: 400 }, (_, i) => ({ id: i + 1, year: 2014 + (i % 12), x: R(), e: noise[i] * 0.25 }));
+    const mult = (d: { x: number; e: number }) => Math.exp(Math.log(8) + 0.8 * d.x + d.e);
+    const deals = pool.map((d) => ({ id: d.id, year: d.year, multiple: mult(d) }));
+    const pos = new Map(pool.map((d) => [d.id, d.x]));
+    const score = (i: number, j: number) => 1 - Math.abs((pos.get(i) ?? 0) - (pos.get(j) ?? 0));
+    let covered = 0, n = 0, band: ReturnType<typeof conformalBand> = null;
+    for (let t = 0; t < 80; t++) {
+      const x = R(), truth = Math.exp(Math.log(8) + 0.8 * x + noise[400 + t] * 0.25);
+      const neigh = deals.map((d) => ({ score: 1 - Math.abs(x - pos.get(d.id)!), multiple: d.multiple }));
+      band = conformalBand(neigh, deals, score, { alpha: 0.2 });
+      if (!band) continue;
+      n++; if (truth >= band.low && truth <= band.high) covered++;
+    }
+    check("split-conformal 80% band covers at least the nominal level within its sampling error", n === 80 && covered / n >= 0.8 - 2 * Math.sqrt(0.16 / 80), { covered, n });
+    check("the band states the coverage it achieved on held-out recent deals", !!band && band.coverage !== null && /On \d+ deals from 2025 held out, it covered \d+%/.test(bandSentence(band)), band && bandSentence(band));
+    check("with too few years there is no band, and the sentence says so", conformalBand([], deals.filter((d) => d.year <= 2015), score) === null && /Not enough comparable deals/.test(bandSentence(null)));
+  }
+
+  console.log("E1 Precedent Engine: discovery, the backfill's switch, presentation");
+  {
+    const hits = JSON.parse(fixture("deals", "efts-hits.json")) as EftsHit[];
+    const docs = docsFromHits(hits);
+    check("one document per filing: the proxy's main document, not its exhibit", docs.filter((d) => d.accession === "0001193125-24-061234").length === 1 && docs.find((d) => d.accession === "0001193125-24-061234")!.url.endsWith("d712345ddefm14a.htm"));
+    const k = docs.find((d) => d.kind === "agreement");
+    check("an 8-K under Item 1.01 gives its merger agreement with the press release beside it", !!k && k.url.endsWith("ex2-1.htm") && !!k.press?.endsWith("ex99-1.htm"), k);
+    check("an 8-K without Item 1.01 is left out", !docs.some((d) => d.accession === "0000950170-25-011111"));
+    check("the filer is the target for proxies and 14D-9s; a joint proxy names both parties", docs.find((d) => d.kind === "tender")!.filerIsTarget && docs.find((d) => d.accession === "0001104659-24-099876")!.parties.length === 2);
+    check("SEC display names are cleaned", cleanName("Harbor Ridge Midstream, Inc.  (HRMI)  (CIK 0001700001)") === "Harbor Ridge Midstream, Inc.");
+    check("months for the backfill's cursor", nextMonth("2015-12") === "2016-01" && nextMonth("2024-02") === "2024-03" && monthEnd("2024-02") === "2024-02-29");
+    check("reading is off until an administrator switches it or sets the ceiling; a switch-off wins", !readingPolicy({}, null).on && readingPolicy({}, 5).on && readingPolicy({}, 5).dailyUsd === 5 && readingPolicy({ on: true }, null).dailyUsd === 0.5 && !readingPolicy({ on: false }, 5).on);
+    check("deals the day's budget still pays for", dealsLeft(0.5, 0) === 50 && dealsLeft(0.5, 0.45) === 5 && dealsLeft(0.5, 0.6) === 0 && dealsLeft(100, 0) === 500);
+    const rows = [
+      { field: "termination_fee", value: 68, quote: "a termination fee of $68 million", docUrl: "u", section: "Termination Fees", confidence: 0.86, checks: { list: [{ name: "quote", ok: true, detail: "found" }, { name: "fee_share", ok: true, detail: "3.2% of equity value" }], calibrated: false, note: "prior estimate: 0 labelled protection fields so far, calibration from 60" }, method: "m", modelVersion: "v" },
+      { field: "ndas", value: 9, quote: "nine parties", docUrl: "u", section: "Background", confidence: 0.8, checks: {}, method: "m", modelVersion: "v" },
+      { field: "sign_date", value: "2024-03-03", quote: "On March 3, 2024", docUrl: "u", section: "Background", confidence: 0.8, checks: {}, method: "m", modelVersion: "v" },
+      { field: "fairness_dcf", value: { low: 38.1, high: 47.6, unit: "usd_per_share" }, quote: "q", docUrl: "u", section: "Opinion", confidence: 0.8, checks: {}, method: "m", modelVersion: "v" },
+      { field: "per_share", value: 42.5, quote: "q", docUrl: "u", section: "Summary", confidence: 0.8, checks: {}, method: "m", modelVersion: "v" },
+    ];
+    const shown = shownFields(rows);
+    check("values in words", valueText("termination_fee", 68) === "$68.0m" && valueText("premium_unaffected", 0.314) === "31.4%" && valueText("go_shop_days", 45) === "45 days" && valueText("fairness_dcf", { low: 38.1, high: 47.6, unit: "usd_per_share" }) === "$38.10 to $47.60");
+    check("fields grouped by family in order", byFamily(shown).map((g) => g.family).join() === "price,protection,fairness,process");
+    check("the timeline runs first contact to signing with counts", timeline(shown, { signedAt: null }).map((t) => t.key).join() === "ndas,sign");
+    check("the football field takes per-share ranges and the offer", footballField(shown).bars.length === 1 && footballField(shown).offer === 42.5);
+    check("the confidence line names the cross-check and says it is a prior", /^cross-checked · 86% · prior estimate/.test(confidenceLine(shown[0])), confidenceLine(shown[0]));
+    const csv = dealCsv([{ id: 7, announcedAt: "2024-03-04", targetName: "Harbor Ridge, Inc.", targetTicker: "HRMI", acquirerName: "Lantern", buyerType: "sponsor", sic: "4922", consideration: "cash", equityUsdMm: 2100, evUsdMm: 3400, evEbitda: 8.4, evRevenue: 2.7, premiumUnaffected: 0.314, sources: [{ form: "DEFM14A", url: "https://x", filed: "2024-04-26", role: "proxy" }] } as never], new Map([[7, [{ field: "termination_fee", value: 68, quote: "a fee of $68 million, payable" }]]]));
+    check("exports carry the quote and the source", csv.split("\n").length === 2 && /"Harbor Ridge, Inc\."/.test(csv) && /"a fee of \$68 million, payable"/.test(csv) && csv.endsWith("https://x"), csv);
+    const cf = { cik: 1, entityName: "X", facts: { "us-gaap": {
+      Revenues: { units: { USD: [{ start: "2023-01-01", end: "2023-12-31", val: 1_200_000_000, accn: "a", fy: 2023, fp: "FY", form: "10-K", filed: "2024-02-20" }, { start: "2023-01-01", end: "2023-12-31", val: 1_300_000_000, accn: "b", fy: 2023, fp: "FY", form: "10-K/A", filed: "2024-06-01" }] } },
+      OperatingIncomeLoss: { units: { USD: [{ start: "2023-01-01", end: "2023-12-31", val: 250_000_000, accn: "a", fy: 2023, fp: "FY", form: "10-K", filed: "2024-02-20" }] } },
+      DepreciationDepletionAndAmortization: { units: { USD: [{ start: "2023-01-01", end: "2023-12-31", val: 150_000_000, accn: "a", fy: 2023, fp: "FY", form: "10-K", filed: "2024-02-20" }] } },
+      LongTermDebt: { units: { USD: [{ end: "2023-12-31", val: 1_400_000_000, accn: "a", fy: 2023, fp: "FY", form: "10-K", filed: "2024-02-20" }] } },
+      CashAndCashEquivalentsAtCarryingValue: { units: { USD: [{ end: "2023-12-31", val: 110_000_000, accn: "a", fy: 2023, fp: "FY", form: "10-K", filed: "2024-02-20" }] } },
+    } } };
+    const tf = factsAsOf(cf as never, "2024-03-04");
+    check("the target's figures as filed by the announcement: no later restatement leaks in", tf.revenueMm === 1200 && tf.ebitdaMm === 400 && tf.netDebtMm === 1290, tf);
+    check("the registry's field kinds are all readable", FIELDS.every((f) => FIELD[f.field] === f));
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

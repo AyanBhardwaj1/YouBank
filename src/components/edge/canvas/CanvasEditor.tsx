@@ -36,7 +36,7 @@ import { useCanvas } from "./useCanvas";
 import { errorMessage } from "@/lib/client/errors";
 
 const nodeTypes = { module: ModuleNode };
-const MODULES: Module[] = ["source", "earth", "documents", "networks", "scenarios", "output"];
+const MODULES: Module[] = ["source", "earth", "documents", "networks", "scenarios", "signals", "output"];
 const NO_CONFIG: Record<string, unknown> = {};
 const NONE: ReadonlySet<string> = new Set();
 // Props xyflow compares by identity, made once rather than on every frame of a drag.

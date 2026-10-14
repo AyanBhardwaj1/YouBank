@@ -24,6 +24,19 @@ export type Memo = {
   paragraphs?: { text: string; cites: number[]; support?: ClaimSupport }[]; verifier?: VerifierInfo;
 };
 export type Signal = { metric: string; value: number; previous?: number | null; triggered: boolean; detail: string };
+/** A precedent set (E1): deals like the query, with why each matched and the multiple range. */
+export type DealsValue = {
+  type: "deals"; title: string; query: string; method: string;
+  items: { id: number; target: string; buyer: string; announced: string; evUsdMm: number | null; evEbitda: number | null; evRevenue: number | null; premium: number | null; buyerType: string; why: string[]; url: string }[];
+  range: { median: number; p25: number; p75: number; n: number } | null;
+  band: { low: number; mid: number; high: number; level: number; coverage: number | null; text: string } | null;
+};
+/** Signal series (E3): weekly or monthly points per company and metric, with the latest change verdict. */
+export type SeriesValue = {
+  type: "series";
+  items: { ticker: string; name: string; metric: string; label: string; unit: string; points: { period: string; value: number }[]; latest: number | null; change: number | null; changeProb: number | null; falseAlarms: string; source: string }[];
+  note?: string;
+};
 export type FileValue = { name: string; key: string; bytes: number; url?: string };
 
 export type Evidence = { label: string; text: string; url?: string; synthetic?: boolean };
@@ -67,6 +80,15 @@ export function evidenceOf(kind: Kind | string, v: unknown): Evidence[] {
     case "memo": { const m = v as Memo; return [{ label: m.title, text: m.markdown.slice(0, 1500) }]; }
     case "signal": { const s = v as Signal; return [{ label: `Signal: ${s.metric}`, text: `${s.value}${s.triggered ? " (crossed its line)" : ""}. ${s.detail}` }]; }
     case "companies": return [{ label: "Companies", text: (v as Companies).items.map((c) => `${c.name} (${c.ticker})`).join(", ") }];
+    case "deals": {
+      const d = v as DealsValue;
+      const head = { label: `Precedents: ${d.title}`, text: `${d.items.length} deals like ${d.query} from EDGAR merger filings (${d.method}).${d.range ? ` EV/EBITDA median ${d.range.median.toFixed(1)}x, interquartile ${d.range.p25.toFixed(1)}x to ${d.range.p75.toFixed(1)}x (${d.range.n} deals).` : ""}${d.band ? ` ${d.band.text}` : ""}` };
+      return [head, ...d.items.slice(0, 8).map((x) => ({ label: `${x.target}${x.buyer ? ` / ${x.buyer}` : ""} (${x.announced.slice(0, 7)})`, text: `${x.evUsdMm ? `EV ${fmt(x.evUsdMm)}m` : "EV not stated"}${x.evEbitda ? `, ${x.evEbitda.toFixed(1)}x EBITDA` : ""}${x.premium !== null ? `, premium ${Math.round(x.premium * 100)}%` : ""}; ${x.why.join("; ")}`, url: x.url }))];
+    }
+    case "series": {
+      const sv = v as SeriesValue;
+      return sv.items.slice(0, 12).map((x) => ({ label: `${x.label}: ${x.name}${x.ticker ? ` (${x.ticker})` : ""}`, text: `Latest ${x.latest === null ? "n/a" : fmt(x.latest, 1)} ${x.unit}${x.change !== null && Number.isFinite(x.change) ? `, ${x.change >= 0 ? "+" : ""}${Math.round(x.change * 100)}% over six weeks` : ""}${x.changeProb !== null ? `; change probability ${x.changeProb.toFixed(2)}. ${x.falseAlarms}` : ""} Source: ${x.source}.` }));
+    }
     case "places": return [{ label: "Places", text: (v as Places).items.map((p) => p.name).join(", ") }];
     default: return [];
   }
@@ -84,6 +106,15 @@ export function rowsOf(kind: Kind | string, v: unknown): Table | null {
     case "ranking": return {
       columns: [{ name: "rank", type: "num" }, { name: "name", type: "text" }, { name: "ticker", type: "text" }, { name: "score", type: "num" }, { name: "reasons", type: "text" }],
       rows: (v as Ranking).items.map((i, k) => [k + 1, i.name, i.ticker ?? "", Math.round(i.score * 1000) / 1000, i.reasons.join("; ")]),
+    };
+    case "deals": return {
+      title: (v as DealsValue).title,
+      columns: [{ name: "deal_id", type: "num" }, { name: "announced", type: "text" }, { name: "target", type: "text" }, { name: "buyer", type: "text" }, { name: "buyer_type", type: "cat" }, { name: "ev_usd_mm", type: "num" }, { name: "ev_ebitda", type: "num" }, { name: "ev_revenue", type: "num" }, { name: "premium", type: "num" }, { name: "why_similar", type: "text" }, { name: "source", type: "text" }],
+      rows: (v as DealsValue).items.map((x) => [x.id, x.announced, x.target, x.buyer, x.buyerType, x.evUsdMm, x.evEbitda, x.evRevenue, x.premium, x.why.join("; "), x.url]),
+    };
+    case "series": return {
+      columns: [{ name: "ticker", type: "cat" }, { name: "metric", type: "cat" }, { name: "period", type: "text" }, { name: "value", type: "num" }, { name: "source", type: "text" }],
+      rows: (v as SeriesValue).items.flatMap((x) => x.points.map((p) => [x.ticker || x.name, x.metric, p.period, p.value, x.source])),
     };
     case "proforma": {
       const p = v as ProformaValue;
@@ -117,6 +148,8 @@ export function metricOf(kind: Kind | string, v: unknown): { metric: string; val
     case "table": return { metric: "Rows", value: (v as Table).rows.length, detail: (v as Table).synthetic ? "synthetic" : "" };
     case "graph": return { metric: "Links", value: (v as GraphValue).links.length, detail: `${(v as GraphValue).nodes.length} entities` };
     case "companies": return { metric: "Companies", value: (v as Companies).items.length, detail: "" };
+    case "deals": { const d = v as DealsValue; return { metric: "Precedents' median EV/EBITDA", value: d.range ? Math.round(d.range.median * 100) / 100 : 0, detail: d.range ? `${d.range.n} deals` : "no multiples yet" }; }
+    case "series": { const x = (v as SeriesValue).items[0]; return x ? { metric: `${x.label} (${x.ticker || x.name})`, value: x.latest ?? 0, detail: x.change !== null && Number.isFinite(x.change) ? `${Math.round(x.change * 100)}% over six weeks` : "" } : null; }
     case "signal": return { metric: (v as Signal).metric, value: (v as Signal).value, detail: (v as Signal).detail };
     default: return null;
   }
@@ -133,6 +166,8 @@ export function crossed(when: string, value: number, threshold: number, previous
 export function kindOfValue(v: unknown): Kind | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
+  if (o.type === "deals") return "deals";
+  if (o.type === "series") return "series";
   if ("claims" in o && "citations" in o) return "answer";
   if ("combined" in o && "parties" in o) return "proforma";
   if ("finding" in o && "items" in o) return "ranking";
