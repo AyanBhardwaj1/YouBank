@@ -10,6 +10,7 @@ import { knowledgeNote } from "./insights";
 import { asEntries, listPlaybook, recordQuestions } from "./knowledge";
 import { ENTRY_STAGES, STAGE_LABEL, companyDomain, isStage, stagesFor, statusForStage, type DraftKind, type Stage } from "./model";
 import { getSettings, internalDomains, personaFor, standingOrders } from "./settings";
+import { schedulingNote } from "@/lib/calendar/scheduling";
 
 export type ThreadRow = typeof schema.crmThreads.$inferSelect;
 export type MessageRow = typeof schema.crmMessages.$inferSelect;
@@ -257,10 +258,12 @@ export async function createDraft(userId: string, threadId: number, opts?: {
   const inbound = [...messages].reverse().find((m) => m.direction === "inbound") ?? messages[0];
   const audience = audienceOf(inbound.fromAddress, internalDomains(settings, mailboxes));
   const recent = `${thread.subject}\n${messages.slice(-3).map((m) => m.body).join("\n")}`;
-  const [lessons, examples, known] = await Promise.all([
+  const [lessons, examples, known, availability] = await Promise.all([
     lessonsFor(userId, contextOf({ kind: opts?.kind ?? "reply", meta: { audience } })),
     ownExamples(userId, recent),
     audience === "internal" ? Promise.resolve("") : knowledgeNote(userId, thread.contactId),
+    // Real free times from the calendar, when the thread is about meeting (premium; empty otherwise).
+    schedulingNote(userId, recent, { category: thread.category }).catch(() => ""),
   ]);
   const directory = thread.dealId
     ? await (async () => {
@@ -274,7 +277,7 @@ export async function createDraft(userId: string, threadId: number, opts?: {
     : null;
 
   const { data, provider, model } = await draftReply(input, {
-    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known].filter(Boolean).join("\n\n"),
+    mode: settings.mode, persona: personaFor(ctx, settings), orders: [standingOrders(settings), lessons, examples, known, availability].filter(Boolean).join("\n\n"),
     playbook: renderPlaybook(selectPlaybook(asEntries(playbook), recent)), audience,
     triage, directory: audience === "internal" ? null : directory, instruction: opts?.instruction,
   }, { prefs: ctx.prefs, override: opts?.override });

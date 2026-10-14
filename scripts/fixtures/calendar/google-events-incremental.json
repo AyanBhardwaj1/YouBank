@@ -1,0 +1,7 @@
+{
+  "kind": "calendar#events", "nextSyncToken": "CPDAlvWDx70CEPDAlvWDx70CGAY=",
+  "items": [
+    { "kind": "calendar#event", "id": "weekly123_20261013T130000Z", "status": "cancelled", "recurringEventId": "weekly123", "originalStartTime": { "dateTime": "2026-10-13T09:00:00-04:00" } },
+    { "kind": "calendar#event", "id": "new1", "status": "tentative", "summary": "Coffee with Pat", "start": { "dateTime": "2026-10-20T15:00:00Z" }, "end": { "dateTime": "2026-10-20T15:30:00Z" }, "location": "Join: https://acme.zoom.us/j/123456789", "organizer": { "email": "cfo@northwind.com", "displayName": "Pat" }, "attendees": [ { "email": "me@youbank.test", "self": true, "responseStatus": "needsAction" } ] }
+  ]
+}

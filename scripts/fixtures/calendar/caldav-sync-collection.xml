@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<multistatus xmlns="DAV:">
+  <response><href>/123456789/calendars/home/weekly.ics</href><propstat><prop><getetag>"C=103@U=abc"</getetag></prop><status>HTTP/1.1 200 OK</status></propstat></response>
+  <response><href>/123456789/calendars/home/one-off.ics</href><status>HTTP/1.1 404 Not Found</status></response>
+  <sync-token>HwoQEgwAAAh4Z2Y6AAAAAQ==</sync-token>
+</multistatus>

@@ -3,6 +3,8 @@
   "crons": [
     { "path": "/api/cron/sync", "schedule": "0 6 * * *" },
     { "path": "/api/cron/agent", "schedule": "0 11 * * *" },
-    { "path": "/api/cron/edge", "schedule": "30 7 * * *" }
+    { "path": "/api/cron/edge", "schedule": "30 7 * * *" },
+    { "path": "/api/cron/calendar", "schedule": "15 6 * * *" },
+    { "path": "/api/cron/calendar-briefs", "schedule": "45 10 * * *" }
   ]
 }
