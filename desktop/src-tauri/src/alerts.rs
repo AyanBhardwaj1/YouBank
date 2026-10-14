@@ -1,6 +1,6 @@
 //! Native notifications, and the alerts poller: every few minutes (the person's choice, at least two)
 //! the app asks /api/desktop/notifications what is new since it last asked (Edge findings and other bell
-//! alerts, email agent questions, news on pipeline deals) and shows each new item once. Polling only
+//! alerts, email agent questions, news on pipeline deals, meeting notes ready) and shows each new item once. Polling only
 //! reads; it never starts anything that costs money. It runs only while the person has at least one
 //! kind switched on and this computer is connected.
 
@@ -53,7 +53,11 @@ pub async fn check(app: &AppHandle) -> Result<usize, ApiError> {
     }
     let path = state.data_dir.join("alerts.json");
     let mut cursor: Cursor = read_json(&path);
-    let kinds: Vec<&str> = [("alerts", s.alerts), ("questions", s.questions), ("deals", s.deals)].into_iter().filter(|(_, on)| *on).map(|(k, _)| k).collect();
+    let kinds: Vec<&str> = [("alerts", s.alerts), ("questions", s.questions), ("deals", s.deals), ("meetings", s.meetings)]
+        .into_iter()
+        .filter(|(_, on)| *on)
+        .map(|(k, _)| k)
+        .collect();
     let query = {
         let mut q = url::form_urlencoded::Serializer::new(String::new());
         q.append_pair("kinds", &kinds.join(","));
@@ -94,6 +98,20 @@ pub async fn check(app: &AppHandle) -> Result<usize, ApiError> {
     cursor.since = Some(feed.now);
     let _ = write_json(&path, &cursor);
     Ok(fresh.len())
+}
+
+/// Record an item as shown, so the poller does not show it again (the meeting copilot announces the
+/// notes of a meeting this computer captured itself, with the feed's id for it).
+pub fn mark_seen(app: &AppHandle, id: &str) {
+    let path = app.state::<AppState>().data_dir.join("alerts.json");
+    let mut cursor: Cursor = read_json(&path);
+    if !cursor.seen.iter().any(|s| s == id) {
+        cursor.seen.push_back(id.to_string());
+        while cursor.seen.len() > 400 {
+            cursor.seen.pop_front();
+        }
+        let _ = write_json(&path, &cursor);
+    }
 }
 
 /// The poller: runs for the life of the app, sleeping between checks and backing off when asked to.

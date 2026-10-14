@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged into the app's Info.plist by Tauri. macOS shows these when the meeting copilot first records. -->
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>YouBank records your microphone only while you run the meeting copilot, to transcribe the meeting and write your notes.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>YouBank records what your computer plays (the other side of a call) only while you run the meeting copilot, to transcribe the meeting.</string>
+</dict>
+</plist>
