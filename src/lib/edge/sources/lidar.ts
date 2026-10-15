@@ -13,6 +13,7 @@ import { boxToMercator, encodePoints, NOISE_CLASSES, passes, selectNodes, survey
 import type { Bbox, SourceInfo } from "./eia";
 import { boxAround } from "./sentinel";
 import { pool } from "../terrain";
+import { fetchRetry } from "@/lib/net";
 
 export const LIDAR_POINTS: SourceInfo = {
   key: "usgs-3dep-ept",
@@ -39,7 +40,7 @@ const validName = (s: string) => /^[A-Za-z0-9_-]{3,120}$/.test(s);
 /** The index of surveys: name, outline's box, point count and year. 2,300 surveys, ~150 KB once compacted. */
 async function surveyIndex(): Promise<Survey[]> {
   return cacheJson("edge:lidar:index:v1", MONTH, async () => {
-    const res = await fetch(INDEX_URL(), { headers: UA, cache: "no-store", signal: AbortSignal.timeout(45_000) });
+    const res = await fetchRetry(INDEX_URL(), { headers: UA, cache: "no-store", timeoutMs: 45_000 });
     if (!res.ok) throw new Error(`The lidar survey index answered ${res.status}`);
     const j = (await res.json()) as { features?: { properties?: { name?: string; count?: number }; geometry?: { coordinates?: unknown } }[] };
     const out: Survey[] = [];
@@ -68,7 +69,7 @@ type EptMeta = { bounds: Bounds3; dataType: string; srs: string; points: number 
 
 async function eptMeta(name: string): Promise<EptMeta> {
   return cacheJson(`edge:lidar:ept:v1:${name}`, MONTH, async () => {
-    const res = await fetch(`${BUCKET}/${name}/ept.json`, { headers: UA, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const res = await fetchRetry(`${BUCKET}/${name}/ept.json`, { headers: UA, cache: "no-store", timeoutMs: 20_000 });
     if (!res.ok) throw new Error(`The lidar survey ${name} answered ${res.status}`);
     const j = (await res.json()) as { bounds: number[]; dataType: string; srs?: { horizontal?: string }; points: number };
     return { bounds: j.bounds as Bounds3, dataType: j.dataType, srs: j.srs?.horizontal ?? "", points: j.points };
@@ -77,7 +78,7 @@ async function eptMeta(name: string): Promise<EptMeta> {
 
 async function hierarchyFile(name: string, key: string): Promise<Record<string, number>> {
   return cacheJson(`edge:lidar:hier:v1:${name}:${key}`, MONTH, async () => {
-    const res = await fetch(`${BUCKET}/${name}/ept-hierarchy/${key}.json`, { headers: UA, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const res = await fetchRetry(`${BUCKET}/${name}/ept-hierarchy/${key}.json`, { headers: UA, cache: "no-store", timeoutMs: 20_000 });
     if (!res.ok) throw new Error(`The lidar hierarchy answered ${res.status}`);
     return (await res.json()) as Record<string, number>;
   });
@@ -156,7 +157,7 @@ export async function decodeLaz(bytes: Uint8Array): Promise<Points> {
 }
 
 async function fetchNode(name: string, key: string): Promise<Uint8Array> {
-  const res = await fetch(`${BUCKET}/${name}/ept-data/${key}.laz`, { headers: UA, cache: "no-store", signal: AbortSignal.timeout(30_000) });
+  const res = await fetchRetry(`${BUCKET}/${name}/ept-data/${key}.laz`, { headers: UA, cache: "no-store", timeoutMs: 30_000 });
   if (!res.ok) throw new Error(`A lidar tile answered ${res.status}`);
   return new Uint8Array(await res.arrayBuffer());
 }

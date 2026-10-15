@@ -15,6 +15,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Person } from "./match";
 import type { MeetingStatus, Segment } from "./model";
+import { fetchRetry } from "@/lib/net";
 
 export type BotState = {
   /** The provider's latest status code, e.g. "in_call_recording". */
@@ -148,8 +149,9 @@ export function recallProvider(env: Record<string, string | undefined> = process
   const key = env.RECALL_API_KEY?.trim() ?? "";
   const base = (env.RECALL_API_URL?.trim() || `https://${env.RECALL_REGION?.trim() || "us-west-2"}.recall.ai`).replace(/\/+$/, "");
   const call = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-    const res = await fetch(`${base}/api/v1${path}`, {
-      ...init, cache: "no-store", signal: AbortSignal.timeout(RECALL_TIMEOUT_MS),
+    // Reads get one retry on a network failure, 429 or 5xx; creating or removing a bot is never repeated.
+    const res = await fetchRetry(`${base}/api/v1${path}`, {
+      ...init, cache: "no-store", timeoutMs: RECALL_TIMEOUT_MS,
       headers: { authorization: key.startsWith("Token ") ? key : `Token ${key}`, "content-type": "application/json", accept: "application/json", ...(init.headers ?? {}) },
     });
     const text = await res.text();
@@ -157,7 +159,7 @@ export function recallProvider(env: Record<string, string | undefined> = process
     return (text ? JSON.parse(text) : {}) as T;
   };
   const download = async (url: string): Promise<unknown> => {
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(60_000) });
+    const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 60_000 });
     if (!res.ok) throw new Error(`The notetaker's transcript could not be downloaded (${res.status})`);
     return res.json();
   };

@@ -6,6 +6,7 @@
  */
 import { cacheJson } from "@/lib/cache";
 import type { SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 export const NM_OCD: SourceInfo = {
   key: "nm-ocd-c115b",
@@ -57,7 +58,7 @@ export async function reportedNear(lon: number, lat: number, radiusKm = 3): Prom
     const envelope = [lon - dLon, lat - dLat, lon + dLon, lat + dLat].map((v) => v.toFixed(5)).join(",");
     const rows = (await Promise.all(LAYERS.map(async (l) => {
       const q = new URLSearchParams({ where: "1=1", geometry: envelope, geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects", outFields: "id,name,type,ogrid_name,latitude,longitude,details,reporting_period,waste_type,volume", returnGeometry: "false", orderByFields: "reporting_period DESC", resultRecordCount: "400", f: "json" });
-      const res = await fetch(`${NM_OCD.url}/${l.id}/query?${q}`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+      const res = await fetchRetry(`${NM_OCD.url}/${l.id}/query?${q}`, { cache: "no-store", timeoutMs: 20_000 });
       if (!res.ok) throw new Error(`New Mexico OCD answered ${res.status}`);
       const j = (await res.json()) as { features?: { attributes: Row }[]; error?: { message?: string } };
       if (j.error) throw new Error(`New Mexico OCD: ${j.error.message ?? "error"}`);

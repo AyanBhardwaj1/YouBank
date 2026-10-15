@@ -7,6 +7,7 @@
  */
 import { cacheJson } from "@/lib/cache";
 import type { Bbox, SourceInfo } from "../sources/eia";
+import { fetchRetry } from "@/lib/net";
 
 export const PLANET: SourceInfo = {
   key: "planet",
@@ -72,8 +73,8 @@ function key(): string {
 export async function planetScenes(bbox: Bbox): Promise<PlanetScene[]> {
   const bucket = Math.floor(Date.now() / (6 * 3_600_000));
   return cacheJson(`edge:planet:v1:${bbox.map((v) => v.toFixed(4)).join(",")}:${bucket}`, 6 * 3_600_000, async () => {
-    const res = await fetch(`${SEARCH}?_sort=${encodeURIComponent("acquired desc")}&_page_size=50`, {
-      method: "POST", headers: { authorization: planetAuth(key()), "content-type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(20_000),
+    const res = await fetchRetry(`${SEARCH}?_sort=${encodeURIComponent("acquired desc")}&_page_size=50`, {
+      method: "POST", headers: { authorization: planetAuth(key()), "content-type": "application/json" }, cache: "no-store", timeoutMs: 20_000, idempotent: true,
       body: JSON.stringify(planetSearchBody(bbox, new Date())),
     });
     if (!res.ok) throw Object.assign(new Error(res.status === 401 || res.status === 403 ? "Planet did not accept the key." : `Planet search answered ${res.status}`), { status: 502 });
@@ -91,14 +92,14 @@ export function validTile(z: number, x: number, y: number): boolean {
 
 /** One 256 px XYZ tile of a scene (Planet's tile service), for draping it in 3D. Counts against the account's quota. */
 export async function planetTile(type: PlanetType, id: string, z: number, x: number, y: number): Promise<{ body: ArrayBuffer; contentType: string }> {
-  const res = await fetch(`${XYZ}/${type}/${encodeURIComponent(id)}/${z}/${x}/${y}.png`, { headers: { authorization: planetAuth(key()) }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  const res = await fetchRetry(`${XYZ}/${type}/${encodeURIComponent(id)}/${z}/${x}/${y}.png`, { headers: { authorization: planetAuth(key()) }, cache: "no-store", timeoutMs: 20_000 });
   if (!res.ok) throw Object.assign(new Error(`Planet tile answered ${res.status}`), { status: res.status === 404 ? 404 : 502 });
   return { body: await res.arrayBuffer(), contentType: res.headers.get("content-type") ?? "image/png" };
 }
 
 /** A scene's thumbnail (512 px), as bytes and type. */
 export async function planetThumb(type: PlanetType, id: string): Promise<{ body: ArrayBuffer; contentType: string }> {
-  const res = await fetch(`${TILES}/${type}/items/${encodeURIComponent(id)}/thumb?width=512`, { headers: { authorization: planetAuth(key()) }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  const res = await fetchRetry(`${TILES}/${type}/items/${encodeURIComponent(id)}/thumb?width=512`, { headers: { authorization: planetAuth(key()) }, cache: "no-store", timeoutMs: 20_000 });
   if (!res.ok) throw Object.assign(new Error(`Planet thumbnail answered ${res.status}`), { status: res.status === 404 ? 404 : 502 });
   return { body: await res.arrayBuffer(), contentType: res.headers.get("content-type") ?? "image/png" };
 }

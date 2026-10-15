@@ -7,6 +7,7 @@ import { cacheGet, cacheSet } from "@/lib/cache";
 import { GDELT_DOMAINS, GDELT_QUERIES } from "../desks";
 import { canonicalUrl, cleanTitle, keyOf, tickersIn } from "../normalize";
 import { NEWS_UA, type FetchResult, type RawItem } from "../types";
+import { fetchRetry } from "@/lib/net";
 
 const PUBLISHER: Record<string, string> = { "reuters.com": "Reuters", "apnews.com": "AP" };
 
@@ -31,7 +32,7 @@ export async function fetchGdelt(): Promise<FetchResult> {
   const query = `${q.q} (${GDELT_DOMAINS.map((d) => `domainis:${d}`).join(" OR ")})`;
   const url = `https://api.gdeltproject.org/api/v2/doc/doc?${new URLSearchParams({ query, mode: "artlist", format: "json", maxrecords: "60", timespan: "12h", sort: "datedesc" })}`;
   try {
-    const res = await fetch(url, { headers: { "User-Agent": NEWS_UA }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const res = await fetchRetry(url, { headers: { "User-Agent": NEWS_UA }, cache: "no-store", timeoutMs: 20_000 });
     const text = await res.text();
     if (!res.ok || !text.trim().startsWith("{")) {
       await cacheSet("news:gdelt:backoff", "1", 30 * 60_000);

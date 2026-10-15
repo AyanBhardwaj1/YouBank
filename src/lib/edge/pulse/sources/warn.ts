@@ -9,6 +9,7 @@
  */
 import { fetchText } from "../../entities/http";
 import { nameScore } from "../../entities/crosswalk";
+import { fetchRetry } from "@/lib/net";
 
 export type WarnNotice = { state: string; company: string; date: string; employees: number; city: string; kind: string; key: string };
 export type WarnSource = { state: string; name: string; url: string; format: "xlsx" | "csv" | "json"; page: string; columns: Record<"company" | "date" | "employees" | "city" | "kind", string[]> };
@@ -106,7 +107,7 @@ async function xlsxRows(buf: ArrayBuffer): Promise<Record<string, unknown>[]> {
 export async function readWarn(src: WarnSource): Promise<WarnNotice[]> {
   const url = sourceUrl(src);
   if (src.format === "xlsx") {
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000), headers: { "User-Agent": "YouBank research (Edge; +https://youbank-nu.vercel.app)" } });
+    const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 30_000, headers: { "User-Agent": "YouBank research (Edge; +https://youbank-nu.vercel.app)" } });
     if (!res.ok) throw Object.assign(new Error(`${src.name} answered ${res.status}`), { status: 502 });
     return rowsToNotices(await xlsxRows(await res.arrayBuffer()), src);
   }

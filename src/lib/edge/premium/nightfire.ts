@@ -18,6 +18,7 @@ import { cacheJson } from "@/lib/cache";
 import { logError } from "@/lib/errors";
 import { COVERED } from "../assets";
 import type { Bbox } from "../sources/eia";
+import { fetchRetry } from "@/lib/net";
 
 export const NIGHTFIRE = { name: "VIIRS Nightfire (Earth Observation Group, Colorado School of Mines)", url: "https://eogdata.mines.edu/products/vnf/", license: "VIIRS Nightfire Data Use License" };
 /** EOG's calibration: billion cubic metres a year per MW of average radiant heat. */
@@ -148,7 +149,7 @@ async function night(date: string): Promise<Detection[] | null> {
     const out: Detection[] = [];
     for (const sat of SATS) {
       const url = URL_TEMPLATE().replace("{sat}", sat).replace("{date}", date);
-      const res = await fetch(url, { headers: { authorization: `Bearer ${await accessToken()}` }, cache: "no-store", signal: AbortSignal.timeout(60_000) });
+      const res = await fetchRetry(url, { headers: { authorization: `Bearer ${await accessToken()}` }, cache: "no-store", timeoutMs: 60_000 });
       if (res.status === 404) continue;
       if (!res.ok) throw new Error(`Nightfire answered ${res.status} for ${date}`);
       const buf = new Uint8Array(await res.arrayBuffer());

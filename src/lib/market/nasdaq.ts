@@ -9,6 +9,7 @@
  * and its display licence) is the answer before charging users.
  */
 import { cacheGet, cacheSet } from "@/lib/cache";
+import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 export const BASE = "https://api.nasdaq.com/api";
 /** The headers a browser on nasdaq.com sends; without them the API refuses or hangs. */
@@ -30,13 +31,12 @@ async function get<T>(path: string, ttlMs: number): Promise<T | null> {
   const key = `nasdaq:${path}`;
   const hit = await cacheGet(key);
   if (hit) return JSON.parse(hit) as T | null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12_000);
   let data: T | null = null;
   try {
-    const res = await fetch(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", signal: ctrl.signal });
+    // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try.
+    const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: 12_000, retryOn: retryServerErrors });
     if (res.ok) data = ((await res.json()) as { data?: T | null })?.data ?? null;
-  } catch { /* network, timeout or a blocked request */ } finally { clearTimeout(timer); }
+  } catch { /* network, timeout or a blocked request */ }
   await cacheSet(key, JSON.stringify(data), data ? ttlMs : 5 * MIN);
   return data;
 }

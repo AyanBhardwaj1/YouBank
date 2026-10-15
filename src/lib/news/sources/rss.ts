@@ -7,6 +7,7 @@ import { XMLParser } from "fast-xml-parser";
 import type { Feed } from "../desks";
 import { canonicalUrl, cleanTitle, domainOf, keyOf, parseFeedDate, stripHtml, tickersIn } from "../normalize";
 import { NEWS_UA, type FetchResult, type RawItem } from "../types";
+import { fetchRetry } from "@/lib/net";
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@", textNodeName: "#text", parseTagValue: false, trimValues: true, processEntities: true, htmlEntities: true });
 const arr = <T,>(x: T | T[] | undefined | null): T[] => (x == null ? [] : Array.isArray(x) ? x : [x]);
@@ -63,7 +64,7 @@ export async function fetchRss(feed: Feed, state: { etag?: string; lastModified?
   if (state.lastModified) headers["If-Modified-Since"] = state.lastModified;
   let res: Response;
   try {
-    res = await fetch(feed.url, { headers, cache: "no-store", redirect: "follow", signal: AbortSignal.timeout(12_000) });
+    res = await fetchRetry(feed.url, { headers, cache: "no-store", redirect: "follow", timeoutMs: 12_000 });
   } catch (e) {
     return { status: "error", items: [], error: e instanceof Error ? e.message : "fetch failed" };
   }

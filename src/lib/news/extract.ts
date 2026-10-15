@@ -8,6 +8,7 @@ import { PAYWALLED } from "./desks";
 import { decodeEntities, domainOf } from "./normalize";
 import { allowedToFetch } from "./robots";
 import { NEWS_UA } from "./types";
+import { fetchRetry } from "@/lib/net";
 
 /** The main text of an article page: <article> if there is one, else substantial paragraphs. Pure, for tests. */
 export function mainText(html: string, max = 8000): string {
@@ -31,7 +32,7 @@ export async function openArticleText(url: string): Promise<string | null> {
   if (!domain || PAYWALLED.test(domain) || domain.endsWith("sec.gov")) return null;
   if (!(await allowedToFetch(url))) return null;
   try {
-    const res = await fetch(url, { headers: { "User-Agent": NEWS_UA, Accept: "text/html" }, cache: "no-store", redirect: "follow", signal: AbortSignal.timeout(10_000) });
+    const res = await fetchRetry(url, { headers: { "User-Agent": NEWS_UA, Accept: "text/html" }, cache: "no-store", redirect: "follow", timeoutMs: 10_000 });
     if (!res.ok || !/text\/html/i.test(res.headers.get("content-type") ?? "")) return null;
     const html = (await res.text()).slice(0, 1_500_000);
     if (markedPaywalled(html)) return null;

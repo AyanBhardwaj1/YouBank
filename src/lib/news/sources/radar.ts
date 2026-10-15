@@ -5,9 +5,10 @@
  */
 import { canonicalUrl, keyOf } from "../normalize";
 import { NEWS_UA, type FetchResult, type RawItem } from "../types";
+import { fetchRetry } from "@/lib/net";
 
 const get = async <T,>(url: string, headers: Record<string, string> = {}): Promise<T | null> => {
-  const res = await fetch(url, { headers: { "User-Agent": NEWS_UA, Accept: "application/json", ...headers }, cache: "no-store", signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const res = await fetchRetry(url, { headers: { "User-Agent": NEWS_UA, Accept: "application/json", ...headers }, cache: "no-store", timeoutMs: 15_000 }).catch(() => null);
   return res?.ok ? ((await res.json().catch(() => null)) as T | null) : null;
 };
 

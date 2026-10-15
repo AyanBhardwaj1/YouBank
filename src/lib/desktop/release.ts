@@ -6,6 +6,7 @@
  * GITHUB_TOKEN, when set, raises GitHub's anonymous limit of 60 requests an hour; it is never required.
  */
 import { memo } from "@/lib/memo";
+import { fetchRetry } from "@/lib/net";
 
 export const DESKTOP_REPO = process.env.DESKTOP_RELEASE_REPO?.trim() || "AyanBhardwaj1/YouBank";
 export const RELEASES_URL = `https://github.com/${DESKTOP_REPO}/releases`;
@@ -46,9 +47,9 @@ export function pickRelease(list: GhRelease[]): DesktopRelease | null {
 export async function latestDesktopRelease(): Promise<DesktopRelease | null> {
   return memo("desktop:release", 600_000, async () => {
     const token = process.env.GITHUB_TOKEN?.trim();
-    const res = await fetch(`https://api.github.com/repos/${DESKTOP_REPO}/releases?per_page=20`, {
+    const res = await fetchRetry(`https://api.github.com/repos/${DESKTOP_REPO}/releases?per_page=20`, {
       headers: { accept: "application/vnd.github+json", "user-agent": "YouBank", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      signal: AbortSignal.timeout(5_000),
+      timeoutMs: 5_000,
     });
     if (!res.ok) throw new Error(`GitHub releases answered ${res.status}`);
     return pickRelease((await res.json()) as GhRelease[]);

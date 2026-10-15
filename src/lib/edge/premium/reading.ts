@@ -25,6 +25,7 @@ import { requireReady, upgradeOn } from "../premium";
 import { planPieces, pieceBytes, wavInfo, type Piece, type WavInfo } from "./audio";
 import { DIARIZE_CREDIT, diarizeModel, diarizePiece, mergePieces, nameSpeakers, turnsOf, type PieceResult } from "./diarize";
 import { LLAMA_MAX_BYTES, llamaBase, llamaCost, llamaTier, llamaUpload, parseLlamaJob, partsFromMarkdown } from "./llamaparse";
+import { fetchRetry } from "@/lib/net";
 
 export type PremiumRead = "llamaparse" | "diarize";
 export const READ_FEATURE: Record<PremiumRead, string> = { llamaparse: "edge.parse-llamaparse", diarize: "edge.transcribe-diarize" };
@@ -190,7 +191,7 @@ async function llamaRead(docId: number, s: Steps): Promise<boolean> {
     await s.sleep(`llama-wait-${k}`, k < 6 ? "5s" : "10s");
     const r = await once(s, `llama-poll-${k}`, async (): Promise<{ state: "wait" | "done" | "failed"; error?: string }> => {
       // The job is already paid for, so a check that fails is tried again on the next poll.
-      const res = await fetch(`${llamaBase()}/api/v2/parse/${encodeURIComponent(job.id)}?expand=markdown`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(60_000) }).catch(() => null);
+      const res = await fetchRetry(`${llamaBase()}/api/v2/parse/${encodeURIComponent(job.id)}?expand=markdown`, { headers: { authorization: `Bearer ${key}`, accept: "application/json" }, cache: "no-store", timeoutMs: 60_000 }).catch(() => null);
       if (!res || res.status >= 500 || res.status === 429) return { state: "wait" };
       if (!res.ok) throw await refused("LlamaParse", res);
       const j = parseLlamaJob(await res.json());

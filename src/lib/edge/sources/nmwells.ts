@@ -5,6 +5,7 @@
  * well name and a link to its record come with it.
  */
 import type { Bbox, SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 export const NM_WELLS: SourceInfo = {
   key: "nm-ocd-wells",
@@ -35,7 +36,7 @@ export async function nmPermitted(bbox: Bbox, since: string): Promise<NmPermit[]
     where: `status = 'New' AND effective_date >= DATE '${since}'`, geometry: bbox.map((v) => v.toFixed(5)).join(","), geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
     outFields: "id,name,ogrid_name,type,latitude,longitude,effective_date,spud_date,details", returnGeometry: "false", orderByFields: "effective_date DESC", resultRecordCount: "2000", f: "json",
   });
-  const res = await fetch(`${NM_WELLS.url}/query?${q}`, { cache: "no-store", signal: AbortSignal.timeout(25_000) });
+  const res = await fetchRetry(`${NM_WELLS.url}/query?${q}`, { cache: "no-store", timeoutMs: 25_000 });
   if (!res.ok) throw new Error(`New Mexico OCD answered ${res.status}`);
   const j = (await res.json()) as { features?: { attributes: Row }[]; error?: { message?: string } };
   if (j.error) throw new Error(`New Mexico OCD: ${j.error.message ?? "error"}`);

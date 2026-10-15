@@ -22,10 +22,13 @@ const handler = {
     const secret = process.env.AUTOPILOT_SECRET;
     if (!base || !secret) return new Response("YOUBANK_URL and AUTOPILOT_SECRET must be set on this function.", { status: 500 });
 
+    // The pass runs at most 300 s (Vercel's limit); a little more and the connection is given up rather than held.
     const res = await fetch(`${base.replace(/\/$/, "")}/api/cron/autopilot`, {
       method: "POST",
       headers: { authorization: `Bearer ${secret}`, "x-autopilot-invocation": invocation },
-    });
+      signal: AbortSignal.timeout(310_000),
+    }).catch((e: unknown) => e as Error);
+    if (res instanceof Error) return new Response(JSON.stringify({ error: `YouBank did not answer: ${res.name}` }), { status: 502, headers: { "content-type": "application/json" } });
     return new Response(await res.text(), { status: res.status, headers: { "content-type": "application/json" } });
   },
 };

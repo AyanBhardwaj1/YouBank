@@ -16,6 +16,7 @@ import { createSign } from "node:crypto";
 import { recordUsage } from "@/lib/ai/usage";
 import { logError } from "@/lib/errors";
 import { FACTOR_LABEL, FACTORS, type Factor, type FactorRow } from "../scen/data";
+import { fetchRetry } from "@/lib/net";
 
 export type ForecastPoint = { date: string; p10: number; p50: number; p90: number };
 export type DriverForecast = {
@@ -147,7 +148,7 @@ async function bigQuery(sqlText: string): Promise<QueryAnswer> {
   if (!res.ok) throw new Error(`BigQuery answered ${res.status}: ${(await res.text()).slice(0, 200)}`);
   let j = (await res.json()) as QueryAnswer;
   for (let i = 0; !j.jobComplete && j.jobReference?.jobId && i < 6; i++) {
-    res = await fetch(`${base}/queries/${encodeURIComponent(j.jobReference.jobId)}?location=${encodeURIComponent(j.jobReference.location ?? location)}&timeoutMs=10000`, { headers: auth, cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    res = await fetchRetry(`${base}/queries/${encodeURIComponent(j.jobReference.jobId)}?location=${encodeURIComponent(j.jobReference.location ?? location)}&timeoutMs=10000`, { headers: auth, cache: "no-store", timeoutMs: 20_000 });
     if (!res.ok) throw new Error(`BigQuery answered ${res.status}`);
     j = (await res.json()) as QueryAnswer;
   }

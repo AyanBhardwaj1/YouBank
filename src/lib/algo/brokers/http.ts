@@ -6,6 +6,7 @@
  */
 import { brokerReason } from "@/lib/copytrade/snaptrade";
 import { BrokerError } from "./types";
+import { fetchRetry } from "@/lib/net";
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 export const defaultFetch: Fetch = (url, init) => fetch(url, init);
@@ -25,7 +26,9 @@ export function failure(broker: string, httpStatus: number, body: unknown): Brok
 export async function send<T>(broker: string, f: Fetch, r: Req): Promise<T> {
   let res: Response;
   try {
-    res = await f(r.url, { method: r.method, headers: { Accept: "application/json", ...(r.body !== undefined ? { "Content-Type": "application/json" } : {}), ...r.headers }, body: r.body, cache: "no-store", signal: AbortSignal.timeout(r.timeoutMs ?? 30_000) });
+    // Only GETs are ever repeated (one retry on a network failure, 429 or 5xx). Orders (POST), cancels
+    // (DELETE) and changes (PATCH) go out exactly once; their client order ids keep them idempotent upstream.
+    res = await fetchRetry(r.url, { fetch: f, method: r.method, headers: { Accept: "application/json", ...(r.body !== undefined ? { "Content-Type": "application/json" } : {}), ...r.headers }, body: r.body, cache: "no-store", timeoutMs: r.timeoutMs ?? 30_000, idempotent: r.method === "GET" });
   } catch (e) {
     const name = (e as { name?: string } | null)?.name ?? "";
     throw new BrokerError(name === "TimeoutError" || name === "AbortError" ? `${broker} did not answer in time.` : `${broker} could not be reached.`, 504, 0, "", true);

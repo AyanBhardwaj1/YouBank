@@ -8,6 +8,7 @@
  */
 import { cacheJson } from "@/lib/cache";
 import type { Bbox, SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 export const OSM: SourceInfo = {
   key: "osm-overpass",
@@ -126,8 +127,8 @@ const round1 = (v: number) => Math.round(v * 10) / 10;
 /** The OpenStreetMap features at a site's box, kept a week. An Overpass outage gives an empty site, not an error. */
 export async function osmSite(bbox: Bbox): Promise<OsmSite> {
   return cacheJson(`edge:osm:v1:${bbox.map((v) => v.toFixed(4)).join(",")}`, WEEK, async () => {
-    const res = await fetch(ENDPOINT(), {
-      method: "POST", cache: "no-store", signal: AbortSignal.timeout(30_000),
+    const res = await fetchRetry(ENDPOINT(), {
+      method: "POST", cache: "no-store", timeoutMs: 30_000, idempotent: true,
       headers: { "content-type": "application/x-www-form-urlencoded", "User-Agent": "YouBank research (Edge digital twin)" },
       body: `data=${encodeURIComponent(overpassQuery(bbox))}`,
     });

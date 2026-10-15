@@ -21,6 +21,7 @@ import { withinRate } from "@/lib/locks";
 import { sectorOfSic } from "@/lib/news/desks";
 import { BUILTIN_OVERRIDES, isCommonTitle, OPENFIGI_URL, openFigiJobs, openFigiLimits, parse13fList, pickFigi, shareClassOf, tickerForClass, type TickerRow } from "./cusip";
 import type { SecurityInfo } from "./targets";
+import { fetchRetry } from "@/lib/net";
 
 export type Security = SecurityInfo & { cusip: string; source: string; onList: boolean | null; hasOptions: boolean | null };
 type Want = { cusip: string; name: string; title: string };
@@ -82,7 +83,7 @@ async function openFigi(cusips: string[], deadline: number): Promise<Map<string,
     if (!(await withinRate("openfigi", lim.perWindow, lim.windowMs))) break;
     const chunk = cusips.slice(i, i + lim.jobs);
     try {
-      const res = await fetch(OPENFIGI_URL, { method: "POST", cache: "no-store", signal: AbortSignal.timeout(15_000), headers: { "Content-Type": "application/json", ...(key ? { "X-OPENFIGI-APIKEY": key } : {}) }, body: JSON.stringify(openFigiJobs(chunk)) });
+      const res = await fetchRetry(OPENFIGI_URL, { method: "POST", cache: "no-store", timeoutMs: 15_000, idempotent: true, headers: { "Content-Type": "application/json", ...(key ? { "X-OPENFIGI-APIKEY": key } : {}) }, body: JSON.stringify(openFigiJobs(chunk)) });
       if (res.status === 429) break;
       if (!res.ok) continue;
       const answers = (await res.json()) as Parameters<typeof pickFigi>[0][];
