@@ -82,8 +82,10 @@ export async function POST(req: Request) {
         await requireQuantConsent(user.id);
         await requireFeature(user, "quant.sizing-pro");
         const rules = (Array.isArray(b.rules) ? (b.rules as Record<string, unknown>[]) : POD_RULES).slice(0, 6).map((x) => ({ fromPeakPct: n(x.fromPeakPct, 0.005, 0.9, "A rule's level"), action: (["halve", "flatten", "pause_new", "notify"].includes(String(x.action)) ? x.action : "notify") as Rule["action"] }));
-        const budget = buildRiskBudget({ ownerId: user.id, accountRef: typeof b.accountRef === "string" ? b.accountRef : null, kelly: null, ofKelly: n(b.ofKelly ?? 0.25, 0, 1, "The Kelly fraction"), rules, volTarget: b.volTarget ? n(b.volTarget, 0.01, 1, "The volatility target") : null, maxPositionWeight: n(b.maxPositionWeight ?? 0.1, 0.005, 1, "The largest position"), maxGross: n(b.maxGross ?? 1, 0.05, 4, "Gross exposure"), maxDailyLossPct: n(b.maxDailyLossPct ?? 0.03, 0.001, 1, "The daily loss limit") });
-        const saved = await saveRiskBudget(budget, b);
+        const accountRef = typeof b.accountRef === "string" && b.accountRef.trim() ? b.accountRef.trim().slice(0, 60) : null;
+        const budget = buildRiskBudget({ ownerId: user.id, accountRef, kelly: null, ofKelly: n(b.ofKelly ?? 0.25, 0, 1, "The Kelly fraction"), rules, volTarget: b.volTarget ? n(b.volTarget, 0.01, 1, "The volatility target") : null, maxPositionWeight: n(b.maxPositionWeight ?? 0.1, 0.005, 1, "The largest position"), maxGross: n(b.maxGross ?? 1, 0.05, 4, "Gross exposure"), maxDailyLossPct: n(b.maxDailyLossPct ?? 0.03, 0.001, 1, "The daily loss limit") });
+        // The audit row keeps the choices as read, not the raw body (which could be anything up to the request limit).
+        const saved = await saveRiskBudget(budget, { accountRef, ofKelly: b.ofKelly ?? 0.25, rules, volTarget: b.volTarget ?? null, maxPositionWeight: b.maxPositionWeight ?? null, maxGross: b.maxGross ?? null, maxDailyLossPct: b.maxDailyLossPct ?? null });
         return NextResponse.json({ budget, ...saved }, { status: 201 });
       }
       default: throw refuse("mode must be kelly, parity, voltarget, governor or budget.");
