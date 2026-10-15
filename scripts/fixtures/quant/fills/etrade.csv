@@ -1,0 +1,4 @@
+TransactionDate,TransactionType,SecurityType,Symbol,Quantity,Amount,Price,Commission,Description
+10/14/26,Bought,EQ,EXMP,20,-1005.00,50.25,0.00,EXAMPLE CORP
+10/13/26,Sold,EQ,FICT,-10,1200.50,120.05,0.00,FICTIONAL INC
+10/12/26,Dividend,EQ,EXMP,0,4.00,0,0.00,EXAMPLE CORP DIV

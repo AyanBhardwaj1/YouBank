@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!-- Constructed: a sale under a Rule 10b5-1 plan, flagged by a footnote (pre-2023 style) rather than the checkbox. -->
+<ownershipDocument>
+  <schemaVersion>X0407</schemaVersion>
+  <documentType>4</documentType>
+  <periodOfReport>2022-03-01</periodOfReport>
+  <issuer><issuerCik>0000123456</issuerCik><issuerName>EXAMPLE CORP</issuerName><issuerTradingSymbol>EXMP</issuerTradingSymbol></issuer>
+  <reportingOwner>
+    <reportingOwnerId><rptOwnerCik>0001900002</rptOwnerCik><rptOwnerName>Roe Richard</rptOwnerName></reportingOwnerId>
+    <reportingOwnerRelationship><isDirector>1</isDirector><isOfficer>0</isOfficer><isTenPercentOwner>0</isTenPercentOwner></reportingOwnerRelationship>
+  </reportingOwner>
+  <nonDerivativeTable>
+    <nonDerivativeTransaction>
+      <securityTitle><value>Common Stock</value></securityTitle>
+      <transactionDate><value>2022-03-01</value></transactionDate>
+      <transactionCoding><transactionFormType>4</transactionFormType><transactionCode>S</transactionCode><footnoteId id="F1"/></transactionCoding>
+      <transactionAmounts><transactionShares><value>1,000</value></transactionShares><transactionPricePerShare><value>41.10</value></transactionPricePerShare><transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode></transactionAmounts>
+      <postTransactionAmounts><sharesOwnedFollowingTransaction><value>9000</value></sharesOwnedFollowingTransaction></postTransactionAmounts>
+      <ownershipNature><directOrIndirectOwnership><value>I</value></directOrIndirectOwnership></ownershipNature>
+    </nonDerivativeTransaction>
+  </nonDerivativeTable>
+  <footnotes><footnote id="F1">The sale was effected pursuant to a Rule 10b5-1 trading plan adopted on November 15, 2021.</footnote></footnotes>
+</ownershipDocument>

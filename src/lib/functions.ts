@@ -1,6 +1,6 @@
 import type { Profile } from "./roles";
 
-export type FunctionGroup = "company" | "market" | "workspace" | "edge" | "crypto";
+export type FunctionGroup = "company" | "market" | "workspace" | "edge" | "crypto" | "quant";
 type FnDef = { label: string; hint: string; group: FunctionGroup; /** Takes free text after the code, e.g. a screen in words. */ args?: boolean };
 
 /**
@@ -55,6 +55,14 @@ export const FUNCTIONS = {
   TRSY: { label: "Crypto treasuries", hint: "Public companies' crypto holdings, from SEC filings", group: "crypto" },
   RWA: { label: "Tokenized assets", hint: "Tokenized treasuries, private credit and other real-world assets", group: "crypto" },
   WALLET: { label: "Wallet", hint: "Read-only balances and risk of any address: WALLET name.eth", group: "crypto", args: true },
+  // Quant (src/components/terminal/screens/QuantScreens.tsx; the same screens as /app/quant). FACT and INSC take an
+  // optional ticker: "FACT" is a portfolio, "AAPL FACT" one stock. PORT above gains the risk model's tabs.
+  FACT: { label: "Factor Lab", hint: "Factor exposures with intervals: FACT AAPL 40 MSFT 30 KO 30, or AAPL FACT for one stock", group: "quant", args: true },
+  BTX: { label: "Backtest check", hint: "Is a backtest luck? Deflated Sharpe, overfitting, costs: BTX 2.1 18 30 (Sharpe, months, variants)", group: "quant", args: true },
+  KELLY: { label: "Kelly sizing", hint: "Kelly with the uncertainty left in: KELLY 0.55 1 (win chance, odds) or KELLY 0.52-0.58 1", group: "quant", args: true },
+  TCA: { label: "Trading costs", hint: "Spread and impact before a trade, your fills after: TCA AAPL 25000", group: "quant", args: true },
+  INSC: { label: "Insider clusters", hint: "Cluster purchases and 13D stakes with base rates; AAPL INSC for one company", group: "quant" },
+  DRILL: { label: "Desk drills", hint: "Calibration, expected value and the Kelly coin (virtual)", group: "quant" },
   LEARN: { label: "Learn", hint: "Your mastery of each function and what to learn next", group: "workspace" },
   PG: { label: "Peer groups", hint: "Saved peer groups", group: "workspace" },
   TOOLS: { label: "Tools", hint: "Workflows and calculators for your role", group: "workspace" },
@@ -90,12 +98,16 @@ export const isCommandCode = (s: string, edge: boolean): s is FunctionCode => is
 /** Market and workspace functions do not act on a ticker (TOOL and TOOLS do, through the active one). */
 export const needsTicker = (fn: FunctionCode) => { const g = (FUNCTIONS[fn] as FnDef).group; return g === "company" || g === "edge" || fn === "TOOL" || fn === "TOOLS"; };
 const takesArgs = (fn: FunctionCode) => (FUNCTIONS[fn] as FnDef).args === true;
+/** Functions that work with or without a ticker: given one ("AAPL FACT") they use it; alone they do not take the active one. */
+export const optionalTicker = (fn: FunctionCode) => fn === "FACT" || fn === "INSC";
+/** Whether a command keeps its ticker: always for company functions, when given for the optional ones. */
+export const keepsTicker = (fn: FunctionCode) => needsTicker(fn) || optionalTicker(fn);
 
 function build(fn: FunctionCode, ticker: string, rest: string[]): { ok: true; command: Command } | { ok: false; error: string } {
   const arg = rest.join(" ");
   if (fn === "TOOL") return arg ? { ok: true, command: { ticker, fn, arg: arg.toLowerCase() } } : { ok: false, error: `TOOL needs a tool id, e.g. ${ticker ? `${ticker} ` : ""}TOOL dcf` };
   if (rest.length && !takesArgs(fn)) return { ok: false, error: `Unexpected "${arg.toUpperCase()}" after ${fn}` };
-  return { ok: true, command: { ticker: needsTicker(fn) ? ticker : "", fn, ...(arg ? { arg } : {}) } };
+  return { ok: true, command: { ticker: keepsTicker(fn) ? ticker : "", fn, ...(arg ? { arg } : {}) } };
 }
 
 /**
@@ -113,7 +125,7 @@ export function parseCommand(input: string, activeTicker: string, edge = false):
 
   const tickerFirst = TICKER_RE.test(first) && !!second && code(second) && (!code(first) || !takesArgs(first) || tokens.length === 2);
   // ODDS alone is the Deal Radar's board, not the active company's odds.
-  if (code(first) && !tickerFirst) return build(first, first === "ODDS" && tokens.length === 1 ? "" : activeTicker, raw.slice(1));
+  if (code(first) && !tickerFirst) return build(first, (first === "ODDS" && tokens.length === 1) || optionalTicker(first) ? "" : activeTicker, raw.slice(1));
   if (!TICKER_RE.test(first)) return { ok: false, error: `"${first}" is not a ticker or a function` };
   if (!second) return { ok: true, command: { ticker: first, fn: "DES" } };
   if (!code(second)) return { ok: false, error: `Unknown function "${second}". Try ${FUNCTION_CODES.slice(0, 12).join(", ")}…` };

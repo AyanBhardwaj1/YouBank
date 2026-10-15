@@ -1,7 +1,7 @@
 import type { PlanId } from "../plans";
 
 /** Where a premium feature lives, for grouping on the pricing page and in Settings. */
-export type FeatureArea = "ai" | "edge" | "maps" | "crypto" | "studio" | "relationships" | "desktop" | "platform";
+export type FeatureArea = "ai" | "edge" | "maps" | "crypto" | "studio" | "relationships" | "desktop" | "platform" | "quant";
 
 /**
  * A feature that needs a paid plan. The code behind it is complete; the plan decides who may use it.

@@ -14,7 +14,7 @@ type Suggestion = { text: string; label: string; hint: string; command: Command 
 const fnSuggestions = (ticker: string, prefix: string, edge: boolean): Suggestion[] =>
   FUNCTION_CODES.filter((f) => f.startsWith(prefix) && f !== "TOOL" && (edge || !EDGE_CODES.has(f))).map((f) => {
     const own = needsTicker(f);
-    const words = f === "EQS" || f === "PORT";
+    const words = f === "EQS" || f === "PORT" || f === "FACT" || f === "KELLY" || f === "BTX" || f === "TCA";
     const text = own ? `${ticker} ${f}${f === "ASK" ? " " : ""}` : words ? `${f} ` : f;
     return { text, label: own ? `${ticker} ${f}` : f, hint: FUNCTIONS[f].hint, command: { ticker: own ? ticker : "", fn: f as FunctionCode } };
   });

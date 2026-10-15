@@ -52,6 +52,12 @@ const GcScreen = dynamic(() => import("./screens/MacroScreens").then((m) => m.Gc
 const EcoScreen = dynamic(() => import("./screens/MacroScreens").then((m) => m.EcoScreen), { loading: ScreenLoading });
 const EqsScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.EqsScreen), { loading: ScreenLoading });
 const PortScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.PortScreen), { loading: ScreenLoading });
+const FactScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.FactScreen), { loading: ScreenLoading });
+const BtxScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.BtxScreen), { loading: ScreenLoading });
+const KellyScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.KellyScreen), { loading: ScreenLoading });
+const TcaScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.TcaScreen), { loading: ScreenLoading });
+const InscScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.InscScreen), { loading: ScreenLoading });
+const DrillScreen = dynamic(() => import("./screens/QuantScreens").then((m) => m.DrillScreen), { loading: ScreenLoading });
 const LearnScreen = dynamic(() => import("./screens/WorkspaceScreens").then((m) => m.LearnScreen), { loading: ScreenLoading });
 const TopScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.TopScreen), { loading: ScreenLoading });
 const CnScreen = dynamic(() => import("./screens/NewsScreens").then((m) => m.CnScreen), { loading: ScreenLoading });
@@ -151,6 +157,12 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "TRSY": return <TrsyScreen onRun={onRun} />;
       case "RWA": return <RwaScreen onRun={onRun} />;
       case "WALLET": return <WalletScreen onRun={onRun} arg={panel.arg} />;
+      case "FACT": return <FactScreen ticker={t} arg={panel.arg} />;
+      case "BTX": return <BtxScreen arg={panel.arg} />;
+      case "KELLY": return <KellyScreen arg={panel.arg} />;
+      case "TCA": return <TcaScreen arg={panel.arg} />;
+      case "INSC": return <InscScreen ticker={t} />;
+      case "DRILL": return <DrillScreen />;
     }
     if (loading) return <Loading ticker={t} />;
     if (error || !company) return <ErrorState ticker={t} error={error ?? "No data"} />;
@@ -163,7 +175,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
     }
   })();
 
-  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK" || panel.fn === "TOKEN" || panel.fn === "WALLET") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
+  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK" || panel.fn === "TOKEN" || panel.fn === "WALLET" || panel.fn === "FACT" || panel.fn === "BTX" || panel.fn === "KELLY" || panel.fn === "TCA") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">

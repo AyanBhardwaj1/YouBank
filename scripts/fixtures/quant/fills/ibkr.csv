@@ -1,0 +1,6 @@
+Statement,Header,Field Name,Field Value
+Statement,Data,Title,Activity Statement
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,EXMP,"2026-10-14, 15:55:02",200,50.40,50.38,-10080,-1,10081,0,-4,O
+Trades,Data,Order,Stocks,USD,FICT,"2026-10-13, 10:31:10",-50,120.05,120.20,6002.5,-1,-5900,101.5,-7.5,C
+Trades,SubTotal,,Stocks,USD,,,,,,,,,,,

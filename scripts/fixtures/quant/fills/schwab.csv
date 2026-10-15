@@ -1,0 +1,5 @@
+"Date","Action","Symbol","Description","Quantity","Price","Fees & Comm","Amount"
+"10/14/2026","Buy","EXMP","EXAMPLE CORP","100","$50.25","","-$5,025.00"
+"10/13/2026 as of 10/10/2026","Sell","FICT","FICTIONAL INC","40","$120.10","$0.02","$4,803.98"
+"10/12/2026","Qualified Dividend","EXMP","EXAMPLE CORP","","","","$12.00"
+"10/09/2026","Sell Short","SHRT","SHORTCO","10","$30.00","","$300.00"

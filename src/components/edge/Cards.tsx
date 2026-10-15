@@ -661,6 +661,33 @@ export function ThesisCard({ card, index }: { card: EdgeCard; index: number }) {
   );
 }
 
+type QuantVisual = { eventType: string; label: string; ticker: string; totalUsd: number | null; insiders: { name: string; role: string; value: number }[]; holder: string | null; percent: number | null; baseRate: { car: number; low: number; high: number; hitRate: number; unconditionalHitRate: number; n: number; window: string; era: string } | null; url: string | null; disclaimer: string };
+
+/** Quant Edge (Q7): an insider cluster or a 13D stake, with the base rate of what followed similar events. */
+export function QuantEventCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as QuantVisual;
+  const b = v.baseRate;
+  const sp = (x: number) => `${x > 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+  return (
+    <Shell card={card} index={index} kicker={`${card.kind === "quant.activist" ? "Activist stake" : "Insiders"} · ${v.ticker}`} icon={card.kind === "quant.activist" ? "Target" : "Users"}>
+      <div className="flex flex-1 flex-col gap-2.5 px-3.5 pb-3 pt-2">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="rounded-lg border border-line bg-elevated/40 p-2.5 text-[12px]">
+          {v.insiders.length ? <ul className="space-y-0.5">{v.insiders.slice(0, 4).map((i) => <li key={i.name} className="flex justify-between gap-2"><span className="truncate">{i.name} <span className="text-muted">· {i.role}</span></span><span className="num">${fmtNum(i.value)}</span></li>)}</ul> : <div>{v.holder}{v.percent !== null ? ` · ${v.percent.toFixed(1)}%` : ""}</div>}
+          {b ? <div className="mt-1.5 text-[11px] text-muted">Past events like it (n {b.n}, {b.era}): {sp(b.car)} versus the market over sessions {b.window} (95% {sp(b.low)} to {sp(b.high)}); beat it {Math.round(b.hitRate * 100)}% of the time against {Math.round(b.unconditionalHitRate * 100)}% for any stock.</div> : <div className="mt-1.5 text-[11px] text-muted">No base rate yet.</div>}
+        </div>
+        <p className="text-[12px] leading-relaxed text-muted">{card.summary}</p>
+        <p className="text-[10.5px] text-faint">{v.disclaimer} Not investment advice.</p>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>{card.observedAt ? <Ago iso={card.observedAt} /> : null}{v.url ? <> · <a href={v.url} target="_blank" rel="noreferrer" className="hover:underline">filing</a></> : null}</span>
+          <a href={`/app/quant?tab=insiders`} className="inline-flex items-center gap-1 text-accent hover:underline">Insiders board <ArrowRight className="h-3 w-3" /></a>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
 const SIGNAL_CARD_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds"]);
 
 /** One finding as its card. Memoized: a card re-renders only when its finding or handlers change. */
@@ -678,5 +705,6 @@ export const EdgeCardView = memo(function EdgeCardView(props: { card: EdgeCard; 
   if (props.card.kind === "call_evasion") return <CallCard card={props.card} index={props.index} />;
   if (props.card.kind === "guidance_result" || props.card.kind === "commitment_due") return <PromiseCard card={props.card} index={props.index} />;
   if (props.card.kind === "thesis_update") return <ThesisCard card={props.card} index={props.index} />;
+  if (props.card.kind === "quant.insider_cluster" || props.card.kind === "quant.activist") return <QuantEventCard card={props.card} index={props.index} />;
   return null;
 });

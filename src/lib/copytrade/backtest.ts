@@ -142,3 +142,17 @@ export function thin(c: CurvePoint[], max = 260): CurvePoint[] {
   const k = Math.ceil(c.length / max);
   return c.filter((_, i) => i % k === 0 || i === c.length - 1);
 }
+
+/** Annual one-way turnover from rebalance weights: half the absolute weight changes per rebalance, per year. */
+export function annualTurnover(events: { date: string; weights: Record<string, number> }[]): number {
+  if (events.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < events.length; i++) {
+    const a = events[i - 1].weights, b = events[i].weights;
+    let s = 0;
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) s += Math.abs((b[k] ?? 0) - (a[k] ?? 0));
+    total += s / 2;
+  }
+  const years = (Date.parse(events.at(-1)!.date) - Date.parse(events[0].date)) / (365.25 * 86_400_000);
+  return years > 0 ? total / years : 0;
+}

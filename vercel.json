@@ -6,6 +6,7 @@
     { "path": "/api/cron/edge", "schedule": "30 7 * * *" },
     { "path": "/api/cron/calendar", "schedule": "15 6 * * *" },
     { "path": "/api/cron/calendar-briefs", "schedule": "45 10 * * *" },
-    { "path": "/api/cron/copytrade", "schedule": "40 12 * * *" }
+    { "path": "/api/cron/copytrade", "schedule": "40 12 * * *" },
+    { "path": "/api/cron/quant", "schedule": "50 23 * * *" }
   ]
 }

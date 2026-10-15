@@ -12,6 +12,7 @@ import "./outputs";
 import "./story";
 import "./studio";
 import "./signals";
+import "./quant";
 import "./next";
 
 export { availableTypes } from "../engine";
