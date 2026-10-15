@@ -10,7 +10,7 @@
  * Server only. Each tick holds a lease on its strategy, so two instances never tick it at once, and stops
  * before its deadline. Free strategies never open a premium scope, and nothing here calls a model.
  */
-import { and, eq, gte, inArray, isNotNull, lte, notInArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { requireDb, schema } from "@/db";
 import { canUseById } from "@/lib/billing/use";
@@ -34,6 +34,9 @@ import type { StrategySpec } from "./strategy";
 
 const DAY = 86_400_000;
 const r6 = (x: number) => Math.round(x * 1e6) / 1e6;
+/** A broker call takes at most 45 seconds; an order still "submitting" well after that lost its process mid-call. */
+const STALE_SUBMIT_MS = 5 * 60_000;
+const staleSubmitting = () => and(eq(schema.algoOrders.status, "submitting"), lt(schema.algoOrders.sentAt, new Date(Date.now() - STALE_SUBMIT_MS)));
 
 export type TickResult = { strategyId: number; decided: boolean; orders: number; sent: number; proposed: boolean; skipped: string | null };
 
@@ -51,7 +54,9 @@ export async function tickStrategy(id: number, deadline: number, opts: { force?:
   if (!release) return { strategyId: id, decided: false, orders: 0, sent: 0, proposed: false, skipped: "already ticking" };
   try {
     const [row] = await requireDb().select().from(schema.algoStrategies).where(eq(schema.algoStrategies.id, id));
-    if (!row || row.status !== "active") return { strategyId: id, decided: false, orders: 0, sent: 0, proposed: false, skipped: "not active" };
+    if (!row || row.status !== "active" || !["paper", "live_approval", "live_auto"].includes(row.mode)) return { strategyId: id, decided: false, orders: 0, sent: 0, proposed: false, skipped: "not active" };
+    // A scheduled tick runs only while it is due: a retried Inngest step after a tick that finished does nothing.
+    if (!opts.force && row.nextTickAt && row.nextTickAt.getTime() > Date.now()) return { strategyId: id, decided: false, orders: 0, sent: 0, proposed: false, skipped: "not due" };
     return await tick(row, deadline, opts);
   } catch (e) {
     const msg = failureMessage(e, "algo-tick");
@@ -115,7 +120,11 @@ async function tick(row: StrategyRow, deadline: number, opts: { force?: boolean;
   // Paper: re-check resting orders, then value the account.
   const paper = row.mode === "paper" ? ((row.paper as PaperState | null) ?? (await import("./brokers/paper")).newPaper(spec.capitalUsd)) : null;
   const quoteMap: Record<string, BrokerQuote> = Object.fromEntries(Object.entries(prices).map(([k, v]) => [k, quotes[k] ?? { symbol: k, bid: null, ask: null, last: v, at: now.toISOString() }]));
-  if (paper) { sweep(paper, quoteMap, market.open, now); await syncPaperOrders(row.id, paper); }
+  if (paper) {
+    sweep(paper, quoteMap, market.open, now); await syncPaperOrders(row.id, paper);
+    // A paper send that died mid-way never saved its fill: it did not happen.
+    await db.update(schema.algoOrders).set({ status: "rejected", error: "The paper order did not complete.", updatedAt: now }).where(and(eq(schema.algoOrders.strategyId, row.id), staleSubmitting(), inArray(schema.algoOrders.batchId, db.select({ id: schema.algoBatches.id }).from(schema.algoBatches).where(and(eq(schema.algoBatches.strategyId, row.id), eq(schema.algoBatches.accountId, "paper"))))));
+  }
 
   // Live: the account, and reconciliation of what was sent.
   let live: { adapter: BrokerAdapter; accountId: string } | null = null;
@@ -269,7 +278,8 @@ export async function riskStateFor(row: StrategyRow, spec: StrategySpec, prices:
     else { const avg = k.u > 0 ? k.c / k.u : o.fill!; if (o.fill! < avg) lossSales[o.symbol] = newYorkParts(o.at!).date; k.c -= avg * Math.min(o.filled, k.u); k.u = Math.max(0, k.u - o.filled); }
     cost.set(o.symbol, k);
   }
-  const unknown = await db.$count(schema.algoOrders, and(eq(schema.algoOrders.strategyId, row.id), eq(schema.algoOrders.status, "unknown")));
+  // Unknown outcomes, and sends whose process died mid-call (still "submitting" long after): either may have reached the broker.
+  const unknown = await db.$count(schema.algoOrders, and(eq(schema.algoOrders.strategyId, row.id), or(eq(schema.algoOrders.status, "unknown"), staleSubmitting())));
   const live = row.mode !== "paper";
   return {
     now: new Date(), market: spec.assetClass === "crypto" ? null : market, extendedHoursNow: false,
@@ -380,6 +390,11 @@ async function syncPaperOrders(strategyId: number, paper: PaperState): Promise<v
 /** Ask the broker about this strategy's sent orders that are not final (and those with unknown outcomes, by client id where the broker can look one up). */
 async function reconcile(row: StrategyRow, adapter: BrokerAdapter, accountId: string, deadline: number): Promise<void> {
   const db = requireDb();
+  // A send that died mid-call (the instance stopped) left its order "submitting": it may have reached the
+  // broker, so it is "unknown" from now on, never resent, and asked about by client id where possible.
+  const stale = await db.update(schema.algoOrders).set({ status: "unknown", error: "The broker did not confirm this order. It may or may not have been placed: check your broker before trying again.", updatedAt: new Date() })
+    .where(and(eq(schema.algoOrders.strategyId, row.id), staleSubmitting(), inArray(schema.algoOrders.batchId, db.select({ id: schema.algoBatches.id }).from(schema.algoBatches).where(and(eq(schema.algoBatches.strategyId, row.id), eq(schema.algoBatches.accountId, accountId)))))).returning({ id: schema.algoOrders.id, batchId: schema.algoOrders.batchId });
+  for (const o of stale) await audit({ userId: row.userId, actor: "system", action: "order-unknown", strategyId: row.id, batchId: o.batchId, orderId: o.id, payload: { stage: "place", reason: "The send stopped before the broker answered." } });
   const open = await db.select().from(schema.algoOrders).where(and(eq(schema.algoOrders.strategyId, row.id), isNotNull(schema.algoOrders.sentAt), gte(schema.algoOrders.sentAt, new Date(Date.now() - 4 * DAY)), notInArray(schema.algoOrders.status, [...FINAL, "blocked", "scheduled", "pending"]))).limit(40);
   const byClient = adapter.capabilities().clientOrderId !== "none" && adapter.id !== "snaptrade";
   for (const o of open) {
