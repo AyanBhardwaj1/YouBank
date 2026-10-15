@@ -78,6 +78,8 @@ export async function featureTests(check: Check, near: Near) {
     bad({ event: { type: "cluster_buy", occurredAt: "2026-10-09", baseRate: { car: 0.02, low: 0.01, high: 0.03, hitRate: 0.56, unconditionalHitRate: 0.51, n: 0, window: "+2..+125", era: "x" } } }, /base rate/, "an event with no base rate (n = 0) is refused (rule 4)");
     bad({ validUntil: "2026-10-01T00:00:00Z" }, /validUntil/, "validUntil before asOf is refused");
     bad({ kind: "score", score: 4 }, /score/, "a score outside [-3, 3] is refused");
+    bad({ evidence: [{ label: "Form 4/A", url: "https://www.sec.gov/x", source: "SEC EDGAR", licence: "public domain", knownAt: "2026-10-15T14:00:00Z", retrievedAt: "2026-10-15T14:05:00Z" }] }, /known after asOf/, "evidence public after asOf is refused (a replay would see it early)");
+    bad({ computedAt: "2026-10-14T20:00:00Z" }, /computedAt/, "computedAt before asOf is refused");
     bad({ evidence: [{ label: "x", url: "http://evil.example/x", source: "s", licence: "l", knownAt: "2026-10-14T00:00:00Z", retrievedAt: "2026-10-14T00:00:00Z" }] }, /https/, "evidence must link over https");
     const t: TargetPortfolio = {
       contract: CONTRACT_VERSION, key: "sleeve:12", version: 1, producer: "quant.sleeve", producerVersion: "1", ownerId: "u1", name: "Test", asOf: "2026-10-01T20:00:00Z", validUntil: "2026-11-01T20:00:00Z",

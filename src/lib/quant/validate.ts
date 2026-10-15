@@ -81,6 +81,13 @@ export function validateSignal(s: unknown): Validation {
   e.push(...instrumentErrors(x.instrument, "instrument"));
   for (const f of ["asOf", "computedAt", "validUntil"] as const) if (!isIso(x[f])) e.push(`${f} is not a time`);
   if (isIso(x.asOf) && isIso(x.validUntil) && Date.parse(x.validUntil) <= Date.parse(x.asOf)) e.push("validUntil must be after asOf");
+  // signalsAsOf trusts asOf, so a backtest replay is only free of look-ahead if asOf really is when every input was
+  // public: no evidence known later, and nothing computed before it.
+  if (isIso(x.asOf) && isIso(x.computedAt) && Date.parse(x.computedAt) < Date.parse(x.asOf)) e.push("computedAt is before asOf: a signal cannot be computed before its inputs were public");
+  if (isIso(x.asOf) && Array.isArray(x.evidence)) {
+    const late = x.evidence.find((ev) => isIso(ev?.knownAt) && Date.parse(ev.knownAt) > Date.parse(x.asOf!));
+    if (late) e.push(`evidence "${String(late.label).slice(0, 60)}" was known after asOf: asOf must be when every input was public (rule 1)`);
+  }
   if (typeof x.reconstructed !== "boolean") e.push("reconstructed is not true or false");
   if (!finite(x.horizonDays) || x.horizonDays < 0 || !Number.isInteger(x.horizonDays)) e.push("horizonDays is not a whole number of trading days");
   if (!e.length && x.id !== signalId(x as QuantSignal)) e.push("id is not the deterministic hash of producer, version, instrument, asOf and horizon");
