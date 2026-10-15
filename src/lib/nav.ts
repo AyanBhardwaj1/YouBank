@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -47,6 +47,10 @@ export const FEATURES: NavFeature[] = [
   {
     id: "copy", href: "/app/copy", label: "Fund copies", icon: "Copy", blurb: "Hedge funds' 13F portfolios: follow, backtest and copy them",
     links: [tab("/app/copy", "tab", "discover", "Discover", true), tab("/app/copy", "tab", "copies", "My copies"), tab("/app/copy", "tab", "following", "Following"), tab("/app/copy", "tab", "broker", "Brokerage"), tab("/app/copy", "tab", "activity", "Activity")],
+  },
+  {
+    id: "algo", href: "/app/algo", label: "Algo trading", icon: "Bot", blurb: "Rule-based and AI-assisted strategies: backtest, paper trade, and trade with your broker",
+    links: [tab("/app/algo", "tab", "strategies", "Strategies", true), tab("/app/algo", "tab", "brokers", "Brokers"), tab("/app/algo", "tab", "agent", "Agent"), tab("/app/algo", "tab", "activity", "Audit log")],
   },
   {
     id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",
