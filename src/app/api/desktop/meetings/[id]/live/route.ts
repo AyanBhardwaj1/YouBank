@@ -12,7 +12,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
   return guardedDesktop(req, async (user) => {
     const id = parseId((await ctx.params).id);
     const body = (await req.json().catch(() => null)) as { on?: unknown } | null;
-    if (!id || typeof body?.on !== "boolean") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!id || typeof body?.on !== "boolean") return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     return NextResponse.json(await setLive(user, id, body.on));
   }, { device: "required" });
 }
@@ -21,7 +21,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     return NextResponse.json(await liveSuggestions(user, id));
   }, { device: "required" });
 }

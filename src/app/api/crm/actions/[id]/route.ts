@@ -14,7 +14,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { email?: unknown } | null;
     return NextResponse.json(await approveAction(user.id, id, { email: typeof body?.email === "string" ? body.email : undefined }));
   });
@@ -23,7 +23,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await dismissAction(user.id, id);
     return NextResponse.json({ ok: true });
   });

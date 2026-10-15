@@ -20,7 +20,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await rateLimit(`studio-export:${user.id}`, 30, 600_000, "Many files have been built in the last few minutes. Try again shortly.");
     const format = new URL(req.url).searchParams.get("format") === "pptx" ? "pptx" : "xlsx";
     // The cursor is read before the document, so an edit landing in between is caught by the next push.
@@ -43,7 +43,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await rateLimit(`desktop-push:${user.id}`, 120, 3_600_000, "Many syncs in the last hour. Your file is safe; try again shortly.");
     if (Number(req.headers.get("content-length") ?? 0) > MAX_PUSH_BYTES) return NextResponse.json({ error: "Files up to 4 MB can be synced for now." }, { status: 413 });
     const rawBase = req.headers.get("x-youbank-base");

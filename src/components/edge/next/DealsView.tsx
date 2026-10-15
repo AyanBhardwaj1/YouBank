@@ -14,7 +14,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { Sheet } from "@/components/ui/Sheet";
 import { usePhone } from "@/components/ui/useMedia";
-import { errorMessage } from "@/lib/client/errors";
+import { errorMessage, safeText } from "@/lib/client/errors";
 import { FAMILY_LABEL } from "@/lib/edge/deals/fields";
 import { fmtMoney } from "@/lib/edge/deals/parse";
 import { confidenceLine, type ShownField, type TimelineStep } from "@/lib/edge/deals/view";
@@ -290,7 +290,7 @@ function BackfillPanel() {
         <button type="button" disabled={busy || !data.on} onClick={() => void send({ run: true })} className="ctl border border-line px-2 py-0.5 hover:text-fg disabled:opacity-50">{busy ? "Working…" : "Run a slice now"}</button>
       </span>
       {err && <span className="w-full text-neg">{err}</span>}
-      {data.state.lastError && <span className="w-full text-neg">Last run: {data.state.lastError}</span>}
+      {data.state.lastError && <span className="w-full text-neg">Last run: {safeText(data.state.lastError)}</span>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // The desktop agent's settings window. Every part that reaches beyond the window starts with a consent
 // screen saying exactly what it does; the Rust side keeps anything without consent switched off,
 // whatever this page sends.
-import { ago, h, invoke, keyLabel, listen, plural, run, toast, toggle } from "./app.js";
+import { ago, errorText, h, invoke, keyLabel, listen, plural, run, toast, toggle } from "./app.js";
 
 const view = document.getElementById("view");
 let st = null; // get_state
@@ -118,7 +118,7 @@ function files() {
           h("button", { class: "btn danger", onclick: () => removeFolder(f.path, true) }, "Delete them"),
           h("button", { class: "btn link", onclick: () => { delete pending[key]; render(); } }, "Cancel"))
         : h("div", { class: "row" },
-          h("button", { class: "btn", onclick: () => invoke("open_local", { path: f.path, reveal: false }).catch((e) => toast(String(e), true)) }, "Open"),
+          h("button", { class: "btn", onclick: () => invoke("open_local", { path: f.path, reveal: false }).catch((e) => toast(errorText(e), true)) }, "Open"),
           h("button", { class: "btn danger", onclick: () => { pending[key] = true; render(); } }, "Remove"))));
   }
   folders.append(h("div", { class: "row", style: "margin-top: 10px" }, h("button", { class: "btn", onclick: addFolder }, "Add a folder…")));
@@ -140,7 +140,7 @@ function files() {
         ? h("table", null, h("tr", null, h("th", null, "File"), h("th", null, "Status"), h("th")),
           entries.sort((a, b) => (a.status === "indexed") - (b.status === "indexed") || a.name.localeCompare(b.name)).slice(0, 300).map((e) => h("tr", null,
             h("td", null, e.name, h("div", { class: "small muted" }, e.folder)),
-            h("td", { class: `status-${e.status}` }, { pending: "Waiting", indexed: `In YouBank${e.uploadedAt ? ` · ${ago(e.uploadedAt)}` : ""}`, failed: e.error || "Failed", needsPlan: "Needs a Pro plan" }[e.status] ?? e.status),
+            h("td", { class: `status-${e.status}` }, { pending: "Waiting", indexed: `In YouBank${e.uploadedAt ? ` · ${ago(e.uploadedAt)}` : ""}`, failed: e.error ? errorText(e.error) : "Failed", needsPlan: "Needs a Pro plan" }[e.status] ?? e.status),
             h("td", null, e.status === "indexed" ? h("button", { class: "btn link small", onclick: () => run("remove_indexed_file", { path: e.path }, "Removed from YouBank.").then(render) }, "Remove from YouBank") : null))))
         : h("p", { class: "muted" }, "Add a folder, then check it."),
     ].filter(Boolean));
@@ -188,7 +188,7 @@ function office() {
       h("span", { class: "grow" }, "Excel and PowerPoint sync ", toggle(s.office.enabled, (v) => save((n) => { n.office.enabled = v; })))),
     h("div", { class: "row wrap", style: "margin-top: 8px" },
       h("span", { class: "grow small muted" }, "Folder: ", h("span", { class: "mono", id: "office-folder" }, "…")),
-      h("button", { class: "btn", onclick: () => invoke("office_status").then((o) => invoke("open_local", { path: o.folder })).catch((e) => toast(String(e), true)) }, "Open folder"),
+      h("button", { class: "btn", onclick: () => invoke("office_status").then((o) => invoke("open_local", { path: o.folder })).catch((e) => toast(errorText(e), true)) }, "Open folder"),
       h("button", { class: "btn", onclick: async () => { const p = await run("pick_path", { kind: "folder" }); if (p) save((n) => { n.office.folder = p; }); } }, "Change…")),
     h("label", { class: "row small", style: "margin-top: 8px" }, toggle(s.office.autoPush, (v) => save((n) => { n.office.autoPush = v; })), "Send a linked workbook to Studio as soon as I save it")));
   if (!s.office.enabled) return out;
@@ -226,7 +226,7 @@ function linkRow(l) {
   return h("div", { class: "item", style: "flex-direction: column; align-items: stretch" },
     h("div", { class: "row wrap" },
       h("div", { class: "grow" }, h("strong", null, l.title || name), h("div", { class: "small muted" }, name, " · ", state, l.syncedAt ? ` · synced ${ago(l.syncedAt)}` : "")),
-      h("button", { class: "btn", disabled: l.missing, onclick: () => invoke("open_local", { path: l.path }).catch((e) => toast(String(e), true)) }, "Open"),
+      h("button", { class: "btn", disabled: l.missing, onclick: () => invoke("open_local", { path: l.path }).catch((e) => toast(errorText(e), true)) }, "Open"),
       l.format === "xlsx" ? h("button", { class: "btn", disabled: l.missing, onclick: () => push(l.path, false) }, "Send to Studio") : null,
       h("button", { class: "btn", onclick: () => pull(l.docId, l.format) }, "Pull fresh copy"),
       h("button", { class: "btn link small", onclick: () => run("studio_unlink", { path: l.path }).then(render) }, "Unlink")),
@@ -249,7 +249,7 @@ async function pull(docId, format) {
 async function push(path, force) {
   const r = await invoke("studio_push", { path, force });
   if (r.conflict) { pending[`link:${path}`] = { conflict: r.message }; render(); return; }
-  toast(r.message, !r.ok);
+  toast(r.ok ? r.message : errorText(r.message), !r.ok);
   render();
 }
 
@@ -269,7 +269,7 @@ async function agentEdit(path, key) {
     const summary = await invoke("studio_agent", { path, instruction });
     pending[key] = { summary: `Done. ${summary}\nThe version before is in the folder's .backups.` };
   } catch (e) {
-    pending[key] = { instruction, summary: String(e) };
+    pending[key] = { instruction, summary: errorText(e) };
   }
   render();
 }
@@ -341,7 +341,7 @@ const APPS = [["zoom", "Zoom"], ["teams", "Microsoft Teams"], ["meet", "Google M
 const STATUS = { joining: "Notetaker joining", live: "Recording", processing: "Writing notes", ready: "Notes ready", failed: "Failed", cancelled: "Stopped" };
 
 async function loadMeetings(fresh) {
-  if (fresh && st.connected) await invoke("meeting_refresh").catch((e) => toast(String(e), true));
+  if (fresh && st.connected) await invoke("meeting_refresh").catch((e) => toast(errorText(e), true));
   meet = await invoke("meeting_state");
   if (section === "meetings") render();
 }

@@ -235,7 +235,7 @@ export function PlanSettings() {
           : PLANS[e.plan]?.selfServe
             ? { tone: "ok", text: `Thank you. You are on ${PLANS[e.plan].name} now.` }
             : { tone: "info", text: "Stripe is still confirming your payment. Your plan changes here as soon as it does." }))
-        .catch((e: Error) => setNote({ tone: "error", text: e.message }))
+        .catch((e: unknown) => setNote({ tone: "error", text: errorMessage(e) }))
         .finally(() => { refreshPlan(); clean(); void fetchStatus().then(show); });
       return;
     }
@@ -249,7 +249,7 @@ export function PlanSettings() {
       const { url: to } = await post<{ url: string }>(url, body);
       window.location.assign(to);
     } catch (e) {
-      setNote({ tone: "error", text: (e as Error).message });
+      setNote({ tone: "error", text: errorMessage(e) });
       setBusy(null);
     }
   };

@@ -25,9 +25,9 @@ export function unzipFirst(buf: Uint8Array): string {
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 70_000); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error("not a zip file");
+  if (eocd < 0) throw Object.assign(new Error("A downloaded data file was damaged. Try again later."), { status: 502, cause: new Error("not a zip file") });
   const cd = dv.getUint32(eocd + 16, true);
-  if (dv.getUint32(cd, true) !== 0x02014b50) throw new Error("bad zip directory");
+  if (dv.getUint32(cd, true) !== 0x02014b50) throw Object.assign(new Error("A downloaded data file was damaged. Try again later."), { status: 502, cause: new Error("bad zip central directory") });
   const method = dv.getUint16(cd + 10, true), size = dv.getUint32(cd + 20, true), local = dv.getUint32(cd + 42, true);
   const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
   const data = buf.subarray(start, start + size);

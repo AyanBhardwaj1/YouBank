@@ -68,7 +68,7 @@ export function evaluate(src: string, vars: Record<string, number> = {}): number
       if (t.v.toLowerCase() === "pi") return Math.PI; if (t.v.toLowerCase() === "e") return Math.E;
       throw new Error(`Unknown variable ${t.v}`);
     }
-    throw new Error(`Unexpected token ${JSON.stringify(t)}`);
+    throw new Error(`Unexpected "${t.v}"`);
   }
   function unary(): number { return power(); }
   function power(): number { const b = primary(); if (peek()?.t === "op" && (peek() as { v: string }).v === "^") { next(); return b ** unaryRhs(); } return b; }

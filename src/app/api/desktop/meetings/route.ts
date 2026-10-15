@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   return guardedDesktop(req, async (user) => {
     const body = (await req.json().catch(() => null)) as { settings?: unknown } | null;
-    if (!body?.settings || typeof body.settings !== "object") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body?.settings || typeof body.settings !== "object") return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     if ((body.settings as { autoJoin?: unknown }).autoJoin === true && !(await getMeetingSettings(user.id)).autoJoin) await requireFeature(user, "meetings.bot");
     return NextResponse.json(await saveMeetingSettings(user.id, body.settings));
   }, { device: "required" });

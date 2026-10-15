@@ -556,7 +556,7 @@ async fn on_changed(app: &AppHandle, paths: Vec<PathBuf>) {
                 state.files.lock().await.entries.values().filter(|e| e.folder == folder.path && e.status == Status::Pending).map(|e| e.path.clone()).collect();
             if let Ok(rep) = upload(app, Some(only)).await {
                 if let Some(why) = rep.stopped {
-                    alerts::show(app, "Some files were not added", &why);
+                    alerts::show_error(app, "Some files were not added", &why);
                 }
             }
         } else {

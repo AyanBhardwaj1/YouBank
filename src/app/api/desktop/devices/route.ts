@@ -13,7 +13,7 @@ export async function GET() {
 export async function DELETE(req: Request) {
   return guarded(async (user) => {
     const id = Number(new URL(req.url).searchParams.get("id"));
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await revokeDesktopDevice(user.id, id);
     return NextResponse.json({ ok: true });
   });

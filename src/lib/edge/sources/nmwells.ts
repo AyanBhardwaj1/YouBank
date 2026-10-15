@@ -4,7 +4,7 @@
  * status "New", and the date that status took effect is the approval date; its API number, operator,
  * well name and a link to its record come with it.
  */
-import type { Bbox, SourceInfo } from "./eia";
+import { upstreamRefusal, type Bbox, type SourceInfo } from "./eia";
 
 export const NM_WELLS: SourceInfo = {
   key: "nm-ocd-wells",
@@ -30,7 +30,7 @@ export function nmPermitsFrom(rows: Row[]): NmPermit[] {
 
 /** Wells permitted in a box since a date (status "New", approved on or after `since`), newest first. */
 export async function nmPermitted(bbox: Bbox, since: string): Promise<NmPermit[]> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new Error("Bad date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw Object.assign(new Error("That date is not valid. Use YYYY-MM-DD."), { status: 400 });
   const q = new URLSearchParams({
     where: `status = 'New' AND effective_date >= DATE '${since}'`, geometry: bbox.map((v) => v.toFixed(5)).join(","), geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
     outFields: "id,name,ogrid_name,type,latitude,longitude,effective_date,spud_date,details", returnGeometry: "false", orderByFields: "effective_date DESC", resultRecordCount: "2000", f: "json",
@@ -38,6 +38,6 @@ export async function nmPermitted(bbox: Bbox, since: string): Promise<NmPermit[]
   const res = await fetch(`${NM_WELLS.url}/query?${q}`, { cache: "no-store", signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`New Mexico OCD answered ${res.status}`);
   const j = (await res.json()) as { features?: { attributes: Row }[]; error?: { message?: string } };
-  if (j.error) throw new Error(`New Mexico OCD: ${j.error.message ?? "error"}`);
+  if (j.error) throw upstreamRefusal("New Mexico OCD", j.error.message);
   return nmPermitsFrom((j.features ?? []).map((f) => f.attributes));
 }

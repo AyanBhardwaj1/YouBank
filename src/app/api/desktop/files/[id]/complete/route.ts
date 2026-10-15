@@ -11,7 +11,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   return guardedDesktop(req, async (user, device) => {
     const id = Number((await ctx.params).id);
     const body = (await req.json().catch(() => null)) as { pathKey?: string; sha256?: string; name?: string; bytes?: number } | null;
-    if (!device || !Number.isInteger(id) || !body?.pathKey || !body.sha256) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!device || !Number.isInteger(id) || !body?.pathKey || !body.sha256) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     return NextResponse.json(await completeFile(user, device, id, { pathKey: body.pathKey, sha256: body.sha256, name: body.name ?? "", bytes: Number(body.bytes ?? 0) }));
   }, { device: "required" });
 }

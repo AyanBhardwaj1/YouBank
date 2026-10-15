@@ -5,6 +5,7 @@
  * reason returned.
  */
 import { sendJob, type SendResult } from "@/lib/edge/infra/jobs";
+import { failureMessage } from "@/lib/errors";
 
 export const QUANT_EVENTS = {
   signalsPublished: "quant/signals.published",
@@ -19,5 +20,5 @@ export type QuantEvent = (typeof QUANT_EVENTS)[keyof typeof QUANT_EVENTS];
 
 export async function emit(name: QuantEvent, data: Record<string, unknown>, id?: string): Promise<SendResult> {
   try { return await sendJob(name, data, id ? { id } : {}); }
-  catch (e) { return { sent: false, reason: e instanceof Error ? e.message.slice(0, 200) : "send failed" }; }
+  catch (e) { return { sent: false, reason: failureMessage(e, "quant-emit") }; }
 }

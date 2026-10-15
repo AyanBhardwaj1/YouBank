@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { publicMessage } from "@/lib/errors";
 import { requireFeature } from "@/lib/billing/entitlements";
 import { requireEdge } from "@/lib/edge/access";
 import { MlUnavailable } from "@/lib/edge/infra/ml";
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
       const image = await footprintImage(twin.site?.photo ? twin.bbox : bbox, twin.site?.photo?.url ?? null);
       return NextResponse.json(await startJob("footprints", twin.site?.photo ? twin.bbox : bbox, user.id, image));
     } catch (e) {
-      if (e instanceof MlUnavailable) return NextResponse.json({ error: `The AI analyses are not available right now: ${e.message}` }, { status: 503 });
+      if (e instanceof MlUnavailable) return NextResponse.json({ error: `The AI analyses are not available right now: ${publicMessage(e)}` }, { status: 503 });
       throw unreachable(e, "The aerial imagery or the AI service did not answer. Try again in a few minutes.");
     }
   });

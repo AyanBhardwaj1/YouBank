@@ -20,7 +20,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     // Switching Autopilot on is premium (relationships.autopilot): a plan without it gets a 402 to show in line.
     if ((body.autopilot as { enabled?: unknown } | undefined)?.enabled === true && !(await getSettings(user.id)).autopilot.enabled) await requireFeature(user, AUTOPILOT);
     return NextResponse.json(await saveSettings(user.id, {

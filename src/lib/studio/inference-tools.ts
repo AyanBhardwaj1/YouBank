@@ -15,7 +15,7 @@
  *   read-only, with the wording rules of src/lib/quant/words.ts in their descriptions.
  */
 import { z } from "zod";
-import { def, type ToolDef } from "@/lib/ai/tools";
+import { def, toolError, type ToolDef } from "@/lib/ai/tools";
 import { forecast } from "@/lib/inference/forecast";
 import { drawInputs, quantileOf, spearman, summarize, type Dist } from "@/lib/inference/montecarlo";
 import { annualPanel } from "@/lib/inference/fundamentals";
@@ -205,7 +205,7 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
       schema: z.object({ ticker: z.string() }),
       run: ({ ticker }) => s.guard(async () => {
         const t = ticker.toUpperCase();
-        const [c, q] = await Promise.all([creditView(t).catch((e: Error) => ({ error: e.message })), qualityView(t).catch((e: Error) => ({ error: e.message }))]);
+        const [c, q] = await Promise.all([creditView(t).catch((e: unknown) => ({ error: toolError(e) })), qualityView(t).catch((e: unknown) => ({ error: toolError(e) }))]);
         return J({
           credit: "error" in c ? c : { rating: c.rating.rating, grade: c.rating.grade, views: c.rating.views, mortality: c.rating.mortality, coverage: c.coverage, caveat: c.caveat },
           quality: "error" in q ? q : { fy: q.fy, beneishM: q.beneish?.m ?? null, beneishFlag: q.beneish?.flag ?? null, piotroski: q.piotroski?.score ?? null, accruals: q.accruals, flags: q.flags },

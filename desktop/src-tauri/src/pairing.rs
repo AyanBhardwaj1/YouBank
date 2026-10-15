@@ -86,7 +86,7 @@ async fn wait(app: AppHandle, poll: String, generation: u64) {
                 let Some(token) = p.token else { break };
                 if let Err(e) = state.set_token(Some(token)) {
                     let _ = app.emit("pair://failed", e.clone());
-                    alerts::show(&app, "Could not stay connected", &e);
+                    alerts::show_error(&app, "Could not stay connected", &e);
                     return;
                 }
                 let account = state::refresh_account(&app).await.ok().flatten();

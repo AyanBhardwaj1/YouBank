@@ -10,7 +10,7 @@ export const maxDuration = 120;
 export async function GET(req: Request) {
   return guarded(async (user) => {
     const q = new URL(req.url).searchParams.get("q") ?? "";
-    if (!q.trim()) return NextResponse.json({ error: "q required" }, { status: 400 });
+    if (!q.trim()) return NextResponse.json({ error: "Enter something to search for." }, { status: 400 });
     await rateLimit(`sec-search:${user.id}`, 30, 600_000, "Too many SEC searches in the last few minutes. Try again shortly.");
     try { return NextResponse.json(await searchFormD(q, 8)); }
     catch (e) { return errorResponse(e, 502); }

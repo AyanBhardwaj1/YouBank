@@ -364,7 +364,7 @@ pub async fn on_saved(app: &AppHandle, paths: Vec<PathBuf>) {
         if auto {
             match push(app, &path, false).await {
                 Ok(label) => alerts::show(app, &format!("{} synced to Studio", link.title), &label),
-                Err(e) => alerts::show(app, &format!("{} was not synced", link.title), &e.to_string()),
+                Err(e) => alerts::show_error(app, &format!("{} was not synced", link.title), &e.to_string()),
             }
         } else {
             alerts::show(app, &format!("{} changed", link.title), "Push it to Studio from the desktop agent when you are ready.");

@@ -10,7 +10,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const found = await threadWithMessages(user.id, id);
     if (!found) return NextResponse.json({ error: "Thread not found" }, { status: 404 });
     return NextResponse.json(found);
@@ -21,7 +21,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { action?: string; instruction?: string } | null;
     if (body?.action === "draft") {
       return NextResponse.json(await createDraft(user.id, id, { instruction: body.instruction?.slice(0, 500) }), { status: 201 });

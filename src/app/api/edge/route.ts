@@ -28,7 +28,7 @@ export async function GET() {
 export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as { beta?: unknown; blend?: Partial<Blend> } | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     let prefs = (await edgeProfile(user.id))?.prefs;
     if (!prefs) return NextResponse.json({ error: "Finish setting up your profile first." }, { status: 400 });
     if (typeof body.beta === "boolean") {

@@ -21,7 +21,7 @@ export async function GET() {
 export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as { theme?: string; ai?: unknown; nav?: unknown } | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     const db = requireDb();
     const [row] = await db.select({ extra: schema.profiles.extra, role: schema.profiles.role }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
     const extra: Record<string, unknown> = { ...(row?.extra ?? {}) };

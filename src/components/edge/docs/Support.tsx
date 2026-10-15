@@ -9,6 +9,7 @@
 import { Flag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { post } from "@/components/news/client";
+import { errorMessage } from "@/lib/client/errors";
 import type { ClaimSupport, VerifierInfo } from "@/lib/edge/claims/types";
 
 const TONE: Record<ClaimSupport["dot"], { dot: string; text: string; stroke: string; label: string }> = {
@@ -46,7 +47,7 @@ export function SupportSheet({ claim, s, passages, report, onClose }: { claim: s
   const send = () => {
     if (!report) return;
     setSent("sending");
-    post(`/api/edge/answers/${report.answerId}/report`, { claim: report.index, held: report.held, reason, note }).then(() => setSent("done")).catch((e) => setSent(e instanceof Error ? e.message : String(e)));
+    post(`/api/edge/answers/${report.answerId}/report`, { claim: report.index, held: report.held, reason, note }).then(() => setSent("done")).catch((e) => setSent(errorMessage(e)));
   };
   const t = TONE[s.dot];
   return (

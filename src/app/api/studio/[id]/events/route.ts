@@ -14,7 +14,7 @@ const PAGE = 300;
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const url = new URL(req.url);
     const since = Math.max(0, Number(url.searchParams.get("since")) || 0);
     const withUndo = url.searchParams.get("undo") === "1";

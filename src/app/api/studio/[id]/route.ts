@@ -16,7 +16,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     if (new URL(req.url).searchParams.get("meta") === "1") {
       const doc = await requireDocAccess(user, id);
       const [runs, history] = await Promise.all([listRuns(id), recentEvents(id)]);
@@ -37,7 +37,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { patches?: unknown; undo?: unknown; label?: string; share?: number | null } | null;
     if (body && "share" in body) { await shareDoc(user, id, body.share ?? null); return NextResponse.json({ ok: true }); }
     // Every keystroke lands here: check access on two columns, and read the document only to name an unlabelled edit.
@@ -54,7 +54,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await deleteDoc(user, id);
     return NextResponse.json({ ok: true });
   });

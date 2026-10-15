@@ -3,7 +3,7 @@ import { requireDb, schema } from "@/db";
 import { decryptToken, encryptToken, encryptionReady } from "./crypto";
 import { googleConfig, profile, refreshAccessToken } from "./gmail";
 import { MAIL_PRESETS, verifyMailbox, type ImapSettings } from "./imap";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, storedMessage } from "@/lib/errors";
 
 export type AccountRow = typeof schema.emailAccounts.$inferSelect;
 /** What the UI is allowed to see: never the tokens or the password. */
@@ -11,7 +11,7 @@ export type SafeAccount = { id: number; address: string; provider: string; statu
 
 export const toSafe = (a: AccountRow): SafeAccount => ({
   id: a.id, address: a.address, provider: a.provider, status: a.status,
-  lastSyncAt: a.lastSyncAt?.toISOString() ?? null, lastError: a.lastError,
+  lastSyncAt: a.lastSyncAt?.toISOString() ?? null, lastError: storedMessage(a.lastError, "The last sync did not finish. Try again."),
   host: a.provider === "imap" ? (a.settings.imapHost ?? "") : "gmail.googleapis.com",
 });
 

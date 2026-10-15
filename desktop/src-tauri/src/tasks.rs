@@ -140,12 +140,12 @@ async fn tick(app: &AppHandle) {
         match run(app, id, false).await {
             Ok(_) => {}
             Err(ApiError::Plan(m)) => {
-                alerts::show(app, "A scheduled task was switched off", &m);
+                alerts::show_error(app, "A scheduled task was switched off", &m);
                 switch_off(app, id);
             }
             Err(ApiError::Server(403, m)) => {
                 // Off on the server (another copy of the app changed it, or Edge is not on): say so once and stop.
-                alerts::show(app, "A scheduled task could not run", &m);
+                alerts::show_error(app, "A scheduled task could not run", &m);
                 switch_off(app, id);
             }
             Err(e) => log::info!("task {id}: {e}"),

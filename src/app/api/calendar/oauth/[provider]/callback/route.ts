@@ -5,7 +5,8 @@ import { checkAccountLimit, saveOAuthAccount } from "@/lib/calendar/accounts";
 import { googleAddress, googleCalendarConfig, googleExchange } from "@/lib/calendar/providers/google";
 import { microsoftAddress, microsoftConfig, microsoftExchange } from "@/lib/calendar/providers/microsoft";
 import { syncAccount } from "@/lib/calendar/sync";
-import { describeFailure } from "@/lib/errors";
+import { ProviderError } from "@/lib/calendar/provider";
+import { describeFailure, logError } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { CALENDAR_STATE_COOKIE } from "../connect/route";
 
@@ -51,7 +52,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
     after(() => syncAccount(account).then(() => undefined, () => undefined));
     return back({ connected: address });
   } catch (e) {
-    // Never put internal error text in a URL (browser history, request logs, Referer).
+    // Never put internal error text in a URL (browser history, request logs, Referer). A provider's
+    // refusal is shown as what to do; its own words (redirect_uri_mismatch, invalid_client…) ride on the
+    // cause and are logged here, since a 4xx is not logged by describeFailure.
+    if (e instanceof ProviderError && e.httpStatus) logError(e, { status: e.httpStatus, where: "calendar-oauth-callback" });
     return back({ error: describeFailure(e, 400, "calendar-oauth-callback").message });
   }
 }

@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const name = typeof body?.name === "string" ? body.name.trim().slice(0, 120) : "";
   const members = (Array.isArray(body?.members) ? body.members : []).filter((m) => m && typeof m.ticker === "string").slice(0, 100)
     .map((m, i) => ({ ticker: m.ticker.toUpperCase().trim().slice(0, 12), tier: m.tier === "adjacent" ? "adjacent" : "core", rationale: typeof m.rationale === "string" ? m.rationale.slice(0, 500) : "", position: i }));
-  if (!name || members.length === 0) return NextResponse.json({ error: "name and at least one member required" }, { status: 400 });
+  if (!name || members.length === 0) return NextResponse.json({ error: "Give it a name and at least one company." }, { status: 400 });
   try {
     const db = requireDb();
     const [g] = await db.insert(schema.peerGroups).values({ name, description: typeof body?.description === "string" ? body.description.slice(0, 1_000) : "", createdBy: user.name || user.email || "analyst", userId: user.id }).returning();

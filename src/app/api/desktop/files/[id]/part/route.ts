@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = Number((await ctx.params).id), n = Number(new URL(req.url).searchParams.get("n"));
-    if (!Number.isInteger(id) || !Number.isInteger(n)) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!Number.isInteger(id) || !Number.isInteger(n)) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     await putPart(user.id, id, n, new Uint8Array(await req.arrayBuffer()));
     return NextResponse.json({ ok: true });
   }, { device: "required" });

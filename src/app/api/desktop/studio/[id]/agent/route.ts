@@ -18,7 +18,7 @@ export const maxDuration = 300;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { instruction?: string; effort?: "fast" | "balanced" | "thorough" } | null;
     const instruction = body?.instruction?.trim();
     if (!instruction) return NextResponse.json({ error: "Say what to change." }, { status: 400 });

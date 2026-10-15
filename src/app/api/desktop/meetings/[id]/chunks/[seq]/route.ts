@@ -16,7 +16,7 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string; seq
   return guardedDesktop(req, async (user) => {
     const p = await ctx.params;
     const id = Number(p.id), seq = Number(p.seq);
-    if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(seq)) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(seq)) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     // Refuse an oversized body before reading it into memory.
     if (Number(req.headers.get("content-length") ?? 0) > MAX_CHUNK_BYTES) return NextResponse.json({ error: "That piece of audio is too large." }, { status: 413 });
     const q = new URL(req.url).searchParams;

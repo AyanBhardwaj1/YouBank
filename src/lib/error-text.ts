@@ -10,6 +10,8 @@
 
 export const OUR_SIDE = "Something went wrong on our side";
 export const TOO_SLOW = "A data source took too long to answer. Try again in a moment.";
+/** A feature whose tables are not created yet on this server (a migration still to be applied). */
+export const SETTING_UP = "This feature is still being set up";
 
 const INTERNAL: RegExp[] = [
   // Drizzle: "Failed query: <SQL>\nparams: <values>".
@@ -39,6 +41,9 @@ const INTERNAL: RegExp[] = [
   /\b(answered|returned|responded( with)?|said) \d{3}\s*:\s*\S/i,
   // Python and Node tracebacks quoted by a service.
   /Traceback \(most recent call last\)|File "[^"]+", line \d+/,
+  // An exception quoted by its class, from a service or a library ("KeyError: 'pages'",
+  // "ValueError: could not convert…", "java.lang.IllegalStateException: …", "ZodError: […]").
+  /\b(?:[a-z_]\w*\.)*[A-Z][A-Za-z0-9]*(?:Error|Exception)\b:\s/,
   // Provider errors quoted as written: "OpenAI API error 500: …", "Anthropic API error …", "Stripe…".
   /\b(OpenAI|Anthropic|Stripe|Resend|Twilio) API error\b|\bStripe\w*Error\b/i,
   // A provider's billing limit, which tells our users to upgrade a plan that is ours ("Your account or
@@ -58,4 +63,83 @@ export function looksInternal(message: string, name = ""): boolean {
   if (!message.trim() || message.length > 400) return true;
   if (/DrizzleQueryError|NeonDbError|PostgresError/.test(name) || INTERNAL_NAMES.test(name)) return true;
   return INTERNAL.some((r) => r.test(message));
+}
+
+/**
+ * A refusal's own words: the message of an error that carries a status below 500 and reads as written
+ * for people ("Your broker said: insufficient buying power"), else `fallback`. For text kept where a
+ * failure otherwise gets a generic line (an order row, an agent's step log).
+ */
+export function refusalMessage(e: unknown, fallback: string): string {
+  const s = (e as { status?: unknown } | null)?.status;
+  const message = e instanceof Error ? e.message.trim() : "";
+  return typeof s === "number" && s >= 400 && s < 500 && message && !looksInternal(message, e instanceof Error ? e.name : "") ? message : fallback;
+}
+
+/** The parts of a validation issue (Zod's) a sentence is built from. */
+export type FieldIssue = {
+  path: readonly PropertyKey[]; code: string; message: string;
+  origin?: string; minimum?: unknown; maximum?: unknown; inclusive?: boolean; expected?: string; values?: readonly unknown[]; format?: string;
+};
+
+/** A field's name as people read it: a label when one is given (by full path or last key), else "maxOrderUsd" as "Max order ($)". */
+export function fieldLabel(path: readonly PropertyKey[], labels: Record<string, string> = {}): string {
+  const keys = path.filter((k): k is string => typeof k === "string");
+  const full = keys.join(".");
+  const last = keys[keys.length - 1] ?? "";
+  const named = labels[full] ?? labels[last];
+  if (named) return named;
+  // A key inside a labelled field (a record's key, "SPY" in weights) is named by that field: "Weights (SPY)".
+  for (let n = keys.length - 1; n > 0; n--) {
+    const parent = labels[keys.slice(0, n).join(".")] ?? labels[keys[n - 1]];
+    if (parent) return `${parent} (${keys.slice(n).join(".")})`;
+  }
+  if (!last) return "This value";
+  const words = last.replace(/Usd$/, " ($)").replace(/Bps$/, " (bps)").replace(/Pct$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const bound = (v: unknown) => (typeof v === "number" || typeof v === "bigint" ? Number(v).toLocaleString("en-US") : String(v));
+
+/**
+ * One validation issue as a plain sentence about its field ("Limit band (bps) must be at most 500."),
+ * instead of the validator's own wording ("execution.limitBandBps: Too big: expected number to be <=500").
+ * A custom check's message is ours and is kept as written. Pure, for tests and the browser.
+ */
+export function issueSentence(i: FieldIssue, labels: Record<string, string> = {}): string {
+  const label = fieldLabel(i.path, labels);
+  const received = /received undefined|received null/i.test(i.message);
+  // A message the schema gives (.regex(…, "Use ticker symbols like AAPL")) is ours and says what to do;
+  // the validator's own messages start "Invalid…", "Too big…", "Too small…" or "Unrecognized…".
+  if (i.code !== "custom" && i.message && !/^(Invalid|Too (big|small)|Unrecognized)\b/.test(i.message) && !looksInternal(i.message)) {
+    return /[.!?]$/.test(i.message) ? i.message : `${i.message}.`;
+  }
+  switch (i.code) {
+    case "custom":
+      return i.message && !looksInternal(i.message) ? i.message : `${label} is not valid.`;
+    case "too_small":
+      if (i.origin === "string") return Number(i.minimum) <= 1 ? `${label} is required.` : `${label} must be at least ${bound(i.minimum)} characters.`;
+      if (i.origin === "array" || i.origin === "set") return `${label} needs at least ${bound(i.minimum)} ${Number(i.minimum) === 1 ? "entry" : "entries"}.`;
+      return `${label} must be ${i.inclusive === false ? "more than" : "at least"} ${bound(i.minimum)}.`;
+    case "too_big":
+      if (i.origin === "string") return `${label} must be at most ${bound(i.maximum)} characters.`;
+      if (i.origin === "array" || i.origin === "set") return `${label} can have at most ${bound(i.maximum)} entries.`;
+      return `${label} must be ${i.inclusive === false ? "less than" : "at most"} ${bound(i.maximum)}.`;
+    case "invalid_type":
+      if (received) return `${label} is required.`;
+      if (i.expected === "int") return `${label} must be a whole number.`;
+      return i.expected === "number" ? `${label} must be a number.` : i.expected === "boolean" ? `${label} must be on or off.` : i.expected === "array" ? `${label} must be a list.` : `${label} is not valid.`;
+    case "invalid_value":
+    case "invalid_enum_value": {
+      const options = (i.values ?? []).filter((v) => typeof v === "string" || typeof v === "number").map(String);
+      return options.length && options.length <= 8 ? `${label} must be one of: ${options.join(", ")}.` : `${label} is not one of the allowed values.`;
+    }
+    case "invalid_format":
+    case "invalid_string":
+      return i.format === "email" ? `${label} must be an email address.` : `${label} is not in the expected format.`;
+    case "not_multiple_of":
+      return `${label} must be a whole number.`;
+    default:
+      return `${label} is not valid.`;
+  }
 }

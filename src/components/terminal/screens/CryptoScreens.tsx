@@ -21,6 +21,7 @@ import type { GlobalStats, TokenRow } from "@/lib/crypto/market";
 import type { TokenView } from "@/lib/crypto/token";
 import type { WalletView } from "@/lib/crypto/wallet";
 import { addressUrl, shortAddress, txUrl, type ChainKey } from "@/lib/crypto/chains";
+import { errorMessage } from "@/lib/client/errors";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { PremiumBadge, PremiumGate } from "@/components/billing/Premium";
 import { AiRead, AskAi, BarList, DataTable, fdate, fp, Frame, fsp, fx, Heat, Hint, Pill, Section, SeriesChart, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
@@ -61,7 +62,7 @@ function ProData<T>({ fn: key, q, onData }: { fn: string; q?: string; onData: (d
       if (!res.ok) throw new Error(j.error ?? "Pro data is not available right now");
       onData(j as T);
       setState({ busy: false, done: true });
-    } catch (e) { setState({ busy: false, error: e instanceof Error ? e.message : "Pro data is not available right now" }); }
+    } catch (e) { setState({ busy: false, error: errorMessage(e) }); }
   };
   const locked = <span className="inline-flex items-center gap-1.5 text-[10.5px] text-muted">Pro data <PremiumBadge feature="crypto.pro-data" /></span>;
   return (
@@ -564,7 +565,7 @@ export function WalletScreen({ arg }: Props) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Could not read that address");
       setView({ busy: false, data: j.view?.wallets?.[0]?.error ? undefined : j.view ?? undefined, error: j.view?.wallets?.[0]?.error });
-    } catch (e) { setView({ busy: false, error: e instanceof Error ? e.message : "Could not read that address" }); }
+    } catch (e) { setView({ busy: false, error: errorMessage(e) }); }
   };
   // WALLET <address> reads the address once when the panel opens.
   const opened = useRef(false);

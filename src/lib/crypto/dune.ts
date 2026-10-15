@@ -28,7 +28,7 @@ export const duneConfigured = () => !!process.env.DUNE_API_KEY?.trim();
 
 export async function duneResults(queryId: number): Promise<DuneResult> {
   const key = process.env.DUNE_API_KEY?.trim();
-  if (!key) throw new CryptoDataError("Dune is not connected for this workspace (an administrator sets DUNE_API_KEY).", 503);
+  if (!key) throw new CryptoDataError("Dune is not connected for this workspace yet. An administrator can connect it.", 503);
   if (!Number.isInteger(queryId) || queryId <= 0) throw new CryptoDataError("Give a Dune query number, e.g. 3237721.", 400);
   return cacheJson(`crypto:dune:${queryId}`, 10 * MIN, async () => {
     const raw = await fetchJson<unknown>(`https://api.dune.com/api/v1/query/${queryId}/results?limit=500`, { source: "Dune", headers: { "X-Dune-API-Key": key }, timeoutMs: 30_000 });
