@@ -125,17 +125,5 @@ export async function cloneIntegrity(cik: string): Promise<IntegrityReport | nul
   return r?.report ?? null;
 }
 
-/** Annual turnover of a clone from its rebalance weights (sum of half the absolute weight changes, per year). */
-export function cloneTurnover(events: { date: string; weights: Record<string, number> }[]): number {
-  if (events.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < events.length; i++) {
-    const a = events[i - 1].weights, b = events[i].weights;
-    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-    let s = 0;
-    for (const k of keys) s += Math.abs((b[k] ?? 0) - (a[k] ?? 0));
-    total += s / 2;
-  }
-  const years = (Date.parse(events.at(-1)!.date) - Date.parse(events[0].date)) / (365.25 * DAY);
-  return years > 0 ? total / years : 0;
-}
+/** Annual turnover of a clone from its rebalance weights (in copytrade/backtest.ts, where the backtest uses it). */
+export { annualTurnover as cloneTurnover } from "@/lib/copytrade/backtest";
