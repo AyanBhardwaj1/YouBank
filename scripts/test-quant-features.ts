@@ -14,7 +14,7 @@ import { checkClaim, cleanClaim } from "@/lib/quant/integrity/claim";
 import { liveGate, overridePhrase } from "@/lib/quant/integrity/check";
 import { parseReturnsCsv } from "@/lib/quant/integrity/upload";
 import { addSessions, isSession, knownAtOf, newYorkTime, nextOpenAfter, nextSession, sessions } from "@/lib/quant/pit/calendar";
-import { barReturns, mergeBars, sliceBars, decodeBars, encodeBars } from "@/lib/quant/pit/bars";
+import { barReturns, mergeBars, rebaseBars, sliceBars, decodeBars, encodeBars } from "@/lib/quant/pit/bars";
 import { buildPanel, decodePanel, encodePanel } from "@/lib/quant/pit/panel";
 import { adjustForSplits, auditSplits } from "@/lib/quant/pit/actions";
 import { asOf, factKnownAt, pitFacts, sharesFacts, ttmAsOf } from "@/lib/quant/pit/fundamentals";
@@ -196,6 +196,12 @@ export async function featureTests(check: Check, near: Near) {
     check("bars merge sorted, newest values win, no duplicates", b2.d.join(",") === "2026-01-02,2026-01-05,2026-01-06" && b2.c[1] === 2.5 && b2.symbol === "ABC");
     check("bars round-trip through gzip", JSON.stringify(decodeBars(encodeBars(b2)).c) === JSON.stringify(b2.c));
     check("returns and slices", near(barReturns(b2).ret[0], 1.5) && sliceBars(b2, "2026-01-05").d.length === 2);
+    // A 2-for-1 split after the stored history: the refresh's overlap comes back halved, so older bars are rescaled
+    // and the merged series has no -50% day; an ordinary refresh changes nothing.
+    const pre = mergeBars(null, ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"].map((d, i) => ({ date: d, open: 100 + i, high: 101 + i, low: 99 + i, close: 100 + i, volume: 1000 })), "spl", "test");
+    const post = [{ date: "2026-03-04", open: 51, high: 51.5, low: 50.5, close: 51, volume: 2000 }, { date: "2026-03-05", open: 51.5, high: 52, low: 51, close: 51.5, volume: 2000 }, { date: "2026-03-06", open: 52, high: 53, low: 51, close: 52, volume: 2000 }];
+    const merged = mergeBars(rebaseBars(pre, post), post, "spl", "test");
+    check("a split after the stored history is rebased, not a -50% day; an unchanged overlap is left alone", barReturns(merged).ret.every((r) => Math.abs(r) < 0.03) && near(merged.c[0], 50) && merged.v[0] === 2000 && rebaseBars(pre, [{ date: "2026-03-05", close: 103.2 }]) === pre, barReturns(merged).ret);
     const p = buildPanel(2026, { AAA: new Map([["2026-01-02", 0.01], ["2026-01-05", -0.02]]), BBB: new Map([["2026-01-05", 0.03]]) }, ["2026-01-02", "2026-01-05"]);
     const q = decodePanel(encodePanel(p));
     check("the Float32 panel round-trips with NaN for missing", q.symbols.join() === "AAA,BBB" && near(q.values[0], 0.01, 1e-7) && Number.isNaN(q.values[2]) && near(q.values[3], 0.03, 1e-7));

@@ -38,6 +38,26 @@ export function mergeBars(old: Bars | null, add: { date: string; open: number; h
   return { symbol: symbol.toUpperCase(), d, o: pick(0), h: pick(1), l: pick(2), c: pick(3), v: pick(4), div: old?.div, source, updatedAt: new Date().toISOString() };
 }
 
+/**
+ * Put stored bars on the basis of newly fetched ones. Sources return split-adjusted history, so after a split
+ * (or a switch of source) the overlapping dates come back on a new basis while older stored dates keep the old
+ * one, and a merge would show a jump of the split's size between them. When the median ratio of new to stored
+ * closes over the overlap is more than `tolerance` from 1, every stored bar before the first fetched date is
+ * rescaled by it (prices times the ratio, volume divided by it). Pure.
+ */
+export function rebaseBars(old: Bars | null, add: { date: string; close: number }[], tolerance = 0.01): Bars | null {
+  if (!old?.d.length || !add.length) return old;
+  const at = new Map(old.d.map((d, i) => [d, old.c[i]]));
+  const ratios = add.filter((x) => x.close > 0 && (at.get(x.date) ?? 0) > 0).map((x) => x.close / at.get(x.date)!).sort((a, b) => a - b);
+  if (!ratios.length) return old;
+  const k = ratios[Math.floor(ratios.length / 2)];
+  if (!(k > 0) || Math.abs(k - 1) <= tolerance) return old;
+  const first = add.reduce((m, x) => (x.date < m ? x.date : m), add[0].date);
+  const before = (i: number) => old.d[i] < first;
+  const scale = (xs: number[]) => xs.map((v, i) => (before(i) ? v * k : v));
+  return { ...old, o: scale(old.o), h: scale(old.h), l: scale(old.l), c: scale(old.c), v: old.v.map((v, i) => (before(i) ? v / k : v)) };
+}
+
 /** Bars from `from` on (inclusive). Pure. */
 export function sliceBars(b: Bars, from?: string, to?: string): Bars {
   const i0 = from ? b.d.findIndex((d) => d >= from) : 0;
@@ -89,7 +109,7 @@ export async function refreshBars(symbol: string, backfillFrom: string): Promise
     try {
       const r = await historyFrom(v, from);
       if (!r.data.length) continue;
-      const merged = mergeBars(old, r.data, symbol, r.source);
+      const merged = mergeBars(rebaseBars(old, r.data), r.data, symbol, r.source);
       await putBars(merged);
       return merged.d.length;
     } catch { /* next spelling */ }
