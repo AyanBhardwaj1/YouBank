@@ -35,6 +35,7 @@ export function brokerSetup(): { ready: boolean; trading: boolean; reason: strin
   return { ready: true, trading: tradingEnabled(), reason: tradingEnabled() ? null : "Real trading is switched off on this server. You can connect and see your positions; orders cannot be sent." };
 }
 
+/** The person's SnapTrade user (copy trading and algo trading share one connection, and one monthly fee). */
 export async function snapUser(userId: string): Promise<SnapUser | null> {
   const [row] = await requireDb().select().from(schema.copyBrokers).where(eq(schema.copyBrokers.userId, userId));
   return row ? { userId: row.snaptradeUser, userSecret: decryptToken(row.secretEnc) } : null;
@@ -107,8 +108,8 @@ function accountView(a: SnapAccount, b?: { display_name?: string; name?: string;
   };
 }
 
-/** The broker's id for a ticker in this account (exact symbol match, tradable equity or ETF). */
-async function symbolId(u: SnapUser, accountId: string, ticker: string): Promise<string | null> {
+/** The broker's id for a ticker in this account (exact symbol match, tradable equity or ETF). Shared with algo trading's SnapTrade adapter. */
+export async function symbolId(u: SnapUser, accountId: string, ticker: string): Promise<string | null> {
   for (const q of [...new Set([brokerTicker(ticker), ticker])]) {
     const hits: SnapSymbol[] = await snaptrade.symbolSearch(u, accountId, q).catch(() => []);
     const want = q.toUpperCase();

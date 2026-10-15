@@ -187,14 +187,17 @@ export async function fundBacktest(cik: string, topN = DEFAULT_RULES.topN, years
   return cacheJson(key, 12 * 3_600_000, () => runBacktest(c, filings, topN, years));
 }
 
-async function runBacktest(cik: string, filings: FilingRecord[], topN: number, years: number): Promise<Backtest> {
+/**
+ * The lagged clone's events: every filing date, the latest quarter as then known (amendments change it on
+ * the day they were filed), as clone weights. Shared with algo trading's 13F-copy strategies.
+ */
+async function lagEventsOf(filings: FilingRecord[], topN: number, years: number): Promise<{ events: (RebalanceEvent & { period: string })[]; weightsOf: (hs: Holding[]) => Record<string, number> }> {
   const floor = new Date(Date.now() - years * 365.25 * DAY).toISOString().slice(0, 10);
   const rules: CloneRules = { ...DEFAULT_RULES, topN };
   const allHoldings = filings.flatMap((f) => f.holdings);
   const sec = await resolveSecurities(wantsOf(allHoldings), { lookup: true, budgetMs: 15_000, sectors: 0 });
   const weightsOf = (hs: Holding[]) => Object.fromEntries(cloneTargets(hs, rules, (x) => sec.get(x)).targets.map((t) => [t.ticker, t.weight]));
-  // The lagged clone: every filing date, the latest quarter as then known (amendments change it on the day they were filed).
-  const lagEvents: (RebalanceEvent & { period: string })[] = [];
+  const events: (RebalanceEvent & { period: string })[] = [];
   let lastSig = "";
   for (const d of [...new Set(filings.map((f) => f.filedOn))].sort()) {
     if (d < floor) continue;
@@ -204,8 +207,19 @@ async function runBacktest(cik: string, filings: FilingRecord[], topN: number, y
     const sig = `${k.period}:${JSON.stringify(w)}`;
     if (sig === lastSig || !Object.keys(w).length) continue;
     lastSig = sig;
-    lagEvents.push({ date: d, weights: w, label: k.period, period: k.period });
+    events.push({ date: d, weights: w, label: k.period, period: k.period });
   }
+  return { events, weightsOf };
+}
+
+/** A fund's clone weights by filing date (only after each filing was public), for algo trading's 13F-copy strategies. */
+export async function cloneEvents(cik: string, topN = DEFAULT_RULES.topN, years = 5): Promise<{ date: string; period: string; weights: Record<string, number> }[]> {
+  const filings = (await storedFilings(padCik(cik))).filter((f) => f.reportType !== "NOTICE");
+  return (await lagEventsOf(filings, topN, years)).events.map((e) => ({ date: e.date, period: e.period, weights: e.weights }));
+}
+
+async function runBacktest(cik: string, filings: FilingRecord[], topN: number, years: number): Promise<Backtest> {
+  const { events: lagEvents, weightsOf } = await lagEventsOf(filings, topN, years);
   if (!lagEvents.length) throw Object.assign(new Error("Not enough filings in the window to backtest this fund."), { status: 404 });
   // The no-lag line: each quarter's holdings as first filed, bought at the quarter-end close.
   const noLagEvents: RebalanceEvent[] = [...new Set(lagEvents.map((e) => e.period))].map((p) => {

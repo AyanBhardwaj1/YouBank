@@ -2,6 +2,7 @@
  * Every premium feature, from one list per area. Each area's file is owned by the work on that area,
  * so changes to one never conflict with another. Pure data, safe to import on the client.
  */
+import { ALGO_FEATURES } from "./algo";
 import { CALENDAR_FEATURES } from "./calendar";
 import { COPYTRADE_FEATURES } from "./copytrade";
 import { CRYPTO_FEATURES } from "./crypto";
@@ -16,7 +17,7 @@ import type { FeatureArea, PremiumFeature } from "./types";
 
 export type { FeatureArea, PremiumFeature } from "./types";
 
-export const FEATURES: PremiumFeature[] = [...PREMIUM_FEATURES, ...MAPS_FEATURES, ...CRYPTO_FEATURES, ...DESKTOP_FEATURES, ...EDGE_NEXT_FEATURES, ...COPYTRADE_FEATURES, ...CALENDAR_FEATURES, ...NEWS_FEATURES, ...MEETINGS_FEATURES, ...QUANT_FEATURES];
+export const FEATURES: PremiumFeature[] = [...PREMIUM_FEATURES, ...MAPS_FEATURES, ...CRYPTO_FEATURES, ...DESKTOP_FEATURES, ...EDGE_NEXT_FEATURES, ...COPYTRADE_FEATURES, ...CALENDAR_FEATURES, ...NEWS_FEATURES, ...MEETINGS_FEATURES, ...ALGO_FEATURES, ...QUANT_FEATURES];
 
 const BY_ID = new Map(FEATURES.map((f) => [f.id, f]));
 

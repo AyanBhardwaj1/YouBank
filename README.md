@@ -32,6 +32,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Private markets](#private-markets)
    - [Crypto](#crypto)
    - [Fund copies (13F)](#fund-copies-13f)
+   - [Algo trading](#algo-trading)
    - [Newsroom](#newsroom)
    - [AI assistant](#ai-assistant)
    - [Studio: live models and decks](#studio-live-models-and-decks)
@@ -349,6 +350,45 @@ either way). Limit orders by default with a band, per-order and per-day limits, 
 while the market is closed, a typed confirmation for large batches, positions you
 hold outside a copy never sold unless you opt in, consents stored at first use, and an append-only
 audit log of every consent, proposal, approval and order payload (downloadable as CSV).
+
+### Algo trading
+
+`/app/algo` ("Algo trading" in the nav) runs rule-based strategies on paper or in a person's own broker
+account, with an AI agent to build, test and explain them. The research (what Webull, Robinhood, SnapTrade,
+Alpaca, IBKR and Tradier officially allow in 2026, how algo trading is done well, AI-agent guardrails,
+regulation) and the full design are in [docs/algo-trading.md](docs/algo-trading.md).
+
+- **Strategies as data.** A typed JSON spec (`src/lib/algo/strategy.ts`): universe, signal, sizing,
+  schedule, capital, risk limits and execution, built in a form or as JSON. Templates: trend following with
+  volatility targeting, momentum rotation, RSI mean reversion, cointegration pairs, DCA and rebalancing, a
+  13F copy (reusing Fund copies), covered calls and cash-secured puts. Quant's signals and target portfolios
+  plug in through the contract in `src/lib/quant/contracts.ts` (`src/lib/algo/signals.ts`).
+- **Backtests that say how much to trust them.** Event-driven and point in time (fills at the next open),
+  spread, impact and fees, walk-forward folds, bootstrap intervals, the deflated Sharpe with every run
+  counted as a trial, the probability of backtest overfitting, a benchmark, and the hypothetical disclosure.
+- **Modes.** Backtest, paper (the default: simulated fills on real prices), live with approval (each batch
+  tapped) and live autonomous (Deal Team, after 14 days on paper, typed consent per strategy).
+- **Brokers.** The paper broker, Alpaca (OAuth or paper keys), SnapTrade (shared with Fund copies: Webull,
+  Schwab, Fidelity, E*TRADE, Tradier and more), Webull's OpenAPI and Robinhood's Crypto Trading API.
+  Robinhood has no public stock or options API for apps, so those are not offered. Credentials are encrypted.
+- **The risk engine, on the server, before every order.** Per-order, per-day and per-strategy notional,
+  position, gross and net exposure, daily loss stop, drawdown kill switch, order throttles, fat-finger band,
+  no short sales, pattern-day-trader rules, wash-sale warnings, the person's and the administrators' kill
+  switches; an order with an unknown outcome is never resent and blocks new ones until reconciled.
+- **The agent** (Pro): proposes strategies, runs backtests, explains trades from the logged reasoning,
+  tightens limits and pauses things. Orders only from the person's own words, through the risk engine, live
+  ones always waiting for a tap; news and filings are read as data after every tool call has been planned.
+- **Audit.** Every consent, connection, decision, order, block and agent call, append-only, with CSV export.
+
+| Feature | Plan | What it does | Cost to us |
+|---|---|---|---|
+| Live algo trading with approval (`algo.live`) | Pro | Real orders after each batch is approved | About $0.10 a month of ticks; SnapTrade's fee is Fund copies' |
+| AI trading agent (`algo.agent`) | Pro | The agent chat | About one assistant answer a turn, inside the AI allowance |
+| Autonomous algo trading (`algo.autonomous`) | Deal Team | Trades within limits without asking | none beyond the ticks |
+| More strategies and 15-minute decisions (`algo.more`) | Deal Team | 25 strategies (Pro 10, Free 3) | none beyond the ticks |
+
+**Off by default.** Real orders need `ALGO_LIVE_ENABLED=1`, which should wait for counsel's review
+(docs/algo-trading.md, section 6).
 
 ### Newsroom
 
@@ -1561,6 +1601,7 @@ All tables are in `src/db/schema.ts`.
 | Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | Calendar | `calendar_accounts` (connected accounts; OAuth tokens and app passwords encrypted), `calendar_calendars` (shown or hidden, sync token, push channel), `calendar_events` (occurrences in the 30-days-back, 90-ahead window, with linked contact and deal ids), `calendar_prefs` (zone, working hours, default calendar, meeting link, the auto-brief switch), `calendar_briefs` (AI meeting briefs) |
 | Fund copies | `copy_filers` (every 13F filer seen, for search), `copy_filings` (each 13F-HR and 13F-HR/A as read, holdings as JSON), `copy_securities` (CUSIP to ticker and sector, with the source), `copy_cusip_overrides` (the owner's corrections), `copy_follows`, `copy_portfolios` (paper and live copies), `copy_brokers` (the SnapTrade user, secret encrypted), `copy_consents`, `copy_batches` and `copy_orders` (proposals and what was sent), `copy_audit` (append-only by rule) |
+| Algo trading | `algo_strategies` (spec, mode, paper account, own holdings, equity peak and day start), `algo_connections` (Alpaca, Webull and Robinhood Crypto credentials, encrypted), `algo_decisions` (target, signals, reasons), `algo_batches` and `algo_orders` (each order or TWAP slice, client order id unique, lifecycle), `algo_equity` (daily marks), `algo_consents` (per strategy for autonomy, with the typed words), `algo_settings` (kill switches, global under `__global__`), `algo_agent_messages`, `algo_backtests`, `algo_audit` (append-only by rule); drizzle/0025_algo.sql |
 | Quant | `quant_signals` (QuantSignals by producer, symbol and `as_of`), `quant_targets` (versioned target portfolios), `quant_trials` (every backtest run, append-only), `quant_runs` (saved analyses, risk budgets, overrides, drills), `quant_fills` (a person's own fills), `quant_factor_returns`, `quant_universe` (the top-1,000 with first and last dates), `quant_insider_tx`, `quant_events`, `quant_base_rates`, `quant_consents` |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
@@ -1697,6 +1738,13 @@ bash scripts/preflight.sh                                         # everything t
 | `SNAPTRADE_CLIENT_ID`, `SNAPTRADE_CONSUMER_KEY` | for live copies | SnapTrade keys; without them the brokerage panel reads "Not set up yet". The SnapTrade user secret is encrypted with `EMAIL_TOKEN_SECRET` |
 | `COPYTRADE_TRADING_ENABLED` | for real orders | `1` lets approved batches go to brokers; anything else keeps real trading off (paper copies work regardless) |
 | `COPYTRADE_MAX_ORDER_USD`, `COPYTRADE_MAX_DAY_USD` | no | Server-wide ceilings per order and per person per day; defaults `25000` and `50000` |
+| `ALGO_LIVE_ENABLED` | for real algo orders | `1` lets live strategies send orders (approval and autonomous); anything else keeps backtests and paper only |
+| `ALGO_MAX_ORDER_USD`, `ALGO_MAX_DAY_USD` | no | Server ceilings per order and per person per day for algo trading; defaults `25000` and `50000` |
+| `ALGO_MIN_PAPER_DAYS` | no | Days on paper before a strategy may trade autonomously; default `14` |
+| `ALGO_KILL` | no | `1` stops every strategy of everyone at once (the administrators' kill switch; also `POST /api/algo/admin/kill`) |
+| `ALPACA_OAUTH_CLIENT_ID`, `ALPACA_OAUTH_CLIENT_SECRET` | for "Sign in with Alpaca" | An Alpaca Connect app; redirect `https://<domain>/api/algo/connections/alpaca/callback`. Paper API keys work without it |
+| `ALGO_ALPACA_LIVE_KEYS` | no | `1` accepts pasted live Alpaca keys (off: live accounts connect through OAuth) |
+| `ALGO_WEBULL_ENABLED`, `WEBULL_API_BASE` | for direct Webull | `1` switches on Webull's OpenAPI with a person's own App Key; the base defaults to `https://api.webull.com` (check the region's host and paths first) |
 | `OPENFIGI_API_KEY` | no | Raises OpenFIGI's rate limit for CUSIP-to-ticker mapping (it works without one) |
 | `EDGE_BACKFILL_DAILY_USD` | no | Switches on reading the deal database's backfill and new deals, and sets the day's ceiling in dollars (platform spend; an administrator can also switch it in Deals, at $0.50 a day) |
 | `EDGE_REREAD_MODEL` | for the deal re-read | The stronger model for "Re-read with the stronger model" (uses `OPENAI_API_KEY`) |
@@ -1843,6 +1891,7 @@ deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays ever
 | Errors (151 tests) | `pnpm exec tsx scripts/test-errors.ts` | What may be shown to a person, against a corpus of SQL, URLs with keys and passwords, stack traces and tracebacks, HTML and XML error pages, provider, SDK and parser errors, and the plain messages that must still pass; the server's statuses and references (a provider's 401 is not the person's 401); missing tables behind Drizzle's wrapper; the browser's fallbacks by status, HTML bodies, "Failed to fetch", streamed and stored messages; the stale-deploy error page |
 | 3D maps (71 tests) | `pnpm exec tsx scripts/test-maps.ts` | The sun's position and light; procedural tank, stack, flame and tube meshes and the glTF writer; lidar octree selection under a budget and the point cloud wire format; terrain tiles; OpenStreetMap parsing; the digital twin's merging and flame placement; change, land-use and footprint cells; the layer registry; the maps plan features |
 | Copy trading (121 tests) | `pnpm exec tsx scripts/test-copytrade.ts` | 13F primary documents and information tables (units, amendments, confidential treatment, options, notices); CUSIP check digits, SEC's 13(f) list, share classes and OpenFIGI answers; splits and quarter-over-quarter changes; clone weights and blends; the lag-aware backtest's arithmetic; the rebalance diff (fractional and whole shares, cash limits, protected outside positions, the opt-in); one-tap approval (two simultaneous taps place each order once, unknown outcomes never retried, the daily limit, typed confirmations, market orders while closed); US market hours; SnapTrade request signatures against ones the official SDK computed; paper copies and polling |
+| Algo trading (207 checks) | `pnpm exec tsx scripts/test-algo.ts` | Indicators and Engle–Granger; strategy validation and templates; point-in-time decisions (changing the future changes nothing); the backtester on known answers (costs, next-open fills, the kill switch, DCA); the deflated Sharpe against Bailey and López de Prado's example; PBO and bootstrap; every risk rule and the kill switches; five concurrent sends placing each order once and unknown outcomes never resent; Alpaca, Robinhood (Ed25519 verified), Webull and SnapTrade requests against fixtures; the paper fill model; the agent's gates against prompt injection and quoted or pasted orders; live sells capped at the broker's holdings; PDT; the live gate; the Quant contract's timing, budget and grade rules; TWAP, client ids and the order lifecycle; the schedule; CSV formula neutralisation |
 | Tool packs | `pnpm exec tsx scripts/test-pack.ts all` | Schema and example validation, id collisions |
 | Premium (56 tests) | `pnpm exec tsx scripts/test-premium.ts` | The feature registry (unique ids, plans, a cost for every metered feature, every keyed upgrade built and tied to a feature); the premium scope (nothing premium outside it, async propagation, 402 before work, the client's plan message); per-person and administrator views of the upgrades (no setting values); Citations' spans to claims; MP3 frames and WAV headers for cutting audio; diarized pieces in time; LlamaParse jobs and Markdown tables; Nightfire's CSV, grouping and volumes; weekly levels, the drift forecast and the TimesFM query |
 | Autopilot end to end | see the header of `scripts/e2e-autopilot.ts` | A real IMAP/SMTP mailbox (Ethereal), a real database and the live model: coworker replies sent automatically and threaded; a pricing question held and asked; the answer remembered and reused; newsletters ignored; a draft withdrawn when you reply yourself |
@@ -2126,6 +2175,7 @@ YouBank/
 | [docs/calendar.md](docs/calendar.md) | The calendar: provider setup, sync and push, the iCalendar engine, briefs, scheduling, and the meeting copilot API |
 | [docs/premium.md](docs/premium.md) | Premium features: the plans, the feature registry, entitlements and the rules every premium feature follows |
 | [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
+| [docs/algo-trading.md](docs/algo-trading.md) | Algo trading: what each broker officially allows (Webull, Robinhood, SnapTrade, Alpaca, IBKR, Tradier), how algo trading is done well, AI-agent guardrails, regulation, the design, setup, known gaps and what counsel must review |
 | [docs/copy-trading.md](docs/copy-trading.md) | Fund copies: 13F ingestion and CUSIP mapping, the backtest, paper and live copies, SnapTrade, safety rails, and what counsel must review before real trading |
 | [docs/edge-next.md](docs/edge-next.md) | Edge's next round: the 14 proposals, the build order and what each step delivered |
 | [docs/quant-edge.md](docs/quant-edge.md) | Quant Edge: how the top firms get their edge, what a small investor can reproduce, the contract with the algo engine, the features and their build status |
