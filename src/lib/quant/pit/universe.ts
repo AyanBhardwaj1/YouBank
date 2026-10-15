@@ -104,11 +104,15 @@ export async function refreshUniverse(deadline: number): Promise<{ listings: num
   const ranked = rankUniverse(cands, UNIVERSE_SIZE);
   const today = new Date().toISOString().slice(0, 10);
   const listed = new Set(listings.map((l) => l.symbol));
-  // Clear old ranks, then write the new ones (first_date is the first day YouBank saw the listing).
+  // Clear old ranks, then write the new ones (first_date is the first day YouBank saw the listing). A symbol that
+  // already has an open row (no last_date) keeps it: the key is (symbol, first_date), so inserting it again with
+  // today's date would add a second open row each rebuild, and members() would list the symbol twice.
   await db.update(schema.quantUniverse).set({ rank: null }).where(sql`${schema.quantUniverse.rank} is not null`);
+  const openRows = new Set((await db.select({ symbol: schema.quantUniverse.symbol }).from(schema.quantUniverse).where(isNull(schema.quantUniverse.lastDate))).map((r) => r.symbol));
   for (let k = 0; k < ranked.length; k += 200) {
     const slice = ranked.slice(k, k + 200);
-    await db.insert(schema.quantUniverse).values(slice.map((r) => ({ symbol: r.symbol, cik: r.cik, name: r.name, exchange: r.exchange, securityType: r.securityType, firstDate: today, rank: r.rank, marketCap: r.marketCap, hasPrices: !!r.close, source: `SEC company_tickers_exchange.json; ${r.capSource}`, updatedAt: new Date() })))
+    const fresh = slice.filter((r) => !openRows.has(r.symbol));
+    if (fresh.length) await db.insert(schema.quantUniverse).values(fresh.map((r) => ({ symbol: r.symbol, cik: r.cik, name: r.name, exchange: r.exchange, securityType: r.securityType, firstDate: today, rank: r.rank, marketCap: r.marketCap, hasPrices: !!r.close, source: `SEC company_tickers_exchange.json; ${r.capSource}`, updatedAt: new Date() })))
       .onConflictDoNothing();
     for (const r of slice) await db.update(schema.quantUniverse).set({ rank: r.rank, marketCap: r.marketCap, hasPrices: !!r.close, source: `SEC company_tickers_exchange.json; ${r.capSource}`, updatedAt: new Date() }).where(and(eq(schema.quantUniverse.symbol, r.symbol), isNull(schema.quantUniverse.lastDate)));
   }
