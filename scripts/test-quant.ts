@@ -17,6 +17,7 @@ import { hmmFilter, hmmFit, hmmSample, hmmSmooth, stationary, type Hmm } from "@
 import { adf, engleGranger, halfLife, hurst, johansen, mackinnonCrit, mackinnonP } from "@/lib/quant/stats/coint";
 import { ols, projectSimplex, simplexLs, wls } from "@/lib/quant/stats/regress";
 import { continuousGrowth, discreteGrowth, drawdownProb, growthShare, kellyContinuous, kellyDiscrete, kellyMulti, simulateDrawdown, uncertainKelly } from "@/lib/quant/stats/kelly";
+import { featureTests } from "./test-quant-features";
 import { cholesky, eigSym, inverse, matmul, sqrtSym } from "@/lib/quant/stats/linalg";
 
 let pass = 0, fail = 0;
@@ -315,14 +316,9 @@ async function main() {
     check("corr and std agree with hand values", near(corr([1, 2, 3], [2, 4, 7]), 0.9933992677987828, 1e-12) && near(std([1, 2, 3, 4]), Math.sqrt(5 / 3)));
   }
 
-  await quantFeatureTests(check, near);
+  await featureTests(check, near);
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
-}
-
-/** The feature-level checks, filled in feature by feature below the statistics. */
-async function quantFeatureTests(_check: typeof check, _near: typeof near) {
-  // Added as each feature lands.
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
