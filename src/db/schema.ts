@@ -1369,7 +1369,9 @@ export const edgeSeries = pgTable("edge_series", {
 export type ForecastRule =
   | { type: "deal"; role: "target" | "acquirer"; node: number; minStakePct?: number }
   | { type: "xbrl"; cik: string; concept: string; period: string; op: ">=" | "<=" | "between"; value: number; high?: number; unit?: string; days?: [number, number]; endWithinDays?: number }
-  | { type: "manual"; note?: string; parent?: number };
+  | { type: "manual"; note?: string; parent?: number }
+  /** Quant Edge: a symbol's total return from `from` to `to` (closes) against a benchmark's, compared with `value` (excess return). */
+  | { type: "return"; symbol: string; benchmark: string; from: string; to: string; op: ">" | ">=" | "<" | "<="; value: number };
 
 /** F3: a probability Edge stated, when it was stated, and how it turned out. Append-only. */
 export const edgeForecasts = pgTable("edge_forecasts", {
@@ -2029,3 +2031,171 @@ export const copyAudit = pgTable("copy_audit", {
   userAgent: text("user_agent"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [index("copy_audit_user_idx").on(t.userId, t.createdAt)]);
+
+/* ---------------- Quant Edge (docs/quant-edge.md; drizzle/0026_quant.sql) ---------------- */
+
+/** QF1: one QuantSignal (src/lib/quant/contracts.ts) per row; the id is deterministic, so re-runs upsert. */
+export const quantSignals = pgTable("quant_signals", {
+  id: text("id").primaryKey(),
+  producer: text("producer").notNull(),
+  producerVersion: text("producer_version").notNull(),
+  symbol: text("symbol").notNull(),
+  cik: text("cik"),
+  assetClass: text("asset_class").notNull().default("equity"),
+  asOf: ts("as_of").notNull(),
+  computedAt: ts("computed_at").notNull().defaultNow(),
+  reconstructed: boolean("reconstructed").notNull().default(false),
+  validUntil: ts("valid_until").notNull(),
+  horizonDays: integer("horizon_days").notNull(),
+  body: jsonb("body").$type<Record<string, unknown>>().notNull(),
+  forecastId: bigint("forecast_id", { mode: "number" }),
+}, (t) => [index("quant_signals_producer_idx").on(t.producer, t.asOf), index("quant_signals_symbol_idx").on(t.symbol, t.asOf)]);
+
+/** QF1: TargetPortfolio versions per definition key ('copy:34', 'sleeve:12', 'algo:strategy:56'). */
+export const quantTargets = pgTable("quant_targets", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  targetKey: text("target_key").notNull(),
+  ownerId: text("owner_id"),
+  version: integer("version").notNull(),
+  asOf: ts("as_of").notNull(),
+  body: jsonb("body").$type<Record<string, unknown>>().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("quant_targets_key_version_uq").on(t.targetKey, t.version), index("quant_targets_key_idx").on(t.targetKey, t.asOf)]);
+
+/** QF2/Q3: every backtest run is a trial of its family. Append-only (UPDATE and DELETE are ruled out in SQL). */
+export const quantTrials = pgTable("quant_trials", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  ownerId: text("owner_id"),
+  family: text("family").notNull(),
+  params: jsonb("params").$type<Record<string, unknown>>().notNull(),
+  paramsHash: text("params_hash").notNull().default(""),
+  returnsRef: text("returns_ref").notNull(),
+  returns: jsonb("returns").$type<number[] | null>(),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  periodsPerYear: integer("periods_per_year").notNull().default(252),
+  sharpe: real("sharpe"),
+  nObs: integer("n_obs"),
+  skew: real("skew"),
+  kurt: real("kurt"),
+  hygiene: jsonb("hygiene").$type<Record<string, unknown>>().notNull().default({}),
+  source: text("source").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("quant_trials_family_idx").on(t.family), index("quant_trials_owner_idx").on(t.ownerId, t.createdAt)]);
+
+/** Saved analyses (integrity reports, factor, risk and TCA runs, risk budgets, drills, overrides), owner-scoped. */
+export const quantRuns = pgTable("quant_runs", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  kind: text("kind").notNull(),
+  input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+  output: jsonb("output").$type<Record<string, unknown>>().notNull(),
+  sources: jsonb("sources").$type<unknown[]>().notNull().default([]),
+  modelVersion: text("model_version").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("quant_runs_owner_idx").on(t.ownerId, t.kind, t.createdAt)]);
+
+/** Q5: a person's own executions; owner-scoped, deletable, never pooled. */
+export const quantFills = pgTable("quant_fills", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  source: text("source").notNull(),
+  accountRef: text("account_ref").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  qty: doublePrecision("qty").notNull(),
+  price: doublePrecision("price").notNull(),
+  executedAt: ts("executed_at").notNull(),
+  placedAt: ts("placed_at"),
+  orderType: text("order_type"),
+  limitPrice: doublePrecision("limit_price"),
+  broker: text("broker"),
+  fees: doublePrecision("fees"),
+  extId: text("ext_id").notNull(),
+  raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("quant_fills_ext_uq").on(t.ownerId, t.source, t.extId), index("quant_fills_owner_idx").on(t.ownerId, t.executedAt)]);
+
+/** QF4: daily factor returns by universe and version. */
+export const quantFactorReturns = pgTable("quant_factor_returns", {
+  date: date("date").notNull(),
+  factor: text("factor").notNull(),
+  universe: text("universe").notNull(),
+  version: text("version").notNull(),
+  ret: doublePrecision("ret").notNull(),
+}, (t) => [primaryKey({ columns: [t.date, t.factor, t.universe, t.version] }), index("quant_factor_returns_factor_idx").on(t.factor, t.universe, t.version, t.date)]);
+
+/** QF3: the point-in-time universe. */
+export const quantUniverse = pgTable("quant_universe", {
+  symbol: text("symbol").notNull(),
+  cik: text("cik"),
+  name: text("name").notNull(),
+  exchange: text("exchange"),
+  shareClass: text("share_class"),
+  securityType: text("security_type").notNull(),
+  firstDate: date("first_date").notNull(),
+  lastDate: date("last_date"),
+  successor: text("successor"),
+  rank: integer("rank"),
+  marketCap: doublePrecision("market_cap"),
+  hasPrices: boolean("has_prices").notNull().default(false),
+  source: text("source").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.symbol, t.firstDate] }), index("quant_universe_cik_idx").on(t.cik), index("quant_universe_rank_idx").on(t.rank)]);
+
+/** Q7: open-market insider transaction lines from Form 4, timed from EDGAR acceptance. */
+export const quantInsiderTx = pgTable("quant_insider_tx", {
+  accession: text("accession").notNull(),
+  line: integer("line").notNull(),
+  issuerCik: text("issuer_cik").notNull(),
+  symbol: text("symbol").notNull().default(""),
+  ownerCik: text("owner_cik").notNull().default(""),
+  ownerName: text("owner_name").notNull(),
+  isDirector: boolean("is_director").notNull().default(false),
+  isOfficer: boolean("is_officer").notNull().default(false),
+  isTenPct: boolean("is_ten_pct").notNull().default(false),
+  officerTitle: text("officer_title").notNull().default(""),
+  code: text("code").notNull(),
+  acquired: boolean("acquired").notNull().default(true),
+  shares: doublePrecision("shares").notNull().default(0),
+  price: doublePrecision("price"),
+  ownedAfter: doublePrecision("owned_after"),
+  tradeDate: date("trade_date").notNull(),
+  acceptedAt: ts("accepted_at").notNull(),
+  plan10b51: boolean("plan_10b5_1").notNull().default(false),
+  form: text("form").notNull().default("4"),
+  source: text("source").notNull().default("live"),
+  url: text("url").notNull().default(""),
+}, (t) => [primaryKey({ columns: [t.accession, t.line] }), index("quant_insider_tx_issuer_idx").on(t.issuerCik, t.tradeDate), index("quant_insider_tx_accepted_idx").on(t.acceptedAt), index("quant_insider_tx_owner_idx").on(t.ownerCik, t.tradeDate)]);
+
+/** The Quant hub's consent (quant.terms), as given. */
+export const quantConsents = pgTable("quant_consents", {
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(),
+  version: text("version").notNull(),
+  textHash: text("text_hash").notNull().default(""),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind, t.version] })]);
+
+/** QF5/Q7: detected market events (insider clusters, new 13Ds), timed from EDGAR acceptance. */
+export const quantEvents = pgTable("quant_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  issuerCik: text("issuer_cik").notNull(),
+  symbol: text("symbol").notNull().default(""),
+  occurredAt: date("occurred_at").notNull(),
+  acceptedAt: ts("accepted_at").notNull(),
+  body: jsonb("body").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("quant_events_type_idx").on(t.type, t.acceptedAt), index("quant_events_issuer_idx").on(t.issuerCik, t.acceptedAt)]);
+
+/** QF5: base rates per event definition and version. */
+export const quantBaseRates = pgTable("quant_base_rates", {
+  key: text("key").primaryKey(),
+  eventType: text("event_type").notNull(),
+  version: text("version").notNull(),
+  body: jsonb("body").$type<Record<string, unknown>>().notNull(),
+  computedAt: ts("computed_at").notNull().defaultNow(),
+});

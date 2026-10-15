@@ -1,6 +1,7 @@
 /**
  * The forecast ledger (F3): every probability Edge states about the future, logged when it is made,
- * resolved automatically when its window closes, and scored in the Track record. Rows are never edited:
+ * resolved automatically when its window closes, and scored in the Track record. Quant Edge adds the `return`
+ * rule (a symbol against a benchmark, from closes) for people's own calls and signal outcomes. Rows are never edited:
  * a new estimate of the same question is a new row that supersedes the last (only when it moved half a
  * point or more, so weekly re-scoring does not fill the table), and only the resolution columns are ever
  * written later. Shared forecasts (public data) have no owner; a person's own (a thesis claim) carry theirs.
@@ -16,6 +17,7 @@ import { requireDb, schema } from "@/db";
 import type { ForecastRule } from "@/db/schema";
 import { getCompanyFacts, rowsFor } from "@/lib/edgar/facts";
 import { logError } from "@/lib/errors";
+import { resolveReturn } from "@/lib/quant/resolve";
 import { record } from "../provenance";
 import { derivedEbitda, pickReported, resolveDeal, resolveXbrl, standingAtHorizon, worthLogging, type DealEvent, type ForecastRow } from "./rules";
 import { trackSummary, type TrackSummary } from "./track";
@@ -86,7 +88,7 @@ async function reportedValue(rule: Extract<ForecastRule, { type: "xbrl" }>): Pro
  */
 export async function resolveDue(deadline: number, now = new Date()): Promise<{ checked: number; resolved: number }> {
   const db = requireDb();
-  const open = await db.select().from(schema.edgeForecasts).where(and(isNull(schema.edgeForecasts.resolvedAt), sql`${schema.edgeForecasts.rule}->>'type' in ('deal', 'xbrl')`, sql`(${schema.edgeForecasts.closesAt} <= ${now} or ${schema.edgeForecasts.rule}->>'type' = 'deal')`)).limit(5000);
+  const open = await db.select().from(schema.edgeForecasts).where(and(isNull(schema.edgeForecasts.resolvedAt), sql`${schema.edgeForecasts.rule}->>'type' in ('deal', 'xbrl', 'return')`, sql`(${schema.edgeForecasts.closesAt} <= ${now} or ${schema.edgeForecasts.rule}->>'type' = 'deal')`)).limit(5000);
   let resolved = 0;
   const deals = open.filter((f) => f.rule.type === "deal");
   const nodes = [...new Set(deals.map((f) => (f.rule as Extract<ForecastRule, { type: "deal" }>).node))];
@@ -97,6 +99,12 @@ export async function resolveDue(deadline: number, now = new Date()): Promise<{ 
     try {
       let outcome: number | null = null, source = "";
       if (f.rule.type === "deal") { const r = resolveDeal(f.rule, f.opensAt, f.closesAt, events, now); if (r) { outcome = r.outcome; source = r.source; } }
+      else if (f.rule.type === "return") {
+        // Quant Edge: a symbol's return against a benchmark, from closes in the bar store (lib/quant/resolve.ts).
+        const r = await resolveReturn(f.rule, now);
+        if (r) { outcome = r.outcome; source = r.source; }
+        else if (now.getTime() > f.closesAt.getTime() + 30 * 86_400_000) { await settle(f.id, null, "not resolvable: no closing prices for the window"); continue; }
+      }
       else if (f.rule.type === "xbrl") {
         const v = await reportedValue(f.rule);
         outcome = resolveXbrl(f.rule, v?.value ?? null);
@@ -134,7 +142,7 @@ export async function resolveManual(userId: string, id: number, outcome: number,
 export type TrackPanel = TrackSummary & { kind: string; model: string; versions: string[]; manual: boolean; pending: number; horizonDays: number; recent: { question: string; probability: number; outcome: number; resolvedAt: string; label: string }[] };
 
 /** How far ahead each kind's record is scored: the estimate standing this many days before the close. */
-export const HORIZON_DAYS: Record<string, number> = { deal_target: 330, deal_acquirer: 330, guidance: 30, thesis_claim: 7, evasion_followup: 60, buyer_win: 30, rule_final: 30 };
+export const HORIZON_DAYS: Record<string, number> = { deal_target: 330, deal_acquirer: 330, guidance: 30, thesis_claim: 7, evasion_followup: 60, buyer_win: 30, rule_final: 30, user_call: 0, quant_signal: 0, quant_event: 0 };
 
 /**
  * The Track record for one kind of forecast (or every kind): one panel per model, shared forecasts only
