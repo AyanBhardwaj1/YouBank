@@ -10,14 +10,16 @@
  * - network and SDK failures;
  * - any message with SQL, a URL, a stack frame, a secret's name, an HTML page or runaway length
  *   (the patterns are in lib/error-text, shared with the browser).
+ * A table or column that does not exist yet (a migration not applied on this server) reads as "This
+ * feature is still being set up (ref …)", a 503, with the database's own error in the log.
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { aiUser } from "@/lib/ai/context";
-import { looksInternal, OUR_SIDE, TOO_SLOW } from "@/lib/error-text";
+import { looksInternal, OUR_SIDE, refusalMessage, SETTING_UP, TOO_SLOW } from "@/lib/error-text";
 
 // The patterns live in a dependency-free module so the browser applies the same rule (lib/client/errors).
-export { looksInternal, OUR_SIDE, TOO_SLOW };
+export { looksInternal, OUR_SIDE, refusalMessage, SETTING_UP, TOO_SLOW };
 
 const statusOf = (e: unknown): number | null => {
   const s = (e as { status?: unknown } | null)?.status;
@@ -61,6 +63,12 @@ export function logError(e: unknown, ctx: { status?: number; where?: string } = 
  * whose message carries the log reference; every 5xx is logged.
  */
 export function describeFailure(e: unknown, fallbackStatus = 500, where?: string): { status: number; message: string; ref?: string } {
+  // A table that is not there yet means a migration has not been applied: the feature is new on this
+  // server, not broken, and the person can do nothing but come back. The real error is logged.
+  if (isPendingMigration(e)) {
+    const ref = logError(e, { status: 503, where: where ?? "pending-migration" });
+    return { status: 503, message: `${SETTING_UP} (ref ${ref}). Try again later, and if it keeps happening, quote the reference.`, ref };
+  }
   const raw = e instanceof Error ? e.message : String(e ?? "");
   const internal = looksInternal(raw, e instanceof Error ? e.name : "");
   // An upstream's own 4xx (a provider's 401 for a bad key, 400 for a bad request) is our failure, not
@@ -99,6 +107,18 @@ export function isMissingTable(e: unknown): boolean {
     if ((x as { code?: unknown }).code === "42P01") return true;
     const m = x instanceof Error ? x.message : typeof x === "string" ? x : "";
     if (/relation "?[^"\s]*"? does not exist|undefined_table/i.test(m)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether a database error says the schema is behind the code: a missing table, or a missing column
+ * (Postgres 42703) after a migration that added one was not applied yet.
+ */
+export function isPendingMigration(e: unknown): boolean {
+  if (isMissingTable(e)) return true;
+  for (let x: unknown = e, i = 0; x && i < 4; x = (x as { cause?: unknown }).cause, i++) {
+    if ((x as { code?: unknown }).code === "42703") return true;
   }
   return false;
 }
