@@ -244,6 +244,8 @@ export const ALL_TOOLS = [getCompanyTool, compsTool, searchCompaniesTool, search
 export function toolError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
   if (isTimeout(e)) return "This source took too long to answer; continue without it.";
+  // lib/edgar/client's "EDGAR 404 for https://www.sec.gov/…" is the model's cue to try another document; the URL is not needed.
+  if (/^EDGAR 404 for https:\/\/[\w.]*sec\.gov\/\S*$/.test(message)) return "SEC EDGAR has no such document (404); try another form, filing or URL.";
   if (!looksInternal(message, e instanceof Error ? e.name : "")) return message;
   return `This source did not answer (ref ${logError(e, { where: "ai-tool" })}); continue without it and do not quote this error.`;
 }
