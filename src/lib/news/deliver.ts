@@ -26,7 +26,7 @@ export async function emailSelf(userId: string, origin: string, mail: { subject:
     await sendMessage(token, { to: [account.address], subject: mail.subject, body: mail.text, html: mail.html });
   } else {
     const s = account.settings as ImapSettings;
-    await smtpTransport(s, decryptToken(account.secret)).sendMail({ from: { name: "YouBank", address: account.address }, to: account.address, subject: mail.subject, text: mail.text, html: mail.html });
+    await (await smtpTransport(s, decryptToken(account.secret))).sendMail({ from: { name: "YouBank", address: account.address }, to: account.address, subject: mail.subject, text: mail.text, html: mail.html });
   }
   return account.address;
 }

@@ -1,5 +1,5 @@
 /**
- * Checks for running in production: the outbound HTTP helper (timeouts, the retry policy, Retry-After,
+ * Checks for running in production: the mail server guard, the outbound HTTP helper (timeouts, the retry policy, Retry-After,
  * never repeating a POST), the database's transient-error rules, the environment and feature checks,
  * the health verdict, sign-in origins, security headers and the browser's request helper. No network,
  * no database.
@@ -16,7 +16,8 @@ import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { StreamDropped, readSse } from "@/lib/client/sse";
 import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, safePublicFetch, withTimeout } from "@/lib/net";
-import { requestVia } from "@/lib/calendar/net";
+import { requestVia, resolvePublicHost } from "@/lib/calendar/net";
+import { imapClient, mailEndpoint, MAIL_PORTS } from "@/lib/crm/imap";
 import { lookup as dnsLookup } from "node:dns";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -442,6 +443,34 @@ async function testSafeFetch() {
   }
 }
 
+/** Mail servers people type in: public addresses on mail ports only, connected to by the checked address. */
+async function testMailHosts() {
+  const code = async (p: Promise<unknown>) => p.then(() => null, (x: unknown) => (x as { code?: string; status?: number }));
+  const privateHosts = ["127.0.0.1", "10.0.0.5", "192.168.1.10", "172.16.0.1", "100.64.0.1", "169.254.169.254", "0.0.0.0", "::1", "[::1]", "fd00::1", "::ffff:127.0.0.1", "localhost", "mail.internal", "printer.local"];
+  const results = await Promise.all(privateHosts.map(async (h) => (await code(mailEndpoint("IMAP", h, 993)))?.code === "UNSAFE_URL"));
+  check("mail: private, loopback, link-local, metadata and local names are refused", results.every(Boolean), privateHosts.filter((_, i) => !results[i]));
+  const e = await code(mailEndpoint("SMTP", "10.0.0.5", 465));
+  check("mail: a refusal is a plain 400", e?.status === 400);
+  const ports = await Promise.all([22, 80, 443, 3306, 5432, 6379, 0].map(async (p) => (await code(mailEndpoint("IMAP", "93.184.215.14", p)))?.code === "UNSAFE_URL"));
+  check("mail: ports other than mail ports are refused", ports.every(Boolean));
+  const smtpOnImap = await code(mailEndpoint("IMAP", "93.184.215.14", 587));
+  check("mail: IMAP and SMTP each keep to their own ports", smtpOnImap?.code === "UNSAFE_URL" && MAIL_PORTS.SMTP.includes(587));
+  const lit = await mailEndpoint("IMAP", "93.184.215.14", 993);
+  check("mail: a public IP is connected to as given, with no SNI name", lit.address === "93.184.215.14" && lit.servername === undefined);
+  const named = await mailEndpoint("SMTP", "Smtp.Example.com.", 587, async (h) => (h === "smtp.example.com" ? "93.184.215.14" : "127.0.0.1"));
+  check("mail: a name is connected to by its checked address and kept for TLS", named.address === "93.184.215.14" && named.servername === "smtp.example.com", named);
+  const v6 = await mailEndpoint("IMAP", "[2606:2800:220:1:248:1893:25c8:1946]", 993);
+  check("mail: a bracketed public IPv6 address is connected to without an SNI name", v6.address === "2606:2800:220:1:248:1893:25c8:1946" && v6.servername === undefined, v6);
+  const rebound = await code(mailEndpoint("IMAP", "evil.example", 993, async () => { throw new Error("That address points at a private network."); }));
+  check("mail: a name that resolves to a private address is refused", rebound?.code === "UNSAFE_URL");
+  const viaLookup = await code(resolvePublicHost("127.0.0.1").then(() => "ok"));
+  check("resolvePublicHost refuses a private literal", viaLookup !== null);
+  const blocked = await code(imapClient({ imapHost: "169.254.169.254", imapPort: 993, imapSecure: true, smtpHost: "", smtpPort: 465, smtpSecure: true, username: "a@b.co" }, "x"));
+  check("mail: the IMAP client is never built for a private host", blocked?.code === "UNSAFE_URL");
+  const client = await imapClient({ imapHost: "93.184.215.14", imapPort: 993, imapSecure: true, smtpHost: "", smtpPort: 465, smtpSecure: true, username: "a@b.co" }, "x");
+  check("mail: the IMAP client connects to the checked address", (client as unknown as { host?: string }).host === "93.184.215.14");
+}
+
 async function main() {
   // AbortSignal.timeout's timer does not keep Node alive; a server always has something else that does.
   const alive = setInterval(() => undefined, 1_000);
@@ -453,6 +482,7 @@ async function main() {
   const alive2 = setInterval(() => undefined, 1_000);
   await testClient();
   await testSafeFetch();
+  await testMailHosts();
   clearInterval(alive2);
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

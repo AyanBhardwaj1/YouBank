@@ -1765,7 +1765,8 @@ bash scripts/preflight.sh                                         # everything t
    - **iCloud:** an app-specific password under Sign-In and Security.
    - **Yahoo, Zoho and Fastmail:** their equivalents.
 2. In YouBank, open **Relationships**, choose the provider, and paste your address and the app password.
-3. YouBank verifies the IMAP and SMTP logins before saving anything, then encrypts the password.
+3. YouBank verifies the IMAP and SMTP logins before saving anything, then encrypts the password. Custom
+   servers must be public addresses on standard mail ports (IMAP 993 or 143; SMTP 465, 587, 25 or 2525).
 
 ### With the Gmail API (OAuth)
 

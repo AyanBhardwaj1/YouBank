@@ -1,5 +1,6 @@
 import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { simpleParser, type AddressObject, type ParsedMail } from "mailparser";
+import { isIP } from "node:net";
 import nodemailer from "nodemailer";
 import MailComposer from "nodemailer/lib/mail-composer";
 import type { EmailAddress } from "@/db/schema";
@@ -7,6 +8,7 @@ import { isAutomatedMessage } from "./autopilot-rules";
 import type { IncomingMessage } from "./db";
 import { newMessageId, stripQuoted, type FetchedThread } from "./gmail";
 import { logError } from "@/lib/errors";
+import { resolvePublicHost, unsafeUrl } from "@/lib/net";
 
 /**
  * Any mailbox over IMAP (reading) and SMTP (sending), signed in with an app password.
@@ -54,16 +56,38 @@ export const MAIL_PRESETS: Record<string, Preset> = {
 
 const DAY = 86_400_000;
 
-export function imapClient(s: ImapSettings, password: string): ImapFlow {
+/** The ports mail servers listen on; anything else is refused, so the server cannot be aimed at other services. */
+export const MAIL_PORTS = { IMAP: [993, 143], SMTP: [465, 587, 25, 2525] } as const;
+
+/**
+ * Where to connect for a server name people typed: a public address only (the same rule as links
+ * people paste, src/lib/calendar/net.ts) on a mail port. The connection goes to the address that was
+ * checked, with the typed name kept for TLS (SNI and the certificate check), so the name cannot
+ * resolve to a private address between the check and the connection. Refusals are plain 400s.
+ */
+export async function mailEndpoint(stage: "IMAP" | "SMTP", host: string, port: number, resolve: (h: string) => Promise<string> = resolvePublicHost) {
+  const ports: readonly number[] = MAIL_PORTS[stage];
+  if (!ports.includes(port)) throw unsafeUrl(`${stage} must use a standard mail port (${ports.join(", ")}).`);
+  const name = host.trim().replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  const address = await resolve(name).catch(() => {
+    throw unsafeUrl(`The ${stage} server "${name}" cannot be used: it could not be found, or it is on a private network. Check the server name.`);
+  });
+  return { address, servername: isIP(name) ? undefined : name };
+}
+
+export async function imapClient(s: ImapSettings, password: string): Promise<ImapFlow> {
+  const at = await mailEndpoint("IMAP", s.imapHost, s.imapPort);
   return new ImapFlow({
-    host: s.imapHost, port: s.imapPort, secure: s.imapSecure, auth: { user: s.username, pass: password },
+    host: at.address, servername: at.servername, port: s.imapPort, secure: s.imapSecure, auth: { user: s.username, pass: password },
     logger: false, disableAutoIdle: true, connectionTimeout: 15_000, greetingTimeout: 10_000, socketTimeout: 90_000,
   });
 }
 
-export function smtpTransport(s: ImapSettings, password: string) {
+export async function smtpTransport(s: ImapSettings, password: string) {
+  const at = await mailEndpoint("SMTP", s.smtpHost, s.smtpPort);
   return nodemailer.createTransport({
-    host: s.smtpHost, port: s.smtpPort, secure: s.smtpSecure, requireTLS: !s.smtpSecure,
+    host: at.address, port: s.smtpPort, secure: s.smtpSecure, requireTLS: !s.smtpSecure,
+    ...(at.servername ? { tls: { servername: at.servername } } : {}),
     auth: { user: s.username, pass: password }, connectionTimeout: 15_000, greetingTimeout: 10_000, socketTimeout: 60_000,
   });
 }
@@ -85,14 +109,17 @@ export function friendlyMailError(e: unknown, stage: "IMAP" | "SMTP"): Error {
 
 /** Sign in to both servers without reading or sending anything, so a bad password fails at connect time. */
 export async function verifyMailbox(s: ImapSettings, password: string): Promise<void> {
-  const client = imapClient(s, password);
+  // Both servers are checked before either is contacted.
+  await mailEndpoint("SMTP", s.smtpHost, s.smtpPort);
+  const client = await imapClient(s, password);
   try {
     await client.connect();
     const lock = await client.getMailboxLock("INBOX", { readOnly: true });
     lock.release();
   } catch (e) { throw friendlyMailError(e, "IMAP"); }
   finally { await client.logout().catch(() => undefined); }
-  try { await smtpTransport(s, password).verify(); } catch (e) { throw friendlyMailError(e, "SMTP"); }
+  const smtp = await smtpTransport(s, password);
+  try { await smtp.verify(); } catch (e) { throw friendlyMailError(e, "SMTP"); }
 }
 
 /* ---------------- Parsing ---------------- */
@@ -266,7 +293,8 @@ export async function smtpSend(s: ImapSettings, password: string, client: ImapFl
     ...(mail.inReplyTo ? { inReplyTo: mail.inReplyTo } : {}),
     ...(mail.references?.length ? { references: mail.references } : {}),
   };
-  try { await smtpTransport(s, password).sendMail(message); } catch (e) { throw friendlyMailError(e, "SMTP"); }
+  const smtp = await smtpTransport(s, password);
+  try { await smtp.sendMail(message); } catch (e) { throw friendlyMailError(e, "SMTP"); }
 
   const gmail = /gmail\.com$|googlemail\.com$/i.test(s.smtpHost);
   if (!gmail && client) {

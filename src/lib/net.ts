@@ -24,7 +24,7 @@
 import { assertPublicUrl, guardedLookup, requestVia } from "@/lib/calendar/net";
 
 /** http(s) to names that resolve only to public addresses (the check safePublicFetch makes per hop). */
-export { assertPublicUrl, isPrivateAddress } from "@/lib/calendar/net";
+export { assertPublicUrl, isPrivateAddress, resolvePublicHost } from "@/lib/calendar/net";
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 

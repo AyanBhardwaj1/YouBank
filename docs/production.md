@@ -304,6 +304,11 @@ production branch's autoscaling maximum to 4 CU.
   finds in feeds, calendar feeds and CalDAV servers, and web push endpoints go only to public addresses
   (`safePublicFetch` and `assertPublicUrl` in `src/lib/net.ts`): no loopback, private, link-local or cloud
   metadata address, each redirect checked again (at most three), time and size capped.
+- **Mail servers people type in**: a custom mailbox's IMAP and SMTP hosts follow the same rule
+  (`mailEndpoint` in `src/lib/crm/imap.ts`), checked when the mailbox is saved and again before every
+  connection. Only mail ports are allowed (IMAP 993 and 143, SMTP 465, 587, 25 and 2525). The connection
+  goes to the address that was checked, with the typed name kept for TLS, so the certificate is still
+  verified against it and a name cannot switch to a private address in between.
 - **Caching**: pages are rendered per request (the theme and session come from cookies), so nothing
   personal is cached by the CDN; API responses are `no-store` or `private`. `/_next/static` assets are
   immutable and fingerprinted. The sitemap regenerates hourly.
