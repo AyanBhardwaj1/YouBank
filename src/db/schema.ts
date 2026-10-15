@@ -2029,3 +2029,178 @@ export const copyAudit = pgTable("copy_audit", {
   userAgent: text("user_agent"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, (t) => [index("copy_audit_user_idx").on(t.userId, t.createdAt)]);
+
+/* ---------------- Algorithmic and agentic trading (drizzle/0025_algo.sql) ---------------- */
+
+/** Kill switches: one row per person; the administrators' global switch is user_id "__global__". */
+export const algoSettings = pgTable("algo_settings", {
+  userId: text("user_id").primaryKey(),
+  kill: boolean("kill").notNull().default(false),
+  killReason: text("kill_reason"),
+  killBy: text("kill_by"),
+  killAt: ts("kill_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Broker connections other than SnapTrade; credentials encrypted (lib/crm/crypto). */
+export const algoConnections = pgTable("algo_connections", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  broker: text("broker").notNull(), // alpaca | webull | robinhood_crypto
+  env: text("env").notNull().default("paper"), // paper | live
+  label: text("label").notNull().default(""),
+  secretEnc: text("secret_enc").notNull(),
+  status: text("status").notNull().default("active"), // active | revoked | error
+  lastError: text("last_error"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastUsedAt: ts("last_used_at"),
+}, (t) => [index("algo_connections_user_idx").on(t.userId, t.status)]);
+
+/** A strategy: spec, mode, state, its paper account and its own live holdings. */
+export const algoStrategies = pgTable("algo_strategies", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+  mode: text("mode").notNull().default("paper"), // backtest | paper | live_approval | live_auto
+  status: text("status").notNull().default("active"), // active | paused | archived
+  kill: boolean("kill").notNull().default(false),
+  killReason: text("kill_reason"),
+  connection: text("connection"), // "paper" | "snaptrade" | "conn:<id>"
+  accountId: text("account_id"),
+  managed: jsonb("managed").$type<Record<string, number>>().notNull().default({}),
+  paper: jsonb("paper").$type<import("@/lib/algo/brokers/paper").PaperState | null>(),
+  paperStartedAt: ts("paper_started_at"),
+  riskConfirmedAt: ts("risk_confirmed_at"),
+  state: jsonb("state").$type<Record<string, unknown>>().notNull().default({}),
+  equityPeak: doublePrecision("equity_peak"),
+  equityDayStart: doublePrecision("equity_day_start"),
+  equityDay: date("equity_day"),
+  backtests: integer("backtests").notNull().default(0),
+  lastDecision: jsonb("last_decision").$type<Record<string, unknown> | null>(),
+  lastTickAt: ts("last_tick_at"),
+  nextTickAt: ts("next_tick_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("algo_strategies_user_idx").on(t.userId, t.status), index("algo_strategies_due_idx").on(t.status, t.nextTickAt)]);
+
+/** One equity mark per strategy per day. */
+export const algoEquity = pgTable("algo_equity", {
+  strategyId: integer("strategy_id").notNull(),
+  date: date("date").notNull(),
+  equity: doublePrecision("equity").notNull(),
+  benchmark: doublePrecision("benchmark"),
+}, (t) => [primaryKey({ columns: [t.strategyId, t.date] })]);
+
+/** Each decision: the target, the signals and the reasons. */
+export const algoDecisions = pgTable("algo_decisions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  strategyId: integer("strategy_id").notNull(),
+  userId: text("user_id").notNull(),
+  source: text("source").notNull().default("engine"), // engine | agent | user
+  mode: text("mode").notNull(),
+  target: jsonb("target").$type<Record<string, number>>().notNull().default({}),
+  signals: jsonb("signals").$type<unknown[]>().notNull().default([]),
+  notes: text("notes").notNull().default(""),
+  orders: integer("orders").notNull().default(0),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("algo_decisions_strategy_idx").on(t.strategyId, t.createdAt)]);
+
+/** A set of orders for one strategy (proposed -> placing once). */
+export const algoBatches = pgTable("algo_batches", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  strategyId: integer("strategy_id").notNull(),
+  decisionId: bigint("decision_id", { mode: "number" }),
+  source: text("source").notNull().default("engine"),
+  accountId: text("account_id").notNull(),
+  status: text("status").notNull().default("proposed"),
+  idemKey: text("idem_key"),
+  buyValue: doublePrecision("buy_value").notNull().default(0),
+  sellValue: doublePrecision("sell_value").notNull().default(0),
+  orderCount: integer("order_count").notNull().default(0),
+  proposal: jsonb("proposal").$type<Record<string, unknown>>().notNull().default({}),
+  expiresAt: ts("expires_at").notNull(),
+  approvedAt: ts("approved_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("algo_batches_user_idx").on(t.userId, t.createdAt), index("algo_batches_strategy_idx").on(t.strategyId, t.status)]);
+
+/** One order (or TWAP slice); client_order_id unique. */
+export const algoOrders = pgTable("algo_orders", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull(),
+  userId: text("user_id").notNull(),
+  strategyId: integer("strategy_id").notNull(),
+  seq: integer("seq").notNull(),
+  slice: integer("slice").notNull().default(0),
+  slices: integer("slices").notNull().default(1),
+  clientOrderId: text("client_order_id").notNull(),
+  symbol: text("symbol").notNull(),
+  assetClass: text("asset_class").notNull().default("equity"),
+  symbolId: text("symbol_id"),
+  action: text("action").notNull(), // BUY | SELL
+  units: doublePrecision("units").notNull(),
+  orderType: text("order_type").notNull().default("Limit"),
+  limitPrice: doublePrecision("limit_price"),
+  estValue: doublePrecision("est_value").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  brokerOrderId: text("broker_order_id"),
+  filledUnits: doublePrecision("filled_units").notNull().default(0),
+  fillPrice: doublePrecision("fill_price"),
+  error: text("error"),
+  impact: jsonb("impact"),
+  response: jsonb("response"),
+  notBefore: ts("not_before"),
+  sentAt: ts("sent_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("algo_orders_client_uq").on(t.clientOrderId), index("algo_orders_batch_idx").on(t.batchId, t.seq, t.slice), index("algo_orders_strategy_idx").on(t.strategyId, t.sentAt), index("algo_orders_user_idx").on(t.userId, t.sentAt)]);
+
+/** Consents as given, per strategy for autonomous trading (0 for account-wide), with the typed words. */
+export const algoConsents = pgTable("algo_consents", {
+  userId: text("user_id").notNull(),
+  kind: text("kind").notNull(),
+  strategyId: integer("strategy_id").notNull().default(0),
+  version: text("version").notNull(),
+  textHash: text("text_hash").notNull().default(""),
+  typed: text("typed"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.kind, t.strategyId, t.version] })]);
+
+/** The agent's conversation. */
+export const algoAgentMessages = pgTable("algo_agent_messages", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull(), // user | agent
+  content: text("content").notNull(),
+  calls: jsonb("calls").$type<unknown[]>().notNull().default([]),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("algo_agent_user_idx").on(t.userId, t.createdAt)]);
+
+/** Saved backtest results. */
+export const algoBacktests = pgTable("algo_backtests", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  strategyId: integer("strategy_id"),
+  specHash: text("spec_hash").notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("algo_backtests_user_idx").on(t.userId, t.strategyId, t.createdAt)]);
+
+/** Append-only log (UPDATE and DELETE are ruled out in SQL). */
+export const algoAudit = pgTable("algo_audit", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull(),
+  actor: text("actor").notNull(),
+  action: text("action").notNull(),
+  strategyId: integer("strategy_id"),
+  batchId: integer("batch_id"),
+  orderId: integer("order_id"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, (t) => [index("algo_audit_user_idx").on(t.userId, t.createdAt)]);
