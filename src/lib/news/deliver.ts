@@ -5,6 +5,7 @@
  */
 import { and, eq } from "drizzle-orm";
 import webpush from "web-push";
+import { assertPublicUrl } from "@/lib/net";
 import { requireDb, schema } from "@/db";
 import { accessTokenFor } from "@/lib/crm/accounts";
 import { decryptToken } from "@/lib/crm/crypto";
@@ -89,6 +90,8 @@ export async function pushToUser(userId: string, payload: { title: string; body:
   const subs = await db.select().from(schema.newsPushSubs).where(eq(schema.newsPushSubs.userId, userId));
   let sent = 0;
   for (const s of subs) {
+    // Saved before the subscribe route checked addresses, or a name that has since moved: public only.
+    if (!(await assertPublicUrl(s.endpoint).then(() => true, () => false))) continue;
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, JSON.stringify(payload), { TTL: payload.urgent ? 3600 : 6 * 3600, urgency: payload.urgent ? "high" : "normal", timeout: 10_000 });
       sent++;

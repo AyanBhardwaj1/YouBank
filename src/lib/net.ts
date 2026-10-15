@@ -17,7 +17,14 @@
  *
  * The response of the last attempt is returned as it is (a 503 stays a 503): callers keep their own
  * handling of statuses, so adopting this changes nothing but timeouts and retries.
+ *
+ * - `safePublicFetch`: for a URL that came from outside (pasted by a person, or found in a feed): only
+ *   public addresses, each redirect checked, time and size capped.
  */
+import { assertPublicUrl, guardedLookup, requestVia } from "@/lib/calendar/net";
+
+/** http(s) to names that resolve only to public addresses (the check safePublicFetch makes per hop). */
+export { assertPublicUrl, isPrivateAddress } from "@/lib/calendar/net";
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -170,5 +177,55 @@ export async function fetchRetry(url: string, init: RetryInit = {}): Promise<Res
     drain(res);
     onRetry?.({ attempt: attempt + 1, delayMs, status: res.status });
     await sleep(delayMs);
+  }
+}
+
+/* ---------------- Links people paste ---------------- */
+
+/** A link that may not be fetched (not http(s), a private address, too many redirects). Its message is for people. */
+export const unsafeUrl = (message: string) => Object.assign(new Error(message), { status: 400, code: "UNSAFE_URL" });
+
+export type SafeFetchInit = {
+  method?: "GET" | "HEAD";
+  headers?: Record<string, string>;
+  /** The whole exchange: every hop and the body. Default 30 s. */
+  timeoutMs?: number;
+  /** The body is cut off with an error past this many bytes. Default 25 MB. */
+  maxBytes?: number;
+  /** Redirects followed (each one checked again). Default 3. */
+  maxRedirects?: number;
+  signal?: AbortSignal;
+  /** Tests: one hop's request (default: node:http pinned to the addresses the guard approved). */
+  hop?: (url: string, init: RequestInit) => Promise<Response>;
+};
+
+/**
+ * GET (or HEAD) a URL that someone typed or that came from outside (a recording link, a feed's article
+ * link, a push endpoint), without letting it reach YouBank's own network: http(s) only, every hop's name
+ * must resolve to public addresses only (no loopback, private ranges, link-local and cloud metadata such
+ * as 169.254.169.254, fd00::/8, IPv4-mapped forms of those), redirects are followed by hand and each hop
+ * is checked again, and the time and size are capped. The connection goes to the address that was
+ * checked (src/lib/calendar/net), so a name cannot answer public to the check and private to the
+ * connection. Refusals throw `unsafeUrl` (status 400). No retries: callers decide.
+ */
+export async function safePublicFetch(url: string, init: SafeFetchInit = {}): Promise<Response> {
+  const { timeoutMs = 30_000, maxBytes = 25 * 1024 * 1024, maxRedirects = 3, hop, method = "GET", headers, signal: callerSignal } = init;
+  const signal = withTimeout(callerSignal, timeoutMs);
+  const one = hop ?? ((u: string, i: RequestInit) => requestVia(guardedLookup, maxBytes, u, i));
+  let current = url;
+  for (let n = 0; ; n++) {
+    try { await assertPublicUrl(current); } catch (e) { throw unsafeUrl(e instanceof Error ? e.message : "That link cannot be used."); }
+    let res: Response;
+    try {
+      res = await one(current, { method, headers, signal, redirect: "manual" });
+    } catch (e) {
+      if ((e as { code?: string } | null)?.code === "EPRIVATE") throw unsafeUrl("That address points at a private network.");
+      throw e;
+    }
+    const loc = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!loc) return res;
+    drain(res);
+    if (n >= maxRedirects) throw unsafeUrl("The link redirected too many times.");
+    try { current = new URL(loc, current).toString(); } catch { throw unsafeUrl("The link redirected somewhere unreadable."); }
   }
 }

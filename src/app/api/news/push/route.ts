@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
+import { assertPublicUrl } from "@/lib/net";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
     if (!s.keys?.p256dh || !s.keys.auth) return NextResponse.json({ error: "Subscription keys missing" }, { status: 400 });
+    // The server posts to this address on every alert: a public push service only, never our own network.
+    if (!(await assertPublicUrl(s.endpoint).then(() => true, () => false))) return NextResponse.json({ error: "That push address cannot be used." }, { status: 400 });
     const keys = { p256dh: s.keys.p256dh, auth: s.keys.auth };
     await db.insert(schema.newsPushSubs).values({ userId: user.id, endpoint: s.endpoint, keys, userAgent: (req.headers.get("user-agent") ?? "").slice(0, 200) })
       .onConflictDoUpdate({ target: schema.newsPushSubs.endpoint, set: { userId: user.id, keys } });
