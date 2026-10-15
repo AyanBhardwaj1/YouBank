@@ -9,6 +9,9 @@ import { isPlainRead, isTransientDbError, mayRetry, neverSent } from "@/db/trans
 import { checkAuthUrl, checkDatabaseUrl, checkEnv, checkJobs, featureStatus, FEATURES, moneySwitches } from "@/lib/env";
 import { healthVerdict } from "@/lib/health";
 import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
+import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
+import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
+import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.config";
 import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, withTimeout } from "@/lib/net";
 
 let pass = 0, fail = 0;
@@ -243,6 +246,48 @@ function testEnvAndHealth() {
   check("a missing optional setting is degraded, not down", pub.status === "degraded");
 }
 
+async function testAuthAndHeaders() {
+  console.log("sign-in origins");
+  const prod = { VERCEL_ENV: "production", NEXT_PUBLIC_SITE_URL: "https://youbank.com", VERCEL_PROJECT_PRODUCTION_URL: "youbank.com", VERCEL_URL: "youbank-abc123.vercel.app" };
+  check("production signs in on the site's address", authBaseUrl(prod) === "https://youbank.com");
+  check("BETTER_AUTH_URL wins in production", authBaseUrl({ ...prod, BETTER_AUTH_URL: "https://auth.youbank.com" }) === "https://auth.youbank.com");
+  check("the vercel.app address keeps working after the custom domain", authTrustedOrigins(prod).includes("https://youbank-nu.vercel.app") && authTrustedOrigins(prod).includes("https://youbank.com"));
+  const pv = { VERCEL_ENV: "preview", NEXT_PUBLIC_SITE_URL: "https://youbank.com", VERCEL_PROJECT_PRODUCTION_URL: "youbank.com", VERCEL_URL: "youbank-git-x-me.vercel.app", VERCEL_BRANCH_URL: "youbank-git-feature-me.vercel.app" };
+  check("a preview signs in on its own address", authBaseUrl(pv) === "https://youbank-git-feature-me.vercel.app", authBaseUrl(pv));
+  check("a production BETTER_AUTH_URL copied to previews is ignored there", authBaseUrl({ ...pv, BETTER_AUTH_URL: "https://youbank.com" }) === "https://youbank-git-feature-me.vercel.app");
+  check("a preview's own fixed BETTER_AUTH_URL is kept", authBaseUrl({ ...pv, BETTER_AUTH_URL: "https://staging.youbank.com" }) === "https://staging.youbank.com");
+  check("both preview addresses may post to sign-in", authTrustedOrigins(pv).includes("https://youbank-git-x-me.vercel.app") && authTrustedOrigins(pv).includes("https://youbank-git-feature-me.vercel.app"));
+  check("extra origins can be added", authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "app.youbank.com, https://www.youbank.com" }).includes("https://www.youbank.com"));
+  check("no stray origins are trusted in production", !authTrustedOrigins({ ...prod, NODE_ENV: "production" }).some((o) => o.includes("localhost")));
+  check("sign-in limits: session reads are not counted, password sign-in has a long window", AUTH_RATE_RULES["/get-session"] === false && (AUTH_RATE_RULES["/sign-in/email"] as { window: number }).window >= 60);
+  check("a refused sign-in says when to try again", secondsLeft(60, 30_500) === 30 && secondsLeft(60, 59_999) === 1);
+
+  console.log("security headers");
+  const csp = contentSecurityPolicy({ https: true });
+  const has = (d: string) => csp.split("; ").some((x) => x === d || x.startsWith(`${d} `));
+  check("framing is refused", csp.includes("frame-ancestors 'none'"));
+  check("plugins and <base> hijacks are refused", has("object-src 'none'") && has("base-uri 'self'"));
+  check("scripts load only from YouBank", /script-src 'self'/.test(csp) && !/script-src[^;]*https:/.test(csp));
+  check("no eval in production", !csp.includes("'unsafe-eval'") && contentSecurityPolicy({ dev: true }).includes("'unsafe-eval'"));
+  check("map and PDF workers may start from blobs", has("worker-src 'self' blob:"));
+  check("WebAssembly may compile", csp.includes("'wasm-unsafe-eval'"));
+  check("map tiles, logos and stored files load over https", has("img-src 'self' data: blob: https:") && /connect-src 'self' https:/.test(csp));
+  check("http subresources are upgraded on deployments only", csp.includes("upgrade-insecure-requests") && !contentSecurityPolicy({}).includes("upgrade-insecure-requests"));
+  check("previews allow Vercel's toolbar", contentSecurityPolicy({ preview: true }).includes("https://vercel.live") && !csp.includes("vercel.live"));
+  check("the microphone only where asked", permissionsPolicy(true).includes("microphone=(self)") && permissionsPolicy(false).includes("microphone=()"));
+  const rules = await nextConfig.headers!();
+  const forPath = (p: string, key: string) => {
+    let v: string | undefined;
+    for (const r of rules) if (new RegExp(`^${r.source.replace("/:path*", "(/.*)?").replace(/^\/\(\(\?!/, "/((?!")}$`).test(p)) for (const h of r.headers) if (h.key === key) v = h.value;
+    return v;
+  };
+  check("every page gets HSTS", !!forPath("/pricing", "Strict-Transport-Security"));
+  check("marketing pages block the microphone", forPath("/pricing", "Permissions-Policy")?.includes("microphone=()") === true);
+  check("every workspace page allows it (client navigation keeps the first page's policy)", forPath("/app/terminal", "Permissions-Policy")?.includes("microphone=(self)") === true && forPath("/app/edge", "Permissions-Policy")?.includes("microphone=(self)") === true);
+  check("pages get the CSP", !!forPath("/app/news", "Content-Security-Policy"));
+  check("the Office add-in pages are not framed-blocked", forPath("/office/taskpane", "X-Frame-Options") === undefined && forPath("/office/taskpane", "Content-Security-Policy") === undefined);
+}
+
 async function main() {
   // AbortSignal.timeout's timer does not keep Node alive; a server always has something else that does.
   const alive = setInterval(() => undefined, 1_000);
@@ -250,6 +295,7 @@ async function main() {
   clearInterval(alive);
   testDb();
   testEnvAndHealth();
+  await testAuthAndHeaders();
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }
