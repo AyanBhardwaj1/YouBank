@@ -14,6 +14,7 @@ import { publishOddsSignals, publishPulseSignals } from "./adapters/edge";
 import { syncCopyTarget, syncFundTarget } from "./adapters/copy13f";
 import { CATALOG, computeBaseRate, storedEvents } from "./events/rates";
 import { buildFactors, refreshFactsSlice } from "./factors/build";
+import { publishEventCards } from "./insiders/cards";
 import { pollInsiders, publishInsiderSignals } from "./insiders/store";
 import { refreshBars } from "./pit/bars";
 import { members, refreshUniverse } from "./pit/universe";
@@ -84,6 +85,7 @@ export async function nightlyInline(deadline: number, now = new Date()): Promise
   if (now.getUTCDay() === 0 && left() > 30_000) await part("baseRates", out, () => baseRatesPass(Date.now() + Math.min(60_000, left() - 20_000)));
   if (left() > 20_000) await part("targets", out, () => targetsPass(Date.now() + Math.min(40_000, left() - 15_000)));
   if (left() > 10_000) await part("insiders", out, () => pollInsiders(Date.now() + Math.min(30_000, left() - 8_000)));
+  if (left() > 8_000) await part("cards", out, () => publishEventCards(Date.now() + Math.min(15_000, left() - 6_000)));
   if (left() > 5_000) await part("signals", out, async () => ({ insiders: await publishInsiderSignals(Date.now() + 20_000).catch(() => null), pulse: await publishPulseSignals().catch(() => null), odds: await publishOddsSignals().catch(() => null) }));
   return out;
 }

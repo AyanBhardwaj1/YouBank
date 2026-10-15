@@ -54,7 +54,8 @@ export function noveltyOf(kind: string, ageDays: number): number {
   // Call Desk's evasion readings are rarely reported (0.8, with the Pulse); a settled promise is half news (0.5:
   // the results are reported, the promise against them rarely); a promise falling due 0.55; a person's own
   // thesis update is theirs alone, so it is new to them (0.7).
-  const base = kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : kind === "thesis_update" ? 0.7 : kind === "commitment_due" ? 0.55 : kind === "guidance_result" ? 0.5 : 0.6;
+  // Quant Edge's insider clusters are rarely reported (0.7); a 13D often is (0.5).
+  const base = kind === "quant.insider_cluster" ? 0.7 : kind === "quant.activist" ? 0.5 : kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : kind === "thesis_update" ? 0.7 : kind === "commitment_due" ? 0.55 : kind === "guidance_result" ? 0.5 : 0.6;
   return base * (0.5 + 0.5 * Math.exp(-ageDays / 30));
 }
 

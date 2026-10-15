@@ -7,6 +7,7 @@ import { inngest, metered, type Steps } from "@/lib/edge/infra/jobs";
 import { flushUsage } from "@/lib/edge/infra/usage";
 import { publishOddsSignals, publishPulseSignals } from "./adapters/edge";
 import { buildFactors, refreshFactsSlice } from "./factors/build";
+import { publishEventCards } from "./insiders/cards";
 import { pollInsiders, publishInsiderSignals } from "./insiders/store";
 import { QUANT_EVENTS } from "./jobs";
 import { barsSlice, baseRatesPass, targetsPass } from "./nightly";
@@ -38,7 +39,12 @@ export const quantNightly = inngest.createFunction(
 /** EDGAR's latest Form 4 and 13D filings, every ten minutes from 6 am to 10 pm New York time on weekdays. */
 export const quantInsidersPoll = inngest.createFunction(
   { id: "quant-insiders-poll", triggers: [{ cron: "TZ=America/New_York */10 6-22 * * 1-5" }, { event: QUANT_EVENTS.insidersPoll }], concurrency: 1, retries: 0 },
-  async ({ step }) => metered(asSteps(step)).run("poll", () => pollInsiders(Date.now() + 200_000)),
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    const poll = await s.run("poll", () => pollInsiders(Date.now() + 200_000));
+    const cards = await s.run("cards", () => publishEventCards(Date.now() + 60_000));
+    return { ...poll, ...cards };
+  },
 );
 
 export const quantFunctions = [quantNightly, quantInsidersPoll];

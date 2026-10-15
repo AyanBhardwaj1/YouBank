@@ -416,6 +416,13 @@ export async function featureTests(check: Check, near: Near) {
 
   section("Insider and activist clusters (Q7)");
   {
+    const { eventCard } = await import("@/lib/quant/insiders/cards");
+    const { isBig } = await import("@/lib/edge/notify");
+    const br = { car: 0.021, low: 0.008, high: 0.034, hitRate: 0.56, unconditionalHitRate: 0.5, n: 412, window: "+2..+125", era: "2015-2026" };
+    const cardC = eventCard({ id: "cluster_buy:123456:2026-10-01", type: "cluster_buy", symbol: "EXMP", issuerCik: "123456", occurredAt: "2026-10-01", acceptedAt: "2026-10-02T21:00:00Z", body: { insiders: [{ name: "A", role: "CFO", value: 900_000 }, { name: "B", role: "Director", value: 600_000 }, { name: "C", role: "Director", value: 300_000 }], totalUsd: 1_800_000, days: 12 } }, br)!;
+    check("an insider cluster becomes a feed card with its base rate in words, no advice words, and alerts at $1.8M by three insiders", cardC.kind === "quant.insider_cluster" && /sessions 2 to 125 after the filing/.test(cardC.summary) && forbiddenIn(cardC.summary).length === 0 && isBig({ kind: cardC.kind, confidence: cardC.confidence, magnitude: cardC.magnitude, visual: cardC.visual }), cardC);
+    const cardA = eventCard({ id: "activist_new:1:x", type: "activist_new", symbol: "EXMP", issuerCik: "1", occurredAt: "2026-10-01", acceptedAt: "2026-10-02T21:00:00Z", body: { holder: "Fund LP", to: 6.1, url: "https://www.sec.gov/Archives/edgar/data/1/x.htm" } }, null)!;
+    check("a new 13D is an activist card that alerts, saying when no base rate exists; other event types make no card", cardA.kind === "quant.activist" && /No base rate yet/.test(cardA.summary) && isBig({ kind: cardA.kind, confidence: cardA.confidence, magnitude: cardA.magnitude, visual: cardA.visual }) && eventCard({ id: "x", type: "stake13", symbol: "EXMP", issuerCik: "1", occurredAt: "", acceptedAt: "2026-10-02T21:00:00Z", body: {} }, null) === null);
     const f = parseForm4(FX("insiders/form4-cfo.xml"));
     check("Form 4: issuer, owner, CFO title, the 10b5-1 checkbox off, two lines (P and F)", f.issuerCik === "123456" && f.symbol === "EXMP" && f.owner.isOfficer && /Financial/.test(f.owner.title) && !f.plan10b51 && f.lines.length === 2 && f.lines[0].code === "P" && f.lines[0].shares === 6000 && f.lines[1].acquired === false);
     const pl = parseForm4(FX("insiders/form4-plan.xml"));
