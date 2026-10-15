@@ -11,7 +11,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await requireEdge(user.id);
     const id = Number((await ctx.params).id);
     const body = (await req.json().catch(() => null)) as { label?: string; restore?: number } | null;
-    if (!Number.isInteger(id) || !body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!Number.isInteger(id) || !body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     if (typeof body.restore === "number") {
       const c = await restore(user, id, body.restore);
       return NextResponse.json({ restored: true, version: c.version, graph: c.graph });

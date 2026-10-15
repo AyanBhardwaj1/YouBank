@@ -22,7 +22,7 @@ async function start(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await requestUser(req);
   if (!user) return Response.json({ error: "Sign in required" }, { status: 401 });
   const id = Number((await ctx.params).id);
-  if (!Number.isInteger(id)) return Response.json({ error: "bad id" }, { status: 400 });
+  if (!Number.isInteger(id)) return Response.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
   try { await requireDoc(user, id, "edit"); } catch (e) { return errorResponse(e, 403); }
   const body = (await req.json().catch(() => null)) as { instruction?: string; effort?: "fast" | "balanced" | "thorough" | "deep"; selection?: { sheet?: string; range?: string }; history?: { role: "user" | "assistant"; content: string }[] } | null;
   const instruction = body?.instruction?.trim();

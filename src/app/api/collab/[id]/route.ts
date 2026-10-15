@@ -11,7 +11,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     // The cursor is read before the state, so an edit landing in between is replayed rather than lost.
     const lastEventId = await latestEventId(id);
     const session = await requireSession(user, id);
@@ -24,7 +24,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as
       { action?: string; patch?: Record<string, unknown>; field?: string } | null;
 

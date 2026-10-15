@@ -8,7 +8,7 @@
  * approve or decline, and pay the fee (a fraction of a cent on Base). YouBank stores the transaction
  * hash and confirms it by reading it back from the chain.
  */
-import { errorMessage } from "@/lib/client/errors";
+import { errorMessage, messageFor } from "@/lib/client/errors";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Pill } from "@/components/terminal/kit";
@@ -170,9 +170,11 @@ function Verify({ records }: { records: Record_[] }) {
   const checkTx = async () => {
     if (!sha) return;
     setOut("Reading the transaction from Base…");
-    const res = await fetch("/api/crypto/notary/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ txHash: tx.trim(), sha256: sha.sha256 }) });
+    let res: Response;
+    try { res = await fetch("/api/crypto/notary/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ txHash: tx.trim(), sha256: sha.sha256 }) }); }
+    catch (e) { setOut(errorMessage(e)); return; }
     const j = await res.json().catch(() => ({}));
-    setOut(!res.ok ? j.error ?? "Could not check that transaction" : j.ok ? `Yes: this transaction, sent by ${shortAddress(j.from)}${j.blockNumber ? ` in block ${Number(j.blockNumber).toLocaleString("en-US")}` : ""}, records exactly this file.` : `No: ${j.reason}.`);
+    setOut(!res.ok ? messageFor(res.status, j).message : j.ok ? `Yes: this transaction, sent by ${shortAddress(j.from)}${j.blockNumber ? ` in block ${Number(j.blockNumber).toLocaleString("en-US")}` : ""}, records exactly this file.` : `No: ${j.reason}.`);
   };
   return (
     <div className="ctl border border-line bg-panel p-3">
@@ -180,7 +182,7 @@ function Verify({ records }: { records: Record_[] }) {
       <p className="mt-1 text-[11.5px] text-muted">Hash a file here and see whether it matches a notarization: yours, or anyone&apos;s transaction on Base.</p>
       <label className="ctl mt-2 inline-block cursor-pointer border border-line px-2.5 py-1 text-[12px] hover:border-accent/60">
         Choose the file to check
-        <input type="file" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setSha({ sha256: await hashFile(f), name: f.name }); setOut(null); } catch (err) { setOut(err instanceof Error ? err.message : "Could not read that file"); } }} />
+        <input type="file" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setSha({ sha256: await hashFile(f), name: f.name }); setOut(null); } catch { setOut("Could not read that file. Try it again, or pick another."); } }} />
       </label>
       {sha && (
         <div className="mt-2 space-y-1.5 text-[11.5px]">

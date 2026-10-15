@@ -19,13 +19,13 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
   const body = (await req.json().catch(() => null)) as { id?: number; name?: string; targetTicker?: string; members?: MemberJson[]; excluded?: string[]; columnSet?: string; sort?: { key: string; dir: 1 | -1 } | null; snapshot?: unknown } | null;
   const name = body?.name?.trim(); const target = body?.targetTicker?.toUpperCase().trim();
-  if (!name || !target || !Array.isArray(body?.members)) return NextResponse.json({ error: "name, targetTicker, members required" }, { status: 400 });
+  if (!name || !target || !Array.isArray(body?.members)) return NextResponse.json({ error: "Give the sheet a name, a target ticker and at least one comparable company." }, { status: 400 });
   const values = { name, targetTicker: target, members: body!.members!, excluded: body?.excluded ?? [], columnSet: body?.columnSet ?? "all", sort: body?.sort ?? null, snapshot: body?.snapshot ?? null, updatedAt: new Date() };
   try {
     const db = requireDb();
     if (body?.id) {
       const [row] = await db.update(schema.compsSheets).set(values).where(and(eq(schema.compsSheets.id, body.id), eq(schema.compsSheets.userId, user.id))).returning();
-      if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+      if (!row) return NextResponse.json({ error: "We could not find that. It may have been moved or deleted." }, { status: 404 });
       return NextResponse.json(row);
     }
     const [row] = await db.insert(schema.compsSheets).values({ ...values, createdBy: user.name || user.email || "analyst", userId: user.id }).returning();

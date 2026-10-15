@@ -13,7 +13,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     return NextResponse.json(await meetingDetail(user, id), { headers: { "Cache-Control": "no-store" } });
   });
 }
@@ -22,9 +22,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     return NextResponse.json({ meeting: publicMeeting(await updatePicks(user, id, body)) });
   });
 }
@@ -33,7 +33,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await deleteMeeting(user.id, id);
     return NextResponse.json({ ok: true });
   });

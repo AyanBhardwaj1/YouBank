@@ -37,6 +37,34 @@ export function toast(message, isError = false) {
   toastTimer = setTimeout(() => t.remove(), isError ? 7000 : 3500);
 }
 
+const OUR_SIDE = "Something went wrong in the app. Try again; if it keeps happening, restart YouBank.";
+// What a sentence must not show: the system's own error text ("Permission denied (os error 13)"), a
+// Rust or HTTP library's ("error sending request for url (…)", "task 12 panicked"), paths into code,
+// links, dumped JSON, stack lines. The server already words its own errors; this is for the rest.
+const INTERNAL = [
+  /\(os error \d+\)|\bos error \d+\b|\berrno\b/i,
+  /panicked|JoinError|RecvError|SendError|\bthread '|backtrace|RUST_BACKTRACE/i,
+  /error sending request|error decoding|error trying to connect|hyper::|reqwest::|tauri::|serde_json::|\w+::\w+::/i,
+  /\b[a-z][a-z0-9+.-]{1,15}:\/\//i,
+  /^\s*[[{]/,
+  /\bat \S+:\d+:\d+|\.rs:\d+/,
+  /\b[A-Z][A-Za-z0-9]*(?:Error|Exception)\b:\s/,
+];
+const internal = (m) => !m.trim() || m.length > 400 || INTERNAL.some((r) => r.test(m));
+
+/**
+ * What to show for a failed command or event: its sentence as written when it reads as meant for
+ * people; when the sentence ends in the system's own detail ("Could not save settings: Access is
+ * denied. (os error 5)"), only the part before it; otherwise a plain line. The detail stays in the log.
+ */
+export function errorText(e) {
+  const m = typeof e === "string" ? e : e instanceof Error ? e.message : typeof e?.message === "string" ? e.message : "";
+  if (!internal(m)) return m;
+  if (m) console.warn(m);
+  const head = m.split(/: | \(/)[0].trim();
+  return head.length >= 12 && head !== m && !internal(head) ? `${head.replace(/[.:]$/, "")}.` : OUR_SIDE;
+}
+
 /** Run a command, showing its error sentence if it fails. Returns undefined on failure. */
 export async function run(cmd, args, okMessage) {
   try {
@@ -44,7 +72,7 @@ export async function run(cmd, args, okMessage) {
     if (okMessage) toast(typeof okMessage === "function" ? okMessage(r) : okMessage);
     return r;
   } catch (e) {
-    toast(String(e), true);
+    toast(errorText(e), true);
     return undefined;
   }
 }

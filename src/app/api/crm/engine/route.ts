@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as { action?: string; scope?: string } | null;
     if (body?.action !== "graduate" || !(AUTONOMY_SCOPES as readonly string[]).includes(body.scope ?? "")) {
-      return NextResponse.json({ error: "unknown action" }, { status: 400 });
+      return NextResponse.json({ error: "That action is not available here. Reload the page and try again." }, { status: 400 });
     }
     const settings = await getSettings(user.id);
     const scope = body.scope as AutonomyScope;

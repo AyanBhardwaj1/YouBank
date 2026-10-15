@@ -5,6 +5,14 @@
  * domain. Geometry comes back simplified to about 50 m, which is plenty for a map and keeps rows small.
  */
 import { fetchRetry } from "@/lib/net";
+
+/**
+ * A map service's own error ("Unable to complete operation.") as a sentence for people; its words ride
+ * along as the cause, logged under a reference (the 502 makes describeFailure log it).
+ */
+export const upstreamRefusal = (name: string, said?: string) =>
+  Object.assign(new Error(`${name} did not answer this query. Try again later.`), { status: 502, cause: new Error(`${name}: ${said ?? "error"}`) });
+
 export type Geometry =
   | { type: "Point"; coordinates: [number, number] }
   | { type: "LineString"; coordinates: [number, number][] }
@@ -48,7 +56,7 @@ export async function query(source: SourceInfo, bbox: Bbox, outFields: string, p
     const res = await fetchRetry(`${source.url}/query?${qs}`, { cache: "no-store", timeoutMs: 20_000 });
     if (!res.ok) throw new Error(`${source.name} answered ${res.status}`);
     const j = (await res.json()) as { features?: Feature[]; error?: { message?: string } };
-    if (j.error) throw new Error(`${source.name}: ${j.error.message ?? "query failed"}`);
+    if (j.error) throw upstreamRefusal(source.name, j.error.message);
     const features = j.features ?? [];
     out.push(...features);
     if (features.length < pageSize) break;

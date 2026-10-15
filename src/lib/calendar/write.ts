@@ -113,7 +113,9 @@ async function writable(userId: string, eventId: number) {
   return { ...found, ref, provider: providerFor(found.account) };
 }
 
-const conflict = (e: unknown) => e instanceof ProviderError && e.kind === "conflict" ? Object.assign(new Error(e.message), { status: 409 }) : e;
+const conflict = (e: unknown) => e instanceof ProviderError && e.kind === "conflict"
+  ? Object.assign(new Error("This meeting was changed somewhere else in the meantime. Refresh and try again."), { status: 409, cause: e })
+  : e;
 
 /** Reschedule or edit. For a series, `scope` says whether this occurrence or all of them move. */
 export async function changeMeeting(userId: string, eventId: number, input: ChangeInput): Promise<Meeting | null> {

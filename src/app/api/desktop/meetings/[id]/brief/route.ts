@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedDesktop(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const brief = await meetingBrief(user.id, await getMeeting(user.id, id), !!new URL(req.url).searchParams.get("fresh"));
     return NextResponse.json({ brief, lines: briefLines(brief) }, { headers: { "Cache-Control": "no-store" } });
   }, { device: "required" });

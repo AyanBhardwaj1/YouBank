@@ -13,7 +13,7 @@
  */
 import { and, eq, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError, storedMessage } from "@/lib/errors";
 import { lease } from "@/lib/locks";
 import { listAccounts, markNeedsReauth, providerFor, type AccountRow, type CalendarRow } from "./accounts";
 import { linkMeeting, type ContactLite, type DealLite } from "./match";
@@ -181,8 +181,14 @@ export async function syncAccount(account: AccountRow, opts: { calendars?: boole
     return { accountId: account.id, calendars: cals.length, written, ...(errors.length ? { error: errors[0] } : {}) };
   } catch (e) {
     const message = describeFailure(e, 502, "calendar-sync").message;
-    if (e instanceof ProviderError && e.kind === "auth") await markNeedsReauth(account.id, e.message === "This calendar needs to be reconnected." ? "Sign in again to keep this calendar connected." : e.message);
-    else await db.update(schema.calendarAccounts).set({ lastError: message.slice(0, 500) }).where(eq(schema.calendarAccounts.id, account.id));
+    if (e instanceof ProviderError && e.kind === "auth") {
+      // Our own reasons ("Google Calendar is no longer set up on this server") are kept; a provider's
+      // raw refusal ("… answered 401: Request had invalid authentication credentials") is logged and
+      // shown as what to do.
+      const reconnect = "Sign in again to keep this calendar connected.";
+      if (e.httpStatus) logError(e, { status: e.httpStatus, where: "calendar-reauth" });
+      await markNeedsReauth(account.id, e.message === "This calendar needs to be reconnected." ? reconnect : storedMessage(e.message, reconnect));
+    } else await db.update(schema.calendarAccounts).set({ lastError: message.slice(0, 500) }).where(eq(schema.calendarAccounts.id, account.id));
     return { accountId: account.id, calendars: 0, written: 0, error: message };
   } finally {
     await release();

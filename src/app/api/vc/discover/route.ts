@@ -12,7 +12,7 @@ export const maxDuration = 180;
 export async function POST(req: Request) {
   return guarded(async (user) => {
     const { query, program } = ((await req.json().catch(() => ({}))) as { query?: string; program?: string });
-    if (!query?.trim()) return NextResponse.json({ error: "query required" }, { status: 400 });
+    if (!query?.trim()) return NextResponse.json({ error: "Enter something to search for." }, { status: 400 });
     await rateLimit(`vc-discover:${user.id}`, 10, 3_600_000, "Web discovery has run many times this hour. Try again later.");
     try {
       const rows = await discoverStartups(query.trim().slice(0, 300), program?.slice(0, 80));

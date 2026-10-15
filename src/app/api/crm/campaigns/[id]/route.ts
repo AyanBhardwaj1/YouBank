@@ -16,7 +16,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     return NextResponse.json(await getCampaign(user.id, id));
   });
 }
@@ -24,7 +24,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     // Launching (or resuming) a campaign is premium; pausing, editing and archiving stay open.
     if (body?.status === "active") await requireFeature(user, CAMPAIGNS);
@@ -35,7 +35,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await deleteCampaign(user.id, id);
     return NextResponse.json({ ok: true });
   });
@@ -48,7 +48,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { action?: string; text?: string; leads?: LeadInput[] } | null;
     if (body?.action === "add_leads") {
       const pasted = parseLeadList(body.text ?? "");
@@ -69,6 +69,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       for (const d of r.draftIds) if ((await considerDraft(user.id, d)).scheduled) scheduled++;
       return NextResponse.json({ ...r, scheduled });
     }
-    return NextResponse.json({ error: "unknown action" }, { status: 400 });
+    return NextResponse.json({ error: "That action is not available here. Reload the page and try again." }, { status: 400 });
   });
 }

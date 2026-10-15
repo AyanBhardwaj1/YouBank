@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       return csvResponse(trailCsv(await trailFor([...titles.keys()]), titles), `edge-audit-log-${new Date().toISOString().slice(0, 10)}.csv`);
     }
     const id = Number(q.get("detection"));
-    if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const [d] = await requireDb().select({ id: schema.edgeDetections.id, title: schema.edgeDetections.title }).from(schema.edgeDetections)
       .where(and(eq(schema.edgeDetections.id, id), or(isNull(schema.edgeDetections.ownerId), eq(schema.edgeDetections.ownerId, user.id))));
     if (!d) return NextResponse.json({ error: "Not found" }, { status: 404 });

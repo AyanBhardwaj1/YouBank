@@ -12,7 +12,7 @@ const parseId = (v: string) => { const n = Number(v); return Number.isInteger(n)
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await requireTeam(id, user.id, "invite");
     const body = (await req.json().catch(() => null)) as { email?: string; role?: string } | null;
     const email = body?.email?.trim();
@@ -27,10 +27,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const me = await requireTeam(id, user.id, "invite");
     const body = (await req.json().catch(() => null)) as { userId?: string; role?: string } | null;
-    if (!body?.userId || !isTeamRole(body.role)) return NextResponse.json({ error: "userId and a valid role are required" }, { status: 400 });
+    if (!body?.userId || !isTeamRole(body.role)) return NextResponse.json({ error: "Choose a member and a role." }, { status: 400 });
     await setMemberRole(id, me, body.userId, body.role);
     return NextResponse.json({ ok: true });
   });
@@ -40,7 +40,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = parseId((await ctx.params).id);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const me = await membership(id, user.id);
     if (!me) return NextResponse.json({ error: "You are not on this team" }, { status: 403 });
     const body = (await req.json().catch(() => null)) as { userId?: string } | null;

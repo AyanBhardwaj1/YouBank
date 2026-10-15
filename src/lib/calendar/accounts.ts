@@ -15,7 +15,7 @@ import type { CalendarAccountSettings } from "@/db/schema";
 import { requireFeature } from "@/lib/billing/entitlements";
 import type { CurrentUser } from "@/lib/auth/user";
 import { decryptToken, encryptToken, encryptionReady } from "@/lib/crm/crypto";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, storedMessage } from "@/lib/errors";
 import { publicFetch } from "./net";
 import { ProviderError, type CalendarProvider, type TokenResponse } from "./provider";
 import { CalDavCalendar, CALDAV_PRESETS } from "./providers/caldav";
@@ -32,7 +32,7 @@ export type SafeAccount = { id: number; provider: ProviderId; address: string; d
 
 export function toSafe(a: AccountRow): SafeAccount {
   const host = a.provider === "caldav" ? safeHost(a.settings.serverUrl) : a.provider === "ics" ? a.settings.url ?? "" : a.provider === "google" ? "Google" : "Microsoft";
-  return { id: a.id, provider: a.provider as ProviderId, address: a.address, displayName: a.displayName, status: a.status, lastError: a.lastError, lastSyncAt: a.lastSyncAt?.toISOString() ?? null, host };
+  return { id: a.id, provider: a.provider as ProviderId, address: a.address, displayName: a.displayName, status: a.status, lastError: storedMessage(a.lastError, "The last sync did not finish. Try again."), lastSyncAt: a.lastSyncAt?.toISOString() ?? null, host };
 }
 
 const safeHost = (url?: string) => { try { return url ? new URL(url).hostname : ""; } catch { return ""; } };

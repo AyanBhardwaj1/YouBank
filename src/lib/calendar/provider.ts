@@ -98,7 +98,11 @@ export async function tokenRequest(f: Fetch, label: string, endpoint: string, bo
   if (!res.ok || !json?.access_token) {
     // invalid_grant is a revoked or expired refresh token: only reconnecting fixes it.
     const kind = json?.error === "invalid_grant" || res.status === 400 || res.status === 401 ? "auth" : "other";
-    throw new ProviderError(`${label} would not issue a token: ${(json?.error_description ?? json?.error ?? String(res.status)).slice(0, 200)}`, kind, res.status);
+    // The provider's own words ("AADSTS70008: The provided authorization code… Trace ID: …") are for
+    // the log (they ride along as the cause); the person gets what to do about it.
+    const said = (json?.error_description ?? json?.error ?? `HTTP ${res.status}`).slice(0, 300);
+    const message = kind === "auth" ? `${label} did not accept the sign-in for this calendar. Connect it again.` : `${label} did not answer the sign-in properly. Try again in a few minutes.`;
+    throw Object.assign(new ProviderError(message, kind, res.status), { cause: new Error(`${label} token endpoint ${res.status}: ${said}`) });
   }
   return json;
 }

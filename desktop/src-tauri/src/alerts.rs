@@ -22,6 +22,12 @@ pub fn show(app: &AppHandle, title: &str, body: &str) {
     }
 }
 
+/// A notification whose body is a failure's text (a sync that did not finish): the system's own detail
+/// stays in the log. Content (alerts, briefs, meeting summaries) goes through `show` as written.
+pub fn show_error(app: &AppHandle, title: &str, body: &str) {
+    show(app, title, &crate::api::friendly(body));
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct Cursor {
     since: Option<String>,

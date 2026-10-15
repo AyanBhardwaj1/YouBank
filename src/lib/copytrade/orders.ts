@@ -18,6 +18,7 @@
  */
 import { createHash } from "node:crypto";
 import type { MarketState } from "./markethours";
+import { refusalMessage } from "@/lib/error-text";
 
 export type BatchStatus = "proposed" | "placing" | "placed" | "partial" | "failed" | "canceled" | "expired";
 export type OrderStatus = "pending" | "submitting" | "placed" | "rejected" | "unknown" | "skipped" | string;
@@ -110,7 +111,7 @@ const transient = (e: unknown) => {
   const name = (e as { name?: string } | null)?.name ?? "";
   return name === "TimeoutError" || name === "AbortError" || s === undefined || s >= 500;
 };
-const say = (e: unknown) => (e instanceof Error && (e as { status?: number }).status && (e as { status?: number }).status! < 500 ? e.message : "No answer from the broker");
+const say = (e: unknown) => refusalMessage(e, "No answer from the broker");
 
 /** Approve and place a batch. Throws (with an HTTP status) when it must not go; otherwise reports what happened. */
 export async function approveBatch(store: CopyStore, broker: OrderBroker, req: ApproveRequest): Promise<ApproveResult> {

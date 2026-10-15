@@ -4,7 +4,7 @@
  * with its API number and surface location. The map carries no permit dates, so Edge dates them itself:
  * the day a location first appears (permits.ts keeps that record).
  */
-import type { Bbox, SourceInfo } from "./eia";
+import { upstreamRefusal, type Bbox, type SourceInfo } from "./eia";
 import { fetchRetry } from "@/lib/net";
 
 export const RRC_WELLS: SourceInfo = {
@@ -53,7 +53,7 @@ async function readPermitted(bbox: Bbox): Promise<TxPermit[]> {
     const res = await fetchRetry(`${RRC_WELLS.url}/query?${q}`, { cache: "no-store", timeoutMs: 30_000 });
     if (!res.ok) throw new Error(`Texas RRC answered ${res.status}`);
     const j = (await res.json()) as { features?: { attributes: Row }[]; exceededTransferLimit?: boolean; error?: { message?: string } };
-    if (j.error) throw new Error(`Texas RRC: ${j.error.message ?? "error"}`);
+    if (j.error) throw upstreamRefusal("Texas RRC", j.error.message);
     rows.push(...(j.features ?? []).map((f) => f.attributes));
     if (!j.exceededTransferLimit && (j.features?.length ?? 0) < PAGE) break;
   }

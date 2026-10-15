@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as { teamId?: number | null } | null;
     const teamId = body?.teamId ?? null;
-    if (teamId !== null && !Number.isInteger(teamId)) return NextResponse.json({ error: "teamId must be a number or null" }, { status: 400 });
+    if (teamId !== null && !Number.isInteger(teamId)) return NextResponse.json({ error: "Choose a team, or none." }, { status: 400 });
     await setActiveTeam(user.id, teamId);
     return NextResponse.json({ ok: true, teamId });
   });

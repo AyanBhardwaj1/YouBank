@@ -5,7 +5,7 @@ import { CrmWorkspace } from "@/components/crm/CrmWorkspace";
 import { aiStatus } from "@/lib/ai/config";
 import { loadUserContext } from "@/lib/ai/persona";
 // Drizzle keeps Postgres's "relation does not exist" on the error's cause, so the check lives in lib/errors.
-import { isMissingTable } from "@/lib/errors";
+import { isMissingTable, storedMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Relationships" };
@@ -20,6 +20,6 @@ export default async function CrmPage({ searchParams }: { searchParams: Promise<
   const ai = aiStatus(ctx.prefs);
   const { connected, error, tab, meeting } = await searchParams;
   const meetingId = Number(meeting);
-  return <CrmWorkspace needsMigration={needsMigration} aiConfigured={!!ai?.configured} connected={connected ?? null} oauthError={error ?? null} initialTab={tab ?? null}
+  return <CrmWorkspace needsMigration={needsMigration} aiConfigured={!!ai?.configured} connected={connected ?? null} oauthError={error ? storedMessage(error.slice(0, 300), "The mailbox could not be connected. Try again.") : null} initialTab={tab ?? null}
     initialMeeting={Number.isInteger(meetingId) && meetingId > 0 ? meetingId : null} />;
 }

@@ -14,7 +14,7 @@ export const maxDuration = 300;
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await rateLimit(`meetings-notes:${user.id}`, 20, 86_400_000, "Notes have been rewritten many times today. Try again tomorrow.");
     const r = await finishMeeting(user, id, { force: true });
     return NextResponse.json({ meeting: publicMeeting(r.meeting), crm: r.crm });

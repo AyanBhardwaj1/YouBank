@@ -5,7 +5,7 @@
  * of the basin only.
  */
 import { cacheJson } from "@/lib/cache";
-import type { SourceInfo } from "./eia";
+import { upstreamRefusal, type SourceInfo } from "./eia";
 import { fetchRetry } from "@/lib/net";
 
 export const NM_OCD: SourceInfo = {
@@ -61,7 +61,7 @@ export async function reportedNear(lon: number, lat: number, radiusKm = 3): Prom
       const res = await fetchRetry(`${NM_OCD.url}/${l.id}/query?${q}`, { cache: "no-store", timeoutMs: 20_000 });
       if (!res.ok) throw new Error(`New Mexico OCD answered ${res.status}`);
       const j = (await res.json()) as { features?: { attributes: Row }[]; error?: { message?: string } };
-      if (j.error) throw new Error(`New Mexico OCD: ${j.error.message ?? "error"}`);
+      if (j.error) throw upstreamRefusal("New Mexico OCD", j.error.message);
       return (j.features ?? []).map((f) => f.attributes);
     }))).flat();
     return summariseReports(rows, lon, lat, radiusKm);

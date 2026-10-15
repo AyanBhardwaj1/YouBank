@@ -129,6 +129,13 @@ export function describeError(e: unknown): string {
   return describeFailure(e, 502, "ai-run").message;
 }
 
+/** Why an answer stopped early, in words (the provider's reason code is not one). */
+export function incompleteMessage(reason: string | undefined): string {
+  if (reason === "max_output_tokens" || reason === "max_tokens") return "The answer was cut off at its length limit. Ask for something shorter, or split the question.";
+  if (reason === "content_filter") return "The AI provider's safety filter stopped this answer.";
+  return "The answer stopped before it finished. Try again.";
+}
+
 /* ---------------- OpenAI (Responses API: streaming, function tools, native web search, reasoning) ---------------- */
 
 const NATIVE_WEB_SEARCH = true;
@@ -227,7 +234,7 @@ async function runOpenAI(a: LoopArgs): Promise<string> {
           if (u) a.usage.total = addUsage(a.usage.total, { input: u.input_tokens ?? 0, cached: u.input_tokens_details?.cached_tokens ?? 0, cacheWrite: 0, output: u.output_tokens ?? 0, reasoning: u.output_tokens_details?.reasoning_tokens ?? 0 });
           break;
         }
-        case "response.incomplete": emit({ type: "error", message: `Response incomplete: ${ev.response.incomplete_details?.reason ?? "unknown"}` }); completed = ev.response; break;
+        case "response.incomplete": emit({ type: "error", message: incompleteMessage(ev.response.incomplete_details?.reason) }); completed = ev.response; break;
         case "response.failed": throw new Error(ev.response.error?.message ?? "Response failed");
         case "error": throw new Error((ev as { message?: string }).message ?? "Stream error");
       }
@@ -309,7 +316,7 @@ async function runAnthropic(a: LoopArgs): Promise<string> {
     if (message.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: message.content }); continue; }
     const toolUses = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
     if (toolUses.length === 0 || overdue) return finalText;
-    if (message.stop_reason === "max_tokens") { emit({ type: "error", message: "Response truncated (max_tokens)." }); return finalText; }
+    if (message.stop_reason === "max_tokens") { emit({ type: "error", message: incompleteMessage("max_output_tokens") }); return finalText; }
     messages.push({ role: "assistant", content: message.content });
     const outs = await runCalls(toolUses.map((tu) => ({ name: tu.name, input: tu.input })), a);
     const results: Anthropic.ToolResultBlockParam[] = toolUses.map((tu, i) => ({ type: "tool_result", tool_use_id: tu.id, content: outs[i].output.slice(0, 120_000), ...(outs[i].isError ? { is_error: true } : {}) }));

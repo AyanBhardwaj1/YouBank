@@ -5,7 +5,7 @@
  * the SEC tools do. All of them use free sources; none signs or moves anything.
  */
 import { z } from "zod";
-import { def, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
+import { def, toolError, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { bitcoinView } from "./bitcoin";
 import type { Cite } from "./sources";
 import { marketsView, raisesView, rwaView, stablesView, treasuriesView, unlocksView, defiView } from "./views";
@@ -142,7 +142,7 @@ export const tokenValuationTool = def({
       if (i.method === "dcf") return J(tokenDcf({ baseCashflowUsd: i.baseCashflowUsd ?? 0, growthY1: i.growthY1 ?? 0.2, growthY5: i.growthY5 ?? 0.05, discountRate: i.discountRate ?? 0.25, terminalGrowth: i.terminalGrowth ?? 0.03, circulating: i.circulating ?? 0, supplyGrowth: i.supplyGrowth ?? 0, maxSupply: i.maxSupply }));
       return J(stakingYield({ supply: i.supply ?? 0, issuanceRate: i.issuanceRate ?? 0, stakingRatio: i.stakingRatio ?? 0, feesToStakersUsd: i.feesToStakersUsd ?? 0, priceUsd: i.priceUsd ?? 0, burnRate: i.burnRate }));
     } catch (e) {
-      return J({ error: e instanceof Error ? e.message : String(e) });
+      return J({ error: toolError(e) });
     }
   },
 });

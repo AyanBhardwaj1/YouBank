@@ -15,7 +15,7 @@ export const maxDuration = 60;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = await jsonBody<{ snapshot?: unknown; base?: unknown }>(req);
     const snap = validSnapshot(body?.snapshot);
     if (!snap) return NextResponse.json({ error: "That workbook could not be read. Very large workbooks (over 400,000 cells) are not supported yet." }, { status: 400 });

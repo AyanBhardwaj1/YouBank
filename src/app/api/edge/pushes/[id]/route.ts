@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const b = (await req.json().catch(() => ({}))) as { action?: unknown };
     if (b.action !== "accept" && b.action !== "dismiss") return NextResponse.json({ error: "Accept or dismiss." }, { status: 400 });
     return NextResponse.json(await decidePush(user, id, b.action));

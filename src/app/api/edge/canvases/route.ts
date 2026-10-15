@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     const body = (await req.json().catch(() => null)) as { template?: string; prompt?: string; title?: string; graph?: unknown; teamId?: number | null } | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     const available = availableTypes();
     const tickers = (await listWatches(user.id)).filter((w) => w.kind === "company" && w.target.ticker).map((w) => w.target.ticker!);
     let graph: Graph, title = (body.title ?? "").trim(), template = "", explanation = "", dropped: string[] = [];

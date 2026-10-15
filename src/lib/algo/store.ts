@@ -54,7 +54,7 @@ export async function listStrategies(userId: string): Promise<StrategyRow[]> {
 /** Create a strategy from a full spec; it starts in paper mode (or backtest), with its own paper account. */
 export async function createStrategy(user: Person, raw: unknown, meta: Meta, source: "user" | "agent" | "template" = "user"): Promise<StrategyRow> {
   const p = parseStrategy(raw);
-  if (!p.ok) throw refuse(`Check the strategy: ${p.errors.join("; ")}`);
+  if (!p.ok) throw refuse(`Check the strategy. ${p.errors.slice(0, 3).join(" ")}`);
   const spec = p.spec;
   if (spec.risk.allowShort) spec.risk.allowShort = false;
   const db = requireDb();
@@ -79,7 +79,7 @@ export async function updateStrategy(user: Person, id: number, body: { spec?: un
   const changes: Record<string, unknown> = {};
   if (body.spec !== undefined) {
     const p = parseStrategy(body.spec);
-    if (!p.ok) throw refuse(`Check the strategy: ${p.errors.join("; ")}`);
+    if (!p.ok) throw refuse(`Check the strategy. ${p.errors.slice(0, 3).join(" ")}`);
     const next = p.spec;
     if (row.mode !== "backtest" && next.risk.allowShort) throw refuse("Paper and live strategies are long-only. Short selling is for backtests.");
     patch.spec = next as unknown as Record<string, unknown>;

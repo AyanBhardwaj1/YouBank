@@ -16,7 +16,7 @@ export async function GET() {
 export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as Partial<{ role: RoleId; specialty: string; seniority: string; firmType: string; firmName: string; firmTicker: string; sectors: string[]; goals: string }> | null;
-    if (!body?.role || !(body.role in ROLES)) return NextResponse.json({ error: "role required" }, { status: 400 });
+    if (!body?.role || !(body.role in ROLES)) return NextResponse.json({ error: "Choose a role." }, { status: 400 });
     const values = {
       email: user.email, name: user.name, role: body.role, specialty: body.specialty ?? "", seniority: body.seniority ?? "", firmType: body.firmType ?? "",
       firmName: (body.firmName ?? "").slice(0, 120), firmTicker: (body.firmTicker ?? "").toUpperCase().slice(0, 8), sectors: Array.isArray(body.sectors) ? body.sectors.slice(0, 8) : [],

@@ -19,9 +19,9 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
   const body = (await req.json().catch(() => null)) as { ticker?: string; field?: string; value?: number | null; note?: string } | null;
   const ticker = typeof body?.ticker === "string" ? body.ticker.toUpperCase().trim().slice(0, 12) : "";
-  if (!ticker || !body?.field || !FIELDS.has(body.field)) return NextResponse.json({ error: "ticker and field (ntm_revenue | ntm_ebitda) required" }, { status: 400 });
+  if (!ticker || !body?.field || !FIELDS.has(body.field)) return NextResponse.json({ error: "Choose a company and whether the figure is next-twelve-months revenue or EBITDA." }, { status: 400 });
   const value = body.value === null || body.value === undefined ? null : Number(body.value);
-  if (value !== null && !Number.isFinite(value)) return NextResponse.json({ error: "value must be a number (USD millions) or null to clear" }, { status: 400 });
+  if (value !== null && !Number.isFinite(value)) return NextResponse.json({ error: "Enter a number in USD millions, or leave it empty to clear it." }, { status: 400 });
   try {
     const db = requireDb();
     const note = typeof body.note === "string" ? body.note.trim().slice(0, MAX_NOTE_CHARS) : "";

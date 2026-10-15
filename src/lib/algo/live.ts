@@ -134,7 +134,7 @@ const specHash = (s: StrategySpec) => createHash("sha256").update(JSON.stringify
 export async function backtestFor(user: Person, body: { strategyId?: unknown; spec?: unknown; years?: unknown; walkForward?: unknown }, deadline: number) {
   let spec: StrategySpec, row: StrategyRow | null = null;
   if (body.strategyId) { row = await getStrategy(user.id, Number(body.strategyId)); spec = specOf(row); }
-  else { const p = parseStrategy(body.spec); if (!p.ok) throw refuse(`Check the strategy: ${p.errors.join("; ")}`); spec = p.spec; }
+  else { const p = parseStrategy(body.spec); if (!p.ok) throw refuse(`Check the strategy. ${p.errors.slice(0, 3).join(" ")}`); spec = p.spec; }
   const years = [1, 3, 5, 10].includes(Number(body.years)) ? Number(body.years) : 5;
   const w = windowFor(spec, years);
   const timeline = spec.signal.type === "copy13f" ? await copyTimeline(spec.signal.cik, spec.signal.top, years + 1).catch(() => []) : null;
