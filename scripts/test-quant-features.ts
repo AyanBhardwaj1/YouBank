@@ -125,6 +125,9 @@ export async function featureTests(check: Check, near: Near) {
       T.volTargetNote(), T.annualCost(1200, 0.01, 14), T.pfof("Broker", 12, "market"), T.grade("A", "rule"), T.claim(2, 18, 30, 0.64), T.bestOfN(50, 2.1), T.calibrationRead(0.1), T.calibrationRead(-0.1), T.skillSoFar(40, -0.03, -0.12, 0.06)];
     const bad = texts.map((t) => [t, forbiddenIn(t)] as const).filter(([, w]) => w.length);
     check(`no template, disclosure or note uses advice words (${texts.length} texts)`, bad.length === 0, bad);
+    const { QUANT_TOOLS } = await import("@/lib/quant/ai-tools");
+    const badTools = QUANT_TOOLS.map((t) => [t.name, forbiddenIn(t.description)] as const).filter(([, w]) => w.length);
+    check(`every quant AI tool description passes the wording rules (${QUANT_TOOLS.length} tools)`, QUANT_TOOLS.length >= 6 && badTools.length === 0, badTools);
     check("the checker catches advice words and lets facts through", forbiddenIn("You should sell now.").includes("should") && forbiddenIn("Three directors bought shares; one sold.").length === 0 && forbiddenIn("This is risk-free.").includes("risk-free"));
   }
 

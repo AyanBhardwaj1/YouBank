@@ -15,9 +15,10 @@ export const FORBIDDEN = ["buy", "buys", "buying", "sell", "sells", "selling", "
 
 /**
  * Phrases that contain a forbidden word but describe a fact, allowed by name: "insiders bought" is what a
- * Form 4 says; "sell-side" is a job title; "a forced seller" describes index flows. Removed before the check.
+ * Form 4 says; "sell-side" is a job title; "a forced seller" describes index flows; snake_case identifiers such as
+ * cluster_buy are event codes, not prose. Removed before the check.
  */
-const ALLOWED_PHRASES = [/\bbought\b/gi, /\bsold\b/gi, /\bsell-side\b/gi, /\bbuy-side\b/gi, /\bbuy and hold\b/gi, /\bbuy-and-hold\b/gi, /\bsell(ing)? to (cover|close)\b/gi, /\bbid\b/gi];
+const ALLOWED_PHRASES = [/\bbought\b/gi, /\bsold\b/gi, /\bsell-side\b/gi, /\bbuy-side\b/gi, /\bbuy and hold\b/gi, /\bbuy-and-hold\b/gi, /\bsell(ing)? to (cover|close)\b/gi, /\bbid\b/gi, /\b[a-z0-9]+(?:_[a-z0-9]+)+\b/g];
 
 /** The forbidden words found in a text (empty when clean). Pure. */
 export function forbiddenIn(text: string): string[] {
