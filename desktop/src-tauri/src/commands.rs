@@ -201,7 +201,10 @@ pub fn open_external(app: AppHandle, url: String) -> Res<()> {
     if u.scheme() != "https" && u.origin() != app.state::<AppState>().site.origin() {
         return Err("Only web links can be opened.".into());
     }
-    app.opener().open_url(u.as_str(), None::<&str>).map_err(|e| e.to_string())
+    app.opener().open_url(u.as_str(), None::<&str>).map_err(|e| {
+        log::warn!("open link: {e}");
+        "The link could not be opened. Copy it into your browser instead.".to_string()
+    })
 }
 
 #[tauri::command]
@@ -259,7 +262,10 @@ pub async fn pick_path(app: AppHandle, kind: String) -> Res<Option<String>> {
         }
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        log::warn!("file picker: {e}");
+        "The file picker could not be opened. Try again.".to_string()
+    })?;
     Ok(picked.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().to_string()))
 }
 
@@ -350,7 +356,7 @@ pub async fn studio_push(app: AppHandle, path: String, force: Option<bool>) -> P
     match office::push(&app, &path, force.unwrap_or(false)).await {
         Ok(m) => PushResult { ok: true, message: m, conflict: false },
         Err(ApiError::Conflict(m, _)) => PushResult { ok: false, message: m, conflict: true },
-        Err(e) => PushResult { ok: false, message: e.to_string(), conflict: false },
+        Err(e) => PushResult { ok: false, message: crate::api::friendly(&e.to_string()), conflict: false },
     }
 }
 

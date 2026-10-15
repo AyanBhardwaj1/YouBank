@@ -1,6 +1,6 @@
 // The floating quick ask window. The question goes to the Rust side, which streams the answer from
 // /api/desktop/ask and passes each event here; this page never holds the device token.
-import { h, invoke, listen, toast } from "./app.js";
+import { errorText, h, invoke, listen, toast } from "./app.js";
 
 const $ = (id) => document.getElementById(id);
 const thread = $("thread");
@@ -68,7 +68,7 @@ async function ask() {
   try {
     await invoke("ask", { messages });
   } catch (e) {
-    el.replaceChildren(h("p", { class: "neg" }, String(e)));
+    el.replaceChildren(h("p", { class: "neg" }, errorText(e)));
     setBusy(false);
     if (/not connected/i.test(String(e))) $("connect").classList.remove("hidden");
   }
@@ -89,7 +89,7 @@ listen("ask://event", (ev) => {
       answer.sourcesEl.replaceChildren(...(ev.sources ?? []).slice(0, 8).map((s, i) => h("div", null, `[${i + 1}] `, /^https:\/\//.test(s.url) ? h("a", { onclick: () => invoke("open_external", { url: s.url }) }, s.label) : s.label)));
       break;
     case "error":
-      answer.el.append(h("p", { class: "neg" }, ev.message));
+      answer.el.append(h("p", { class: "neg" }, errorText(ev.message)));
       break;
     case "end":
       if (answer.text) messages.push({ role: "assistant", content: answer.text });
@@ -124,7 +124,7 @@ $("connect-btn").addEventListener("click", async () => {
   try {
     const p = await invoke("pair_start", { inBrowser: false });
     toast(`Approve code ${p.code} in the YouBank window.`);
-  } catch (e) { toast(String(e), true); }
+  } catch (e) { toast(errorText(e), true); }
 });
 $("new").addEventListener("click", () => {
   if (busy) return;

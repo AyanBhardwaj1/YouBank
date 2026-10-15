@@ -146,6 +146,33 @@ async fn json<T: DeserializeOwned>(res: Response) -> Result<T, ApiError> {
     })
 }
 
+/// A message as the person may see it: as written when it reads as a sentence for people; when it ends in
+/// the system's own detail ("Could not save settings: Access is denied. (os error 5)"), the part before
+/// it; otherwise a plain line. The detail goes to the log. The same rule as errorText in src/app.js.
+pub fn friendly(msg: &str) -> String {
+    fn internal(m: &str) -> bool {
+        let l = m.to_lowercase();
+        m.trim().is_empty()
+            || m.len() > 400
+            || m.contains("::")
+            || m.trim_start().starts_with('{')
+            || m.trim_start().starts_with('[')
+            || ["os error", "panicked", "joinerror", "error sending request", "error decoding", "error trying to connect", "backtrace", "://", ".rs:"]
+                .iter()
+                .any(|p| l.contains(p))
+    }
+    if !internal(msg) {
+        return msg.to_string();
+    }
+    log::info!("withheld from the person: {msg}");
+    let head = msg.split(": ").next().unwrap_or("").split(" (").next().unwrap_or("").trim();
+    if head.len() >= 12 && head != msg && !internal(head) {
+        format!("{}.", head.trim_end_matches(|c| c == '.' || c == ':'))
+    } else {
+        "Something went wrong in the app. Try again; if it keeps happening, restart YouBank.".to_string()
+    }
+}
+
 fn generic(s: StatusCode) -> String {
     if s.is_server_error() {
         "Something went wrong on YouBank's side. Try again in a moment.".into()

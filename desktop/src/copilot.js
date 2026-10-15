@@ -1,7 +1,7 @@
 // The copilot window during a meeting: who it is with (picked from Relationships), what YouBank knows
 // about them (free, no AI), live suggestions (premium, only while switched on for this meeting, about
 // once a minute), asking about the meeting, and the rolling transcript.
-import { h, invoke, listen, run, toast, toggle } from "./app.js";
+import { errorText, h, invoke, listen, run, toast, toggle } from "./app.js";
 
 const head = document.getElementById("head");
 const view = document.getElementById("view");
@@ -54,7 +54,7 @@ async function suggest() {
   if (live.busy || !live.on) return;
   live.busy = true; render();
   try { live.data = await invoke("meeting_suggest"); }
-  catch (e) { toast(String(e), true); if (/off for this meeting|ended|plan/i.test(String(e))) { live.on = false; clearInterval(live.timer); } }
+  catch (e) { toast(errorText(e), true); if (/off for this meeting|ended|plan/i.test(String(e))) { live.on = false; clearInterval(live.timer); } }
   finally { live.busy = false; render(); }
 }
 
@@ -75,7 +75,7 @@ async function ask(q) {
   answer = { q, busy: true };
   render();
   try { answer = { q, ...(await invoke("meeting_ask", { question: q, id: st?.session?.id ?? lastId })) }; }
-  catch (e) { answer = { q, answer: String(e), quotes: [] }; }
+  catch (e) { answer = { q, answer: errorText(e), quotes: [] }; }
   render();
 }
 

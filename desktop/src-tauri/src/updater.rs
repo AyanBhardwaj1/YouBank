@@ -20,7 +20,10 @@ pub async fn check(app: &AppHandle, tell: bool) -> Result<Option<String>, String
     if !configured(app) {
         return Err(NOT_SET_UP.into());
     }
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| {
+        log::warn!("updater: {e}");
+        "Updates are not available in this copy of the app.".to_string()
+    })?;
     let found = updater.check().await.map_err(|e| {
         log::info!("update check: {e}");
         "Could not check for updates right now.".to_string()
@@ -46,8 +49,15 @@ pub async fn install(app: &AppHandle) -> Result<(), String> {
     if !configured(app) {
         return Err(NOT_SET_UP.into());
     }
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+    let updater = app.updater().map_err(|e| {
+        log::warn!("updater: {e}");
+        "Updates are not available in this copy of the app.".to_string()
+    })?;
+    let Some(update) = updater.check().await.map_err(|e| {
+        log::info!("update check: {e}");
+        "Could not check for updates right now.".to_string()
+    })?
+    else {
         return Err("You already have the latest version.".into());
     };
     update.download_and_install(|_, _| {}, || {}).await.map_err(|e| {

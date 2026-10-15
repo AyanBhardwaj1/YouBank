@@ -3,7 +3,7 @@
 // - consent: before recording, the reminder that some places require everyone's consent, with the
 //   notice to paste in the meeting chat;
 // - recording: the red dot, the time, the copilot window and Stop (with "stop and delete").
-import { h, invoke, listen, toast } from "./app.js";
+import { errorText, h, invoke, listen, toast } from "./app.js";
 
 const root = document.getElementById("pill");
 let st = null; // meeting_state
@@ -28,7 +28,7 @@ async function load() {
 
 async function start() {
   const p = st.prompt ?? { app: "other", title: "" };
-  const s = await invoke("meeting_start", { args: { platform: p.app, appTitle: p.title, noticeCopied: copied, auto: false } }).catch((e) => { toast(String(e), true); return null; });
+  const s = await invoke("meeting_start", { args: { platform: p.app, appTitle: p.title, noticeCopied: copied, auto: false } }).catch((e) => { toast(errorText(e), true); return null; });
   if (s) { step = null; copied = false; await load(); }
 }
 

@@ -17,7 +17,8 @@ use tauri_plugin_notification::NotificationExt;
 const MAX_SINGLE: usize = 3;
 
 pub fn show(app: &AppHandle, title: &str, body: &str) {
-    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+    // Bodies can carry a failure's text (a sync that did not finish); the system's own detail stays in the log.
+    if let Err(e) = app.notification().builder().title(title).body(crate::api::friendly(body)).show() {
         log::info!("notification not shown: {e}");
     }
 }
