@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireFeature } from "@/lib/billing/entitlements";
-import { CROSS_SITE, jsonBody, refuse, requireQuantConsent, sameSiteJson } from "@/lib/quant/access";
+import { CROSS_SITE, hasQuantConsent, jsonBody, refuse, requireQuantConsent, sameSiteJson } from "@/lib/quant/access";
 import { drillSet, myDrills, saveGame, scoreSet, teamLeaderboard, type DrillAnswers } from "@/lib/quant/drills/run";
 import { evProblems } from "@/lib/quant/drills/games";
 import { logUserCall } from "@/lib/quant/forecast";
@@ -32,7 +32,8 @@ export async function POST(req: Request) {
     if (b.action === "submit") {
       const a = { seed: Number(b.seed), intervals: (b.intervals ?? {}) as DrillAnswers["intervals"], truefalse: (b.truefalse ?? {}) as DrillAnswers["truefalse"] };
       if (!Number.isFinite(a.seed)) throw refuse("Missing the set's seed.");
-      return NextResponse.json(await scoreSet(user.id, a));
+      // Scored for anyone; saved to the person's record only once they have accepted the Quant terms.
+      return NextResponse.json(await scoreSet((await hasQuantConsent(user.id)) ? user.id : null, a));
     }
     if (b.action === "ev") {
       const answers = (b.answers ?? {}) as Record<string, number>;
