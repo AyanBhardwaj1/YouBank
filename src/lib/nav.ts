@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -47,6 +47,10 @@ export const FEATURES: NavFeature[] = [
   {
     id: "copy", href: "/app/copy", label: "Fund copies", icon: "Copy", blurb: "Hedge funds' 13F portfolios: follow, backtest and copy them",
     links: [tab("/app/copy", "tab", "discover", "Discover", true), tab("/app/copy", "tab", "copies", "My copies"), tab("/app/copy", "tab", "following", "Following"), tab("/app/copy", "tab", "broker", "Brokerage"), tab("/app/copy", "tab", "activity", "Activity")],
+  },
+  {
+    id: "quant", href: "/app/quant", label: "Quant", icon: "Gauge", blurb: "Factors, risk, backtest checks, sizing, trading costs and insiders, with intervals and sources",
+    links: [tab("/app/quant", "tab", "overview", "Overview", true), tab("/app/quant", "tab", "integrity", "Backtest check"), tab("/app/quant", "tab", "factors", "Factors"), tab("/app/quant", "tab", "risk", "Risk"), tab("/app/quant", "tab", "sizing", "Sizing"), tab("/app/quant", "tab", "costs", "Costs"), tab("/app/quant", "tab", "insiders", "Insiders"), tab("/app/quant", "tab", "drills", "Drills"), tab("/app/quant", "tab", "signals", "Signals")],
   },
   {
     id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",
