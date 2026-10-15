@@ -90,7 +90,7 @@ function Upload() {
           <Field label="Returns CSV" hint="date,return per line (or one column per variant). Decimals, or tick percent.">
             <textarea value={f.csv} onChange={(e) => setF({ ...f, csv: e.target.value })} rows={6} className={`${inputCls} font-mono text-[11.5px]`} placeholder={"date,return\n2024-01-02,0.0031\n2024-01-03,-0.0012"} />
           </Field>
-          <input type="file" accept=".csv,text/csv" className="text-[11.5px] text-muted" onChange={async (e) => { const file = e.target.files?.[0]; if (file) setF({ ...f, csv: await file.text() }); }} />
+          <input type="file" accept=".csv,text/csv" aria-label="Upload a returns CSV file" className="text-[11.5px] text-muted" onChange={async (e) => { const file = e.target.files?.[0]; if (file) setF({ ...f, csv: await file.text() }); }} />
           <div className="grid grid-cols-2 gap-2">
             <Field label="Periods a year"><select value={f.periodsPerYear} onChange={(e) => setF({ ...f, periodsPerYear: e.target.value })} className={inputCls}><option value="252">Daily (252)</option><option value="52">Weekly (52)</option><option value="12">Monthly (12)</option></select></Field>
             <Field label="Variants tried"><input inputMode="numeric" value={f.declaredTrials} onChange={(e) => setF({ ...f, declaredTrials: e.target.value })} className={inputCls} /></Field>
