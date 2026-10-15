@@ -11,6 +11,8 @@
  *   would want next to the debt and earnings rows.
  * - lbo_stress: the workbook's LBO run through Edge's LBO Stress Lab (E6) over synthetic paths, written to a
  *   labelled 'LBO Stress' sheet.
+ * - quant_factor_exposures and quant_stress: Quant Edge's Factor Lab and stress tests on a list of holdings,
+ *   read-only, with the wording rules of src/lib/quant/words.ts in their descriptions.
  */
 import { z } from "zod";
 import { def, type ToolDef } from "@/lib/ai/tools";
@@ -27,6 +29,7 @@ import { rateModel } from "@/lib/edge/scen/rates";
 import type { Engine } from "./engine";
 import { addSheet, clearRange, requireSheet, sheetByName, writeRange, type Patch } from "./ops";
 import type { Scalar, StudioDocData } from "./types";
+import { WORDING as QUANT_WORDING } from "@/lib/quant/ai-tools";
 
 export type StudioCtx = {
   engine: Engine; doc: StudioDocData;
@@ -265,6 +268,28 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
           chanceMoicBelowOne: round(r.odds.moicBelowOne), breachByYear: r.breachByYear.map(round), maxEntryMultiple: r.maxPrice.multiple ? round(r.maxPrice.multiple) : null,
           gentlestBreach: r.reverse.sentence, assumptions: lab.assumptions, note: `Label every number from this as synthetic.${where}`,
         });
+      }),
+    }),
+    // Quant Edge (Q1, Q2) for the Studio agent: read-only, free-tier limits, wording rules in the descriptions.
+    def({
+      name: "quant_factor_exposures",
+      description: `Factor exposures of a portfolio (up to 30 holdings with weights): betas to market, size, value, momentum, quality and low volatility with 95% intervals, alpha and its t-statistic, R squared and the factor share of risk. For a notes row or a holdings sheet's commentary. ${QUANT_WORDING}`,
+      schema: z.object({ holdings: z.array(z.object({ symbol: z.string(), weight: z.number() })).min(1).max(30), years: z.number().min(1).max(3).optional() }),
+      run: (i) => s.guard(async () => {
+        const { factorLab } = await import("@/lib/quant/factors/lab");
+        const l = await factorLab(i.holdings, { years: i.years ?? 3, maxHoldings: 30 });
+        const w = l.windows.y3 ?? l.windows.y1;
+        return J({ summary: l.summary, tier: l.tier, window: w && { from: w.from, to: w.to, n: w.n, alphaAnnual: round(w.alphaAnnual), alphaT: round(w.alphaT), r2: round(w.r2), betas: w.betas.map((b) => ({ factor: b.label, beta: round(b.beta), low: round(b.low), high: round(b.high) })) }, riskSplit: l.riskSplit, disclosures: l.disclosures, sources: l.sources });
+      }),
+    }),
+    def({
+      name: "quant_stress",
+      description: `Stress tests of a portfolio (up to 30 holdings with weights): historical replays (2000, 2007 quant crunch, 2008, 2020, 2022) and up to two shocks such as "market -20" or "rates +1", each loss with its range, plus one-day value at risk. For a scenario table beside a model. ${QUANT_WORDING}`,
+      schema: z.object({ holdings: z.array(z.object({ symbol: z.string(), weight: z.number() })).min(1).max(30), shocks: z.array(z.string()).max(2).optional() }),
+      run: (i) => s.guard(async () => {
+        const { riskView } = await import("@/lib/quant/risk/run");
+        const v = await riskView({ holdings: i.holdings, pro: false, shocks: i.shocks });
+        return J({ summary: v.summary, replays: v.stress.map((x) => ({ scenario: x.label, loss: round(x.mid), low: round(x.low), high: round(x.high), proxied: x.proxied })), shocks: v.shocks.map((x) => ({ shock: x.text, loss: round(x.mid), low: round(x.low), high: round(x.high) })), var: v.var.rows, disclosures: v.disclosures, sources: v.sources });
       }),
     }),
   ] as unknown as ToolDef[];
