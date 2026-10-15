@@ -18,7 +18,7 @@ import { bootstrap, cagr, deflatedSharpe, drawdown, expectedMaxSharpe, pbo, psr,
 import { bsDelta, bsPrice, fillCost, FREE, monthlyExpiry, occSymbol, strikeForDelta, US_EQUITY } from "@/lib/algo/costs";
 import { checkOrder, checkOrders, countDayTrades, type RiskOrder, type RiskState } from "@/lib/algo/risk";
 import { algoOrderId, canMove, normaliseStatus, twap } from "@/lib/algo/execution";
-import { sendBatch, type AlgoOrderRow, type AlgoStore, type RiskGate } from "@/lib/algo/orders";
+import { heldAtBroker, sendBatch, type AlgoOrderRow, type AlgoStore, type RiskGate } from "@/lib/algo/orders";
 import { alpaca, alpacaAuthorizeUrl, alpacaOrderBody } from "@/lib/algo/brokers/alpaca";
 import { ed25519Key, rhHeaders, rhOrderBody, robinhoodCrypto } from "@/lib/algo/brokers/robinhood";
 import { webull, webullOrder, webullSign } from "@/lib/algo/brokers/webull";
@@ -399,6 +399,10 @@ async function main() {
     const ddGate: RiskGate = async (os) => checkOrders(L, base({ equity: 8_000, peakEquity: 10_000, startOfDayEquity: 8_000 }), os.map((o) => o.order));
     await sendBatch(m5.store, fake(), "acct", ddGate, req("key-gggggggg")).catch(() => null);
     check("the drawdown rule trips the strategy's kill switch through the store", m5.tripped() === "drawdown");
+    // Live sells are checked against the strategy's own units capped by the broker's count now.
+    const sellable = await heldAtBroker({ async positions() { return [{ symbol: "AAA", units: 3, price: 10, marketValue: 30, avgCost: null }, { symbol: "BRK.B", units: 5, price: 1, marketValue: 5, avgCost: null }]; } }, "acct", { AAA: 10, "BRK-B": 2, CCC: 4 });
+    check("a live strategy may sell only what the broker still holds (sold outside: 3 of its 10; none of a position that is gone)", sellable.AAA === 3 && sellable["BRK-B"] === 2 && sellable.CCC === 0, sellable);
+    check("…so the risk engine blocks a sell of the strategy's full count when the broker holds less (no short)", rules(checkOrder(L, base({ positions: sellable }), { symbol: "AAA", side: "sell", qty: 10, price: 100, limitPrice: 99, type: "limit", assetClass: "equity" })).includes("no_short"));
   }
 
   /* ---------------- Adapters against fixtures ---------------- */

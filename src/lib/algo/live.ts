@@ -103,7 +103,9 @@ export async function liquidate(user: Person, id: number, body: { confirmation?:
   if (!Object.keys(held).length) throw refuse("This strategy holds nothing.", 409);
   const q = await quotesFor(Object.keys(held));
   const prices = Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v.last ?? 0]));
-  const plan = planOrders({ spec: { ...spec, execution: { ...spec.execution, twapThresholdUsd: 10_000_000 }, risk: { ...spec.risk, maxOrderUsd: 1_000_000 } }, weights: {}, budgetUsd: 0, cash: 0, positions: Object.entries(held).map(([k, u]) => ({ ticker: k, units: u, price: prices[k] ?? 0 })), managed: held, prices, fractional: adapter.capabilities().fractional });
+  // Live: sell the strategy's own units, never more than the account holds now (the rebalance takes the lower).
+  const positions = paper ? Object.entries(held).map(([k, u]) => ({ ticker: k, units: u, price: prices[k] ?? 0 })) : (await adapter.positions(accountId)).map((p) => ({ ticker: p.symbol, units: p.units, price: p.price || prices[p.symbol] || 0 }));
+  const plan = planOrders({ spec: { ...spec, execution: { ...spec.execution, twapThresholdUsd: 10_000_000 }, risk: { ...spec.risk, maxOrderUsd: 1_000_000 } }, weights: {}, budgetUsd: 0, cash: 0, positions, managed: held, prices, fractional: adapter.capabilities().fractional });
   const [d] = await requireDb().insert(schema.algoDecisions).values({ strategyId: id, userId: user.id, source: "user", mode: row.mode, target: {}, notes: "Close all positions (the person's instruction)." }).returning({ id: schema.algoDecisions.id });
   const batchId = await createBatch(row, { ...spec, execution: { ...spec.execution, twapThresholdUsd: 10_000_000 } }, d.id, plan.orders, accountId, paper ? null : adapter, "user", new Date());
   await requireDb().update(schema.algoBatches).set({ source: "liquidate" }).where(eq(schema.algoBatches.id, batchId));

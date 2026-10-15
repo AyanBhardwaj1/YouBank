@@ -25,7 +25,7 @@ import { liveAdapter } from "./connections";
 import { copyTimeline, loadPanel, quotesFor } from "./data";
 import { decide, historyWindow, isDecisionDay, needsTrade, type EvalState } from "./evaluate";
 import { algoOrderId, FINAL, normaliseStatus, planOrders, sliceLimit, twap, type OrderState } from "./execution";
-import { sendBatch, type RiskGate } from "./orders";
+import { heldAtBroker, sendBatch, type RiskGate } from "./orders";
 import { checkOrders, countDayTrades, type RiskState } from "./risk";
 import { nextTickAt } from "./schedule";
 import { pointInTime, quant, readSignals, targetWeights, tightenWithBudget } from "./signals";
@@ -316,10 +316,13 @@ export async function send(row: StrategyRow, spec: StrategySpec, batchId: number
   const paper = opts.paper ?? (adapter.id === "paper" ? (fresh.paper as PaperState | null) : null);
   const positions = paper ? Object.fromEntries(Object.entries(paper.positions).map(([k, p]) => [k, p.units])) : fresh.managed ?? {};
   const equity = paper ? paperEquity(paper, prices) : spec.capitalUsd + (fresh.accountId ? await liveFlows(fresh.id, fresh.accountId) : 0) + Object.entries(positions).reduce((s, [k, u]) => s + u * (prices[k] ?? 0), 0);
+  // What the risk engine may sell: the strategy's own units, but never more than the broker reports now
+  // (shares sold outside YouBank, or a fill not yet reconciled), so a sell can never open a short.
+  const sellable = paper ? positions : await heldAtBroker(adapter, accountId, positions);
   const limits = tightenWithBudget(spec.risk, await quant().budgets.riskBudget(row.userId, row.accountId).catch(() => null)).limits;
   const risk: RiskGate = async (orders) => {
     const px = { ...prices, ...Object.fromEntries(orders.filter((o) => !prices[o.row.ticker]).map((o) => [o.row.ticker, o.order.price])) };
-    const st = await riskStateFor(fresh, spec, px, refPrices, positions, equity, market, { type: acct?.type ?? "unknown", equity: acct?.equity ?? equity, dayTradeCount: acct?.dayTradeCount, pdt: acct?.patternDayTrader });
+    const st = await riskStateFor(fresh, spec, px, refPrices, sellable, equity, market, { type: acct?.type ?? "unknown", equity: acct?.equity ?? equity, dayTradeCount: acct?.dayTradeCount, pdt: acct?.patternDayTrader });
     return checkOrders(limits, st, orders.map((o) => ({ ...o.order, price: o.row.assetClass === "option" ? o.order.price : px[o.row.ticker] || o.order.price, manualLiquidation: liquidation && o.order.side === "sell" })));
   };
   const r = await sendBatch(store, adapter, accountId, risk, {

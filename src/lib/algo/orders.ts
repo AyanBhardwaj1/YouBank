@@ -98,3 +98,16 @@ export async function sendBatch(store: AlgoStore, adapter: BrokerAdapter, accoun
   });
   return { ...result, blocked };
 }
+
+const normTicker = (t: string) => t.trim().toUpperCase().replace(/\./g, "-");
+
+/**
+ * What a live strategy may sell: its own units, capped by what the account holds at the broker now (shares
+ * sold outside YouBank, or a fill not yet reconciled), so a sell can never open a short. Read fresh; a
+ * failed read throws, and nothing is sent.
+ */
+export async function heldAtBroker(adapter: Pick<BrokerAdapter, "positions">, accountId: string, own: Record<string, number>): Promise<Record<string, number>> {
+  const atBroker = new Map<string, number>();
+  for (const p of await adapter.positions(accountId)) atBroker.set(normTicker(p.symbol), (atBroker.get(normTicker(p.symbol)) ?? 0) + p.units);
+  return Object.fromEntries(Object.entries(own).map(([k, u]) => [k, Math.max(0, Math.min(u, atBroker.get(normTicker(k)) ?? 0))]));
+}
