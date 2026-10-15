@@ -167,7 +167,7 @@ pub fn friendly(msg: &str) -> String {
     log::info!("withheld from the person: {msg}");
     let head = msg.split(": ").next().unwrap_or("").split(" (").next().unwrap_or("").trim();
     if head.len() >= 12 && head != msg && !internal(head) {
-        format!("{}.", head.trim_end_matches(|c| c == '.' || c == ':'))
+        format!("{}.", head.trim_end_matches(['.', ':']))
     } else {
         "Something went wrong in the app. Try again; if it keeps happening, restart YouBank.".to_string()
     }

@@ -242,7 +242,7 @@ fn pump(app: AppHandle, rx: mpsc::Receiver<capture::Event>) {
                     if let Some(s) = state.meetings.session.lock().unwrap().as_mut() {
                         s.problem = Some(m.clone());
                     }
-                    alerts::show(&app, "Meeting copilot", &m);
+                    alerts::show_error(&app, "Meeting copilot", &m);
                 }
             }
             changed(&app);
@@ -373,7 +373,7 @@ async fn send_waiting(app: &AppHandle) -> bool {
                     if matches!(e, ApiError::Plan(_)) || matches!(e, ApiError::Server(409, _) | ApiError::Server(404, _) | ApiError::Server(403, _)) {
                         // The meeting is over on YouBank (stopped elsewhere, deleted, or refused): stop here too.
                         if state.meetings.session.lock().unwrap().as_ref().is_some_and(|s| s.id == id) {
-                            alerts::show(app, "Meeting copilot stopped", &e.to_string());
+                            alerts::show_error(app, "Meeting copilot stopped", &e.to_string());
                             let _ = stop(app, false).await;
                         }
                         let _ = std::fs::remove_dir_all(&dir);
@@ -463,7 +463,7 @@ async fn check_notes(app: &AppHandle) {
                     alerts::show(
                         app,
                         "Meeting saved",
-                        &format!("{title}: {}", if m.error.is_empty() { "the transcript is on YouBank." } else { m.error.as_str() }),
+                        &format!("{title}: {}", if m.error.is_empty() { "the transcript is on YouBank.".to_string() } else { crate::api::friendly(&m.error) }),
                     );
                 }
                 *state.last_alert.lock().unwrap() = Some(url);
@@ -531,7 +531,7 @@ async fn look(app: &AppHandle, sys: &mut sysinfo::System) {
                 Err(e) => {
                     // Not again for this call (a refusal would otherwise repeat every 15 seconds).
                     state.meetings.dismissed.lock().unwrap().insert(d.app.to_string(), Instant::now());
-                    alerts::show(app, "Meeting copilot", &e);
+                    alerts::show_error(app, "Meeting copilot", &e);
                 }
             }
             return;

@@ -111,14 +111,14 @@ fn on_menu(app: &AppHandle, id: &str) {
                 match alerts::check(&a).await {
                     Ok(0) => alerts::show(&a, "Nothing new", "No new alerts since the last check."),
                     Ok(_) => {}
-                    Err(e) => alerts::show(&a, "Could not check for alerts", &e.to_string()),
+                    Err(e) => alerts::show_error(&a, "Could not check for alerts", &e.to_string()),
                 }
             });
         }
         "brief" => {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = tasks::run(&a, "morning-brief", true).await {
-                    alerts::show(&a, "Morning brief", &e.to_string());
+                    alerts::show_error(&a, "Morning brief", &e.to_string());
                 }
             });
         }
@@ -132,7 +132,7 @@ fn on_menu(app: &AppHandle, id: &str) {
                     },
                     Err(e) => e,
                 };
-                alerts::show(&a, "Local files", &msg);
+                alerts::show_error(&a, "Local files", &msg);
             });
         }
         "meeting" => {
@@ -154,14 +154,14 @@ fn on_menu(app: &AppHandle, id: &str) {
                 let ready = a.state::<AppState>().update_ready.lock().unwrap().clone();
                 if ready.is_some() {
                     if let Err(e) = updater::install(&a).await {
-                        alerts::show(&a, "Update", &e);
+                        alerts::show_error(&a, "Update", &e);
                     }
                     return;
                 }
                 match updater::check(&a, true).await {
                     Ok(None) => alerts::show(&a, "You are up to date", &format!("YouBank {} is the latest version.", crate::api::VERSION)),
                     Ok(Some(_)) => {}
-                    Err(e) => alerts::show(&a, "Update", &e),
+                    Err(e) => alerts::show_error(&a, "Update", &e),
                 }
             });
         }
