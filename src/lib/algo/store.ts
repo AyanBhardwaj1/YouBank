@@ -176,6 +176,8 @@ export async function setMode(user: Person, id: number, body: { mode?: unknown; 
   }
   if (mode !== "live_auto" && row.mode === "live_auto") await withdrawAutonomous(user.id, id);
   if (mode === "paper" && !row.paperStartedAt) { patch.paperStartedAt = new Date(); patch.paper = newPaper(specOf(row).capitalUsd); }
+  // Backtest mode trades nothing, so its time is not paper trading: the paper clock restarts when it returns to paper.
+  if (mode === "backtest" && row.mode !== "backtest") patch.paperStartedAt = null;
   if (mode !== "live_approval" && mode !== "live_auto") await requireDb().update(schema.algoBatches).set({ status: "canceled", updatedAt: new Date() }).where(and(eq(schema.algoBatches.strategyId, id), eq(schema.algoBatches.status, "proposed")));
   // TWAP slices not yet sent belong to the mode that made them: a change of mode drops them.
   if (mode !== row.mode) await requireDb().update(schema.algoOrders).set({ status: "canceled", error: "The strategy's mode changed before this slice's time.", updatedAt: new Date() }).where(and(eq(schema.algoOrders.strategyId, id), eq(schema.algoOrders.status, "scheduled")));
