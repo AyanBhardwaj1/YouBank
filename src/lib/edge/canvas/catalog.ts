@@ -170,6 +170,47 @@ export const NODES: NodeDef[] = [
     defaults: {},
   },
 
+  /* ---------- Quant Edge (src/lib/edge/canvas/executors/quant.ts) ---------- */
+  {
+    type: "quant.factors", module: "signals", label: "Factor Lab", tech: "Factor regression", icon: "Layers", blurb: "A portfolio's exposures to market, size, value, momentum, quality and low volatility, with intervals and alpha's t-statistic",
+    inputs: [{ name: "portfolio", label: "Companies or holdings table", kinds: ["companies", "table"], required: true, multi: true }],
+    outputs: [{ name: "table", label: "Exposures", kind: "table" }, { name: "memo", label: "Summary", kind: "memo" }],
+    steps: [{ id: "fit", label: "Regress" }],
+    fields: [{ key: "years", label: "Years", type: "number", min: 1, max: 3 }],
+    defaults: { years: 3 },
+  },
+  {
+    type: "quant.risk", module: "signals", label: "Portfolio risk", tech: "FHS VaR and replays", icon: "AlertTriangle", blurb: "Where a portfolio's risk comes from, value at risk with its backtest, and 2000, 2008, 2020 and 2022 replays",
+    inputs: [{ name: "portfolio", label: "Companies or holdings table", kinds: ["companies", "table"], required: true, multi: true }],
+    outputs: [{ name: "table", label: "Stress tests", kind: "table" }, { name: "memo", label: "Summary", kind: "memo" }],
+    steps: [{ id: "model", label: "Risk model" }],
+    fields: [{ key: "shock", label: "Shock", type: "text", placeholder: "market -20", help: "Optional: a factor move such as market -20 or rates +1" }],
+    defaults: { shock: "" },
+  },
+  {
+    type: "quant.integrity", module: "signals", label: "Backtest check", tech: "Deflated Sharpe", icon: "Shield", blurb: "A backtest's return series graded A to F for luck, length, costs and look-ahead",
+    inputs: [{ name: "returns", label: "Returns table", kinds: ["table"], required: true }],
+    outputs: [{ name: "table", label: "Checks", kind: "table" }, { name: "memo", label: "Grade", kind: "memo" }],
+    steps: [{ id: "grade", label: "Grade" }],
+    fields: [{ key: "periodsPerYear", label: "Frequency", type: "select", options: [{ value: "252", label: "Daily" }, { value: "52", label: "Weekly" }, { value: "12", label: "Monthly" }] }, { key: "trials", label: "Variants tried", type: "number", min: 1, max: 100000 }],
+    defaults: { periodsPerYear: "252", trials: 1 },
+  },
+  {
+    type: "quant.events", module: "signals", label: "Event base rates", tech: "Event study", icon: "BarChart3", blurb: "What followed past insider clusters, 13D stakes and Pulse change points: average excess return, interval, hit rate and n",
+    inputs: [], outputs: [{ name: "table", label: "Base rates", kind: "table" }, { name: "memo", label: "Summary", kind: "memo" }],
+    steps: [{ id: "rates", label: "Read base rates" }],
+    fields: [{ key: "types", label: "Events", type: "multiselect", options: [{ value: "cluster_buy", label: "Insider cluster purchase" }, { value: "large_officer_buy", label: "Large CEO or CFO purchase" }, { value: "cluster_sell", label: "Insider cluster sale" }, { value: "activist_new", label: "New 13D" }, { value: "activist_up", label: "13D stake raised" }, { value: "hiring_shift", label: "Hiring change point" }, { value: "attention_spike", label: "Attention change point" }, { value: "patent_shift", label: "Patents change point" }] }],
+    defaults: { types: [] },
+  },
+  {
+    type: "quant.insiders", module: "signals", label: "Insider clusters", tech: "Form 4 and 13D", icon: "Users", blurb: "Opportunistic insider clusters and activist stakes for the companies wired in (or the whole market), with their base rates",
+    inputs: [{ name: "companies", label: "Companies", kinds: ["companies"] }],
+    outputs: [{ name: "table", label: "Events", kind: "table" }, { name: "findings", label: "Events as findings", kind: "findings" }],
+    steps: [{ id: "board", label: "Read events" }],
+    fields: [{ key: "days", label: "Look back (days)", type: "number", min: 7, max: 365 }],
+    defaults: { days: 90 },
+  },
+
   {
     type: "calls.read", module: "signals", label: "Call Desk", tech: "Calibrated classifier", icon: "AudioLines", blurb: "Earnings-call answers scored for evasion with calibrated probabilities, and management's promises against what was reported",
     inputs: [{ name: "in", label: "Companies or documents", kinds: ["companies", "docs"], required: true }],
@@ -267,7 +308,7 @@ export const NODES: NodeDef[] = [
 
 export const NODE: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.type, n]));
 
-export const MODULE_LABEL: Record<Module, string> = { source: "Sources", earth: "Earth · GeoAI", documents: "Documents · RAG", networks: "Networks · GNN", scenarios: "Scenarios · Synthetic data", signals: "Signals · Deals and alt data", output: "Outputs" };
+export const MODULE_LABEL: Record<Module, string> = { source: "Sources", earth: "Earth · GeoAI", documents: "Documents · RAG", networks: "Networks · GNN", scenarios: "Scenarios · Synthetic data", signals: "Signals · Deals, alt data and quant", output: "Outputs" };
 
 /** Whether an output of kind `kind` may feed input `port`. Pure. */
 export const accepts = (port: Port, kind: Kind) => port.kinds.includes("any") || port.kinds.includes(kind);

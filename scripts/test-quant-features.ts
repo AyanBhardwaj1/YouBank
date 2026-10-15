@@ -497,6 +497,16 @@ export async function featureTests(check: Check, near: Near) {
     check("a Deal Radar estimate becomes a valid probability signal carrying its forecast id, not a return forecast", !!os && validateSignal(os).ok && os.forecastId === 77 && !!os.tags?.includes("not-a-return-forecast") && /not about the stock/.test(os.explain), os && validateSignal(os));
   }
 
+  section("Canvas blocks");
+  {
+    const { holdingsFromValues } = await import("@/lib/edge/canvas/executors/quant");
+    const { NODE, validate } = await import("@/lib/edge/canvas/catalog");
+    const h = holdingsFromValues([{ items: [{ ticker: "aapl", name: "" }, { ticker: "MSFT", name: "" }] }, { columns: [{ name: "Symbol", type: "cat" }, { name: "Weight", type: "num" }], rows: [["AAPL", 2], ["KO", 2], ["", 5]] }]);
+    check("canvas portfolios: companies count once each, tables by weight, rescaled to 100%", h.length === 3 && Math.abs(h.reduce((s, x) => s + x.weight, 0) - 1) < 1e-12 && Math.abs(h.find((x) => x.symbol === "AAPL")!.weight - 0.5) < 1e-12, h);
+    const g = { nodes: [{ id: "a", type: "source.companies", position: { x: 0, y: 0 }, data: { config: { tickers: ["AAPL"] } } }, { id: "b", type: "quant.risk", position: { x: 0, y: 0 }, data: { config: {} } }, { id: "c", type: "output.memo", position: { x: 0, y: 0 }, data: { config: {} } }], edges: [{ id: "e1", source: "a", sourceHandle: "companies", target: "b", targetHandle: "portfolio" }] };
+    check("the five quant blocks are in the catalogue and a companies wire into Portfolio risk validates", ["quant.factors", "quant.risk", "quant.integrity", "quant.events", "quant.insiders"].every((t) => NODE[t]) && !validate(g).some((i) => i.level === "error" && i.nodeId === "b"), validate(g));
+  }
+
   section("Terminal functions");
   {
     const { parseCommand } = await import("@/lib/functions");
