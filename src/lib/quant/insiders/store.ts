@@ -13,6 +13,8 @@ import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { holdingPercent, parseHeader } from "@/lib/edge/graph/parse";
 import { CONTRACT_VERSION, type QuantSignal } from "../contracts";
 import { baseRateFor, CATALOG, signalBaseRate } from "../events/rates";
+import { logForecast } from "@/lib/edge/forecasts/ledger";
+import type { ForecastRule } from "@/db/schema";
 import { addSessions, nextOpenAfter } from "../pit/calendar";
 import { publishSignals } from "../signals";
 import { estimateCost } from "../tca/run";
@@ -159,6 +161,26 @@ export function eventSignal(e: { id: string; type: string; symbol: string; issue
   };
 }
 
+/**
+ * The ledger forecast an event signal implies: that the stock beats SPY over the base rate's window, at the
+ * base rate's hit rate (kind quant_event), resolved from daily closes when the window ends. Pure.
+ * Day 0 is the first session the filing could be traded on; a window "+2..+125" runs from day 1's close to day
+ * 125's close.
+ */
+export function eventForecast(s: QuantSignal): { subject: string; question: string; probability: number; baseRate: number; opensAt: Date; closesAt: Date; rule: ForecastRule } | null {
+  const br = s.event?.baseRate;
+  const m = br?.window.match(/^\+?(\d+)\.\.\+?(\d+)$/);
+  if (!br || !m) return null;
+  const day0 = nextOpenAfter(s.asOf).slice(0, 10);
+  const from = addSessions(day0, Math.max(0, Number(m[1]) - 1)), to = addSessions(day0, Number(m[2]));
+  const sym = s.instrument.symbol;
+  return {
+    subject: `quant:event:${s.id}`, question: `${sym} beats SPY from the close of ${from} to the close of ${to} (after an event of the kind "${(CATALOG[s.event!.type]?.label ?? s.event!.type).toLowerCase()}", base rate ${Math.round(br.hitRate * 100)}% over n = ${br.n})`,
+    probability: br.hitRate, baseRate: br.unconditionalHitRate, opensAt: new Date(s.asOf), closesAt: new Date(`${to}T21:00:00Z`),
+    rule: { type: "return", symbol: sym, benchmark: "SPY", from, to, op: ">", value: 0 },
+  };
+}
+
 /** Publish signals for events of the last 30 days whose base rates exist. */
 export async function publishInsiderSignals(deadline: number) {
   const db = requireDb();
@@ -174,7 +196,17 @@ export async function publishInsiderSignals(deadline: number) {
     const s = eventSignal({ id: r.id, type: r.type, symbol: r.symbol, issuerCik: r.issuerCik, occurredAt: String(r.occurredAt), acceptedAt: r.acceptedAt.toISOString(), body: r.body }, br, costs ? { spreadBps: costs.spreadBps, impactBps: costs.impactBps, commissionBps: costs.commissionBps, borrowBpsYear: costs.borrowBpsYear, totalRoundTripBps: costs.totalRoundTripBps, referenceNotionalUsd: costs.referenceNotionalUsd, adv20Usd: costs.adv20Usd, model: costs.model, asOf: costs.asOf } : undefined);
     if (s) signals.push(s);
   }
-  return publishSignals(signals);
+  const out = await publishSignals(signals);
+  // Each event's base rate is a forecast the ledger scores when its window closes (spec Q7: ledger forecasts).
+  let ledger = 0;
+  for (const s of signals) {
+    if (Date.now() > deadline) break;
+    const f = eventForecast(s);
+    if (!f) continue;
+    const r = await logForecast({ kind: "quant_event", ...f, model: s.producer, modelVersion: s.producerVersion }).catch(() => null);
+    if (r?.logged) ledger++;
+  }
+  return { ...out, forecasts: out.forecasts + ledger };
 }
 
 /* ---------------- Board and company view ---------------- */

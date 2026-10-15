@@ -417,6 +417,10 @@ export async function featureTests(check: Check, near: Near) {
   section("Insider and activist clusters (Q7)");
   {
     const { eventCard } = await import("@/lib/quant/insiders/cards");
+    const { eventForecast, eventSignal } = await import("@/lib/quant/insiders/store");
+    const sig = eventSignal({ id: "cluster_buy:123456:2026-10-01", type: "cluster_buy", symbol: "EXMP", issuerCik: "123456", occurredAt: "2026-10-01", acceptedAt: "2026-10-02T21:30:00Z", body: { insiders: [{ name: "A", role: "CFO", value: 900_000, accession: "0000000000-26-000001" }], totalUsd: 900_000, days: 12 } }, { car: 0.02, low: 0.01, high: 0.03, hitRate: 0.56, unconditionalHitRate: 0.5, n: 412, window: "+2..+125", era: "2015-2026" }, undefined, new Date("2026-10-03T00:00:00Z"))!;
+    const fc = eventForecast(sig)!;
+    check("an event signal's ledger forecast: beat SPY at the base rate's hit rate, from day 1's close (filed Friday after the close, day 0 is Monday) to day 125", fc.rule.type === "return" && (fc.rule as { from: string }).from === "2026-10-06" && fc.probability === 0.56 && fc.baseRate === 0.5 && forbiddenIn(fc.question).length === 0, fc);
     const { isBig } = await import("@/lib/edge/notify");
     const br = { car: 0.021, low: 0.008, high: 0.034, hitRate: 0.56, unconditionalHitRate: 0.5, n: 412, window: "+2..+125", era: "2015-2026" };
     const cardC = eventCard({ id: "cluster_buy:123456:2026-10-01", type: "cluster_buy", symbol: "EXMP", issuerCik: "123456", occurredAt: "2026-10-01", acceptedAt: "2026-10-02T21:00:00Z", body: { insiders: [{ name: "A", role: "CFO", value: 900_000 }, { name: "B", role: "Director", value: 600_000 }, { name: "C", role: "Director", value: 300_000 }], totalUsd: 1_800_000, days: 12 } }, br)!;
