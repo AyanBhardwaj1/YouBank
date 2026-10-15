@@ -2,7 +2,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { requireDb, schema } from "@/db";
-import { siteUrl } from "@/lib/site";
+import { authBaseUrl, authTrustedOrigins } from "./origins";
+import { AUTH_RATE_RULES, authRateStorage } from "./rate-limit";
 
 /**
  * How long the signed session cookie is trusted before the session is read from the database again
@@ -18,9 +19,14 @@ function build() {
   const secret = process.env.BETTER_AUTH_SECRET;
   if (!secret) throw new Error("Sign-in is not configured: BETTER_AUTH_SECRET must be set");
   const clientId = process.env.GOOGLE_CLIENT_ID, clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  // Google sends people back here, so it must be the address registered with the OAuth client. On a
+  // preview deployment it is the preview's own address (src/lib/auth/origins).
+  const baseURL = authBaseUrl(process.env);
   return betterAuth({
-    // Google sends people back here, so it must be the address registered with the OAuth client.
-    baseURL: process.env.BETTER_AUTH_URL || siteUrl(),
+    baseURL,
+    // Every address this deployment answers on may post to sign-in (the custom domain, the vercel.app
+    // address, this deployment's own URLs); anything else is refused as cross-site.
+    trustedOrigins: authTrustedOrigins(process.env),
     secret,
     database: drizzleAdapter(requireDb(), {
       provider: "pg",
@@ -32,6 +38,15 @@ function build() {
     socialProviders: clientId && clientSecret ? { google: { clientId, clientSecret, prompt: "select_account" } } : {},
     session: { cookieCache: { enabled: true, maxAge: SESSION_DATA_TTL } },
     account: { encryptOAuthTokens: true },
+    // Limits shared by every instance (the default memory store is per instance on serverless). On in
+    // production builds only, as Better Auth's default is.
+    rateLimit: { customStorage: authRateStorage, customRules: AUTH_RATE_RULES },
+    advanced: {
+      // Secure (HTTPS-only) cookies wherever the site is served over HTTPS; plain http only on localhost.
+      useSecureCookies: baseURL.startsWith("https://"),
+      // Vercel sets x-real-ip to the caller's address; the limits are counted per address.
+      ipAddress: { ipAddressHeaders: ["x-real-ip", "x-forwarded-for"] },
+    },
     // Lets server actions and route handlers set the refreshed session cookie through next/headers.
     plugins: [nextCookies()],
   });

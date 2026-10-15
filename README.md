@@ -1805,6 +1805,11 @@ Every provider needs `EMAIL_TOKEN_SECRET`. Without it each shows "Not set up yet
 
 ## Deploying
 
+**The production runbook is [docs/production.md](docs/production.md)**: which variables are required in which
+Vercel environment, the first deploy, the custom-domain checklist (OAuth redirects, the Stripe webhook,
+`BETTER_AUTH_URL`, Inngest), health checks, what to do when a dependency is down, and the Hobby plan's
+limits.
+
 The Vercel project is connected to this repository: every push to `main` (a merged pull request) deploys
 to production, and pull requests get preview deployments. Apply new migrations before or right after the
 deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays every `drizzle/*.sql`).
@@ -1865,9 +1870,12 @@ deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays ever
    Live copies need SnapTrade keys and, for real orders, `COPYTRADE_TRADING_ENABLED=1` after counsel's
    review (docs/copy-trading.md lists what to review).
 10. **Verify.**
+   - `curl https://<your-domain>/api/health/live` answers at once without touching the database (for uptime
+     monitors).
    - `curl https://<your-domain>/api/health` should say `"status":"ok"`. It answers `degraded` (200) when
-     the app serves but something is missing (the tables, a production setting, an optional service half
-     set up) and `down` (503) without a database or a setting every page needs. Anyone sees the status;
+     the app serves but something is missing (a migration, a production setting, an optional service half
+     set up) and `down` (503) without a database, its core tables, or a setting every page needs. Operators
+     also see which migration is missing which tables. Anyone sees the status;
      the names of missing settings and which services are on need the cron secret
      (`-H "Authorization: Bearer $CRON_SECRET"`) or an `ADMIN_EMAILS` session. No value is ever shown.
    - `curl -i https://<your-domain>/api/cron/autopilot` should return `401` without the secret.
@@ -1902,6 +1910,7 @@ deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays ever
 | Engine end to end (20 checks) | `DATABASE_URL=<branch> E2E_STUB_LESSONS=1 pnpm exec tsx scripts/e2e-engine.ts` | Certification, a critical change, probation, spot checks, the security veto, demotion by cancels, lesson merging, settlement exactly once, pooled priors, Thompson sampling |
 | Meetings (83 checks) | `pnpm exec tsx scripts/test-meetings.ts` | Transcript chunk stitching (overlaps, re-sent chunks, per-chunk speaker labels, "You" from the microphone levels); participant matching; the notes parser (action items, owners, dates); proposed deal changes; the notetaker's webhook signatures, events and transcripts; meeting context and auto-join; transcription answers and engine choice; the premium features |
 | Desktop app (27 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; meeting audio (mixing, resampling, levels, WAV, overlapping chunks, silence in loopback), call detection and its parsers, never-record rules, the recording dot; the pages' scripts and that every command they call is registered and allowed |
+| Production (122 tests) | `pnpm exec tsx scripts/test-prod.ts` | Outbound HTTP timeouts and the retry policy (bounded, jittered, Retry-After, never a POST or DELETE, deadlines); database transient errors and which statements may be repeated; the migration check; the environment and feature checks; the health verdict and what visitors see; sign-in origins on production and previews; security headers; the browser's request helper (retry a GET once, send a double-clicked write once, timeouts, a dropped stream) |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
 | Quant (244 checks) | `pnpm exec tsx scripts/test-quant.ts` | Every statistic against a known answer (PSR, DSR and the paper's example, MinTRL, effective trials, haircuts, BH and BHY, PBO, the stationary bootstrap and Politis-White, the Reality Check, purged k-fold, Ledoit-Wolf, the HMM, ADF, Engle-Granger and Johansen against statsmodels, Newey-West, Kelly and its drawdown law); the contract validators; `signalsAsOf` never seeing the future; the wording rules over every template and AI tool; the integrity grade's rules; the trading calendar and knownAt; bars, panels, splits and the universe; factor sorts, crowding and Factor Lab; event studies; VaR, its backtests, replays, shocks and reverse stress; Kelly, the governor and the risk budget; fill imports for seven brokers, spread and impact models, Rule 605 and 606; Form 4 and 13D parsing and the insider rules; drills; the adapters, feed cards, canvas blocks and terminal commands; the premium registry. Fixtures in `scripts/fixtures/quant/` (constructed from documented formats, see its README) |
 | Edge next (260 checks) | `pnpm exec tsx scripts/test-edge-next.ts` | The crosswalk, the change library and its placebo rate, the calibration library and ledger rules, Calibrated Claims, the Precedent Engine (number readers, section location on saved proxies, checks on hand-labelled fields, similarity, the conformal band's coverage), the Pulse (every source's parser on saved responses, title rules on 60 labelled titles, findings) and the Deal Radar (no look-ahead, labels, the model beating its baselines on synthetic data, calibration, card wording) |
@@ -2170,6 +2179,7 @@ YouBank/
 
 | Doc | What |
 |---|---|
+| [docs/production.md](docs/production.md) | Running in production: environment variables per Vercel environment, first deploy, the custom-domain checklist, health, outages, Hobby limits |
 | [docs/06-product-overview.md](docs/06-product-overview.md) | Routes, terminal functions, the tool system, the AI layer, theming, commands |
 | [docs/pricing.md](docs/pricing.md) | What each plan costs to serve: unit costs with sources, personas, margins, and the prices and AI allowances that follow |
 | [docs/calendar.md](docs/calendar.md) | The calendar: provider setup, sync and push, the iCalendar engine, briefs, scheduling, and the meeting copilot API |

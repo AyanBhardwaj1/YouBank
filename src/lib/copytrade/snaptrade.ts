@@ -19,6 +19,7 @@
  * for one, and is deleted when they disconnect.
  */
 import { createHmac } from "node:crypto";
+import { fetchRetry } from "@/lib/net";
 
 export const snaptradeBase = () => (process.env.SNAPTRADE_BASE_URL?.trim() || "https://api.snaptrade.com").replace(/\/$/, "");
 
@@ -84,8 +85,10 @@ async function call<T>(method: "GET" | "POST" | "DELETE", path: string, opts: Ca
   if (!clientId || !key) throw Object.assign(new Error("Brokerage connections are not set up yet."), { status: 503 });
   const query = buildQuery(clientId, opts.user, opts.query ?? [], Math.round((opts.now?.() ?? Date.now()) / 1000));
   const hasBody = opts.body !== undefined;
-  const res = await fetch(`${snaptradeBase()}${path}?${query}`, {
-    method, cache: "no-store", signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+  // Only GETs are ever repeated (one retry on a network failure, 429 or 5xx). An order (POST) or a cancel
+  // (DELETE) goes out once: its outcome is unknown after a failure, and the caller decides what to do.
+  const res = await fetchRetry(`${snaptradeBase()}${path}?${query}`, {
+    method, cache: "no-store", timeoutMs: opts.timeoutMs ?? 30_000,
     headers: { Accept: "application/json", "User-Agent": "YouBank copy trading", Signature: signRequest(key, path, query, hasBody ? opts.body : null), ...(hasBody ? { "Content-Type": "application/json" } : {}) },
     body: hasBody ? JSON.stringify(opts.body) : undefined,
   });

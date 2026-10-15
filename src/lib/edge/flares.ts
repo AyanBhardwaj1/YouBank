@@ -19,6 +19,7 @@ import { NM_OCD, reportedNear, type Reported } from "./sources/nmocd";
 import { upgradeOn } from "./premium";
 import { boxAround, cropUrl, scenes, SENTINEL, type Scene } from "./sources/sentinel";
 import { parseNpy, pool } from "./terrain";
+import { fetchRetry } from "@/lib/net";
 
 export const FLARE_VERSION = "flares v1";
 const RADIUS_KM = 1.5;
@@ -135,7 +136,7 @@ async function backfill(all: Plant[], to: string, hist: Record<string, FlareWeek
   const got = await pool(jobs, 4, async ({ c, start, days, sat }) => {
     for (const kind of ["NRT", "SP"]) {
       if (Date.now() > deadline) { complete = false; return []; }
-      const res = await fetch(`https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${sat}_${kind}/${c.bbox.map((v) => v.toFixed(2)).join(",")}/${days}/${start}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) }).catch(() => null);
+      const res = await fetchRetry(`https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${sat}_${kind}/${c.bbox.map((v) => v.toFixed(2)).join(",")}/${days}/${start}`, { cache: "no-store", timeoutMs: 10_000 }).catch(() => null);
       const text = res?.ok ? await res.text() : "";
       if (/^latitude/.test(text)) return parseFirmsCsv(text, c.bbox);
     }
@@ -175,7 +176,7 @@ async function heatAt(box: Bbox): Promise<{ scene: Scene; hot: number } | null> 
   const scene = (await scenes(box, new Date(Date.now() - 21 * DAY), new Date(), 10, 6).catch(() => []))[0];
   if (!scene) return null;
   const n = 128;
-  const res = await fetch(`${DATA}/item/bbox/${box.map((v) => v.toFixed(5)).join(",")}/${n}x${n}.npy?collection=sentinel-2-l2a&item=${encodeURIComponent(scene.id)}&assets=B12&assets=B11&resampling=nearest`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+  const res = await fetchRetry(`${DATA}/item/bbox/${box.map((v) => v.toFixed(5)).join(",")}/${n}x${n}.npy?collection=sentinel-2-l2a&item=${encodeURIComponent(scene.id)}&assets=B12&assets=B11&resampling=nearest`, { cache: "no-store", timeoutMs: 30_000 });
   if (!res.ok) return { scene, hot: 0 };
   const { shape, data } = parseNpy(new Uint8Array(await res.arrayBuffer()));
   const cells = n * n;

@@ -12,6 +12,7 @@
 import { logError } from "@/lib/errors";
 import { getJson, putJson, r2Ready } from "../infra/r2";
 import { mean, std } from "./stats";
+import { fetchRetry } from "@/lib/net";
 
 export type Regime = { mu: number; phi: number; sigma: number };
 export type RateModel = {
@@ -130,7 +131,7 @@ export async function rateModel(): Promise<RateModel> {
     for (let i = 0; i < years.length; i += 6) {
       const got = await Promise.all(years.slice(i, i + 6).map(async (y) => {
         const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${y}&page&_format=csv`;
-        const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+        const r = await fetchRetry(url, { cache: "no-store", timeoutMs: 20_000 });
         return r.ok ? monthEnds(await r.text()) : [];
       }));
       rows.push(...got.flat());
@@ -138,7 +139,7 @@ export async function rateModel(): Promise<RateModel> {
     rows.sort((a, b) => a.month.localeCompare(b.month));
     const ok = rows.filter((r) => r.y10 !== null);
     const fit = fitRates(ok.map((r) => r.y3m), { from: ok[0]?.month, to: ok.at(-1)?.month, rates10y: ok.map((r) => r.y10!) });
-    const sofr = await fetch("https://markets.newyorkfed.org/api/rates/secured/sofr/last/1.json", { signal: AbortSignal.timeout(10_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { refRates?: { percentRate?: number; effectiveDate?: string }[] } | null;
+    const sofr = await fetchRetry("https://markets.newyorkfed.org/api/rates/secured/sofr/last/1.json", { timeoutMs: 10_000 }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as { refRates?: { percentRate?: number; effectiveDate?: string }[] } | null;
     const s = sofr?.refRates?.[0]?.percentRate;
     if (fit) model = { ...fit, ...(typeof s === "number" && Number.isFinite(s) ? { basis: Math.max(-0.5, Math.min(0.5, s - fit.start)), source: `${fit.source}; anchored to SOFR ${s.toFixed(2)}% (${sofr?.refRates?.[0]?.effectiveDate ?? "latest"}, Federal Reserve Bank of New York)` } : {}) };
     else if (rows.length) model = { ...DEFAULT_RATES, start: rows[rows.length - 1].y3m };

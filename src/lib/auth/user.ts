@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { auth } from "./server";
 import { runAsUser } from "@/lib/ai/usage";
 import { isAdmin } from "./admin";
-import { errorResponse } from "@/lib/errors";
+import { errorResponse, isMissingTable } from "@/lib/errors";
+import { db, notConfigured } from "@/db";
 
 export type CurrentUser = { id: string; email: string; name: string };
 
@@ -27,6 +28,8 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
     // A dotted domain so locally-created users pass the same email validation as real ones.
     return { id: `dev-${process.env.YOUBANK_DEV_USER}`, email: `${process.env.YOUBANK_DEV_USER}@dev.local`, name: process.env.YOUBANK_DEV_USER };
   }
+  // Without a database or the auth secret nobody can be signed in (pages show "being set up").
+  if (!db || !process.env.BETTER_AUTH_SECRET?.trim()) return null;
   // Anonymous visitors carry no session cookie; skip the lookup entirely.
   const jar = await cookies().catch(() => null);
   if (jar && !jar.getAll().some((c) => c.name.endsWith(SESSION_COOKIE_SUFFIX))) return null;
@@ -60,8 +63,14 @@ export function unauthorized() {
  * answered with a reference (lib/errors).
  */
 export function guarded(fn: (user: CurrentUser) => Promise<Response>): Promise<Response> {
+  // Not set up yet (no database, or no auth secret outside the development sign-in): a 503 that says
+  // so, not "sign in".
+  const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
+  if (!db || (!devUser && !process.env.BETTER_AUTH_SECRET?.trim())) return Promise.resolve(errorResponse(notConfigured()));
   return requireUser().then((u) => runAsUser(u.id, () => fn(u), { admin: isAdmin(u) })).catch((e) => {
     if (e instanceof Unauthorized) return unauthorized();
+    // A table the code needs is not there yet (a migration not applied): the same 503, logged.
+    if (isMissingTable(e)) return errorResponse(Object.assign(notConfigured(), { cause: e }));
     return errorResponse(e);
   });
 }

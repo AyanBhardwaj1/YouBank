@@ -7,6 +7,7 @@
  */
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { backupEnabled } from "./nasdaq";
+import { fetchRetry } from "@/lib/net";
 
 const MIN = 60_000, HOUR = 60 * MIN;
 
@@ -14,13 +15,11 @@ async function getJson<T>(url: string, key: string, ttlMs: number): Promise<T | 
   if (!backupEnabled()) return null;
   const hit = await cacheGet(key);
   if (hit) return JSON.parse(hit) as T | null;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12_000);
   let data: T | null = null;
   try {
-    const res = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "YouBank research terminal" }, cache: "no-store", signal: ctrl.signal });
+    const res = await fetchRetry(url, { headers: { Accept: "application/json", "User-Agent": "YouBank research terminal" }, cache: "no-store", timeoutMs: 12_000 });
     if (res.ok) data = (await res.json()) as T;
-  } catch { /* network or timeout */ } finally { clearTimeout(timer); }
+  } catch { /* network or timeout */ }
   await cacheSet(key, JSON.stringify(data), data ? ttlMs : 5 * MIN);
   return data;
 }

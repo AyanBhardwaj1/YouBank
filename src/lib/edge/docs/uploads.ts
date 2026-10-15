@@ -14,6 +14,7 @@ import { structured } from "@/lib/ai/agent";
 import { logError, looksInternal, storedMessage } from "@/lib/errors";
 import { getBytes, getJson, listKeys, partKey, PART_BYTES, putObject, r2Ready, readParts } from "../infra/r2";
 import { withinFreeTier } from "../infra/usage";
+import { safePublicFetch } from "@/lib/net";
 import { MlUnavailable, mlReady, mlStart, type MlDone } from "../infra/ml";
 import { small } from "../models";
 import { passagesFromPages, passagesFromTranscript, splitText, type ParsedPage, type Segment } from "./chunk";
@@ -90,8 +91,17 @@ export async function importAudioUrl(userId: string, url: string, title: string)
   try { u = new URL(url); } catch { throw status("That is not a link.", 400); }
   if (u.protocol !== "https:" && u.protocol !== "http:") throw status("Only web links can be imported.", 400);
   if (/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(u.hostname)) throw status("YouTube does not allow downloading its videos; upload the recording or a direct audio link instead.", 400);
-  const res = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(120_000) });
-  if (!res.ok || !res.body) throw status(`The link answered ${res.status}.`, 400);
+  // Only public addresses, each redirect (at most three) checked again, two minutes and the upload
+  // limit (plus a part, so the limit's own message below is the one people see) for the whole download.
+  let res: Response;
+  try {
+    res = await safePublicFetch(u.href, { timeoutMs: 120_000, maxBytes: MAX_UPLOAD + PART_BYTES, maxRedirects: 3 });
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === "UNSAFE_URL") throw e;
+    const timedOut = [e, (e as { cause?: unknown } | null)?.cause].some((x) => (x as { name?: string } | null)?.name === "TimeoutError");
+    throw status(timedOut ? "The link took too long to answer." : "The link could not be reached.", 400);
+  }
+  if (!res.ok || !res.body) { void res.body?.cancel().catch(() => undefined); throw status(`The link answered ${res.status}.`, 400); }
   const type = (res.headers.get("content-type") ?? "").split(";")[0];
   if (!AUDIO.test(type) && !/\.(mp3|m4a|wav|mp4|webm|ogg)(\?|$)/i.test(u.pathname)) throw status("That link is not an audio or video file.", 400);
   const size = Number(res.headers.get("content-length") ?? 0);

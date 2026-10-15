@@ -4,6 +4,7 @@
  * twelve hours. These are the series YouBank forecasts: primary-source data carries no licence limits.
  */
 import { cacheJson } from "@/lib/cache";
+import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 export const BLS_SERIES: Record<string, { label: string; unit: string; transform: "level" | "yoy" | "diff" }> = {
   CUUR0000SA0: { label: "CPI inflation", unit: "% y/y", transform: "yoy" },
@@ -18,8 +19,9 @@ export type BlsObs = { date: string; value: number };
 export async function blsSeries(): Promise<Record<string, BlsObs[]>> {
   return cacheJson<Record<string, BlsObs[]>>("bls:core", 12 * 3_600_000, async () => {
     const end = new Date().getUTCFullYear();
-    const res = await fetch("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
-      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(15_000),
+    // A read-only query, so it may be repeated, but only on a server failure: BLS's keyless quota is 25 a day.
+    const res = await fetchRetry("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", timeoutMs: 15_000, idempotent: true, retryOn: retryServerErrors,
       body: JSON.stringify({ seriesid: Object.keys(BLS_SERIES), startyear: String(end - 9), endyear: String(end) }),
     });
     const json = (await res.json()) as { status: string; Results?: { series: { seriesID: string; data: { year: string; period: string; value: string }[] }[] } };

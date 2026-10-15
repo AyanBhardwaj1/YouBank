@@ -5,6 +5,7 @@
 import type { Tag } from "../desks";
 import { canonicalUrl, keyOf, stripHtml } from "../normalize";
 import { NEWS_UA, type FetchResult, type RawItem } from "../types";
+import { fetchRetry } from "@/lib/net";
 
 const AGENCIES: { slug: string; short: string; tags: Tag[] }[] = [
   { slug: "federal-energy-regulatory-commission", short: "FERC", tags: ["energy", "infra", "policy"] },
@@ -52,7 +53,7 @@ export function federalRegisterItems(docs: FrDoc[]): RawItem[] {
 
 export async function fetchFederalRegister(): Promise<FetchResult> {
   try {
-    const res = await fetch(federalRegisterUrl(), { headers: { "User-Agent": NEWS_UA, Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    const res = await fetchRetry(federalRegisterUrl(), { headers: { "User-Agent": NEWS_UA, Accept: "application/json" }, cache: "no-store", timeoutMs: 15_000 });
     if (!res.ok) return { status: "error", items: [], error: `HTTP ${res.status}` };
     const j = (await res.json()) as { results?: FrDoc[] };
     return { status: "ok", items: federalRegisterItems(j.results ?? []) };

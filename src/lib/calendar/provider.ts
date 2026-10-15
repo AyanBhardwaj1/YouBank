@@ -6,6 +6,7 @@
  * responses, which is how the adapters are tested without a network or an OAuth app.
  */
 import type { ChangeScope, EventDraft, EventRef, Interval, ProviderId, RemoteCalendar, RemoteEvent, SyncPage, WriteOptions } from "./types";
+import { fetchRetry } from "@/lib/net";
 
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -71,7 +72,8 @@ export function kindForStatus(status: number): ProviderError["kind"] {
 
 /** A JSON API call with a timeout and a plain error. `label` names the provider for people. */
 export async function jsonCall<T>(f: Fetch, label: string, url: string, init: RequestInit = {}): Promise<T> {
-  const res = await f(url, { signal: AbortSignal.timeout(30_000), ...init });
+  // Reads get one retry on a network failure, 429 or 5xx (honouring Retry-After); writes go out once.
+  const res = await fetchRetry(url, { fetch: f, timeoutMs: 30_000, ...init });
   if (res.status === 204) return undefined as T;
   const text = await res.text().catch(() => "");
   if (!res.ok) {

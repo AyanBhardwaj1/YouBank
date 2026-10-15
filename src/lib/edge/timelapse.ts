@@ -5,6 +5,7 @@
  */
 import type { Bbox } from "./sources/eia";
 import { cropUrl } from "./sources/sentinel";
+import { fetchRetry } from "@/lib/net";
 
 const STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
 
@@ -25,8 +26,8 @@ export function monthly(items: { id: string; date: string; cloud: number; covers
 
 export async function timelapse(bbox: Bbox, months = 24, size = 384): Promise<Frame[]> {
   const to = new Date(), from = new Date(Date.now() - months * 30.44 * 86_400_000);
-  const res = await fetch(STAC, {
-    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(25_000),
+  const res = await fetchRetry(STAC, {
+    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", timeoutMs: 25_000, idempotent: true,
     // Only the fields the choice needs (a list of 100 scenes is then ~15 KB rather than a megabyte of asset links).
     body: JSON.stringify({
       collections: ["sentinel-2-l2a"], bbox, datetime: `${from.toISOString()}/${to.toISOString()}`, query: { "eo:cloud_cover": { lt: 30 } },

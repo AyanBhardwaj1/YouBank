@@ -5,6 +5,7 @@
  */
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { NEWS_UA } from "./types";
+import { safePublicFetch } from "@/lib/net";
 
 export const ROBOTS_AGENT = "youbanknews";
 type Rule = { allow: boolean; path: string };
@@ -61,7 +62,8 @@ export async function allowedToFetch(url: string): Promise<boolean> {
   let text = await cacheGet(key);
   if (text === null) {
     try {
-      const res = await fetch(`${u.protocol}//${u.host}/robots.txt`, { headers: { "User-Agent": NEWS_UA }, cache: "no-store", redirect: "follow", signal: AbortSignal.timeout(8_000) });
+      // The host comes from a feed's link: only public addresses (a refusal reads as "disallow all").
+      const res = await safePublicFetch(`${u.protocol}//${u.host}/robots.txt`, { headers: { "User-Agent": NEWS_UA }, timeoutMs: 8_000, maxBytes: 1024 * 1024 });
       text = res.ok ? (await res.text()).slice(0, 200_000) : res.status >= 400 && res.status < 500 ? "" : "User-agent: *\nDisallow: /";
     } catch {
       text = "User-agent: *\nDisallow: /";

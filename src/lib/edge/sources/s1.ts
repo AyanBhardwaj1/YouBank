@@ -6,6 +6,7 @@
  */
 import { parseNpy } from "../terrain";
 import type { Bbox, SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 const STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
 const DATA = "https://planetarycomputer.microsoft.com/api/data/v1";
@@ -59,8 +60,8 @@ export function scenesFrom(items: StacItem[], bbox: Bbox): RadarScene[] {
 
 /** Radar scenes over a box in a window, newest first. */
 export async function radarScenes(bbox: Bbox, from: Date, to: Date, limit = 60): Promise<RadarScene[]> {
-  const res = await fetch(STAC, {
-    method: "POST", headers: { ...UA, "content-type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(20_000),
+  const res = await fetchRetry(STAC, {
+    method: "POST", headers: { ...UA, "content-type": "application/json" }, cache: "no-store", timeoutMs: 20_000, idempotent: true,
     body: JSON.stringify({ collections: ["sentinel-1-rtc"], bbox, datetime: `${from.toISOString()}/${to.toISOString()}`, sortby: [{ field: "datetime", direction: "desc" }], limit }),
   });
   if (!res.ok) throw new Error(`Sentinel-1 search answered ${res.status}`);
@@ -70,7 +71,7 @@ export async function radarScenes(bbox: Bbox, from: Date, to: Date, limit = 60):
 /** One scene's VV and VH over a box as a size by size grid (linear power), with where it has data. */
 export async function readScene(id: string, bbox: Bbox, size: number): Promise<RadarWindow> {
   const url = `${DATA}/item/bbox/${bbox.map((v) => v.toFixed(5)).join(",")}/${size}x${size}.npy?collection=sentinel-1-rtc&item=${encodeURIComponent(id)}&assets=vv&assets=vh&nodata=-32768`;
-  const res = await fetch(url, { headers: UA, cache: "no-store", signal: AbortSignal.timeout(40_000) });
+  const res = await fetchRetry(url, { headers: UA, cache: "no-store", timeoutMs: 40_000 });
   if (!res.ok) throw new Error(`Sentinel-1 read answered ${res.status}`);
   const { shape, data } = parseNpy(new Uint8Array(await res.arrayBuffer()));
   const n = size * size;

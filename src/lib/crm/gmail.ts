@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { EmailAddress } from "@/db/schema";
 import { isAutomatedMessage } from "./autopilot-rules";
 import type { IncomingMessage } from "./db";
+import { fetchRetry } from "@/lib/net";
 
 /**
  * Gmail connector over the Gmail API: OAuth, reading threads, and sending.
@@ -72,7 +73,8 @@ export function refreshAccessToken(cfg: GoogleConfig, refreshToken: string) {
 }
 
 async function call<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API}${path}`, { signal: AbortSignal.timeout(30_000), ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
+  // Reads get one retry on a network failure, 429 or 5xx; a send (POST) is never repeated.
+  const res = await fetchRetry(`${API}${path}`, { timeoutMs: 30_000, ...init, headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) } });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     const err = new Error(`Gmail API ${res.status}: ${detail.slice(0, 300)}`) as Error & { status?: number };

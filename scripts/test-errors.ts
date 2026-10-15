@@ -134,6 +134,7 @@ const ALLOW: { file: RegExp; line?: RegExp; why: string }[] = [
   { file: /^src\/lib\/crypto\/wallet\.ts$/, line: /CryptoDataError/, why: "CryptoDataError messages are written for people where they are thrown (lib/crypto/http)" },
   { file: /^src\/lib\/studio\/agent\.ts$/, line: /e\.type === "error"/, why: "an AgentEvent from runChat, already screened by describeError" },
   { file: /^src\/lib\/ai\/agent\.ts$/, line: /OpenAI\.APIError && \/summary\/i\.test\(e\.message\)/, why: "a retry decision, not shown" },
+  { file: /^src\/components\/ui\/Connectivity\.tsx$/, line: /const onError = \(e: ErrorEvent\) => stale\(/, why: "spots a chunk from a previous deploy to reload once; the message is never shown" },
 ];
 
 /** Every line in src/ and the desktop's screens that sends a raw error's text toward a person. */

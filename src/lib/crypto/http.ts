@@ -9,6 +9,7 @@
  */
 import { cacheJson } from "@/lib/cache";
 import { logError } from "@/lib/errors";
+import { fetchRetry } from "@/lib/net";
 
 export const MIN = 60_000;
 export const HOUR = 60 * MIN;
@@ -25,7 +26,7 @@ export class CryptoDataError extends Error {
 
 const UA = "YouBank research terminal (crypto data; contact via site)";
 
-type Opts = { key: string; ttlMs: number; source: string; headers?: Record<string, string>; timeoutMs?: number; init?: RequestInit };
+type Opts = { key: string; ttlMs: number; source: string; headers?: Record<string, string>; timeoutMs?: number; init?: RequestInit; idempotent?: boolean };
 
 /** Fetch JSON once per `ttlMs` (per cache key), transformed by `shape` before it is cached so large payloads stay small. */
 export async function cachedJson<T, R = T>(url: string, opts: Opts, shape?: (raw: T) => R): Promise<R> {
@@ -36,10 +37,11 @@ export async function cachedJson<T, R = T>(url: string, opts: Opts, shape?: (raw
 }
 
 /** One uncached JSON request with a timeout. Throws a CryptoDataError naming `source` on any failure. */
-export async function fetchJson<T>(url: string, opts: Pick<Opts, "source" | "headers" | "timeoutMs" | "init">): Promise<T> {
+export async function fetchJson<T>(url: string, opts: Pick<Opts, "source" | "headers" | "timeoutMs" | "init" | "idempotent">): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { ...opts.init, headers: { Accept: "application/json", "User-Agent": UA, ...opts.headers, ...(opts.init?.headers as Record<string, string> | undefined) }, cache: "no-store", signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000) });
+    // GETs (and read-only RPC posts, marked idempotent) get one retry on a network failure, 429 or 5xx.
+    res = await fetchRetry(url, { ...opts.init, headers: { Accept: "application/json", "User-Agent": UA, ...opts.headers, ...(opts.init?.headers as Record<string, string> | undefined) }, cache: "no-store", timeoutMs: opts.timeoutMs ?? 15_000, idempotent: opts.idempotent });
   } catch (e) {
     logError(e, { where: `crypto:${opts.source}` });
     throw new CryptoDataError(`${opts.source} is not answering right now. Try again in a minute.`);
@@ -59,9 +61,9 @@ export async function fetchJson<T>(url: string, opts: Pick<Opts, "source" | "hea
   }
 }
 
-/** POST a JSON-RPC body (nodes and indexers). */
+/** POST a JSON-RPC body (nodes and indexers). Every call made through it is a read, so it may be repeated. */
 export async function postJson<T>(url: string, body: unknown, opts: Pick<Opts, "source" | "headers" | "timeoutMs">): Promise<T> {
-  return fetchJson<T>(url, { ...opts, init: { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } } });
+  return fetchJson<T>(url, { ...opts, idempotent: true, init: { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } } });
 }
 
 /** A finite number or null, from anything an API might send (strings, nulls, NaN). */

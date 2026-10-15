@@ -9,10 +9,11 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 import { useReducedMotion } from "motion/react";
 import type { FeedView } from "@/lib/news/views";
 import { apiError, errorMessage } from "@/lib/client/errors";
+import { clientFetch } from "@/lib/client/net";
 
 /** A JSON fetch whose failures throw an ApiError with a message safe to show (lib/client/errors). */
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
+  const r = await clientFetch(url, init);
   // ApiError keeps the status, so a screen can tell a plan refusal (402) from a failure.
   if (!r.ok) throw await apiError(r);
   return (await r.json().catch(() => ({}))) as T;

@@ -19,7 +19,7 @@ const relay = {
     const base = process.env.YOUBANK_URL;
     const secret = process.env.AUTOPILOT_SECRET;
     if (!base || !secret) return new Response("YOUBANK_URL and AUTOPILOT_SECRET must be set on this function.", { status: 500 });
-    const call = (path: string) => fetch(`${base.replace(/\/$/, "")}${path}`, { method: "POST", headers: { authorization: `Bearer ${secret}`, "x-calendar-invocation": invocation } })
+    const call = (path: string) => fetch(`${base.replace(/\/$/, "")}${path}`, { method: "POST", headers: { authorization: `Bearer ${secret}`, "x-calendar-invocation": invocation }, signal: AbortSignal.timeout(310_000) })
       .then(async (r) => ({ status: r.status, body: (await r.text()).slice(0, 2000) }), (e) => ({ status: 0, body: String(e) }));
     const sync = await call("/api/cron/calendar");
     const briefs = await call("/api/cron/calendar-briefs");

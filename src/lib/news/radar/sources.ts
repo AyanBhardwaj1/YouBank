@@ -12,6 +12,7 @@ import { decodeEntities, stripHtml } from "../normalize";
 import { parseFeed } from "../sources/rss";
 import { NEWS_UA } from "../types";
 import { countryId, placesIn, stateId, US } from "./places";
+import { fetchRetry } from "@/lib/net";
 
 export type RadarEntry = {
   id: string; title: string; snippet: string; url: string; source: string;
@@ -30,7 +31,7 @@ export type RadarEntry = {
 
 const TIMEOUT = 15_000;
 async function get(url: string, init: RequestInit = {}): Promise<Response | null> {
-  const res = await fetch(url, { ...init, headers: { "User-Agent": NEWS_UA, Accept: "application/json, application/xml;q=0.9, */*;q=0.8", ...(init.headers ?? {}) }, cache: "no-store", redirect: "follow", signal: AbortSignal.timeout(TIMEOUT) }).catch(() => null);
+  const res = await fetchRetry(url, { ...init, headers: { "User-Agent": NEWS_UA, Accept: "application/json, application/xml;q=0.9, */*;q=0.8", ...(init.headers ?? {}) }, cache: "no-store", redirect: "follow", timeoutMs: TIMEOUT }).catch(() => null);
   return res?.ok ? res : null;
 }
 const json = async <T,>(url: string): Promise<T | null> => { const r = await get(url); return r ? ((await r.json().catch(() => null)) as T | null) : null; };

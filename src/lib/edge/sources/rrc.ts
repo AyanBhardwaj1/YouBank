@@ -5,6 +5,7 @@
  * the day a location first appears (permits.ts keeps that record).
  */
 import { upstreamRefusal, type Bbox, type SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 export const RRC_WELLS: SourceInfo = {
   key: "tx-rrc-wells",
@@ -49,7 +50,7 @@ async function readPermitted(bbox: Bbox): Promise<TxPermit[]> {
       where: `SYMNUM = ${PERMITTED}`, geometry: bbox.map((v) => v.toFixed(5)).join(","), geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
       outFields: "API,GIS_LAT83,GIS_LONG83", returnGeometry: "false", orderByFields: "OBJECTID", resultOffset: String(page * PAGE), resultRecordCount: String(PAGE), f: "json",
     });
-    const res = await fetch(`${RRC_WELLS.url}/query?${q}`, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    const res = await fetchRetry(`${RRC_WELLS.url}/query?${q}`, { cache: "no-store", timeoutMs: 30_000 });
     if (!res.ok) throw new Error(`Texas RRC answered ${res.status}`);
     const j = (await res.json()) as { features?: { attributes: Row }[]; exceededTransferLimit?: boolean; error?: { message?: string } };
     if (j.error) throw upstreamRefusal("Texas RRC", j.error.message);

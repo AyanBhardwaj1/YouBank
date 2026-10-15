@@ -24,6 +24,7 @@ import { readWindow } from "./terrain";
 import type { Bbox, SourceInfo } from "./sources/eia";
 import { classes, clearestNear, crop, cropUrl, SENTINEL } from "./sources/sentinel";
 import { timelapse } from "./timelapse";
+import { fetchRetry } from "@/lib/net";
 
 export const SCENE_VERSION = "scene v1";
 const MONTH = 30 * 86_400_000;
@@ -167,8 +168,8 @@ export const IO_LULC: SourceInfo = {
 };
 
 async function lulcItems(bbox: Bbox): Promise<StacItem[]> {
-  const res = await fetch(STAC, {
-    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(20_000),
+  const res = await fetchRetry(STAC, {
+    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", timeoutMs: 20_000, idempotent: true,
     body: JSON.stringify({ collections: [IO_LULC.key], bbox, limit: 40 }),
   });
   if (!res.ok) throw new Error(`Land-use search answered ${res.status}`);

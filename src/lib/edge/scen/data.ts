@@ -11,6 +11,7 @@ import { logError } from "@/lib/errors";
 import { closes as marketCloses } from "@/lib/market/data";
 import { nasdaqHistory } from "@/lib/market/nasdaq";
 import { getJson, putJson, r2Ready } from "../infra/r2";
+import { fetchRetry } from "@/lib/net";
 
 export const FACTORS = ["market", "energy", "oil", "gas", "rates"] as const;
 export type Factor = (typeof FACTORS)[number];
@@ -64,7 +65,7 @@ export function eiaDaily(html: string): Map<string, number> {
 
 async function treasuryTenYear(year: number): Promise<Map<string, number>> {
   const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${year}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${year}&page&_format=csv`;
-  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 20_000 });
   if (!res.ok) throw new Error(`Treasury ${res.status}`);
   const [head, ...lines] = (await res.text()).trim().split("\n");
   const cols = head.split(",").map((c) => c.replace(/"/g, "").trim());
@@ -82,7 +83,7 @@ const KEY = "scen/factors-v1.json";
 
 /** Rebuild the factor history from the sources (a few requests; about half a megabyte of JSON). */
 export async function buildFactors(): Promise<FactorRow[]> {
-  const get = async (url: string) => { const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(60_000) }); if (!r.ok) throw new Error(`${url} answered ${r.status}`); return r; };
+  const get = async (url: string) => { const r = await fetchRetry(url, { headers: UA, timeoutMs: 60_000 }); if (!r.ok) throw new Error(`${url} answered ${r.status}`); return r; };
   const [ff, ind, wti, hh] = await Promise.all([
     get("https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip").then(async (r) => frenchColumns(unzipFirst(new Uint8Array(await r.arrayBuffer())), ["Mkt-RF", "RF"])),
     get("https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/49_Industry_Portfolios_daily_CSV.zip").then(async (r) => frenchColumns(unzipFirst(new Uint8Array(await r.arrayBuffer())), ["Oil"])),

@@ -4,6 +4,8 @@
  * and natural gas processing plants (the EIA-757 survey). Both are U.S. Government works in the public
  * domain. Geometry comes back simplified to about 50 m, which is plenty for a map and keeps rows small.
  */
+import { fetchRetry } from "@/lib/net";
+
 /**
  * A map service's own error ("Unable to complete operation.") as a sentence for people; its words ride
  * along as the cause, logged under a reference (the 502 makes describeFailure log it).
@@ -51,7 +53,7 @@ export async function query(source: SourceInfo, bbox: Bbox, outFields: string, p
       outFields, outSR: "4326", f: "geojson", resultOffset: String(page * pageSize), resultRecordCount: String(pageSize),
       maxAllowableOffset: String(simplify), geometryPrecision: "5",
     });
-    const res = await fetch(`${source.url}/query?${qs}`, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const res = await fetchRetry(`${source.url}/query?${qs}`, { cache: "no-store", timeoutMs: 20_000 });
     if (!res.ok) throw new Error(`${source.name} answered ${res.status}`);
     const j = (await res.json()) as { features?: Feature[]; error?: { message?: string } };
     if (j.error) throw upstreamRefusal(source.name, j.error.message);

@@ -5,6 +5,7 @@
  * what change detection compares.
  */
 import type { Bbox, SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 const STAC = "https://planetarycomputer.microsoft.com/api/stac/v1/search";
 const DATA = "https://planetarycomputer.microsoft.com/api/data/v1";
@@ -23,8 +24,8 @@ type StacItem = { id: string; properties: { datetime: string; "eo:cloud_cover"?:
 
 /** Scenes over a box in a date window with little cloud, newest first. */
 export async function scenes(bbox: Bbox, from: Date, to: Date, maxCloud = 5, limit = 10): Promise<Scene[]> {
-  const res = await fetch(STAC, {
-    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", signal: AbortSignal.timeout(20_000),
+  const res = await fetchRetry(STAC, {
+    method: "POST", headers: { "content-type": "application/json" }, cache: "no-store", timeoutMs: 20_000, idempotent: true,
     body: JSON.stringify({
       collections: ["sentinel-2-l2a"], bbox, datetime: `${from.toISOString()}/${to.toISOString()}`,
       query: { "eo:cloud_cover": { lt: maxCloud } }, sortby: [{ field: "datetime", direction: "desc" }], limit,
@@ -51,7 +52,7 @@ export const classesUrl = (scene: Scene, bbox: Bbox, size = 256) =>
   `${DATA}/item/bbox/${bbox.map((v) => v.toFixed(5)).join(",")}/${size}x${size}.png?collection=sentinel-2-l2a&item=${encodeURIComponent(scene.id)}&assets=SCL&nodata=0&resampling=nearest`;
 
 async function get(url: string): Promise<Buffer> {
-  const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
+  const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 30_000 });
   if (!res.ok) throw new Error(`Sentinel-2 crop answered ${res.status}`);
   return Buffer.from(await res.arrayBuffer());
 }

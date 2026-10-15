@@ -17,6 +17,7 @@ import { record, type Provenance } from "../provenance";
 import { watchedPlants, type Plant } from "../radar";
 import { EIA_PLANTS, type Bbox, type SourceInfo } from "../sources/eia";
 import { boxAround } from "../sources/sentinel";
+import { fetchRetry } from "@/lib/net";
 
 export const CARBON_MAPPER: SourceInfo = {
   key: "carbon-mapper",
@@ -97,7 +98,7 @@ export async function plumesIn(bbox: Bbox): Promise<Plume[]> {
     const to = new Date(), from = new Date(to.getTime() - DAYS * DAY);
     const out: Plume[] = [];
     for (let page = 0; page < 3; page++) {
-      const res = await fetch(plumesUrl(bbox, from, to, 500, page * 500), { headers: token ? { authorization: `Bearer ${token}` } : {}, cache: "no-store", signal: AbortSignal.timeout(30_000) });
+      const res = await fetchRetry(plumesUrl(bbox, from, to, 500, page * 500), { headers: token ? { authorization: `Bearer ${token}` } : {}, cache: "no-store", timeoutMs: 30_000 });
       if (!res.ok) throw new Error(`Carbon Mapper answered ${res.status}`);
       const j = (await res.json()) as { items?: Item[]; bbox_count?: number };
       const got = plumesFrom(j);
@@ -112,7 +113,7 @@ export async function plumesIn(bbox: Bbox): Promise<Plume[]> {
 async function keepImage(url: string): Promise<string> {
   if (!/^https:\/\/[a-z0-9.-]*carbonmapper\.org\//i.test(url)) return "";
   try {
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 20_000 });
     const type = res.headers.get("content-type") ?? "";
     if (!res.ok || !type.startsWith("image/")) return "";
     const buf = Buffer.from(await res.arrayBuffer());

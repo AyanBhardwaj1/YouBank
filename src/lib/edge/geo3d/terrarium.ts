@@ -8,6 +8,7 @@
 import { PNG } from "pngjs";
 import type { Bbox } from "../sources/eia";
 import { fillGaps, TERRARIUM_TILES, terrariumHeight, tileXY, type GroundGrid } from "./heights";
+import { fetchRetry } from "@/lib/net";
 
 export * from "./heights";
 
@@ -32,7 +33,7 @@ export async function groundGrid(bbox: Bbox, size = 64, zoom = 14): Promise<Grou
     Array.from({ length: (tx1 - tx0 + 1) * (ty1 - ty0 + 1) }, (_, i) => [tx0 + (i % (tx1 - tx0 + 1)), ty0 + Math.floor(i / (tx1 - tx0 + 1))]).map(async ([x, y]) => {
       const url = TERRARIUM_TILES.replace("{z}", String(zoom)).replace("{x}", String(x)).replace("{y}", String(y));
       // A tile that does not arrive (or arrives broken) is a gap, not a failed twin.
-      const heights = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(15_000) })
+      const heights = await fetchRetry(url, { cache: "no-store", timeoutMs: 15_000 })
         .then(async (res) => (res.ok ? decodeTerrarium(Buffer.from(await res.arrayBuffer())) : null))
         .catch(() => null);
       tiles.set(`${x}/${y}`, heights);

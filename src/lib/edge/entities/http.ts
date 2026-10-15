@@ -11,6 +11,7 @@
  */
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { fetchRetry } from "@/lib/net";
 
 const UA = "YouBank research (Edge; +https://youbank-nu.vercel.app)";
 const MAX_BYTES = 4_000_000;
@@ -62,8 +63,9 @@ export async function fetchText(url: string, opts: { timeoutMs?: number; gapMs?:
   // Redirects are followed by hand, at most five, so each hop's host is checked like the first.
   for (let hop = 0; ; hop++) {
     await assertPublicUrl(at);
-    res = await fetch(at, {
-      method, cache: "no-store", redirect: "manual", signal,
+    // GETs get one retry on a network failure, 429 or 5xx, all within the request's one overall timeout.
+    res = await fetchRetry(at, {
+      method, cache: "no-store", redirect: "manual", signal, timeoutMs: opts.timeoutMs ?? 20_000,
       headers: { "User-Agent": UA, Accept: "application/json, text/html;q=0.9, */*;q=0.5", ...(body ? { "content-type": "application/json" } : {}), ...extra },
       ...(body ? { body } : {}),
     });

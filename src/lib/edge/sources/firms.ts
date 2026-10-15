@@ -6,6 +6,7 @@
  */
 import { cacheJson } from "@/lib/cache";
 import type { Bbox, SourceInfo } from "./eia";
+import { fetchRetry } from "@/lib/net";
 
 export const FIRMS: SourceInfo = {
   key: "nasa-firms-viirs",
@@ -62,7 +63,7 @@ export async function hotspots(bbox: Bbox): Promise<{ spots: Hotspot[]; satellit
   return cacheJson(`edge:firms:v1:${bbox.map((v) => v.toFixed(2)).join(",")}:${bucket}`, 3 * 3_600_000, async () => {
     const got = await Promise.all(FILES.map(async (f) => {
       try {
-        const res = await fetch(`https://firms.modaps.eosdis.nasa.gov/data/active_fire/${f.dir}/csv/${f.file}_USA_contiguous_and_Hawaii_7d.csv`, { cache: "no-store", signal: AbortSignal.timeout(40_000) });
+        const res = await fetchRetry(`https://firms.modaps.eosdis.nasa.gov/data/active_fire/${f.dir}/csv/${f.file}_USA_contiguous_and_Hawaii_7d.csv`, { cache: "no-store", timeoutMs: 40_000 });
         if (!res.ok) return null;
         return { sat: f.sat, spots: parseFirmsCsv(await res.text(), bbox) };
       } catch { return null; }

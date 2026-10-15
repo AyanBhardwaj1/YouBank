@@ -5,6 +5,7 @@
  * with lifetimes matched to how often the data changes.
  */
 import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
+import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 const BASE = "https://financialmodelingprep.com/stable";
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -25,7 +26,8 @@ async function get<T>(path: string, params: Record<string, string | number | und
   const cacheKey = `fmp:${path}?${qs}`;
   return cacheJson<T>(cacheKey, ttlMs, async () => {
     if (await cacheGet(FMP_LIMIT_KEY)) throw new MarketDataError(LIMIT_MESSAGE);
-    const res = await fetch(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    // One retry on a network failure or a 5xx; never on 429, which is the plan's quota.
+    const res = await fetchRetry(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", timeoutMs: 10_000, retryOn: retryServerErrors });
     const text = await res.text();
     if (/Limit Reach/i.test(text)) { await cacheSet(FMP_LIMIT_KEY, "1", 30 * MIN); throw new MarketDataError(LIMIT_MESSAGE); }
     if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw Object.assign(new MarketDataError("This market data is not available right now; the market-data plan may not include it."), { cause: new Error(`FMP ${res.status} for ${path}`) });

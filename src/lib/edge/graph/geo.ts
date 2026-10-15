@@ -3,6 +3,7 @@
  * geocoder (free, no key), or the middle of its state when the address will not resolve.
  */
 import { logError } from "@/lib/errors";
+import { fetchRetry } from "@/lib/net";
 
 const STATE_CENTER: Record<string, [number, number]> = {
   AL: [-86.8, 32.8], AK: [-152.3, 64.2], AZ: [-111.7, 34.3], AR: [-92.4, 34.9], CA: [-119.4, 37.2], CO: [-105.5, 39.0], CT: [-72.7, 41.6], DE: [-75.5, 39.0], DC: [-77.0, 38.9],
@@ -26,7 +27,7 @@ export async function geocode(a: Address): Promise<{ lon: number; lat: number; h
   if (a.street1 && a.city && /^[A-Z]{2}$/.test(state)) {
     try {
       const p = new URLSearchParams({ street: a.street1, city: a.city, state, zip: (a.zipCode ?? "").slice(0, 5), benchmark: "Public_AR_Current", format: "json" });
-      const res = await fetch(`https://geocoding.geo.census.gov/geocoder/locations/address?${p}`, { signal: AbortSignal.timeout(12_000) });
+      const res = await fetchRetry(`https://geocoding.geo.census.gov/geocoder/locations/address?${p}`, { timeoutMs: 12_000 });
       if (res.ok) {
         const j = (await res.json()) as { result?: { addressMatches?: { coordinates: { x: number; y: number } }[] } };
         const c = j.result?.addressMatches?.[0]?.coordinates;
