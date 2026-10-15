@@ -23,7 +23,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ cik: string }> 
     const years = [1, 3, 5].includes(Number(p.get("years"))) ? Number(p.get("years")) : 5;
     await rateLimit(`copy-backtest:${user.id}`, 12, 60_000, "Too many backtests at once. Wait a moment and try again.");
     const { daily, turnoverPerYear, ...bt } = await fundBacktest(cik, top, years);
-    const integrity = daily ? await gradeCloneBacktest(cik, bt, daily, turnoverPerYear ?? 0).catch(() => null) : null;
+    const integrity = daily ? await gradeCloneBacktest(cik, bt, daily, turnoverPerYear ?? 0, years).catch(() => null) : null;
     return NextResponse.json({ ...bt, integrity, disclosure: HYPOTHETICAL, noLagNote: NO_LAG_NOTE });
   });
 }

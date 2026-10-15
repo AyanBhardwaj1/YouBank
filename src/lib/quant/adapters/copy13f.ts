@@ -19,7 +19,7 @@ import { CONTRACT_VERSION, type IntegrityReport, type TargetPortfolio, type Targ
 import { assess } from "../integrity/assess";
 import { newYorkTime, nextOpenAfter, prevSession, sessionClose } from "../pit/calendar";
 import { saveTarget, type SaveResult } from "../targets";
-import { familyTrials, logTrial } from "../trials";
+import { familyTrials, logTrial, paramsHash } from "../trials";
 import { T } from "../words";
 
 export const COPY_PRODUCER_VERSION = "2026-10-15.1";
@@ -105,15 +105,19 @@ export function cloneHygiene(bt: Pick<Backtest, "rebalances">, turnover: number)
 }
 
 /**
- * Log a clone backtest as a trial of the fund's family (each top-N someone tries is a variant) and grade it.
- * `daily` is the lagged clone's daily return series with dates. Returns the contract report.
+ * Log a clone backtest as a trial of the fund's family (each top-N and window someone tries is a variant) and
+ * grade it. `daily` is the lagged clone's daily return series with dates. Returns the contract report.
+ * A variant is logged once: the same top-N over the same window re-run a day later on one more day of prices is
+ * not a new variant, so it must not add a trial (otherwise every cache refresh would deflate the family's DSR).
  */
-export async function gradeCloneBacktest(cik: string, bt: Pick<Backtest, "rebalances" | "topN">, daily: { dates: string[]; returns: number[] }, turnoverPerYear: number): Promise<IntegrityReport | null> {
+export async function gradeCloneBacktest(cik: string, bt: Pick<Backtest, "rebalances" | "topN">, daily: { dates: string[]; returns: number[] }, turnoverPerYear: number, years?: number): Promise<IntegrityReport | null> {
   if (daily.returns.length < 60) return null;
   const family = cloneFamily(cik);
   const hygiene = { ...cloneHygiene(bt, turnoverPerYear), dates: daily.dates };
-  await logTrial({ family, params: { topN: bt.topN }, returns: daily.returns, ownerId: null, source: "copy", periodsPerYear: 252, startDate: daily.dates[0], endDate: daily.dates.at(-1), hygiene }).catch(() => null);
-  const rows = await familyTrials(family, { ownerId: null, limit: 200 }).catch(() => []);
+  const params = { topN: bt.topN, ...(years ? { years } : {}) };
+  const before = await familyTrials(family, { ownerId: null, limit: 200 }).catch(() => []);
+  if (!before.some((r) => r.paramsHash === paramsHash(params))) await logTrial({ family, params, returns: daily.returns, ownerId: null, source: "copy", periodsPerYear: 252, startDate: daily.dates[0], endDate: daily.dates.at(-1), hygiene }).catch(() => null);
+  const rows = await familyTrials(family, { ownerId: null, limit: 200 }).catch(() => before);
   const a = assess({ returns: daily.returns, dates: daily.dates, periodsPerYear: 252, trialSharpes: rows.length ? rows.map((r) => r.sharpe ?? NaN) : [NaN], hygiene, pro: false });
   return a.report;
 }
