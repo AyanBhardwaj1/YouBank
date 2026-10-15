@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { refusalMessage } from "@/lib/errors";
 import { requireEdge } from "@/lib/edge/access";
 import { runsOf } from "@/lib/edge/canvas/engine";
 import { canvasAccess, checkpoints, cleanGraph, deleteCanvas, family, saveCanvas, type CanvasRow } from "@/lib/edge/canvas/store";
@@ -36,13 +37,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     await requireEdge(user.id);
     const id = await idOf(ctx);
     const body = (await req.json().catch(() => null)) as { graph?: unknown; title?: string; description?: string; teamId?: number | null; version?: number } | null;
-    if (!body || typeof body.version !== "number") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body || typeof body.version !== "number") return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     try {
       const saved = await saveCanvas(user, id, { graph: body.graph ? cleanGraph(body.graph) : undefined, title: body.title, description: body.description, teamId: body.teamId }, body.version);
       return NextResponse.json({ canvas: view(saved) });
     } catch (e) {
       const err = e as { status?: number; latest?: CanvasRow; message?: string };
-      if (err.status === 409 && err.latest) return NextResponse.json({ error: err.message, canvas: view(err.latest) }, { status: 409 });
+      if (err.status === 409 && err.latest) return NextResponse.json({ error: refusalMessage(e, "Someone else changed this canvas; their version is loaded."), canvas: view(err.latest) }, { status: 409 });
       throw e;
     }
   });

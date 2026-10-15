@@ -4,7 +4,7 @@
  * status "New", and the date that status took effect is the approval date; its API number, operator,
  * well name and a link to its record come with it.
  */
-import type { Bbox, SourceInfo } from "./eia";
+import { upstreamRefusal, type Bbox, type SourceInfo } from "./eia";
 
 export const NM_WELLS: SourceInfo = {
   key: "nm-ocd-wells",
@@ -38,6 +38,6 @@ export async function nmPermitted(bbox: Bbox, since: string): Promise<NmPermit[]
   const res = await fetch(`${NM_WELLS.url}/query?${q}`, { cache: "no-store", signal: AbortSignal.timeout(25_000) });
   if (!res.ok) throw new Error(`New Mexico OCD answered ${res.status}`);
   const j = (await res.json()) as { features?: { attributes: Row }[]; error?: { message?: string } };
-  if (j.error) throw new Error(`New Mexico OCD: ${j.error.message ?? "error"}`);
+  if (j.error) throw upstreamRefusal("New Mexico OCD", j.error.message);
   return nmPermitsFrom((j.features ?? []).map((f) => f.attributes));
 }
