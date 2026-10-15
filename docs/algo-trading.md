@@ -23,7 +23,7 @@ broker fact below cites the page the search surfaced and should be confirmed on 
   event-driven point-in-time backtester with walk-forward, deflated Sharpe and PBO, execution with limit
   bands, TWAP and idempotent client ids, an always-on server-side risk engine, four run modes with strict
   gates for live and autonomous trading, an AI agent whose order calls are gated in code, Inngest ticks,
-  the `/app/algo` page, premium features, migration `0025_algo.sql`, and `scripts/test-algo.ts` (200 checks).
+  the `/app/algo` page, premium features, migration `0025_algo.sql`, and `scripts/test-algo.ts` (207 checks).
 - **Off by default:** `ALGO_LIVE_ENABLED` is unset, so nothing real trades until the owner switches it on
   after counsel's review.
 
@@ -337,7 +337,7 @@ margin 25.0% (it was 25.1%; algo adds $0.11 there, inside the $0.15 of room).
 
 ### Verified, and how
 
-- `pnpm exec tsx scripts/test-algo.ts`: 200 checks, no network or database (listed at the top of the file),
+- `pnpm exec tsx scripts/test-algo.ts`: 207 checks, no network or database (listed at the top of the file),
   including the deflated Sharpe against Bailey and López de Prado's worked example (SR0 0.1132, DSR 0.9004),
   backtests with known answers, every risk rule, five concurrent sends of one batch placing each order once,
   Robinhood's Ed25519 signature verified with the public key, Webull's string-to-sign rebuilt independently,
