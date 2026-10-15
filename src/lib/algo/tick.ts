@@ -18,7 +18,7 @@ import { isTradingDay, marketState, newYorkParts, nextTradingDay, type MarketSta
 import { notify } from "@/lib/copytrade/ingest";
 import { failureMessage } from "@/lib/errors";
 import { lease } from "@/lib/locks";
-import { audit, killState, serverLimits } from "./access";
+import { audit, killState, liveEnabled, refuse, serverLimits } from "./access";
 import { paperBroker, paperEquity, sweep, type PaperState } from "./brokers/paper";
 import type { BrokerAdapter, BrokerQuote } from "./brokers/types";
 import { liveAdapter } from "./connections";
@@ -176,7 +176,7 @@ async function tick(row: StrategyRow, deadline: number, opts: { force?: boolean;
   // are not in the holdings yet: a new batch now would order the same shares twice. Wait for them.
   // (Slices of batches that were never approved, expired or were canceled do not count.)
   const [{ working }] = await db.select({ working: sql<number>`count(*)::int` }).from(schema.algoOrders).innerJoin(schema.algoBatches, eq(schema.algoBatches.id, schema.algoOrders.batchId))
-    .where(and(eq(schema.algoOrders.strategyId, row.id), inArray(schema.algoOrders.status, ["submitting", "accepted", "partially_filled", "scheduled", "unknown"]), inArray(schema.algoBatches.status, ["placing", "placed", "partial"]), gte(schema.algoOrders.createdAt, new Date(now.getTime() - 4 * DAY))));
+    .where(and(eq(schema.algoOrders.strategyId, row.id), eq(schema.algoBatches.accountId, paper ? "paper" : live!.accountId), inArray(schema.algoOrders.status, ["submitting", "accepted", "partially_filled", "scheduled", "unknown"]), inArray(schema.algoBatches.status, ["placing", "placed", "partial"]), gte(schema.algoOrders.createdAt, new Date(now.getTime() - 4 * DAY))));
   if (working) {
     res.skipped = "earlier orders still working";
     await audit({ userId: row.userId, actor: "engine", action: "decision-deferred", strategyId: row.id, payload: { decisionId: decision.id, working, reason: "Earlier orders may still fill; no new orders until they settle." } });
@@ -294,6 +294,8 @@ export async function liveFlows(strategyId: number, accountId: string): Promise<
 
 /** Send a stored batch through the risk engine and the broker (the claim makes it once-only). For paper, `paper` is the account the adapter fills into; it is saved afterwards. */
 export async function send(row: StrategyRow, spec: StrategySpec, batchId: number, adapter: BrokerAdapter, accountId: string, market: MarketState, autonomous: boolean, opts: { paper?: PaperState; user?: { id: string; email: string }; approval?: { idemKey: string; confirmation: string; ip: string | null; userAgent: string | null } } = {}): Promise<{ sent: number; message: string; blocked: { ticker: string; reasons: string[] }[]; status: string }> {
+  // Every real order passes here (ticks, TWAP slices, approvals, close-outs, the agent's): the server switch first.
+  if (adapter.id !== "paper" && !liveEnabled()) throw refuse("Real trading is switched off on this server, so orders cannot be sent. Paper trading keeps working.", 403);
   const store = dbStore(adapter.id);
   const fresh = await getStrategy(row.userId, row.id);
   // Crypto trades around the clock: the exchange calendar does not apply to it.
@@ -339,8 +341,14 @@ export async function send(row: StrategyRow, spec: StrategySpec, batchId: number
 async function sendDueSlices(row: StrategyRow, spec: StrategySpec, adapter: BrokerAdapter, accountId: string, quotes: Record<string, BrokerQuote>, market: MarketState, deadline: number, paper?: PaperState): Promise<number> {
   const db = requireDb();
   const due = await db.select({ o: schema.algoOrders, b: schema.algoBatches }).from(schema.algoOrders).innerJoin(schema.algoBatches, eq(schema.algoBatches.id, schema.algoOrders.batchId))
-    .where(and(eq(schema.algoOrders.strategyId, row.id), eq(schema.algoOrders.status, "scheduled"), lte(schema.algoOrders.notBefore, new Date()), inArray(schema.algoBatches.status, ["placed", "partial"]))).limit(20);
+    // Only slices of batches made for this account: a paper batch's slices never reach a real broker (or a
+    // live batch's the paper account) after the strategy's mode or account changes.
+    .where(and(eq(schema.algoOrders.strategyId, row.id), eq(schema.algoBatches.accountId, accountId), eq(schema.algoOrders.status, "scheduled"), lte(schema.algoOrders.notBefore, new Date()), inArray(schema.algoBatches.status, ["placed", "partial"]))).limit(20);
   if (!due.length) return 0;
+  if (adapter.id !== "paper" && !liveEnabled()) {
+    await db.update(schema.algoOrders).set({ status: "expired", error: "Real trading was switched off on this server before this slice's time.", updatedAt: new Date() }).where(inArray(schema.algoOrders.id, due.map((d) => d.o.id)));
+    return 0;
+  }
   if (spec.assetClass !== "crypto" && !market.open) {
     await db.update(schema.algoOrders).set({ status: "expired", error: "The market closed before this slice's time.", updatedAt: new Date() }).where(inArray(schema.algoOrders.id, due.map((d) => d.o.id)));
     return 0;

@@ -41,6 +41,8 @@ export async function approveAlgoBatch(user: Person, batchId: number, body: { id
   if (!b) throw refuse("That batch of orders was not found.", 404);
   const row = await getStrategy(user.id, b.strategyId);
   if (row.mode === "paper") throw refuse("Paper strategies fill on their own; there is nothing to approve.");
+  if (row.mode !== "live_approval" && row.mode !== "live_auto") throw refuse("This strategy is not in a live mode, so its orders cannot be sent.", 409);
+  if (b.accountId !== row.accountId) throw refuse("This batch was made for another account. Review a fresh set.", 409);
   await requireFeature(user, "algo.live");
   if (!liveEnabled()) throw refuse("Real trading is switched off on this server, so orders cannot be sent. Paper trading keeps working.", 403);
   await requireConsent(user.id, "terms");

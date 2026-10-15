@@ -177,6 +177,8 @@ export async function setMode(user: Person, id: number, body: { mode?: unknown; 
   if (mode !== "live_auto" && row.mode === "live_auto") await withdrawAutonomous(user.id, id);
   if (mode === "paper" && !row.paperStartedAt) { patch.paperStartedAt = new Date(); patch.paper = newPaper(specOf(row).capitalUsd); }
   if (mode !== "live_approval" && mode !== "live_auto") await requireDb().update(schema.algoBatches).set({ status: "canceled", updatedAt: new Date() }).where(and(eq(schema.algoBatches.strategyId, id), eq(schema.algoBatches.status, "proposed")));
+  // TWAP slices not yet sent belong to the mode that made them: a change of mode drops them.
+  if (mode !== row.mode) await requireDb().update(schema.algoOrders).set({ status: "canceled", error: "The strategy's mode changed before this slice's time.", updatedAt: new Date() }).where(and(eq(schema.algoOrders.strategyId, id), eq(schema.algoOrders.status, "scheduled")));
   await requireDb().update(schema.algoStrategies).set(patch).where(eq(schema.algoStrategies.id, id));
   await audit({ userId: user.id, actor: user.email, action: "strategy-mode", strategyId: id, payload: { from: row.mode, to: mode, typed: mode === "live_auto" ? typed : null }, ...meta });
   return { mode, unmet: [] };
