@@ -33,7 +33,7 @@ import { parse605, parse606, pfofOnOrders, summarise605 } from "@/lib/quant/tca/
 import { csvCell, parseCsv, toCsv } from "@/lib/quant/csv";
 import { orderToFill } from "@/lib/quant/broker";
 import { parseAcceptance, parseCurrentFeed, parseForm4, parseInsiderDataset } from "@/lib/quant/insiders/parse";
-import { activistEvent, classify, detectEvents, eligible, item4Text, type Tx } from "@/lib/quant/insiders/rules";
+import { activistEvent, classify, detectEvents, dropAmendmentRepeats, eligible, item4Text, type Tx } from "@/lib/quant/insiders/rules";
 import { intervalScore, summariseIntervals, summariseProbabilities } from "@/lib/quant/drills/score";
 import { INTERVALS, pickSet, revenueQuestion, TRUE_FALSE } from "@/lib/quant/drills/bank";
 import { COIN, coinFlips, evProblems, playCoin, playMarketMaking } from "@/lib/quant/drills/games";
@@ -449,12 +449,18 @@ export async function featureTests(check: Check, near: Near) {
     check("three opportunistic insiders within 30 days, $150,000: a cluster buy timed from the third filing's acceptance", ev.length === 1 && ev[0].type === "cluster_buy" && ev[0].acceptedAt === "2026-09-26T13:00:00.000Z" && ev[0].insiders.length === 3 && ev[0].totalUsd === 150_000, ev);
     check("the same three spread over 40 days are not a cluster", detectEvents([cluster[0], cluster[1], { ...cluster[2], tradeDate: "2026-10-12" }], opp).filter((e) => e.type === "cluster_buy").length === 0);
     check("routine insiders do not make a cluster", detectEvents(cluster, () => hist(["2023-09-05", "2024-09-07", "2025-09-06"])).length === 0);
+    // A 4/A restating the first insider's form, filed after the third: its repeat line is dropped, so the cluster is
+    // still $150,000 and timed from the third filing; a 4/A line with a corrected size is kept.
+    const amended = [...cluster, tx({ ownerCik: "o1", accession: "a1x", form: "4/A", tradeDate: "2026-09-01", acceptedAt: "2026-09-29T21:00:00.000Z" })];
+    const kept = dropAmendmentRepeats(amended);
+    check("a Form 4/A that repeats a reported line does not count it twice; one that changes it is kept", kept.length === 3 && detectEvents(kept, opp)[0]?.totalUsd === 150_000 && dropAmendmentRepeats([...cluster, { ...amended[3], shares: 1200 }]).length === 4 && dropAmendmentRepeats([amended[3]]).length === 1, kept);
     check("a CFO buying $300,000 is a large officer purchase", detectEvents([tx({ isOfficer: true, isDirector: false, title: "Chief Financial Officer", shares: 6000 })], opp).some((e) => e.type === "large_officer_buy"));
     const t13 = item4Text(FX("insiders/13d-text.htm")), x13 = item4Text(FX("insiders/13d.xml"));
     check("Item 4 read from the old text form and the XML form", /board of directors/.test(t13) && !/Item 5/i.test(t13) && /no present plans/.test(x13));
     const s1 = { form: "SC 13G", holder: "Fund LP", holderCik: "9", percent: 6, item4: "", acceptedAt: "2026-01-01T00:00:00Z", accession: "g1" };
     const s2 = { ...s1, form: "SC 13D", percent: 7.2, item4: t13, accession: "d1" };
     check("a 13G holder switching to a 13D is activist_new; a 13D/A adding a point is activist_up", activistEvent(s1, s2, "1")?.type === "activist_new" && activistEvent(s2, { ...s2, form: "SC 13D/A", percent: 8.5, accession: "d2" }, "1")?.type === "activist_up" && activistEvent(s2, { ...s2, form: "SC 13D/A", percent: 7.4, accession: "d3" }, "1") === null);
+    check("the first 13D/A seen from a holder (its 13D predates the store) is not a new stake", activistEvent(null, { ...s2, form: "SC 13D/A", accession: "d4" }, "1") === null && activistEvent(s1, { ...s2, form: "SCHEDULE 13D/A", accession: "d5" }, "1") === null && activistEvent(null, { ...s2, form: "SCHEDULE 13D", accession: "d6" }, "1")?.type === "activist_new");
   }
 
   section("Desk Drills (Q14)");

@@ -18,7 +18,24 @@ export type Tx = {
   accession: string; line: number; issuerCik: string; symbol: string; ownerCik: string; ownerName: string;
   isDirector: boolean; isOfficer: boolean; isTenPct: boolean; title: string; code: string; acquired: boolean;
   shares: number; price: number | null; ownedAfter: number | null; tradeDate: string; acceptedAt: string; plan10b51: boolean; url?: string;
+  /** The filing's form ("4" or "4/A"), when known. */
+  form?: string;
 };
+
+const isAmendment = (form?: string) => /\/A\s*$/i.test((form ?? "").trim());
+
+/**
+ * Lines of a Form 4/A that repeat a line already reported in another filing (same insider, trade date, code,
+ * shares and price) are dropped, so an amendment that restates a whole form does not count its trades twice
+ * (doubling a cluster's dollars, or making one of its own). The earlier report stands, so the event keeps the
+ * time the trade first became public. Amendment lines that add or correct a trade are kept. Pure.
+ */
+export function dropAmendmentRepeats<T extends Pick<Tx, "accession" | "ownerCik" | "tradeDate" | "code" | "shares" | "price" | "acceptedAt" | "form">>(txs: T[]): T[] {
+  const key = (t: T) => [t.ownerCik, t.tradeDate, t.code, t.shares, t.price ?? ""].join("|");
+  const byKey = new Map<string, T[]>();
+  for (const t of txs) byKey.set(key(t), [...(byKey.get(key(t)) ?? []), t]);
+  return txs.filter((t) => !isAmendment(t.form) || !(byKey.get(key(t)) ?? []).some((o) => o.accession !== t.accession && (!isAmendment(o.form) || o.acceptedAt < t.acceptedAt)));
+}
 
 export type Habit = "routine" | "opportunistic" | "unclassified";
 
@@ -110,7 +127,9 @@ const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").rep
 export function activistEvent(prev: Stake | null, cur: Stake, issuerCik: string): ActivistEvent | null {
   if (!isD(cur.form)) return null;
   const id = (t: string) => `${t}:${issuerCik}:${cur.accession}`;
-  if (!prev || !isD(prev.form)) return { id: id("activist_new"), type: "activist_new", holder: cur.holder, from: prev?.percent ?? null, to: cur.percent, acceptedAt: cur.acceptedAt, accession: cur.accession, item4Changed: false };
+  // An amendment is never a new stake: the first 13D/A YouBank sees from a long-time holder (its original 13D filed
+  // before the store began) has no earlier stake to compare with, so it makes no event; the next one compares.
+  if (!prev || !isD(prev.form)) return isAmendment(cur.form) ? null : { id: id("activist_new"), type: "activist_new", holder: cur.holder, from: prev?.percent ?? null, to: cur.percent, acceptedAt: cur.acceptedAt, accession: cur.accession, item4Changed: false };
   const added = cur.percent !== null && prev.percent !== null && cur.percent - prev.percent >= 1;
   const item4Changed = !!cur.item4 && !!prev.item4 && normalise(cur.item4) !== normalise(prev.item4);
   return added || item4Changed ? { id: id("activist_up"), type: "activist_up", holder: cur.holder, from: prev.percent, to: cur.percent, acceptedAt: cur.acceptedAt, accession: cur.accession, item4Changed } : null;

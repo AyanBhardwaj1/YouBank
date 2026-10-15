@@ -21,7 +21,7 @@ import { estimateCost } from "../tca/run";
 import { signalId } from "../validate";
 import { T } from "../words";
 import { parseAcceptance, parseCurrentFeed, parseForm4, type FeedEntry } from "./parse";
-import { activistEvent, classify, detectEvents, eligible, item4Text, type InsiderEvent, type Stake, type Tx } from "./rules";
+import { activistEvent, classify, detectEvents, dropAmendmentRepeats, eligible, item4Text, type InsiderEvent, type Stake, type Tx } from "./rules";
 
 export const INSIDER_VERSION = "2026-10-15.1";
 const DAY = 86_400_000;
@@ -89,8 +89,8 @@ export async function refreshIssuer(issuerCik: string): Promise<InsiderEvent[]> 
   const byOwner = new Map<string, { tradeDate: string; code: string }[]>();
   for (const h of hist) byOwner.set(h.ownerCik, [...(byOwner.get(h.ownerCik) ?? []), { tradeDate: String(h.tradeDate), code: h.code }]);
   const offerings = await offeringDates(issuerCik).catch(() => []);
-  const txs: Tx[] = rows.map((r) => ({ accession: r.accession, line: r.line, issuerCik: r.issuerCik, symbol: r.symbol, ownerCik: r.ownerCik, ownerName: r.ownerName, isDirector: r.isDirector, isOfficer: r.isOfficer, isTenPct: r.isTenPct, title: r.officerTitle, code: r.code, acquired: r.acquired, shares: r.shares, price: r.price, ownedAfter: r.ownedAfter, tradeDate: String(r.tradeDate), acceptedAt: r.acceptedAt.toISOString(), plan10b51: r.plan10b51, url: r.url }));
-  const events = detectEvents(txs, (o) => byOwner.get(o) ?? [], offerings);
+  const txs: Tx[] = rows.map((r) => ({ accession: r.accession, line: r.line, issuerCik: r.issuerCik, symbol: r.symbol, ownerCik: r.ownerCik, ownerName: r.ownerName, isDirector: r.isDirector, isOfficer: r.isOfficer, isTenPct: r.isTenPct, title: r.officerTitle, code: r.code, acquired: r.acquired, shares: r.shares, price: r.price, ownedAfter: r.ownedAfter, tradeDate: String(r.tradeDate), acceptedAt: r.acceptedAt.toISOString(), plan10b51: r.plan10b51, url: r.url, form: r.form }));
+  const events = detectEvents(dropAmendmentRepeats(txs), (o) => byOwner.get(o) ?? [], offerings);
   const symbol = rows.find((r) => r.symbol)?.symbol ?? (await symbolOf(issuerCik));
   for (const ev of events) {
     const [u] = await db.select({ marketCap: schema.quantUniverse.marketCap }).from(schema.quantUniverse).where(eq(schema.quantUniverse.symbol, symbol)).limit(1);
@@ -113,7 +113,10 @@ export async function pollInsiders(deadline: number): Promise<{ form4: number; s
   for (const type of ["4", "SC 13D", "SCHEDULE 13D", "SC 13G", "SCHEDULE 13G"]) {
     if (Date.now() > deadline) break;
     const atom = await edgarText(FEED(type), `feed-${type}-${Math.floor(Date.now() / 600_000)}.json`, 9 * 60_000).catch(() => "");
-    const entries = parseCurrentFeed(atom);
+    // EDGAR matches `type` as a prefix ("4" also lists 424B prospectuses, 40-F and so on): keep only the forms this
+    // poll reads, so it spends no SEC requests on other filings' indexes.
+    const wanted = type === "4" ? /^4(\/A)?$/ : /^(SC|SCHEDULE) 13[DG](\/A)?$/i;
+    const entries = parseCurrentFeed(atom).filter((e) => wanted.test(e.form.trim()));
     const accs = entries.map((e) => e.accession);
     const seen = new Set<string>();
     if (accs.length) {
@@ -231,10 +234,10 @@ export async function companyInsiders(symbol: string): Promise<{ trades: (Tx & {
   const rows = await db.select().from(schema.quantInsiderTx).where(eq(schema.quantInsiderTx.symbol, symbol.toUpperCase())).orderBy(desc(schema.quantInsiderTx.tradeDate)).limit(300);
   const owners = [...new Set(rows.map((r) => r.ownerCik))].filter(Boolean);
   const hist = owners.length ? await db.select({ ownerCik: schema.quantInsiderTx.ownerCik, tradeDate: schema.quantInsiderTx.tradeDate, code: schema.quantInsiderTx.code }).from(schema.quantInsiderTx).where(inArray(schema.quantInsiderTx.ownerCik, owners.slice(0, 300))).limit(30_000) : [];
-  const trades = rows.map((r) => {
-    const t: Tx = { accession: r.accession, line: r.line, issuerCik: r.issuerCik, symbol: r.symbol, ownerCik: r.ownerCik, ownerName: r.ownerName, isDirector: r.isDirector, isOfficer: r.isOfficer, isTenPct: r.isTenPct, title: r.officerTitle, code: r.code, acquired: r.acquired, shares: r.shares, price: r.price, ownedAfter: r.ownedAfter, tradeDate: String(r.tradeDate), acceptedAt: r.acceptedAt.toISOString(), plan10b51: r.plan10b51, url: r.url };
+  const lines: Tx[] = rows.map((r) => ({ accession: r.accession, line: r.line, issuerCik: r.issuerCik, symbol: r.symbol, ownerCik: r.ownerCik, ownerName: r.ownerName, isDirector: r.isDirector, isOfficer: r.isOfficer, isTenPct: r.isTenPct, title: r.officerTitle, code: r.code, acquired: r.acquired, shares: r.shares, price: r.price, ownedAfter: r.ownedAfter, tradeDate: String(r.tradeDate), acceptedAt: r.acceptedAt.toISOString(), plan10b51: r.plan10b51, url: r.url, form: r.form }));
+  const trades = dropAmendmentRepeats(lines).map((t) => {
     const e = eligible(t);
-    return { ...t, habit: classify(hist.filter((h) => h.ownerCik === r.ownerCik).map((h) => ({ tradeDate: String(h.tradeDate), code: h.code })), t), excluded: e.ok ? null : e.reason ?? null };
+    return { ...t, habit: classify(hist.filter((h) => h.ownerCik === t.ownerCik).map((h) => ({ tradeDate: String(h.tradeDate), code: h.code })), t), excluded: e.ok ? null : e.reason ?? null };
   });
   return { trades, events: await board({ symbols: [symbol.toUpperCase()], limit: 50, days: 3 * 365 }) };
 }
