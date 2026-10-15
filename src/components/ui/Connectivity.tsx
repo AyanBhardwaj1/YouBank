@@ -67,9 +67,11 @@ export function Connectivity() {
       else if (!checking && window.location.pathname.startsWith("/app")) {
         // Confirm before saying anything: one 401 from a route is not proof the session ended.
         checking = true;
+        // Only a clear answer counts: a 5xx, a 429 or a body that will not parse (sign-in itself is down)
+        // is not "signed out", so it says nothing.
         fetch("/api/auth/get-session", { cache: "no-store" })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((s: { session?: unknown } | null) => { if (!s?.session) setExpired(true); })
+          .then((r) => (r.ok ? r.json() : undefined))
+          .then((s: { session?: unknown } | null | undefined) => { if (s !== undefined && !s?.session) setExpired(true); })
           .catch(() => undefined)
           .finally(() => { checking = false; });
       }

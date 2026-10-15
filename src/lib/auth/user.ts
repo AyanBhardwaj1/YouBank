@@ -63,8 +63,10 @@ export function unauthorized() {
  * answered with a reference (lib/errors).
  */
 export function guarded(fn: (user: CurrentUser) => Promise<Response>): Promise<Response> {
-  // Not set up yet (no database or auth secret): a 503 that says so, not "sign in".
-  if (!db || !process.env.BETTER_AUTH_SECRET?.trim()) return Promise.resolve(errorResponse(notConfigured()));
+  // Not set up yet (no database, or no auth secret outside the development sign-in): a 503 that says
+  // so, not "sign in".
+  const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
+  if (!db || (!devUser && !process.env.BETTER_AUTH_SECRET?.trim())) return Promise.resolve(errorResponse(notConfigured()));
   return requireUser().then((u) => runAsUser(u.id, () => fn(u), { admin: isAdmin(u) })).catch((e) => {
     if (e instanceof Unauthorized) return unauthorized();
     // A table the code needs is not there yet (a migration not applied): the same 503, logged.

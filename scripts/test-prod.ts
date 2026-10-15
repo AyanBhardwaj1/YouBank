@@ -15,7 +15,11 @@ import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.co
 import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from "@/lib/client/net";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { StreamDropped, readSse } from "@/lib/client/sse";
-import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, withTimeout } from "@/lib/net";
+import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, safePublicFetch, withTimeout } from "@/lib/net";
+import { requestVia } from "@/lib/calendar/net";
+import { lookup as dnsLookup } from "node:dns";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -199,7 +203,7 @@ function testDb() {
   check("a plain select is a read", isPlainRead('select "id", "updated_at" from "profiles" where "user_id" = $1'));
   check("a select with a comment first is a read", isPlainRead("-- hi\n select 1"));
   check("select … for update is not", !isPlainRead('select * from "kv_cache" for update'));
-  check("a sequence or advisory lock is not", !isPlainRead("select nextval('x')") && !isPlainRead("select pg_advisory_lock(1)"));
+  check("a sequence or advisory lock is not", !isPlainRead("select nextval('x')") && !isPlainRead("select pg_advisory_lock(1)") && !isPlainRead("select pg_try_advisory_lock(1)"));
   check("insert … returning is not", !isPlainRead('insert into "kv_cache" ("key") values ($1) returning "value"'));
   check("a CTE is not assumed safe", !isPlainRead("with x as (delete from t returning *) select * from x"));
   check("a write is retried only when it never left", mayRetry("insert into t values (1)", pg("ECONNREFUSED")) && !mayRetry("insert into t values (1)", pg("ECONNRESET")));
@@ -260,6 +264,7 @@ async function testAuthAndHeaders() {
   check("a production BETTER_AUTH_URL copied to previews is ignored there", authBaseUrl({ ...pv, BETTER_AUTH_URL: "https://youbank.com" }) === "https://youbank-git-feature-me.vercel.app");
   check("a preview's own fixed BETTER_AUTH_URL is kept", authBaseUrl({ ...pv, BETTER_AUTH_URL: "https://staging.youbank.com" }) === "https://staging.youbank.com");
   check("both preview addresses may post to sign-in", authTrustedOrigins(pv).includes("https://youbank-git-x-me.vercel.app") && authTrustedOrigins(pv).includes("https://youbank-git-feature-me.vercel.app"));
+  check("a wildcard origin is never trusted", !authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app,*.vercel.app, https://ok.example.com" }).some((o) => o.includes("*")) && authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app, https://ok.example.com" }).includes("https://ok.example.com"));
   check("extra origins can be added", authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "app.youbank.com, https://www.youbank.com" }).includes("https://www.youbank.com"));
   check("no stray origins are trusted in production", !authTrustedOrigins({ ...prod, NODE_ENV: "production" }).some((o) => o.includes("localhost")));
   check("sign-in limits: session reads are not counted, password sign-in has a long window", AUTH_RATE_RULES["/get-session"] === false && (AUTH_RATE_RULES["/sign-in/email"] as { window: number }).window >= 60);
@@ -276,6 +281,7 @@ async function testAuthAndHeaders() {
   check("WebAssembly may compile", csp.includes("'wasm-unsafe-eval'"));
   check("map tiles, logos and stored files load over https", has("img-src 'self' data: blob: https:") && /connect-src 'self' https:/.test(csp));
   check("http subresources are upgraded on deployments only", csp.includes("upgrade-insecure-requests") && !contentSecurityPolicy({}).includes("upgrade-insecure-requests"));
+  check("the desktop app's IPC is allowed", /connect-src [^;]*\bipc: http:\/\/ipc\.localhost/.test(csp));
   check("previews allow Vercel's toolbar", contentSecurityPolicy({ preview: true }).includes("https://vercel.live") && !csp.includes("vercel.live"));
   check("the microphone only where asked", permissionsPolicy(true).includes("microphone=(self)") && permissionsPolicy(false).includes("microphone=()"));
   const rules = await nextConfig.headers!();
@@ -285,8 +291,10 @@ async function testAuthAndHeaders() {
     return v;
   };
   check("every page gets HSTS", !!forPath("/pricing", "Strict-Transport-Security"));
-  check("marketing pages block the microphone", forPath("/pricing", "Permissions-Policy")?.includes("microphone=()") === true);
-  check("every workspace page allows it (client navigation keeps the first page's policy)", forPath("/app/terminal", "Permissions-Policy")?.includes("microphone=(self)") === true && forPath("/app/edge", "Permissions-Policy")?.includes("microphone=(self)") === true);
+  // Client navigation keeps the first page's policy: a tab that began on /onboarding or /pricing must still
+  // reach the Voice Analyst's microphone in the workspace.
+  check("the microphone is YouBank's own on every page", ["/onboarding", "/pricing", "/app/terminal", "/app/edge"].every((p) => forPath(p, "Permissions-Policy")?.includes("microphone=(self)") === true));
+  check("camera, geolocation and payment are off everywhere", ["/pricing", "/app/edge"].every((p) => /camera=\(\).*geolocation=\(\).*payment=\(\)/.test(forPath(p, "Permissions-Policy") ?? "")));
   check("pages get the CSP", !!forPath("/app/news", "Content-Security-Policy"));
   check("the Office add-in pages are not framed-blocked", forPath("/office/taskpane", "X-Frame-Options") === undefined && forPath("/office/taskpane", "Content-Security-Policy") === undefined);
 }
@@ -346,6 +354,19 @@ async function testClient() {
     check("clientFetch: a request that never answers times out", (e as { name?: string })?.name === "TimeoutError" && /too long|longer|slow/i.test(errorMessage(e)), errorMessage(e));
   }
   {
+    // Headers arrive, then the caller cancels (a newer search replaced this one): the body must not
+    // arrive afterwards as if it were current.
+    const f = async (_u: string, i?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({ start(c) { i?.signal?.addEventListener("abort", () => c.error(i.signal!.reason), { once: true }); } });
+      return new Response(body, { status: 200 });
+    };
+    const ctrl = new AbortController();
+    const r = await clientFetch("/api/search?q=a", { signal: ctrl.signal }, f);
+    ctrl.abort(Object.assign(new Error("replaced"), { name: "AbortError" }));
+    const e = await Promise.race([r.text().then(() => null, (x: unknown) => x), new Promise((res) => setTimeout(() => res("still waiting"), 1_000))]);
+    check("clientFetch: cancelling after the headers stops the body", (e as { name?: string } | null)?.name === "AbortError", e);
+  }
+  {
     const realFetch = globalThis.fetch;
     let n = 0;
     globalThis.fetch = (async () => { n++; return new Response(JSON.stringify({ error: "This needs Pro." }), { status: 402 }); }) as typeof fetch;
@@ -363,6 +384,64 @@ async function testClient() {
   }
 }
 
+/** safePublicFetch: links people paste never reach our own network. */
+async function testSafeFetch() {
+  const hops = (steps: (number | { status: number; location: string })[]) => {
+    const urls: string[] = [];
+    const hop = async (url: string) => {
+      const st = steps[Math.min(urls.length, steps.length - 1)];
+      urls.push(url);
+      return typeof st === "number" ? new Response("ok", { status: st }) : new Response(null, { status: st.status, headers: { location: st.location } });
+    };
+    return { hop, urls };
+  };
+  const refused = async (url: string) => {
+    const h = hops([200]);
+    const e = await safePublicFetch(url, { hop: h.hop }).then(() => null, (x: unknown) => x);
+    return (e as { code?: string; status?: number } | null)?.code === "UNSAFE_URL" && (e as { status?: number }).status === 400 && h.urls.length === 0;
+  };
+  const bad = ["ftp://example.com/a.mp3", "file:///etc/passwd", "http://localhost/x", "http://127.0.0.1:8080/", "http://169.254.169.254/latest/meta-data/", "http://[fd00::1]/", "http://[::1]/", "http://[::ffff:169.254.169.254]/", "http://[::ffff:a9fe:a9fe]/", "http://10.1.2.3/", "http://192.168.0.1/", "http://172.16.0.1/", "http://100.64.0.1/", "http://0.0.0.0/", "http://[fe80::1]/", "http://metadata.google.internal/", "http://printer.local/", "http://2130706433/"];
+  const results = await Promise.all(bad.map(refused));
+  check("safePublicFetch: private, loopback, link-local, metadata and non-web links are refused before any request", results.every(Boolean), bad.filter((_, i) => !results[i]));
+  {
+    const h = hops([200]);
+    const r = await safePublicFetch("https://93.184.215.14/a.mp3", { hop: h.hop });
+    check("safePublicFetch: a public address is fetched", r.status === 200 && h.urls.length === 1);
+  }
+  {
+    const h = hops([{ status: 302, location: "http://169.254.169.254/latest/meta-data/" }]);
+    const e = await safePublicFetch("https://93.184.215.14/a.mp3", { hop: h.hop }).then(() => null, (x: unknown) => x);
+    check("safePublicFetch: a redirect to a private address is refused", (e as { code?: string } | null)?.code === "UNSAFE_URL" && h.urls.length === 1);
+  }
+  {
+    const h = hops([{ status: 301, location: "/b" }, { status: 302, location: "https://8.8.8.8/c" }, { status: 307, location: "/d" }, 200]);
+    const r = await safePublicFetch("https://93.184.215.14/a", { hop: h.hop });
+    check("safePublicFetch: up to three redirects are followed, relative ones resolved", r.status === 200 && h.urls.join(" ") === "https://93.184.215.14/a https://93.184.215.14/b https://8.8.8.8/c https://8.8.8.8/d", h.urls);
+  }
+  {
+    const h = hops([{ status: 302, location: "/again" }]);
+    const e = await safePublicFetch("https://93.184.215.14/a", { hop: h.hop }).then(() => null, (x: unknown) => x);
+    check("safePublicFetch: a fourth redirect is refused", (e as { code?: string } | null)?.code === "UNSAFE_URL" && /too many/.test((e as Error).message) && h.urls.length === 4);
+  }
+  {
+    const hop = (_u: string, i: RequestInit) => new Promise<Response>((_, reject) => i.signal?.addEventListener("abort", () => reject(i.signal!.reason), { once: true }));
+    const t0 = Date.now();
+    const e = await safePublicFetch("https://93.184.215.14/slow", { hop, timeoutMs: 40 }).then(() => null, (x: unknown) => x);
+    check("safePublicFetch: the time is capped", (e as { name?: string } | null)?.name === "TimeoutError" && Date.now() - t0 < 2_000);
+  }
+  {
+    // The size cap of the pinned request safePublicFetch uses, against a local server (its lookup allows loopback here).
+    const server = http.createServer((_req, res) => { res.writeHead(200, { "content-type": "audio/mpeg" }); res.end(Buffer.alloc(64 * 1024)); });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const res = await requestVia(dnsLookup, 1024, `http://127.0.0.1:${port}/big.mp3`);
+    const e = await res.arrayBuffer().then(() => null, (x: unknown) => x);
+    const ok = await requestVia(dnsLookup, 1024 * 1024, `http://127.0.0.1:${port}/big.mp3`).then((r) => r.arrayBuffer());
+    server.close();
+    check("safePublicFetch: the body is cut off past its size cap", e instanceof Error && /more than/.test(e.message) && ok.byteLength === 64 * 1024);
+  }
+}
+
 async function main() {
   // AbortSignal.timeout's timer does not keep Node alive; a server always has something else that does.
   const alive = setInterval(() => undefined, 1_000);
@@ -373,6 +452,7 @@ async function main() {
   await testAuthAndHeaders();
   const alive2 = setInterval(() => undefined, 1_000);
   await testClient();
+  await testSafeFetch();
   clearInterval(alive2);
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

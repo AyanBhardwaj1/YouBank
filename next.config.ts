@@ -18,7 +18,7 @@ const preview = process.env.VERCEL_ENV !== "production";
  * - workers from blob: and 'self': MapLibre and deck.gl build workers from blobs, pdf.js ships its own;
  * - images, media and fetches over https: map tiles and styles (OpenFreeMap, terrain on S3), company
  *   logos, stored files on presigned URLs, wallet and chain endpoints, and the voice analyst's realtime
- *   session; wss: for live sockets.
+ *   session; wss: for live sockets; the desktop app's IPC addresses.
  * Stripe Checkout and the billing portal are full-page redirects, so they need no entry.
  */
 export function contentSecurityPolicy(opts: { dev?: boolean; preview?: boolean; https?: boolean } = {}): string {
@@ -29,7 +29,9 @@ export function contentSecurityPolicy(opts: { dev?: boolean; preview?: boolean; 
     `style-src 'self' 'unsafe-inline'${live}`,
     "img-src 'self' data: blob: https:",
     `font-src 'self' data:${opts.preview ? " https://vercel.live https://assets.vercel.com" : ""}`,
-    `connect-src 'self' https: wss: data: blob:${opts.dev ? " ws: http://localhost:*" : ""}`,
+    // ipc: and http://ipc.localhost: the desktop app (Tauri) answers the site's native calls there
+    // (src/lib/client/desktop); blocked, Tauri falls back to a slower channel and logs a violation.
+    `connect-src 'self' https: wss: data: blob: ipc: http://ipc.localhost${opts.dev ? " ws: http://localhost:*" : ""}`,
     "media-src 'self' data: blob: https:",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
@@ -44,7 +46,7 @@ export function contentSecurityPolicy(opts: { dev?: boolean; preview?: boolean; 
   ].join("; ");
 }
 
-/** Browser features a page may use. The microphone only inside the workspace (the Voice Analyst). */
+/** Browser features a page may use. The microphone for YouBank's own pages only (the Voice Analyst). */
 export const permissionsPolicy = (microphone: boolean) =>
   `camera=(), microphone=(${microphone ? "self" : ""}), geolocation=(), payment=(), usb=(), browsing-topics=()`;
 
@@ -53,7 +55,11 @@ const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: permissionsPolicy(false) },
+  // The microphone on every page, YouBank's own frames only: a page's Permissions-Policy stays with the
+  // document across client navigations, so a tab that started on /onboarding, /pricing or the news and
+  // moved into the workspace by a link would otherwise have the Voice Analyst's microphone blocked until
+  // a reload. Using it still needs the person's permission prompt.
+  { key: "Permissions-Policy", value: permissionsPolicy(true) },
 ];
 
 /**
@@ -89,11 +95,6 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: SECURITY_HEADERS },
       { source: "/((?!office/taskpane|office/commands).*)", headers: NO_FRAMING },
-      // The workspace is one client-side app: a page's Permissions-Policy stays with the document across
-      // client navigations, so the microphone (the Voice Analyst's hold-to-talk on Edge) is allowed on
-      // every workspace page, or reaching Edge from another page would leave it blocked. Later rules win.
-      { source: "/app", headers: [{ key: "Permissions-Policy", value: permissionsPolicy(true) }] },
-      { source: "/app/:path*", headers: [{ key: "Permissions-Policy", value: permissionsPolicy(true) }] },
     ];
   },
 };

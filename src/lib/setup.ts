@@ -82,15 +82,27 @@ let okUntil = 0;
 /**
  * For pages: whether to render the app or the "being set up" screen. Only configuration and the core
  * tables decide it (a missing feature migration leaves that feature's own message, not the whole app);
- * a database that cannot be reached is an outage, which the error pages handle. A ready answer is
+ * a database that cannot be reached is an outage, not setup, so a failed check answers ready and the
+ * error pages handle what follows. A ready answer is
  * remembered for five minutes per instance, so this costs a query at most that often.
  */
 export async function setupState(): Promise<SetupState> {
   if (!db) return { ready: false, reason: "database" };
-  if (!process.env.BETTER_AUTH_SECRET?.trim()) return { ready: false, reason: "auth" };
+  // The development sign-in (YOUBANK_DEV_USER, never in production builds) needs no auth secret.
+  const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
+  if (!devUser && !process.env.BETTER_AUTH_SECRET?.trim()) return { ready: false, reason: "auth" };
   if (Date.now() < okUntil) return { ready: true };
-  const r = await db.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
-  if (r.rows.length) return { ready: false, reason: "schema" };
+  let missing: number;
+  try {
+    const r = await db.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
+    missing = r.rows.length;
+  } catch {
+    // The check itself failed (a slow or unreachable database): serve the app, not "being set up". The
+    // page's own queries then succeed or reach the error screen; nothing is remembered, so the next
+    // request checks again.
+    return { ready: true };
+  }
+  if (missing) return { ready: false, reason: "schema" };
   okUntil = Date.now() + 5 * 60_000;
   return { ready: true };
 }

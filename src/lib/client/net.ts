@@ -55,13 +55,17 @@ export function watchesSession(path: string): boolean {
 const isAbort = (e: unknown) => ["AbortError", "TimeoutError"].includes((e as { name?: string } | null)?.name ?? "");
 const offline = () => { try { return typeof navigator !== "undefined" && navigator.onLine === false; } catch { return false; } };
 
-/** The caller's signal plus a timeout. */
+/**
+ * The caller's signal plus a timeout. `done` (the headers have arrived) stops only the timeout: the
+ * caller's signal stays wired, so cancelling still stops the body being read (a stale search answer
+ * must reject, not arrive late as if it were current).
+ */
 function withTimeout(signal: AbortSignal | null | undefined, ms: number): { signal: AbortSignal; done: () => void } {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(Object.assign(new Error("The request took too long."), { name: "TimeoutError" })), ms);
   const stop = () => ctrl.abort(signal?.reason);
   if (signal?.aborted) stop(); else signal?.addEventListener("abort", stop, { once: true });
-  return { signal: ctrl.signal, done: () => { clearTimeout(t); signal?.removeEventListener("abort", stop); } };
+  return { signal: ctrl.signal, done: () => clearTimeout(t) };
 }
 
 /** Identical writes in flight, so a double click sends once. */

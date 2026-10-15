@@ -37,7 +37,7 @@ export const isTransientDbError = (e: unknown) => codes(e).some((c) => NOT_SENT.
 export function isPlainRead(text: string): boolean {
   const s = text.replace(/--[^\n]*\n?/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ").trim().toLowerCase();
   if (!s.startsWith("select")) return false;
-  return !/\b(for\s+(update|share|no\s+key\s+update|key\s+share)\b|nextval|setval|pg_advisory\w*|set_config|pg_notify|pg_terminate\w*|pg_cancel\w*|into\s+\w|insert\b|update\b|delete\b|merge\b|cron\.|vault\.|net\.http)/.test(s);
+  return !/\b(for\s+(update|share|no\s+key\s+update|key\s+share)\b|nextval|setval|pg_(try_)?advisory\w*|set_config|pg_notify|pg_terminate\w*|pg_cancel\w*|into\s+\w|insert\b|update\b|delete\b|merge\b|cron\.|vault\.|net\.http)/.test(s);
 }
 
 /** Whether a failed statement may be sent again. Pure. */

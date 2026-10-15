@@ -97,7 +97,7 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 | `MARKET_BACKUP=off` | Stop the Nasdaq fallback |
 | `DB_POOL_MAX` | Connections per instance (default 6, max 20) |
 | `AUTH_SESSION_DATA_TTL` | Seconds the session cookie is trusted before a database read (default 900) |
-| `AUTH_TRUSTED_ORIGINS` | Extra addresses allowed to post to sign-in, comma-separated |
+| `AUTH_TRUSTED_ORIGINS` | Extra addresses allowed to post to sign-in, comma-separated exact origins (an entry with `*` is ignored) |
 | `CSP_REPORT_ONLY=1` | Turns the Content-Security-Policy into report-only, if it ever blocks something real |
 
 ### Preview deployments
@@ -290,7 +290,8 @@ production branch's autoscaling maximum to 4 CU.
   Excel and PowerPoint frame). The CSP allows scripts only from YouBank (inline allowed, no eval), blob
   workers for the maps and PDF viewer, WebAssembly, https images, media and fetches (map tiles, logos,
   stored files, wallets), no plugins, no `<base>`, forms only to YouBank, no framing. Permissions-Policy
-  allows the microphone only inside the workspace (the Voice Analyst); camera, geolocation, payment and USB
+  allows the microphone to YouBank's own pages only (the Voice Analyst; on every page, since a client
+  navigation into the workspace keeps the first page's policy); camera, geolocation, payment and USB
   nowhere. `CSP_REPORT_ONLY=1` is the escape hatch.
 - **Cookies**: Better Auth's session cookies are httpOnly, `SameSite=Lax`, and `Secure` on every HTTPS
   deployment.
@@ -299,6 +300,10 @@ production branch's autoscaling maximum to 4 CU.
   AI (per-person and global daily caps); expensive routes (per-person limits in `kv_cache`); pairing (per
   address). All count in Postgres, so they hold across serverless instances, and fail open on a database
   blip.
+- **Links from outside**: a recording link someone pastes, the article and robots.txt links the Newsroom
+  finds in feeds, calendar feeds and CalDAV servers, and web push endpoints go only to public addresses
+  (`safePublicFetch` and `assertPublicUrl` in `src/lib/net.ts`): no loopback, private, link-local or cloud
+  metadata address, each redirect checked again (at most three), time and size capped.
 - **Caching**: pages are rendered per request (the theme and session come from cookies), so nothing
   personal is cached by the CDN; API responses are `no-store` or `private`. `/_next/static` assets are
   immutable and fingerprinted. The sitemap regenerates hourly.

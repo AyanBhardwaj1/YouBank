@@ -12,7 +12,8 @@
  * - Trusted origins: Better Auth refuses a sign-in POST whose Origin is not trusted. Every address this
  *   deployment answers on is trusted: its base, the site, the production domain and the original
  *   vercel.app address (both keep serving after a custom domain is added), the deployment's own
- *   VERCEL_URL and VERCEL_BRANCH_URL, and AUTH_TRUSTED_ORIGINS (comma-separated) for anything else.
+ *   VERCEL_URL and VERCEL_BRANCH_URL, and AUTH_TRUSTED_ORIGINS (comma-separated, exact origins; a
+ *   wildcard entry is ignored) for anything else.
  */
 import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 
@@ -41,7 +42,9 @@ export function authTrustedOrigins(env: Env): string[] {
     DEFAULT_SITE_URL,
     normaliseSiteUrl(env.VERCEL_URL),
     normaliseSiteUrl(env.VERCEL_BRANCH_URL),
-    ...(env.AUTH_TRUSTED_ORIGINS ?? "").split(",").map((o) => normaliseSiteUrl(o)),
+    // Exact origins only: Better Auth reads "*" as a wildcard, and "https://*.vercel.app" would trust
+    // every site on Vercel to post to sign-in.
+    ...(env.AUTH_TRUSTED_ORIGINS ?? "").split(",").filter((o) => !o.includes("*")).map((o) => normaliseSiteUrl(o)),
     ...(env.NODE_ENV !== "production" ? ["http://localhost:3000", "http://127.0.0.1:3000"] : []),
   ];
   return [...new Set(list.filter((o): o is string => !!o))];
