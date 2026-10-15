@@ -293,10 +293,14 @@ Paper and live fills can be handed to Quant's cost work as contract `Fill`s (`co
 
 ### Scheduling
 
-`algo-tick` runs every 15 minutes (and on `algo/tick`), picks at most 24 due strategies, four per step, each
-step to a 200-second deadline and each tick holding a lease. Equity ticks only on their schedule inside the
-session (9:35 ET or 15:50 ET; hourly or 15-minute intraday on Pro / Deal Team); crypto daily at 20:00 UTC
-or intraday around the clock. Queries are short and sequential, so a run uses one or two of the six pooled
+`algo-tick` runs every 15 minutes (and on `algo/tick`) and ticks due strategies four per step, step after
+step until none is due (at most 30 steps, 120 strategies, a run), each step to a 200-second deadline and
+each tick holding a lease; a retried step ticks only what is still due. Equity ticks only on their schedule
+inside the session (9:35 ET, or 15:45 ET and 12:45 on early closes, on the cron's quarter hours so the
+close decision runs while the market is open; hourly or 15-minute intraday on Pro / Deal Team, the last at
+close − 15); crypto daily at 20:00 UTC or intraday around the clock. A close tick that runs late (more due
+strategies than one run reaches before 16:00) is skipped for the day: past about a hundred strategies
+deciding at the same close, the tick needs fanning out across parallel steps. Queries are short and sequential, so a run uses one or two of the six pooled
 connections and stays far inside the 30-second statement timeout.
 
 ### Premium and costs

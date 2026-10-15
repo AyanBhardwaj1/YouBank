@@ -1,10 +1,13 @@
 /**
  * When each strategy next ticks. Pure, for tests.
  *
- * - Equities: decisions at the open (9:35 ET) or near the close (15:50 ET, so orders can still go in the
- *   session; the decision uses the latest price as the day's close) on trading days, holidays and early
- *   closes from copy trading's exchange calendar. Intraday strategies tick every 60 minutes (every 15 or
- *   30 with `algo.more`) inside the regular session.
+ * - Equities: decisions at the open (9:35 ET) or near the close (15:45 ET, 12:45 on early closes, so
+ *   orders can still go in the session; the decision uses the latest price as the day's close) on trading
+ *   days, holidays and early closes from copy trading's exchange calendar. Intraday strategies tick every
+ *   60 minutes (every 15 or 30 with `algo.more`) inside the regular session, the last at close − 15.
+ *   Every time is on the quarter hour that `algo-tick`'s cron (every 15 minutes) runs on: a tick due
+ *   between two runs waits for the next one, and a close tick at 15:50 would only be picked up at 16:00,
+ *   when the market is closed and the decision is skipped.
  * - Crypto: daily at 20:00 UTC, or every N minutes around the clock for intraday ones.
  * - Free paper strategies decide at most daily; intraday needs `algo.live` (Pro).
  */
@@ -13,6 +16,9 @@ import { nyInstant } from "./signals";
 import type { StrategySpec } from "./strategy";
 
 export type TickPolicy = { intraday: boolean; minMinutes: number };
+
+/** Minutes before the close of the last equity decision: one cron interval, so it runs while the market is open. */
+const CLOSE_LEAD = 15;
 
 /** The first tick strictly after `now`. */
 export function nextTickAt(spec: StrategySpec, now: Date, policy: TickPolicy): Date {
@@ -27,7 +33,7 @@ export function nextTickAt(spec: StrategySpec, now: Date, policy: TickPolicy): D
     if (every === "intraday") return null;
     if (spec.rebalance.at === "open") return new Date(nyInstant(date, 9, 35));
     const close = earlyCloses(Number(date.slice(0, 4))).has(date) ? 13 * 60 : 16 * 60;
-    return new Date(nyInstant(date, Math.floor((close - 10) / 60), (close - 10) % 60));
+    return new Date(nyInstant(date, Math.floor((close - CLOSE_LEAD) / 60), (close - CLOSE_LEAD) % 60));
   };
   let date = newYorkParts(now).date;
   for (let i = 0; i < 10; i++) {
@@ -35,7 +41,7 @@ export function nextTickAt(spec: StrategySpec, now: Date, policy: TickPolicy): D
       if (every === "intraday") {
         const close = earlyCloses(Number(date.slice(0, 4))).has(date) ? 13 * 60 : 16 * 60;
         for (let m = 9 * 60 + 30 + minutes; m <= close; m += minutes) {
-          const t = new Date(nyInstant(date, Math.floor(Math.min(m, close - 5) / 60), Math.min(m, close - 5) % 60));
+          const t = new Date(nyInstant(date, Math.floor(Math.min(m, close - CLOSE_LEAD) / 60), Math.min(m, close - CLOSE_LEAD) % 60));
           if (t.getTime() > now.getTime()) return t;
         }
       } else {

@@ -579,12 +579,23 @@ async function main() {
   {
     const daily = spec({ rebalance: { every: "daily", at: "close", minutes: 60, drift: 0.02 } });
     const pol = { intraday: false, minMinutes: 60 };
-    check("close decisions at 15:50 ET on the same trading day", nextTickAt(daily, new Date("2026-10-15T14:00:00Z"), pol).toISOString() === "2026-10-15T19:50:00.000Z");
-    check("after that, the next trading day (Thanksgiving skipped; the day after closes early at 13:00, so 12:50)", nextTickAt(daily, new Date("2026-11-25T21:00:00Z"), pol).toISOString() === "2026-11-27T17:50:00.000Z");
+    check("close decisions at 15:45 ET on the same trading day (on the 15-minute cron, while the market is open)", nextTickAt(daily, new Date("2026-10-15T14:00:00Z"), pol).toISOString() === "2026-10-15T19:45:00.000Z");
+    check("after that, the next trading day (Thanksgiving skipped; the day after closes early at 13:00, so 12:45)", nextTickAt(daily, new Date("2026-11-25T21:00:00Z"), pol).toISOString() === "2026-11-27T17:45:00.000Z");
+    {
+      // Every equity tick lands on the cron's quarter hours while the market is open (a 15:50 tick would run at 16:00, closed).
+      const ticks: Date[] = [];
+      const intraQ = spec({ rebalance: { every: "intraday", at: "close", minutes: 15, drift: 0.02 } });
+      for (const [sp, p] of [[daily, pol], [intraQ, { intraday: true, minMinutes: 15 }], [intraQ, { intraday: true, minMinutes: 60 }]] as const) {
+        let t = new Date("2026-11-24T05:00:00Z");
+        for (let i = 0; i < 40; i++) { t = nextTickAt(sp, t, p); ticks.push(t); }
+      }
+      const bad = ticks.filter((t) => t.getUTCMinutes() % 15 !== 0 || !marketState(t).open);
+      check("close and intraday equity ticks land on a quarter hour with the market open (early close included)", bad.length === 0, bad.slice(0, 3).map((t) => t.toISOString()));
+    }
     check("open decisions at 9:35 ET", nextTickAt(spec({ rebalance: { every: "daily", at: "open", minutes: 60, drift: 0.02 } }), new Date("2026-10-15T12:00:00Z"), pol).toISOString() === "2026-10-15T13:35:00.000Z");
     const intra = spec({ rebalance: { every: "intraday", at: "close", minutes: 15, drift: 0.02 } });
     check("intraday ticks hourly on Pro, every 15 minutes with algo.more, inside the session", nextTickAt(intra, new Date("2026-10-15T14:00:00Z"), { intraday: true, minMinutes: 60 }).toISOString() === "2026-10-15T14:30:00.000Z" && nextTickAt(intra, new Date("2026-10-15T14:00:00Z"), { intraday: true, minMinutes: 15 }).toISOString() === "2026-10-15T14:00:00.000Z".replace("14:00", "14:15"));
-    check("free plans run intraday strategies daily instead", nextTickAt(intra, new Date("2026-10-15T14:00:00Z"), pol).toISOString() === "2026-10-15T19:50:00.000Z");
+    check("free plans run intraday strategies daily instead", nextTickAt(intra, new Date("2026-10-15T14:00:00Z"), pol).toISOString() === "2026-10-15T19:45:00.000Z");
     check("crypto decides daily at 20:00 UTC, weekends included", nextTickAt(spec({ assetClass: "crypto", universe: ["BTC-USD"], benchmark: "BTC-USD", signal: { type: "rebalance", weights: { "BTC-USD": 1 } }, rebalance: { every: "daily", at: "close", minutes: 60, drift: 0.02 } }), new Date("2026-10-17T21:00:00Z"), pol).toISOString() === "2026-10-18T20:00:00.000Z");
   }
 
