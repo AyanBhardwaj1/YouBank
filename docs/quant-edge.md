@@ -1679,7 +1679,7 @@ document.
 ## 13. Build status
 
 Built on `claude/new-session-6k1ff0-quant`, 15 October 2026: every step of 7.2. `contracts.ts` is unchanged
-from its first commit. Checks: `scripts/test-quant.ts` (245 checks: known answers for every statistic, then the
+from its first commit. Checks: `scripts/test-quant.ts` (250 checks: known answers for every statistic, then the
 features), typecheck, lint, the billing, premium, Edge next, copy-trading, errors and icon suites, and a
 production build.
 
