@@ -7,6 +7,7 @@ import type { Filter, Metric, ScreenRow } from "@/lib/terminal/screen";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { BarList, DataTable, fm, fn, fp, Frame, fsp, Heatmap, Hint, Meter, Pill, postTerminal, recordSkill, Section, terminalUrl, Tile, Tiles, tone, useSkills, Why, type Column, type Sources } from "../kit";
 import { Select } from "@/components/ui/Select";
+import { PortQuant } from "./QuantScreens";
 
 type Props = { onRun?: (c: Command) => void; arg?: string; activeTicker: string };
 
@@ -120,6 +121,7 @@ function parseHoldings(text: string): { symbol: string; weight: number }[] {
 export function PortScreen({ arg }: Props) {
   const { config } = useWorkspace();
   const [text, setText] = useState(arg || config.watchlist.slice(0, 6).join(" "));
+  const [view, setView] = useState<"overview" | "risk" | "factors">("overview");
   const [state, setState] = useState<{ data?: PortfolioView; error?: string; planLimited?: boolean; busy: boolean; sources?: Sources } | null>(null);
   const run = async (t: string) => {
     const holdings = parseHoldings(t);
@@ -140,6 +142,10 @@ export function PortScreen({ arg }: Props) {
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="AAPL 40 MSFT 30 KO 30" className="num min-w-0 flex-1 bg-transparent text-[12px] uppercase text-fg placeholder:normal-case placeholder:text-faint focus:outline-none" />
         <button type="submit" disabled={state?.busy} className="ctl bg-accent px-2.5 py-1 text-[11px] font-semibold text-bg disabled:opacity-40">{state?.busy ? "…" : "Analyze"}</button>
       </form>
+      <div className="flex gap-1 border-b border-line px-3 py-1.5 text-[11px]">
+        {([["overview", "Overview"], ["risk", "Risk model, stress, liquidity"], ["factors", "Factors"]] as const).map(([v, label]) => <button key={v} type="button" onClick={() => setView(v)} className={`ctl px-2 py-0.5 ${view === v ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:text-fg"}`}>{label}</button>)}
+      </div>
+      {view !== "overview" ? <div className="min-h-0 flex-1"><PortQuant key={view} view={view} text={text} /></div> : (
       <div className="min-h-0 flex-1 overflow-auto">
         {!state ? (
           <div className="p-3"><Hint skill="PORT">Enter tickers and weights (weights are normalized; leave them out for equal weights). The analysis uses two years of daily prices: how volatile the book is, how much of the risk each holding contributes (rarely its share of the money), how the holdings move together, and a bootstrap of a year of outcomes.</Hint></div>
@@ -179,6 +185,7 @@ export function PortScreen({ arg }: Props) {
           </Frame>
         )}
       </div>
+      )}
     </div>
   );
 }

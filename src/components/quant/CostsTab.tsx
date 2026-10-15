@@ -16,18 +16,18 @@ import { bps, Button, Card, Disclosures, ErrorNote, Field, inputCls, json, num, 
 
 type Estimate = CostEstimate & { symbol: string; source: string; yShrunk: { y: number; n: number } };
 
-export function CostsTab({ initialSymbol }: { initialSymbol?: string }) {
+export function CostsTab({ initialSymbol, initialNotional }: { initialSymbol?: string; initialNotional?: number }) {
   return (
     <div className="space-y-3">
       <p className="max-w-3xl text-[12.5px] text-muted">Every trade pays a spread and moves the price a little. These are measurable, and they add up: here is what a trade should cost before you place it, and what yours did cost.</p>
-      <Estimator initialSymbol={initialSymbol} />
+      <Estimator initialSymbol={initialSymbol} initialNotional={initialNotional} />
       <MyFills />
     </div>
   );
 }
 
-function Estimator({ initialSymbol }: { initialSymbol?: string }) {
-  const [f, setF] = useState({ symbol: initialSymbol ?? "AAPL", notionalUsd: "10000", side: "buy" });
+function Estimator({ initialSymbol, initialNotional }: { initialSymbol?: string; initialNotional?: number }) {
+  const [f, setF] = useState({ symbol: initialSymbol ?? "AAPL", notionalUsd: String(initialNotional ?? 10000), side: "buy" });
   const call = useQuantCall();
   const r = useRun<{ estimate: Estimate; disclosure: string }>();
   const go = () => r.run(() => call("/api/quant/costs", json("POST", { ...f, notionalUsd: Number(f.notionalUsd) })));

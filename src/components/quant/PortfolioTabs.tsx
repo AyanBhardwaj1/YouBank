@@ -28,7 +28,7 @@ export function useHoldingsText(initial?: string): [string, (v: string) => void]
 type Lab = LabResult & { runId: number | null; plan: { pro: boolean; maxHoldings: number; maxYears: number } };
 type Dash = { tier: "youbank" | "etf"; source: string; names: string[]; dates: string[]; cumulative: number[][]; crowding: CrowdingNow[]; status: { youbank: { from: string | null; to: string | null; days: number }; version: string } | null };
 
-export function FactorsTab({ initialHoldings }: { initialHoldings?: string }) {
+export function FactorsTab({ initialHoldings, autoRun }: { initialHoldings?: string; autoRun?: boolean }) {
   const [text, setText] = useHoldingsText(initialHoldings);
   const [years, setYears] = useState(3);
   const call = useQuantCall();
@@ -36,6 +36,7 @@ export function FactorsTab({ initialHoldings }: { initialHoldings?: string }) {
   const dash = useRun<Dash>();
   useEffect(() => { void dash.run(() => call("/api/quant/factors")); }, [call]); // eslint-disable-line react-hooks/exhaustive-deps
   const go = () => lab.run(() => call("/api/quant/factors", json("POST", { holdings: parseHoldings(text), years })));
+  useEffect(() => { if (autoRun && initialHoldings) void go(); }, [autoRun, initialHoldings]); // eslint-disable-line react-hooks/exhaustive-deps
   const l = lab.data;
   const w = l?.windows.y3 ?? l?.windows.y1;
   return (
@@ -81,7 +82,7 @@ export function FactorsTab({ initialHoldings }: { initialHoldings?: string }) {
 
 type Risk = RiskResult & { runId: number | null; plan: { pro: boolean } };
 
-export function RiskTab({ initialHoldings, initialShock }: { initialHoldings?: string; initialShock?: string }) {
+export function RiskTab({ initialHoldings, initialShock, autoRun }: { initialHoldings?: string; initialShock?: string; autoRun?: boolean }) {
   const [text, setText] = useHoldingsText(initialHoldings);
   const [shocks, setShocks] = useState(initialShock ?? "market -20");
   const [value, setValue] = useState("100000");
@@ -89,6 +90,7 @@ export function RiskTab({ initialHoldings, initialShock }: { initialHoldings?: s
   const call = useQuantCall();
   const r = useRun<Risk>();
   const go = () => r.run(() => call("/api/quant/risk", json("POST", { holdings: parseHoldings(text), shocks: shocks.split(/[\n;]+/).map((s) => s.trim()).filter(Boolean), portfolioUsd: Number(value) || undefined, reverseLoss: reverse ? Number(reverse) / 100 : undefined })));
+  useEffect(() => { if (autoRun && initialHoldings) void go(); }, [autoRun, initialHoldings]); // eslint-disable-line react-hooks/exhaustive-deps
   const v = r.data;
   return (
     <div className="space-y-3">

@@ -490,6 +490,19 @@ export async function featureTests(check: Check, near: Near) {
     check("a Deal Radar estimate becomes a valid probability signal carrying its forecast id, not a return forecast", !!os && validateSignal(os).ok && os.forecastId === 77 && !!os.tags?.includes("not-a-return-forecast") && /not about the stock/.test(os.explain), os && validateSignal(os));
   }
 
+  section("Terminal functions");
+  {
+    const { parseCommand } = await import("@/lib/functions");
+    const { parseBtxArg, parseKellyArg, parseTcaArg } = await import("@/lib/quant/terminal-args");
+    const pc = (s: string) => { const r = parseCommand(s, "MSFT"); return r.ok ? r.command : null; };
+    check("FACT alone is a portfolio (no active ticker); AAPL FACT is one stock; FACT with holdings keeps them as words", pc("FACT")?.ticker === "" && pc("AAPL FACT")?.ticker === "AAPL" && pc("FACT AAPL 40 MSFT 30")?.arg === "AAPL 40 MSFT 30" && pc("FACT AAPL 40 MSFT 30")?.ticker === "");
+    check("INSC is the board alone and one company after a ticker; DRILL takes nothing", pc("INSC")?.ticker === "" && pc("NVDA INSC")?.ticker === "NVDA" && pc("DRILL")?.fn === "DRILL" && parseCommand("DRILL NOW", "").ok === false);
+    check("KELLY 0.55 1, KELLY 52%-58% 2 and KELLY sharpe 0.3-0.8 18% parse; nonsense does not",
+      JSON.stringify(parseKellyArg("0.55 1")) === JSON.stringify({ kind: "bet", pLow: "0.55", pHigh: "0.55", odds: "1" }) && parseKellyArg("52%-58% 2")?.kind === "bet" && (parseKellyArg("52%-58% 2") as { pLow: string }).pLow === "0.52"
+      && parseKellyArg("sharpe 0.3-0.8 18%")?.kind === "asset" && (parseKellyArg("sharpe 0.3-0.8 18%") as { vol: string }).vol === "0.18" && parseKellyArg("lots") === null && parseKellyArg("150 1") === null && parseKellyArg("55 1")?.kind === "bet", parseKellyArg("52%-58% 2"));
+    check("BTX 2.1 18 30 is a claim; TCA AAPL 25K is a symbol and a size", JSON.stringify(parseBtxArg("2.1 18 30")) === JSON.stringify({ sharpe: 2.1, months: 18, trials: 30 }) && parseBtxArg("") === undefined && JSON.stringify(parseTcaArg("aapl 25K")) === JSON.stringify({ symbol: "AAPL", notional: 25000 }));
+  }
+
   section("Premium registry and margins");
   {
     check("every Quant feature is registered once, area quant, with an id like quant.name", QUANT_FEATURES.every((f) => f.area === "quant" && /^quant\.[a-z0-9-]+$/.test(f.id) && featureById(f.id) === f) && new Set(FEATURES.map((f) => f.id)).size === FEATURES.length);

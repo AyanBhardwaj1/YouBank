@@ -6,7 +6,7 @@ import { CommandBar } from "./CommandBar";
 import { Panel } from "./Panel";
 import { Rail } from "./Rail";
 import { Tape } from "./Tape";
-import { FUNCTIONS, functionsForProfile, isFunctionCode, needsTicker, type Command, type FunctionCode } from "@/lib/functions";
+import { FUNCTIONS, functionsForProfile, isFunctionCode, needsTicker, optionalTicker, type Command, type FunctionCode } from "@/lib/functions";
 import { useCompany } from "@/lib/client/companies";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { useAiSettings } from "@/components/ai/ModelPicker";
@@ -52,8 +52,9 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
   const { data: active } = useCompany(activeTicker);
 
   const run = (command: Command) => {
-    // Market and workspace functions carry no ticker; company functions fall back to the active one.
-    const ticker = needsTicker(command.fn) ? (command.ticker || activeTicker).toUpperCase() : "";
+    // Market and workspace functions carry no ticker; company functions fall back to the active one; FACT and INSC
+    // keep one only when it was given.
+    const ticker = needsTicker(command.fn) ? (command.ticker || activeTicker).toUpperCase() : optionalTicker(command.fn) ? command.ticker.toUpperCase() : "";
     const cmd = { ...command, ticker };
     if (ticker) setActiveTicker(ticker);
     setMaximized(null);

@@ -10,6 +10,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Modal } from "@/components/copy/Consent";
 import { ApiError, errorMessage, fetchJson } from "@/lib/client/errors";
 import type { IntegrityReport } from "@/lib/quant/contracts";
+import { parseHoldingsText } from "@/lib/quant/holdings";
 import { QUANT_TERMS } from "@/lib/quant/words";
 
 export const pct = (v: number | null | undefined, dp = 1, sign = false) => (v === null || v === undefined || !Number.isFinite(v) ? "–" : `${sign && v > 0 ? "+" : ""}${(v * 100).toFixed(dp)}%`);
@@ -156,17 +157,11 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
-/** Holdings typed as "AAPL 25, MSFT 20" or one per line; weights in percent or fractions, rescaled to 100%. */
+/** Holdings typed as "AAPL 25, MSFT 20" or "AAPL 25 MSFT 20" (bare tickers get equal weights), rescaled to 100%. */
 export function parseHoldings(text: string): { symbol: string; weight: number }[] {
-  const out = new Map<string, number>();
-  for (const part of text.split(/[\n,;]+/)) {
-    const m = part.trim().match(/^([A-Za-z][A-Za-z0-9.\-]{0,9})\s*[:=\s]\s*\$?(-?[\d.]+)\s*%?$/) ?? part.trim().match(/^([A-Za-z][A-Za-z0-9.\-]{0,9})$/);
-    if (!m) continue;
-    const w = m[2] === undefined ? 1 : Number(m[2]);
-    if (Number.isFinite(w) && w > 0) out.set(m[1].toUpperCase(), (out.get(m[1].toUpperCase()) ?? 0) + w);
-  }
-  const total = [...out.values()].reduce((s, v) => s + v, 0);
-  return total > 0 ? [...out].map(([symbol, w]) => ({ symbol, weight: w / total })) : [];
+  const hs = parseHoldingsText(text);
+  const total = hs.reduce((s, h) => s + h.weight, 0);
+  return total > 0 ? hs.map((h) => ({ symbol: h.symbol, weight: h.weight / total })) : [];
 }
 
 export function HoldingsBox({ value, onChange, max }: { value: string; onChange: (v: string) => void; max: number }) {

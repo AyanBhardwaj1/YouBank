@@ -23,7 +23,9 @@ const MODES = [
   { id: "families", label: "My strategies", icon: "ListChecks" },
 ] as const;
 
-export function IntegrityTab({ initialSharpe }: { initialSharpe?: number }) {
+export type ClaimArgs = { sharpe?: number; months?: number; trials?: number };
+
+export function IntegrityTab({ initialClaim }: { initialClaim?: ClaimArgs }) {
   const [mode, setMode] = useState<(typeof MODES)[number]["id"]>("claim");
   return (
     <div className="space-y-3">
@@ -31,18 +33,19 @@ export function IntegrityTab({ initialSharpe }: { initialSharpe?: number }) {
       <div className="flex gap-1 overflow-x-auto">
         {MODES.map((m) => <button key={m.id} onClick={() => setMode(m.id)} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] ${mode === m.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={m.icon} className="h-3.5 w-3.5" />{m.label}</button>)}
       </div>
-      {mode === "claim" && <Claim initialSharpe={initialSharpe} />}
+      {mode === "claim" && <Claim initial={initialClaim} />}
       {mode === "upload" && <Upload />}
       {mode === "families" && <Families />}
     </div>
   );
 }
 
-function Claim({ initialSharpe }: { initialSharpe?: number }) {
-  const [f, setF] = useState({ sharpe: String(initialSharpe ?? 2), months: "18", frequency: "daily", trials: "30" });
+function Claim({ initial }: { initial?: ClaimArgs }) {
+  const [f, setF] = useState({ sharpe: String(initial?.sharpe ?? 2), months: String(initial?.months ?? 18), frequency: "daily", trials: String(initial?.trials ?? 30) });
   const call = useQuantCall();
   const r = useRun<{ claim: ClaimResult; disclosures: string[] }>();
   const go = () => r.run(() => call("/api/quant/integrity", json("POST", { mode: "claim", ...f })));
+  useEffect(() => { if (initial?.sharpe !== undefined) void go(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const c = r.data?.claim;
   return (
     <div className="grid gap-3 lg:grid-cols-[300px_1fr]">
