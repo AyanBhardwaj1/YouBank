@@ -159,6 +159,24 @@ are in `src/lib/billing/features/edge-next.ts`.
   presses them, and only on a plan that includes them. Edge's monthly Modal guard ($25) caps the whole
   app's Modal spend as a backstop.
 
+## Algo trading: what's free, what's premium and why
+
+Backtests, the builder and templates, and paper trading (three strategies, decisions at most daily) are free:
+free price data and a little compute, counted as the fixed "Algo trading" line above. What costs us
+something, or carries the most risk, is on a plan (`src/lib/billing/features/algo.ts`, docs/algo-trading.md):
+
+| Feature (`id`) | Plan | Cost to us | How it is paid and bounded |
+|---|---|---|---|
+| Live with approval (`algo.live`) | Pro | $0.10 a month (`flatMonthlyUsd`) | Live strategies' ticks and order calls; broker APIs are free and SnapTrade's per-user fee is `copytrade.broker`'s, one connection shared, so it is not counted twice; at most 10 strategies |
+| AI trading agent (`algo.agent`) | Pro | $0.24 a turn | Two structured calls through `recordUsage`, inside the AI allowance; ten turns a minute |
+| Autonomous (`algo.autonomous`) | Deal Team | none of its own | The same ticks as `algo.live` |
+| More strategies, 15-minute decisions (`algo.more`) | Deal Team | none of its own | Inside `algo.live`'s figure; 25 strategies |
+
+With these registered (and the $2 fixed line), Pro keeps 71.4% monthly and 67.0% yearly at typical use and
+28.9% yearly at the full allowance; Deal Team keeps 66.4% yearly at typical use and **25.0%** yearly at the
+full allowance (it was 25.1%; algo adds about $0.11 a seat there, leaving about $0.04 of room). Anything
+further on Deal Team paid outside the AI ledger needs a price change or a cap.
+
 ## Team seats and the reassignment cooldown
 
 Each Deal Team or Enterprise seat carries its own AI allowance. Without a limit, an owner could give a
@@ -237,7 +255,8 @@ assumption in `PAYING_SEATS`.
 | Edge: background passes on Modal (Deal Radar's monthly training and weekly scoring, the claim checker's NLI) | 6 |
 | Edge: background passes on Vercel and Neon (the weekly Pulse over about 2,000 companies and the daily lists, Deal Radar re-reading filings, thesis ticks, Call Desk's daily pass): about 6 CPU-hours and 10 compute-hours | 1.83 |
 | Edge: platform data (R2 capped at 9 GB by the guard; about 100 MB of deals, series and forecasts in Postgres) | 0.17 |
-| **Total** | **397.25**, or **$1.99 per seat** |
+| Algo trading: paper strategy ticks for everyone, Free included (decisions at most daily, batched in Inngest steps; under $1 of CPU and Neon, counted at $2) | 2 |
+| **Total** | **399.25**, or **$2.00 per seat** |
 
 The four Edge lines are the shared work no one clicks for (see "Edge's next round" below for how each is
 bounded). They are counted at list price even where a free tier covers them today: R2's first 10 GB, and
@@ -276,8 +295,8 @@ executions, R2 storage):
 **Premium features from the other work flow in automatically.** 3D maps, crypto, the desktop app,
 the calendar, the meeting copilot, the Newsroom, copy trading, Edge's next round and larger models each
 register their features in `src/lib/billing/features/`: an area's own file (`premium.ts`, `maps.ts`,
-`crypto.ts`, `desktop.ts`, `meetings.ts`, `calendar.ts`, `news.ts`, `copytrade.ts`, `edge-next.ts`), each
-spread into `FEATURES` in `features/index.ts` (the test checks all nine are). Anything in `FEATURES` with
+`crypto.ts`, `desktop.ts`, `meetings.ts`, `calendar.ts`, `news.ts`, `copytrade.ts`, `edge-next.ts`, `algo.ts`), each
+spread into `FEATURES` in `features/index.ts` (the test checks all ten are). Anything in `FEATURES` with
 `metered: true` and a `costPerUseUsd` is costed by `costToServe()` through `meteredFeatures(plan)`: 4
 uses a month of every metered feature a plan unlocks at typical use, 20 at heavy, on every plan at or above
 its `minPlan`. Nobody edits `costs.ts`. `scripts/test-billing.ts` checks this by registering a test
