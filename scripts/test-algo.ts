@@ -90,7 +90,9 @@ async function main() {
   check("templates cover trend, momentum, mean reversion, pairs, DCA, 13F copy, covered calls and puts", ["trend", "momentum", "meanReversion", "pairs", "rebalance", "copy13f", "income"].every((k) => TEMPLATES.some((t) => templateSpec(t.id)?.signal.type === k)) && !!templateSpec("csp-income") && templateSpec("dca-rebalance")?.dca?.amountUsd === 500);
   check("each template says how it works and how it fails", TEMPLATES.every((t) => t.how.length > 40 && t.risks.length > 30));
   const bad1 = parseStrategy({ name: "x", universe: ["SPY"], signal: { type: "trend", fast: 200, slow: 50 } });
-  check("a fast average longer than the slow one is refused, naming the field", !bad1.ok && bad1.errors.some((e) => e.startsWith("signal.fast")), bad1);
+  check("a fast average longer than the slow one is refused, naming the field", !bad1.ok && bad1.fields.includes("signal.fast") && bad1.errors.includes("The fast average must be shorter than the slow one."), bad1);
+  const bad4 = parseStrategy({ name: "x", universe: ["SPY"], signal: { type: "trend" }, execution: { limitBandBps: 900 } });
+  check("a bound is refused as a plain sentence about the field", !bad4.ok && bad4.errors.includes("Limit band (bps) must be at most 500.") && !bad4.errors.some((e) => /expected|<=|execution\./.test(e)), bad4);
   const bad2 = parseStrategy({ name: "x", universe: ["SPY"], signal: { type: "rebalance", weights: { SPY: 0.8, TLT: 0.5 } } });
   check("fixed weights over 100% are refused", !bad2.ok);
   const bad3 = parseStrategy({ name: "x", universe: ["SPY"], signal: { type: "trend" }, risk: { maxOrderUsd: 50_000, maxDayUsd: 10_000 } });

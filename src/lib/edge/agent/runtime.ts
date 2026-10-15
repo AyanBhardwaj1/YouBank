@@ -23,6 +23,7 @@ import { evalMonitor, type MonitorData } from "./monitors";
 import type { ToolDef, ToolOutput } from "./tools";
 import type { AgentState, ClaimState, EvidenceItem, Monitor } from "./types";
 import { applyLadder, canSpend, nextTick, recomputeTree, tickKeyOf } from "./update";
+import { refusalMessage } from "@/lib/error-text";
 
 export type AgentRow = { id: number; ownerId: string; title: string; thesis: string; status: string; horizonEnd: string | null; budgetUsd: number; spentUsd: number; cadence: "daily" | "twice-daily" };
 export type Step = { key: string; kind: string; tool?: string; input?: Record<string, unknown>; output: Record<string, unknown>; cost?: number; error?: string };
@@ -110,7 +111,7 @@ export async function runTick(deps: Deps, agentId: number, deadline: number): Pr
       spent += r.usd; await deps.store.save(agentId, s, { spent });
       return r.value;
     } catch (e) {
-      await deps.store.addStep(agentId, today, { key: `${key}:${k}`, kind, output: { value: null }, error: (e as { status?: number }).status && (e as { status?: number }).status! < 500 ? String((e as Error).message).slice(0, 300) : "the model call failed" });
+      await deps.store.addStep(agentId, today, { key: `${key}:${k}`, kind, output: { value: null }, error: refusalMessage(e, "the model call failed").slice(0, 300) });
       return null;
     }
   };
@@ -140,7 +141,7 @@ export async function runTick(deps: Deps, agentId: number, deadline: number): Pr
       if (!d) return { tool: e.tool, input: { args: e.args }, output: { missing: true }, error: `no tool ${e.tool}` };
       try { const r = await d.run(e.args); return { tool: e.tool, input: { args: e.args }, output: r as unknown as Record<string, unknown>, cost: d.costUsd }; }
       // The step log is shown to the owner: only a plain refusal (status below 500) keeps its words.
-      catch (err) { const st = (err as { status?: number }).status; return { tool: e.tool, input: { args: e.args }, output: { failed: true }, error: st && st < 500 ? String((err as Error).message ?? "failed").slice(0, 200) : "the tool failed" }; }
+      catch (err) { return { tool: e.tool, input: { args: e.args }, output: { failed: true }, error: refusalMessage(err, "the tool failed").slice(0, 200) }; }
     });
     if ((o as { text?: string }).text) outs.push({ ...(o as unknown as Omit<ToolOutput, "id" | "at">), id: `T${i + 1}`, at: now.toISOString() });
   }

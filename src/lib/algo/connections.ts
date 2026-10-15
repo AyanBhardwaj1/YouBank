@@ -14,6 +14,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
 import { canUse } from "@/lib/billing/entitlements";
+import { storedMessage } from "@/lib/errors";
 import { decryptToken, encryptionReady, encryptToken, secretsMatch } from "@/lib/crm/crypto";
 import { snapUser, symbolId } from "@/lib/copytrade/live";
 import { snaptrade, snaptradeReady } from "@/lib/copytrade/snaptrade";
@@ -52,7 +53,7 @@ export async function listConnections(user: Person): Promise<ConnectionView[]> {
   const [snap] = await db.select({ at: schema.copyBrokers.createdAt }).from(schema.copyBrokers).where(eq(schema.copyBrokers.userId, user.id));
   if (snap) out.push({ ref: "snaptrade", broker: "snaptrade", env: "live", label: "SnapTrade (from Fund copies)", status: "active", createdAt: snap.at.toISOString(), note: "The brokers SnapTrade can trade; Robinhood is read-only there." });
   const rows = await db.select().from(schema.algoConnections).where(and(eq(schema.algoConnections.userId, user.id), inArray(schema.algoConnections.status, ["active", "error"])));
-  for (const r of rows) out.push({ ref: `conn:${r.id}`, broker: r.broker as BrokerId, env: r.env === "live" ? "live" : "paper", label: r.label, status: r.status, createdAt: r.createdAt.toISOString(), note: r.lastError });
+  for (const r of rows) out.push({ ref: `conn:${r.id}`, broker: r.broker as BrokerId, env: r.env === "live" ? "live" : "paper", label: r.label, status: r.status, createdAt: r.createdAt.toISOString(), note: storedMessage(r.lastError, "The last check of this connection failed. Reconnect it if this keeps happening.") });
   return out;
 }
 

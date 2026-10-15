@@ -27,7 +27,7 @@ import { quotesFor } from "./data";
 import { backtestFor } from "./live";
 import { sliceLimit } from "./execution";
 import { createStrategy, getStrategy, listStrategies, specOf, updateStrategy } from "./store";
-import { parseStrategy, TEMPLATES, type StrategySpec } from "./strategy";
+import { errorsWithFields, parseStrategy, TEMPLATES, type StrategySpec } from "./strategy";
 import { createBatch, send } from "./tick";
 
 type Person = Pick<CurrentUser, "id" | "email">;
@@ -141,7 +141,7 @@ async function run(call: ToolCall, g: ReturnType<typeof gate>, c: Ctx, userText:
     }
     case "propose_strategy": {
       const p = parseStrategy(a.spec);
-      if (!p.ok) return { result: { error: `The strategy did not validate: ${p.errors.join("; ")}` } };
+      if (!p.ok) return { result: { error: `The strategy did not validate: ${errorsWithFields(p)}` } };
       const row = await createStrategy(user, { ...p.spec, risk: { ...p.spec.risk, allowShort: false } }, meta, "agent");
       return { result: { created: row.id, name: row.name, mode: "paper", note: "Created in paper mode. Review its limits before any live use." } };
     }
@@ -153,7 +153,7 @@ async function run(call: ToolCall, g: ReturnType<typeof gate>, c: Ctx, userText:
       const row = await getStrategy(user.id, sid);
       const merged = merge(row.spec, (a.changes ?? {}) as Record<string, unknown>);
       const p = parseStrategy(merged);
-      if (!p.ok) return { result: { error: `Those settings did not validate: ${p.errors.join("; ")}` } };
+      if (!p.ok) return { result: { error: `Those settings did not validate: ${errorsWithFields(p)}` } };
       if (g.needsConfirmation) return { result: { pending: "Needs your confirmation.", reason: g.reason }, confirm: { strategyId: sid, spec: p.spec } };
       await updateStrategy(user, sid, { spec: p.spec, riskConfirmed: !!row.riskConfirmedAt }, meta, `agent for ${user.email}`);
       return { result: { updated: sid } };

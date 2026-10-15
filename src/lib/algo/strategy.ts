@@ -15,6 +15,7 @@
  * - execution: limit orders with a band (default) or market orders, and TWAP slicing for larger orders.
  */
 import { z } from "zod";
+import { issueSentence, type FieldIssue } from "@/lib/error-text";
 
 const Sym = z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9.\-/]{0,20}$/, "Use ticker symbols like AAPL, BRK-B or BTC-USD");
 
@@ -124,12 +125,30 @@ export function warmupDays(s: StrategySpec): number {
   return Math.max(sig, s.sizing.method === "equal" ? 0 : s.sizing.volLookback + 1) + 1;
 }
 
-/** Validate a strategy; the messages name the field, for the editor and the agent. */
-export function parseStrategy(raw: unknown): { ok: true; spec: StrategySpec } | { ok: false; errors: string[] } {
+/** The editor's names for the fields a validation message is about. */
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name", description: "Description", universe: "Symbols", benchmark: "Benchmark", capitalUsd: "Capital ($)", assetClass: "Asset class",
+  fast: "Fast average (days)", slow: "Slow average (days)", lookback: "Lookback (days)", trendFilter: "Trend filter (days)", entryZ: "Entry z-score", exitZ: "Exit z-score",
+  "signal.a": "First symbol of the pair", "signal.b": "Second symbol of the pair", weights: "Weights", producer: "Signal producer",
+  maxWeight: "Largest weight", targetVol: "Target volatility", volLookback: "Volatility lookback (days)", drift: "Drift threshold",
+  maxOrderUsd: "Per-order limit ($)", maxDayUsd: "Daily limit ($)", maxNet: "Net exposure", maxGross: "Gross exposure", maxDrawdownPct: "Drawdown stop",
+  limitBandBps: "Limit band (bps)", twapThresholdUsd: "Split orders above ($)", slices: "Slices per order", minOrderUsd: "Smallest order ($)",
+  "rebalance.minutes": "Intraday interval (minutes)", "execution.minutes": "Spread slices over (minutes)",
+};
+
+/**
+ * Validate a strategy. `errors` are sentences about the field ("Limit band (bps) must be at most 500."),
+ * for the editor and anyone reading; `fields` holds each one's path (signal.fast), for the agent.
+ */
+export function parseStrategy(raw: unknown): { ok: true; spec: StrategySpec } | { ok: false; errors: string[]; fields: string[] } {
   const p = StrategySpecZ.safeParse(raw);
   if (p.success) return { ok: true, spec: p.data };
-  return { ok: false, errors: p.error.issues.slice(0, 12).map((i) => `${i.path.join(".") || "strategy"}: ${i.message}`) };
+  const issues = p.error.issues.slice(0, 12);
+  return { ok: false, errors: issues.map((i) => issueSentence(i as FieldIssue, FIELD_LABELS)), fields: issues.map((i) => i.path.join(".") || "strategy") };
 }
+
+/** The errors with their fields, for the agent: "Fast average (days) must be… (signal.fast)". */
+export const errorsWithFields = (p: { errors: string[]; fields: string[] }) => p.errors.map((e, i) => `${e.replace(/\.$/, "")} (${p.fields[i]})`).join("; ");
 
 /** Whether every risk limit was set on purpose (live trading requires it): the person saved the limits explicitly. */
 export const RISK_KEYS = Object.keys(RiskLimitsZ.shape) as (keyof RiskLimits)[];
