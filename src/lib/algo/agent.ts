@@ -25,6 +25,7 @@ import { asData, gate, TOOLS, type GateContext, type Mode, type ToolCall } from 
 import type { PaperState } from "./brokers/paper";
 import { quotesFor } from "./data";
 import { backtestFor } from "./live";
+import { sliceLimit } from "./execution";
 import { createStrategy, getStrategy, listStrategies, specOf, updateStrategy } from "./store";
 import { parseStrategy, TEMPLATES, type StrategySpec } from "./strategy";
 import { createBatch, send } from "./tick";
@@ -196,8 +197,8 @@ async function agentOrder(user: Person, sid: number, a: Record<string, unknown>,
   const raw = a.all === true ? held : a.notionalUsd !== undefined ? Math.floor((Number(a.notionalUsd) / px) * 1e4) / 1e4 : Number(a.qty);
   const units = whole ? Math.floor(raw + 1e-9) : raw;
   if (!(units > 0)) throw refuse(side === "SELL" ? `The strategy holds no ${symbol}.` : whole ? `That is less than one share of ${symbol}.` : "The order has no quantity.");
-  const band = spec.execution.limitBandBps / 10_000;
-  const limit = spec.execution.orderType === "Limit" ? Math.round(px * (side === "BUY" ? 1 + band : 1 - band) * 100) / 100 : null;
+  // The engine's band and rounding (a buy's limit rounds up and a sell's down, to the cent, or 1/100 cent under $1).
+  const limit = spec.execution.orderType === "Limit" ? sliceLimit(px, side as "BUY" | "SELL", spec.execution.limitBandBps) : null;
   const [d] = await requireDb().insert(schema.algoDecisions).values({ strategyId: sid, userId: user.id, source: "agent", mode: row.mode, notes: `The person's instruction: "${userText.slice(0, 300)}"` }).returning({ id: schema.algoDecisions.id });
   const order = { ticker: symbol, action: side as "BUY" | "SELL", units, price: px, limitPrice: limit, estValue: units * px, boundValue: units * (limit ?? px), reason: "add" as const, fromOutside: 0, taxCaution: side === "SELL" };
   if (row.mode === "paper") {
