@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   return guardedDesktop(req, async (user, device) => {
-    if (!device) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!device) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as ({ check?: CheckItem[] } & Partial<{ pathKey: string; sha256: string; name: string; mime: string; bytes: number }>) | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     if (Array.isArray(body.check)) {
       const [states, quota] = await Promise.all([checkFiles(user.id, device.id, body.check), fileQuota(user)]);
       return NextResponse.json({ states, quota });
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 /** Remove a local file from YouBank (?pathKey=): its document is deleted unless a copy elsewhere still uses it. */
 export async function DELETE(req: Request) {
   return guardedDesktop(req, async (user, device) => {
-    if (!device) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!device) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     await removeFile(user.id, device.id, new URL(req.url).searchParams.get("pathKey") ?? "");
     return NextResponse.json({ ok: true });
   }, { device: "required" });

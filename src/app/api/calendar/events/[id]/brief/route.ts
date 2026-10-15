@@ -14,7 +14,7 @@ const idOf = async (ctx: { params: Promise<{ id: string }> }) => {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = await idOf(ctx);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const [assembled, ai] = await Promise.all([assembleBrief(user.id, id), storedBrief(user.id, id)]);
     if (!assembled) return NextResponse.json({ error: "That meeting is not in your calendar any more." }, { status: 404 });
     return NextResponse.json({ assembled, ai });
@@ -25,7 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guarded(async (user) => {
     const id = await idOf(ctx);
-    if (!id) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await generateBrief(user, id);
     return NextResponse.json({ ai: await storedBrief(user.id, id) });
   });

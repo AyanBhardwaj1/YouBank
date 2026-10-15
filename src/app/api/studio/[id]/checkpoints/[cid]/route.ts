@@ -14,7 +14,7 @@ const ids = async (ctx: Ctx) => { const p = await ctx.params; const id = Number(
 export async function GET(req: Request, ctx: Ctx) {
   return guardedFor(req, async (user) => {
     const p = await ids(ctx);
-    if (!p) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!p) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const row = await requireDoc(user, p.id);
     const now = docData(row);
     const cp = await getCheckpoint(p.id, p.cid);
@@ -34,7 +34,7 @@ export async function GET(req: Request, ctx: Ctx) {
 export async function POST(req: Request, ctx: Ctx) {
   return guardedFor(req, async (user) => {
     const p = await ids(ctx);
-    if (!p) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!p) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const row = await requireDoc(user, p.id, "edit");
     const doc = docData(row);
     const cp = await getCheckpoint(p.id, p.cid);
@@ -48,7 +48,7 @@ export async function POST(req: Request, ctx: Ctx) {
 export async function DELETE(req: Request, ctx: Ctx) {
   return guardedFor(req, async (user) => {
     const p = await ids(ctx);
-    if (!p) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!p) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await requireDoc(user, p.id, "edit");
     await deleteCheckpoint(p.id, p.cid);
     return NextResponse.json({ ok: true });

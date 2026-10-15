@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     const body = (await req.json().catch(() => null)) as WatchInput | null;
-    if (!body) return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     const watch = await addWatch(user.id, body);
     const deadline = Date.now() + 50_000;
     after(() => checkWatch(watch, deadline, 3));

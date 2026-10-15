@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   return guarded(async (user) => {
     await requireEdge(user.id);
     const id = Number(new URL(req.url).searchParams.get("chunk"));
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const db = requireDb();
     const [c] = await db.select().from(schema.edgeChunks).where(eq(schema.edgeChunks.id, id));
     if (!c) return NextResponse.json({ error: "Not found" }, { status: 404 });

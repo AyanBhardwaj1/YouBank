@@ -26,7 +26,7 @@ export async function GET(req: Request) {
 export async function PUT(req: Request) {
   return guardedDesktop(req, async (_user, device) => {
     const body = (await req.json().catch(() => null)) as { tasks?: unknown } | null;
-    if (!device || !body?.tasks || typeof body.tasks !== "object") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!device || !body?.tasks || typeof body.tasks !== "object") return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     return NextResponse.json({ tasks: await saveDeviceTasks(device, body.tasks as Record<string, unknown>, TASK_IDS) });
   }, { device: "required" });
 }

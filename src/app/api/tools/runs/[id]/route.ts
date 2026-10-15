@@ -9,7 +9,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   return guarded(async (user) => {
     const { id } = await ctx.params;
     const [row] = await requireDb().select().from(schema.workflowRuns).where(and(eq(schema.workflowRuns.id, Number(id)), eq(schema.workflowRuns.userId, user.id)));
-    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!row) return NextResponse.json({ error: "We could not find that. It may have been moved or deleted." }, { status: 404 });
     return NextResponse.json(row);
   });
 }

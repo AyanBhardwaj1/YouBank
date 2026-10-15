@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
   const { prefs } = await loadUserContext(user.id);
   const { ticker } = ((await req.json().catch(() => ({}))) as { ticker?: string });
-  if (!ticker) return NextResponse.json({ error: "ticker required" }, { status: 400 });
+  if (!ticker) return NextResponse.json({ error: "Enter a ticker." }, { status: 400 });
   try {
     const c = await getCompanyData(ticker);
     if (!c) return NextResponse.json({ error: `Unknown ticker ${ticker}` }, { status: 404 });

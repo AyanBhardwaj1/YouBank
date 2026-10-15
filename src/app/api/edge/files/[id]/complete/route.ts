@@ -22,7 +22,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   return guarded(async (user) => {
     await requireEdge(user.id);
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { premium?: { pdf?: string; audio?: string } } | null;
     // The choice is per kind of file: a recording gets the audio choice, anything else the document one.
     // Only that one is checked, so a reader ticked for the other kind never blocks this upload.

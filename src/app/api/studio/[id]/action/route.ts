@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id)) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as { action?: string; args?: Record<string, unknown> } | null;
     if (!body?.action) return NextResponse.json({ error: "Name an action" }, { status: 400 });
     return NextResponse.json(await runAction(user, id, body.action, body.args ?? {}));

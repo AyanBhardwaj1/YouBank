@@ -12,7 +12,7 @@ export const maxDuration = 300;
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return guardedFor(req, async (user) => {
     const id = Number((await ctx.params).id);
-    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "bad id" }, { status: 400 });
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     await rateLimit(`studio-read:${user.id}`, 20, 3_600_000, "Many documents have been read this hour. Try again later.");
     const form = await req.formData().catch(() => null);
     const file = form?.get("file");

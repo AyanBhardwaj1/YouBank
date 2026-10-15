@@ -13,7 +13,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   return guarded(async (user) => {
     const body = await req.json().catch(() => null);
-    if (!body || typeof body !== "object") return NextResponse.json({ error: "bad request" }, { status: 400 });
+    if (!body || typeof body !== "object") return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     if ((body as { autoJoin?: unknown }).autoJoin === true && !(await getMeetingSettings(user.id)).autoJoin) await requireFeature(user, "meetings.bot");
     return NextResponse.json(await saveMeetingSettings(user.id, body));
   });
