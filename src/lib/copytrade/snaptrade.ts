@@ -141,6 +141,8 @@ export const snaptrade = {
   placeForce: (user: SnapUser, form: TradeForm & { client_order_id: string }) => call<SnapOrder>("POST", "/trade/place", { user, body: form, timeoutMs: 45_000 }),
   orderDetail: (user: SnapUser, accountId: string, brokerageOrderId: string) => call<SnapOrder>("POST", `/accounts/${encodeURIComponent(accountId)}/orders/details`, { user, body: { brokerage_order_id: brokerageOrderId } }),
   recentOrders: (user: SnapUser, accountId: string, days = 3) => call<SnapOrder[]>("GET", `/accounts/${encodeURIComponent(accountId)}/orders`, { user, query: [["state", "all"], ["days", days]] }),
+  /** Ask the broker to cancel an open order (algo trading's cancel; copy trading cancels at the broker). */
+  cancelOrder: (user: SnapUser, accountId: string, brokerageOrderId: string) => call<unknown>("POST", `/accounts/${encodeURIComponent(accountId)}/orders/cancel`, { user, body: { brokerage_order_id: brokerageOrderId } }),
 };
 
 /** Positions and cash of one account, in the shape the rebalance takes. */

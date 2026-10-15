@@ -13,6 +13,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
 import { canUse, requireFeature } from "@/lib/billing/entitlements";
+import { csvRow } from "@/lib/csv";
 import { CONSENTS, consentText, type ConsentKind } from "./disclosures";
 import type { AuditEntry } from "./orders";
 
@@ -82,8 +83,8 @@ export async function auditLog(userId: string, limit = 500) {
 
 /** The audit log as CSV, for the person's records or their adviser. Pure. */
 export function auditCsv(rows: { createdAt: Date; actor: string; action: string; portfolioId: number | null; batchId: number | null; orderId: number | null; ip: string | null; payload: unknown }[]): string {
-  const esc = (v: unknown) => { const s = v == null ? "" : typeof v === "string" ? v : JSON.stringify(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  return ["time,actor,action,copy,batch,order,ip,details", ...rows.map((r) => [r.createdAt.toISOString(), r.actor, r.action, r.portfolioId, r.batchId, r.orderId, r.ip, r.payload].map(esc).join(","))].join("\n");
+  // Formula-leading cells are neutralised (lib/csv): a broker's message or a payload could start with "=".
+  return ["time,actor,action,copy,batch,order,ip,details", ...rows.map((r) => csvRow([r.createdAt.toISOString(), r.actor, r.action, r.portfolioId, r.batchId, r.orderId, r.ip, r.payload]))].join("\n");
 }
 
 /**

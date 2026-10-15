@@ -91,6 +91,14 @@ export type ApproveRequest = {
   /** The per-order ceiling now (the copy's and the server's, whichever is lower), checked again at approval. */
   maxOrderUsd: number;
   market: MarketState;
+  /**
+   * Generalised for algo trading (lib/algo/orders.ts), which reuses this function with its own store and
+   * brokers: "typed" (the default) asks for the typed confirmation on large batches; "none" is for batches
+   * the person already authorised another way (a strategy's autonomous mode, with its own stored consent).
+   */
+  confirm?: "typed" | "none";
+  /** What the orders belong to, in messages ("copy" by default; "strategy" for algo trading). */
+  noun?: string;
 };
 
 export type ApproveResult = { outcome: "placed" | "partial" | "failed" | "already"; status: BatchStatus; orders: OrderRow[]; message: string };
@@ -114,15 +122,16 @@ export async function approveBatch(store: CopyStore, broker: OrderBroker, req: A
     throw refuse(b.status === "canceled" ? "This batch was canceled." : b.status === "expired" ? "These orders are out of date. Review a fresh set." : "This batch was already approved. Nothing new was sent.", 409);
   }
   if (b.expiresAt.getTime() < req.now.getTime()) { await store.finishBatch(b.id, "expired"); throw refuse("These orders are out of date (prices move). Review a fresh set.", 409); }
-  const phrase = confirmationPhrase(b);
+  const noun = req.noun ?? "copy";
+  const phrase = req.confirm === "none" ? null : confirmationPhrase(b);
   if (phrase && req.confirmation.trim().toUpperCase() !== phrase) throw refuse(`This is a large batch. Type "${phrase}" to approve it.`, 400);
   const orders = (await store.orders(b.id)).filter((o) => o.status === "pending");
   if (!orders.length) throw refuse("There are no orders to place in this batch.", 400);
-  if (!req.market.open && orders.some((o) => o.orderType === "Market")) throw refuse(`The market is closed (${req.market.reason}). Market orders can only go while it is open; it next opens ${req.market.nextOpen}. Switch this copy to limit orders, or come back then.`, 409);
+  if (!req.market.open && orders.some((o) => o.orderType === "Market")) throw refuse(`The market is closed (${req.market.reason}). Market orders can only go while it is open; it next opens ${req.market.nextOpen}. Switch this ${noun} to limit orders, or come back then.`, 409);
   const tooBig = req.maxOrderUsd > 0 ? orders.find((o) => o.estValue > req.maxOrderUsd + 0.005) : undefined;
   if (tooBig) throw refuse(`The ${tooBig.ticker} order is over the per-order limit of $${req.maxOrderUsd.toLocaleString("en-US")}. Review a fresh set.`, 409);
   const value = b.buyValue + b.sellValue;
-  const overDay = (total: number) => refuse(`This would take today's copy orders to $${Math.round(total).toLocaleString("en-US")}, over your daily limit of $${req.maxDayUsd.toLocaleString("en-US")}. Raise the limit in the copy's settings or wait until tomorrow.`, 400);
+  const overDay = (total: number) => refuse(`This would take today's ${noun} orders to $${Math.round(total).toLocaleString("en-US")}, over your daily limit of $${req.maxDayUsd.toLocaleString("en-US")}. Raise the limit in the ${noun}'s settings or wait until tomorrow.`, 400);
   const since = startOfDay(req.now);
   const sent = await store.committedValueSince(req.user.id, since);
   if (req.maxDayUsd > 0 && sent + value > req.maxDayUsd) throw overDay(sent + value);
@@ -140,7 +149,7 @@ export async function approveBatch(store: CopyStore, broker: OrderBroker, req: A
     if (committed > req.maxDayUsd + 0.005) { await store.releaseBatch(b.id, req.idemKey); throw overDay(committed); }
   }
   await store.audit({ userId: req.user.id, actor: req.user.email, action: "approve", batchId: b.id, portfolioId: b.portfolioId, ip: req.ip, userAgent: req.userAgent,
-    payload: { idemKey: req.idemKey, confirmation: phrase ? "typed" : "click", market: req.market, accountId: b.accountId, orders: orders.map((o) => ({ id: o.id, clientOrderId: o.clientOrderId, ticker: o.ticker, action: o.action, units: o.units, orderType: o.orderType, limitPrice: o.limitPrice, estValue: o.estValue })) } });
+    payload: { idemKey: req.idemKey, confirmation: req.confirm === "none" ? "standing consent" : phrase ? "typed" : "click", market: req.market, accountId: b.accountId, orders: orders.map((o) => ({ id: o.id, clientOrderId: o.clientOrderId, ticker: o.ticker, action: o.action, units: o.units, orderType: o.orderType, limitPrice: o.limitPrice, estValue: o.estValue })) } });
 
   let placed = 0, failed = 0, unknown = 0;
   for (const o of orders) {
