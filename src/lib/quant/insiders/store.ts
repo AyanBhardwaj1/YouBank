@@ -16,7 +16,7 @@ import { baseRateFor, CATALOG, signalBaseRate } from "../events/rates";
 import { logForecast } from "@/lib/edge/forecasts/ledger";
 import type { ForecastRule } from "@/db/schema";
 import { addSessions, nextOpenAfter } from "../pit/calendar";
-import { publishSignals } from "../signals";
+import { publishSignals, storedSignalIds } from "../signals";
 import { estimateCost } from "../tca/run";
 import { signalId } from "../validate";
 import { T } from "../words";
@@ -190,13 +190,17 @@ export async function publishInsiderSignals(deadline: number) {
   const rows = await db.select().from(schema.quantEvents).where(and(inArray(schema.quantEvents.type, Object.keys(CATALOG).filter((k) => !/shift|spike/.test(k))), gte(schema.quantEvents.acceptedAt, new Date(Date.now() - 30 * DAY)))).orderBy(desc(schema.quantEvents.acceptedAt)).limit(300);
   const rates = new Map<string, ReturnType<typeof signalBaseRate>>();
   for (const t of new Set(rows.map((r) => r.type))) rates.set(t, signalBaseRate(await baseRateFor(t)));
+  const asEvent = (r: (typeof rows)[number]) => ({ id: r.id, type: r.type, symbol: r.symbol, issuerCik: r.issuerCik, occurredAt: String(r.occurredAt), acceptedAt: r.acceptedAt.toISOString(), body: r.body });
+  // Only events not yet published: a stored signal stays as it was first known (and its cost estimate is not redone).
+  const candidates = rows.map((r) => ({ r, s: eventSignal(asEvent(r), rates.get(r.type) ?? null, undefined) })).filter((x): x is { r: (typeof rows)[number]; s: QuantSignal } => !!x.s);
+  const stored = await storedSignalIds(candidates.map((x) => x.s.id));
   const signals: QuantSignal[] = [];
-  for (const r of rows) {
+  for (const { r } of candidates.filter((x) => !stored.has(x.s.id))) {
     if (Date.now() > deadline) break;
     const br = rates.get(r.type) ?? null;
     if (!br) continue;
     const costs = await estimateCost(r.symbol, 10_000, "buy").catch(() => undefined);
-    const s = eventSignal({ id: r.id, type: r.type, symbol: r.symbol, issuerCik: r.issuerCik, occurredAt: String(r.occurredAt), acceptedAt: r.acceptedAt.toISOString(), body: r.body }, br, costs ? { spreadBps: costs.spreadBps, impactBps: costs.impactBps, commissionBps: costs.commissionBps, borrowBpsYear: costs.borrowBpsYear, totalRoundTripBps: costs.totalRoundTripBps, referenceNotionalUsd: costs.referenceNotionalUsd, adv20Usd: costs.adv20Usd, model: costs.model, asOf: costs.asOf } : undefined);
+    const s = eventSignal(asEvent(r), br, costs ? { spreadBps: costs.spreadBps, impactBps: costs.impactBps, commissionBps: costs.commissionBps, borrowBpsYear: costs.borrowBpsYear, totalRoundTripBps: costs.totalRoundTripBps, referenceNotionalUsd: costs.referenceNotionalUsd, adv20Usd: costs.adv20Usd, model: costs.model, asOf: costs.asOf } : undefined);
     if (s) signals.push(s);
   }
   const out = await publishSignals(signals);

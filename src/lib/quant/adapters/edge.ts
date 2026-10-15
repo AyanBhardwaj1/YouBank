@@ -14,7 +14,7 @@ import { siteLink } from "@/lib/site";
 import { CONTRACT_VERSION, type QuantSignal } from "../contracts";
 import { baseRateFor, CATALOG, signalBaseRate } from "../events/rates";
 import { addSessions, nextOpenAfter } from "../pit/calendar";
-import { publishSignals, type PublishResult } from "../signals";
+import { publishSignals, storedSignalIds, type PublishResult } from "../signals";
 import { signalId } from "../validate";
 import { T } from "../words";
 
@@ -61,8 +61,9 @@ export async function publishPulseSignals(): Promise<PublishResult & { candidate
   const fa = (placebo?.state ?? {}) as Record<string, { perYear?: number }>;
   const rates = new Map<string, ReturnType<typeof signalBaseRate>>();
   for (const k of Object.keys(FAMILY)) rates.set(k, signalBaseRate(await baseRateFor(k)));
-  const signals = rows.map((d) => pulseSignal(d, rates.get(d.kind) ?? null, fa[FAMILY[d.kind]]?.perYear ?? null)).filter((s): s is QuantSignal => !!s);
-  const res = await publishSignals(signals);
+  const all = rows.map((d) => pulseSignal(d, rates.get(d.kind) ?? null, fa[FAMILY[d.kind]]?.perYear ?? null)).filter((s): s is QuantSignal => !!s);
+  const stored = await storedSignalIds(all.map((s) => s.id));
+  const res = await publishSignals(all.filter((s) => !stored.has(s.id)));
   return { ...res, candidates: rows.length, pending: [...rates].filter(([, r]) => !r).map(([k]) => k) };
 }
 
@@ -100,5 +101,6 @@ export async function publishOddsSignals(limit = 1_000): Promise<PublishResult &
   const byId = new Map(nodes.map((n) => [`node:${n.id}`, n]));
   const [t] = (await db.select({ n: sql<number>`count(*)::int` }).from(schema.edgeForecasts).where(and(eq(schema.edgeForecasts.kind, "deal_target"), isNull(schema.edgeForecasts.ownerId), isNotNull(schema.edgeForecasts.outcome))));
   const signals = rows.map((r) => { const n = byId.get(r.subject); return n ? oddsSignal(r, n, { n: Number(t?.n ?? 0), skill: null }) : null; }).filter((s): s is QuantSignal => !!s);
-  return { ...(await publishSignals(signals)), candidates: rows.length };
+  const stored = await storedSignalIds(signals.map((s) => s.id));
+  return { ...(await publishSignals(signals.filter((s) => !stored.has(s.id)))), candidates: rows.length };
 }

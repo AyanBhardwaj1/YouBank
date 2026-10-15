@@ -81,6 +81,21 @@ export async function publishSignals(signals: QuantSignal[], opts: { rules?: Rec
   return { stored: good.length, rejected, forecasts, event };
 }
 
+/**
+ * Which of these signal ids are already stored. Producers that re-scan a window of past events (the insider
+ * poll, Pulse, Deal Radar) publish only the new ones: re-publishing would overwrite a stored signal's body with
+ * what is known later (a base rate recomputed with later events), which a replay at the original time must not
+ * see, and would redo each signal's work (a cost estimate reads bars) on every pass.
+ */
+export async function storedSignalIds(ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let k = 0; k < ids.length; k += 1_000) {
+    const rows = await requireDb().select({ id: schema.quantSignals.id }).from(schema.quantSignals).where(inArray(schema.quantSignals.id, ids.slice(k, k + 1_000)));
+    for (const r of rows) out.add(r.id);
+  }
+  return out;
+}
+
 /** Signals usable at `at`: the backtest reader. Bounded by `limit` (5,000 by default). */
 export async function signalsAsOf(q: SignalQuery): Promise<QuantSignal[]> {
   const at = q.at ? new Date(q.at) : new Date();
