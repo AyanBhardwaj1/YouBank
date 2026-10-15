@@ -14,7 +14,7 @@ import { conceptSeries, findConcepts } from "../edgar/series";
 import { resolveTicker } from "../edgar/tickers";
 import { insiderTransactions } from "../edgar/insiders";
 import { evaluateScript } from "../calc";
-import { logError } from "@/lib/errors";
+import { isTimeout, logError, looksInternal } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 
 export type Source = { id: string; label: string; url: string };
@@ -230,19 +230,22 @@ export const calcTool = def({
   schema: z.object({ script: z.string().describe("e.g. 'ev = 45.2b + 2.1b - 3.9b\nev / 5.43b'") }),
   run: async ({ script }) => {
     try { const r = evaluateScript(script); return JSON.stringify({ results: r.results.map((x) => ({ line: x.line, value: Number.isFinite(x.value) ? Number(x.value.toPrecision(12)) : String(x.value) })) }); }
-    catch (e) { return JSON.stringify({ error: e instanceof Error ? e.message : String(e) }); }
+    catch (e) { return JSON.stringify({ error: toolError(e) }); }
   },
 });
 
 export const ALL_TOOLS = [getCompanyTool, compsTool, searchCompaniesTool, searchFilingTool, readFilingTool, readDocumentTool, fullTextTool, recentFilingsTool, xbrlSeriesTool, insiderTool, calcTool, webResearchTool, formDTool, startupsTool] as unknown as ToolDef<unknown>[];
 
 /**
- * A tool failure as the model sees it: the real message (an EDGAR 404 tells it to try another form),
- * except database failures, whose SQL and values it must never repeat to the person.
+ * A tool failure as the model sees it: the real message when it is written for people (an EDGAR 404
+ * tells it to try another form), else a reference. The model streams what it reads into the answer, so
+ * nothing internal (SQL and its values, a URL with a key, a stack, a provider's raw body) reaches it.
  */
 export function toolError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
-  return /^Failed query:|NeonDbError|DrizzleQueryError/i.test(`${message} ${e instanceof Error ? e.name : ""}`) ? `The database did not answer (ref ${logError(e, { where: "ai-tool" })}); continue without this.` : message;
+  if (isTimeout(e)) return "This source took too long to answer; continue without it.";
+  if (!looksInternal(message, e instanceof Error ? e.name : "")) return message;
+  return `This source did not answer (ref ${logError(e, { where: "ai-tool" })}); continue without it and do not quote this error.`;
 }
 
 /** Run a tool by name with schema validation; errors are returned as strings so the model can recover. */

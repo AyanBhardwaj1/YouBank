@@ -20,7 +20,7 @@ const LIMIT_MESSAGE = "The market-data plan's daily request limit is used up; it
 
 async function get<T>(path: string, params: Record<string, string | number | undefined>, ttlMs: number): Promise<T> {
   const key = process.env.FMP_API_KEY;
-  if (!key) throw new MarketDataError("Market data is not configured (FMP_API_KEY).");
+  if (!key) throw new MarketDataError("Market data is not set up on this server yet.");
   const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
   const cacheKey = `fmp:${path}?${qs}`;
   return cacheJson<T>(cacheKey, ttlMs, async () => {
@@ -28,7 +28,7 @@ async function get<T>(path: string, params: Record<string, string | number | und
     const res = await fetch(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     const text = await res.text();
     if (/Limit Reach/i.test(text)) { await cacheSet(FMP_LIMIT_KEY, "1", 30 * MIN); throw new MarketDataError(LIMIT_MESSAGE); }
-    if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw new MarketDataError(`Market data unavailable for ${path}`);
+    if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw Object.assign(new MarketDataError("This market data is not available right now; the market-data plan may not include it."), { cause: new Error(`FMP ${res.status} for ${path}`) });
     return JSON.parse(text) as T;
   });
 }

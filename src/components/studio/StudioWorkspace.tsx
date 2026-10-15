@@ -284,8 +284,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
           <p className="font-semibold">Checkpoints</p>
           <p className="text-[10.5px] text-muted">Save the model and deck as they are now (&ldquo;Sent to MD&rdquo;), then see exactly what moved since.</p>
           <div className="mt-1 flex gap-1">
-            <input value={cpName} onChange={(e) => setCpName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && cpName.trim()) { void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x))); } }} placeholder="Name, e.g. Sent to MD" className="min-w-0 flex-1 ctl border border-line bg-bg px-2 py-1 outline-none focus:border-accent/60" />
-            <button type="button" disabled={!cpName.trim()} onClick={() => void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(String(x)))} className="ctl bg-accent px-2 py-1 font-semibold text-bg disabled:opacity-40">Save</button>
+            <input value={cpName} onChange={(e) => setCpName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && cpName.trim()) { void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(errorMessage(x))); } }} placeholder="Name, e.g. Sent to MD" className="min-w-0 flex-1 ctl border border-line bg-bg px-2 py-1 outline-none focus:border-accent/60" />
+            <button type="button" disabled={!cpName.trim()} onClick={() => void st.saveCheckpoint(cpName.trim()).then(() => setCpName("")).catch((x) => st.setError(errorMessage(x)))} className="ctl bg-accent px-2 py-1 font-semibold text-bg disabled:opacity-40">Save</button>
           </div>
           <ul className="mt-2 space-y-1.5">
             {(st.checkpoints ?? []).map((c) => (
@@ -294,7 +294,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
                 <p className="text-[10.5px] text-muted">{c.createdByName || "Someone"} · {ago(c.createdAt)}</p>
                 <div className="mt-1 flex gap-3 text-[10.5px]">
                   <button type="button" onClick={() => void compare(c.id)} className="text-muted underline hover:text-fg">{diffs[c.id] ? "Hide changes" : "What changed since"}</button>
-                  <button type="button" onClick={async () => { if (await confirmDialog({ title: `Go back to "${c.name}"?`, body: "The model and deck return to that point, as one change you can undo.", confirmLabel: "Restore" })) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(String(x))); }} className="text-muted underline hover:text-fg">Restore</button>
+                  <button type="button" onClick={async () => { if (await confirmDialog({ title: `Go back to "${c.name}"?`, body: "The model and deck return to that point, as one change you can undo.", confirmLabel: "Restore" })) void st.restoreCheckpoint(c.id).then((ok) => st.setNotice(ok ? `Restored "${c.name}".` : "Nothing to restore: no changes since.")).catch((x) => st.setError(errorMessage(x))); }} className="text-muted underline hover:text-fg">Restore</button>
                 </div>
                 {diffs[c.id] && <DiffView d={diffs[c.id]} go={go} />}
               </li>

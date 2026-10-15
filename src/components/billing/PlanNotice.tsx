@@ -8,6 +8,7 @@
  */
 import Link from "next/link";
 import { Icon } from "@/components/ui/Icon";
+import { errorMessage, safeText } from "@/lib/client/errors";
 
 /** requireFeature's message: "<Feature> is part of the <Plan> plan. Upgrade in Settings, under Plan, to use it." */
 const PLAN_MESSAGE = /is part of the .+ plan\. Upgrade in Settings/;
@@ -19,7 +20,8 @@ export function isPlanError(e: unknown): boolean {
   return PLAN_MESSAGE.test(m);
 }
 
-export const messageOf = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : String(e ?? ""));
+/** The line to show: a string as written when it reads as meant for people, any error through the client screen (lib/client/errors). */
+export const messageOf = (e: unknown) => (e === null || e === undefined || e === "" ? "" : typeof e === "string" ? safeText(e) : errorMessage(e));
 
 export function PlanNotice({ error, className = "" }: { error: unknown; className?: string }) {
   const message = messageOf(error);

@@ -75,7 +75,7 @@ export async function startRun(user: CurrentUser | { id: string; email: string; 
     if ((busy?.n ?? 0) >= RUNNING_AT_ONCE) throw Object.assign(new Error("Two of your runs are still going; wait for one to finish."), { status: 429 });
   }
   const runId = await createRun(canvasId, row.ownerId, graph, trigger, { id: user.id, label: user.name || user.email });
-  const sent = await sendJob("edge/canvas.run", { runId }, { id: `edge-run-${runId}` }).catch((e) => ({ sent: false as const, reason: String(e) }));
+  const sent = await sendJob("edge/canvas.run", { runId }, { id: `edge-run-${runId}` }).catch((e) => ({ sent: false as const, reason: failureMessage(e, "edge-run-send") }));
   if (!sent.sent) after(() => executeRun(runId, inlineSteps(Date.now() + 280_000), "inline").catch((e) => logError(e, { where: "edge-run-inline" })));
   return runId;
 }

@@ -41,6 +41,9 @@ const INTERNAL: RegExp[] = [
   /\b(answered|returned|responded( with)?|said) \d{3}\s*:\s*\S/i,
   // Python and Node tracebacks quoted by a service.
   /Traceback \(most recent call last\)|File "[^"]+", line \d+/,
+  // An exception quoted by its class, from a service or a library ("KeyError: 'pages'",
+  // "ValueError: could not convert…", "java.lang.IllegalStateException: …", "ZodError: […]").
+  /\b(?:[a-z_]\w*\.)*[A-Z][A-Za-z0-9]*(?:Error|Exception)\b:\s/,
   // Provider errors quoted as written: "OpenAI API error 500: …", "Anthropic API error …", "Stripe…".
   /\b(OpenAI|Anthropic|Stripe|Resend|Twilio) API error\b|\bStripe\w*Error\b/i,
   // A provider's billing limit, which tells our users to upgrade a plan that is ours ("Your account or
