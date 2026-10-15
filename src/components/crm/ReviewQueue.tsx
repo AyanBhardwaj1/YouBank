@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { safeText } from "@/lib/client/errors";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { DRAFT_KIND_LABEL, type DraftKind } from "@/lib/crm/model";
 import { Graduations } from "./EngineInsights";
@@ -119,7 +120,7 @@ export function ReviewQueue({ ctx, drafts, canSend, autopilotOn }: { ctx: PanelC
         {mode === "waiting" && d.holdReason && (
           <p className="mt-1.5 ctl border border-info/30 bg-info/5 px-2.5 py-1.5 text-[11px] text-info">{d.holdReason}</p>
         )}
-        {d.lastError && <p className="mt-1.5 text-[11px] text-neg">Last attempt failed: {d.lastError}</p>}
+        {d.lastError && <p className="mt-1.5 text-[11px] text-neg">Last attempt failed: {safeText(d.lastError)}</p>}
         {isEditing ? (
           <>
             <input value={editing.subject} onChange={(e) => setEditing({ ...editing, subject: e.target.value })} className={`mt-2 w-full ${input}`} />

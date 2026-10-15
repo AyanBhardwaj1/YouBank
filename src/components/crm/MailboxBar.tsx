@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { safeText } from "@/lib/client/errors";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
@@ -74,7 +75,7 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
                   {a.provider === "imap" ? "app password" : "Google sign-in"} · {a.status === "needs_reauth" ? "needs reconnecting" : `last read ${ago(a.lastSyncAt)}`}
                   {autoSync && a.status === "connected" ? " · reads every few minutes" : ""}
                 </span>
-                {a.lastError && <span className="truncate text-neg" title={a.lastError}>· {a.lastError.slice(0, 80)}</span>}
+                {a.lastError && <span className="truncate text-neg" title={safeText(a.lastError)}>· {safeText(a.lastError).slice(0, 80)}</span>}
                 {a.status === "needs_reauth"
                   ? (a.provider === "imap"
                     ? <button type="button" onClick={() => setConnecting({ ...BLANK, email: a.address })} className={btn.primary}>Reconnect</button>
