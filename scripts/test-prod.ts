@@ -5,6 +5,10 @@
  * no database.
  *   pnpm exec tsx scripts/test-prod.ts
  */
+import { isPlainRead, isTransientDbError, mayRetry, neverSent } from "@/db/transient";
+import { checkAuthUrl, checkDatabaseUrl, checkEnv, checkJobs, featureStatus, FEATURES, moneySwitches } from "@/lib/env";
+import { healthVerdict } from "@/lib/health";
+import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, withTimeout } from "@/lib/net";
 
 let pass = 0, fail = 0;
@@ -176,11 +180,76 @@ async function testNet() {
   }
 }
 
+function testDb() {
+  console.log("database: transient failures");
+  const pg = (code: string) => Object.assign(new Error(code), { code });
+  check("a connect timeout never reached the server", neverSent(pg("CONNECT_TIMEOUT")));
+  check("a waking compute (57P03) never ran the query", neverSent(pg("57P03")));
+  check("a dropped connection is transient but may have run", isTransientDbError(pg("CONNECTION_CLOSED")) && !neverSent(pg("CONNECTION_CLOSED")));
+  check("Neon scaling to zero (57P01) is transient", isTransientDbError(pg("57P01")));
+  check("a constraint or syntax error is not", !isTransientDbError(pg("23505")) && !isTransientDbError(pg("42601")));
+  check("a statement timeout is not retried", !isTransientDbError(pg("57014")));
+  check("a code on the cause counts (Drizzle wraps the driver's error)", isTransientDbError(Object.assign(new Error("Failed query"), { cause: pg("ECONNRESET") })));
+  check("a plain select is a read", isPlainRead('select "id", "updated_at" from "profiles" where "user_id" = $1'));
+  check("a select with a comment first is a read", isPlainRead("-- hi\n select 1"));
+  check("select … for update is not", !isPlainRead('select * from "kv_cache" for update'));
+  check("a sequence or advisory lock is not", !isPlainRead("select nextval('x')") && !isPlainRead("select pg_advisory_lock(1)"));
+  check("insert … returning is not", !isPlainRead('insert into "kv_cache" ("key") values ($1) returning "value"'));
+  check("a CTE is not assumed safe", !isPlainRead("with x as (delete from t returning *) select * from x"));
+  check("a write is retried only when it never left", mayRetry("insert into t values (1)", pg("ECONNREFUSED")) && !mayRetry("insert into t values (1)", pg("ECONNRESET")));
+  check("a read is retried after a dropped connection", mayRetry("select 1", pg("ECONNRESET")));
+
+  console.log("database: migrations");
+  check("migrations 0015 to 0026 are all checked", ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"].every((n) => MIGRATIONS.some(([m]) => m.startsWith(n))));
+  check("every migration file is listed", MIGRATIONS.length === 26, MIGRATIONS.length);
+  check("no relation is checked twice", new Set(expectedRelations()).size === expectedRelations().length);
+  const s1 = summarize(["algo_orders", "quant_events_issuer_idx"], ["crm_messages.topics"]);
+  check("missing objects are grouped by migration", s1.migrations.map((m) => m.name).join() === "0010_contact_knowledge,0025_algo,0026_quant", s1);
+  check("a complete schema has nothing missing", !summarize([]).core.length && !summarize([]).migrations.length);
+  check("a missing core table is core", summarize(["profiles"]).core[0] === "profiles");
+}
+
+function testEnvAndHealth() {
+  console.log("environment");
+  const full = { DATABASE_URL: "postgres://u:p@ep-x-pooler.us-east-2.aws.neon.tech/db", BETTER_AUTH_SECRET: "x".repeat(40), OPENAI_API_KEY: "k" };
+  check("the minimum runs", checkEnv(full, false).missing.length === 0);
+  check("Neon's direct address is flagged for the app", checkDatabaseUrl({ DATABASE_URL: "postgres://u:p@ep-x.us-east-2.aws.neon.tech/db" }).length === 1);
+  check("the pooled address is fine", checkDatabaseUrl(full).length === 0);
+  check("a garbled DATABASE_URL is named, without its value", /not a postgres/.test(checkDatabaseUrl({ DATABASE_URL: "npg_secret" })[0] ?? "") && !(checkDatabaseUrl({ DATABASE_URL: "npg_secret" })[0] ?? "").includes("npg_secret"));
+  check("BETTER_AUTH_URL on another domain than the site is flagged in production", checkAuthUrl({ VERCEL_ENV: "production", BETTER_AUTH_URL: "https://youbank-nu.vercel.app", NEXT_PUBLIC_SITE_URL: "https://youbank.com" }, true).length === 1);
+  check("BETTER_AUTH_URL equal to the site is fine", checkAuthUrl({ VERCEL_ENV: "production", BETTER_AUTH_URL: "https://youbank.com/", NEXT_PUBLIC_SITE_URL: "https://youbank.com" }, true).length === 0);
+  check("BETTER_AUTH_URL on a preview is not compared", checkAuthUrl({ VERCEL_ENV: "preview", BETTER_AUTH_URL: "https://youbank-nu.vercel.app", NEXT_PUBLIC_SITE_URL: "https://youbank.com" }, true).length === 0);
+  check("plain http for sign-in is flagged in production", checkAuthUrl({ BETTER_AUTH_URL: "http://youbank.com" }, true).length === 1);
+  check("INNGEST_DEV on a deployment is flagged", checkJobs({ VERCEL: "1", INNGEST_DEV: "1" }, true).length === 1 && checkJobs({ INNGEST_DEV: "1" }, false).length === 0);
+  const fs = featureStatus({ OPENAI_API_KEY: "k", R2_ACCOUNT_ID: "a" });
+  check("a feature with one of its options set is on", fs.find((f) => f.id === "ai")?.on === true);
+  check("a half-set feature is off and names what is missing", fs.find((f) => f.id === "storage")?.on === false && (fs.find((f) => f.id === "storage")?.missing ?? []).includes("R2_BUCKET"));
+  check("every feature says what people see while it is off", FEATURES.every((f) => f.off.length > 10));
+  check("real-money switches default off", Object.values(moneySwitches({})).every((v) => v === false));
+  check("only exactly 1 turns one on", moneySwitches({ COPYTRADE_TRADING_ENABLED: "true", ALGO_LIVE_ENABLED: "1" }).copyTrading === false && moneySwitches({ ALGO_LIVE_ENABLED: "1" }).algoLive === true);
+
+  console.log("health verdict");
+  const okDb = { ok: true, ms: 12, schema: { core: [], migrations: [] } };
+  const env0 = { missing: [], invalid: [], fatal: [] };
+  check("all good is ok (200)", healthVerdict({ db: okDb, env: env0, jobs: { on: true }, operator: false }).httpStatus === 200 && healthVerdict({ db: okDb, env: env0, jobs: { on: true }, operator: false }).status === "ok");
+  check("no database is down (503)", healthVerdict({ db: { ok: false, ms: 0, reason: "not configured" }, env: env0, jobs: { on: true }, operator: false }).httpStatus === 503);
+  check("a missing required setting is down", healthVerdict({ db: okDb, env: { missing: ["BETTER_AUTH_SECRET"], invalid: [], fatal: ["BETTER_AUTH_SECRET"] }, jobs: { on: true }, operator: false }).status === "down");
+  check("missing core tables are down", healthVerdict({ db: { ...okDb, schema: { core: ["profiles"], migrations: [] } }, env: env0, jobs: { on: true }, operator: false }).status === "down");
+  const mig = healthVerdict({ db: { ...okDb, schema: { core: [], migrations: [{ name: "0025_algo", missing: ["algo_orders"] }] } }, env: env0, jobs: { on: true }, operator: true });
+  check("a missing migration is degraded (200)", mig.status === "degraded" && mig.httpStatus === 200);
+  check("operators see which migration and how to fix it", JSON.stringify(mig.checks).includes("0025_algo") && JSON.stringify(mig.checks).includes("db-setup.mts finish"));
+  const pub = healthVerdict({ db: { ...okDb, schema: { core: [], migrations: [{ name: "0025_algo", missing: ["algo_orders"] }] } }, env: { missing: ["CRON_SECRET"], invalid: [], fatal: [] }, jobs: { on: false }, operator: false });
+  check("visitors see counts, not names", !JSON.stringify(pub).includes("algo") && !JSON.stringify(pub).includes("CRON_SECRET") && JSON.stringify(pub).includes("problems"));
+  check("a missing optional setting is degraded, not down", pub.status === "degraded");
+}
+
 async function main() {
   // AbortSignal.timeout's timer does not keep Node alive; a server always has something else that does.
   const alive = setInterval(() => undefined, 1_000);
   await testNet();
   clearInterval(alive);
+  testDb();
+  testEnvAndHealth();
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }

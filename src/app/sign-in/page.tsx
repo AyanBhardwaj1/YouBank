@@ -5,6 +5,8 @@ import { GOOGLE_SIGNIN, SignInButton } from "@/components/marketing/SignInButton
 import { EmailSignIn } from "@/components/marketing/EmailSignIn";
 import { ROLES, ROLE_IDS } from "@/lib/roles";
 import { Logo } from "@/components/brand/Logo";
+import { SetupScreen } from "@/components/ui/SetupScreen";
+import { setupState } from "@/lib/setup";
 
 export const metadata = { title: "Sign in" };
 
@@ -13,6 +15,9 @@ const safeNext = (v: unknown) => (typeof v === "string" && /^\/app(\/[A-Za-z0-9/
 
 export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const next = safeNext((await searchParams).next);
+  // Without a database or the auth secret nobody can sign in: say so instead of a form that cannot work.
+  // A database that cannot be reached right now still shows the form (signing in reports its own error).
+  if (!(await setupState().catch(() => ({ ready: true as const }))).ready) return <SetupScreen />;
   if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">

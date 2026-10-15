@@ -7,15 +7,27 @@ import { AppShell } from "@/components/workspace/AppShell";
 import { normalizeNavPrefs } from "@/lib/nav";
 import { edgePrefs } from "@/lib/edge/access";
 import { ThemeSync } from "@/components/theme/ThemeSync";
+import { SetupScreen } from "@/components/ui/SetupScreen";
+import { isMissingTable } from "@/lib/errors";
+import { setupState } from "@/lib/setup";
 import type { Profile, RoleId } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // A deploy ahead of its database (no DATABASE_URL, or the schema not pushed yet) shows a calm
+  // "being set up" screen; /api/health tells the operator what is missing.
+  if (!(await setupState()).ready) return <SetupScreen />;
   const user = await currentUser();
   if (!user) redirect("/sign-in");
-  if (!db) throw new Error("DATABASE_URL is not configured");
-  const [p] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id));
+  if (!db) return <SetupScreen />;
+  let p: typeof schema.profiles.$inferSelect | undefined;
+  try {
+    [p] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id));
+  } catch (e) {
+    if (isMissingTable(e)) return <SetupScreen />;
+    throw e;
+  }
   if (!p?.completedAt) redirect("/onboarding");
   const profile: Profile = { role: p.role as RoleId, specialty: p.specialty, seniority: p.seniority, firmType: p.firmType, firmName: p.firmName, firmTicker: p.firmTicker, sectors: p.sectors, goals: p.goals, name: user.name };
   const extra = (p.extra ?? {}) as Record<string, unknown>;

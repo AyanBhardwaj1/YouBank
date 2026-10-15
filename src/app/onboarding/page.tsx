@@ -4,10 +4,13 @@ import { db, schema } from "@/db";
 import { currentUser } from "@/lib/auth/user";
 import { OnboardingWizard } from "@/components/workspace/OnboardingWizard";
 import type { Profile, RoleId } from "@/lib/roles";
+import { SetupScreen } from "@/components/ui/SetupScreen";
+import { setupState } from "@/lib/setup";
 
 export const dynamic = "force-dynamic";
 
 export default async function Onboarding() {
+  if (!(await setupState()).ready) return <SetupScreen />;
   const user = await currentUser();
   if (!user) redirect("/sign-in");
   let initial: Partial<Profile> | null = null;
