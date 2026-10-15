@@ -306,7 +306,7 @@ async function testClient() {
 
   const scripted = (steps: (number | Error)[]) => {
     let n = 0;
-    const f = async (_u: string, _i?: RequestInit) => {
+    const f = async () => {
       const s = steps[Math.min(n++, steps.length - 1)];
       if (s instanceof Error) throw s;
       return new Response(JSON.stringify({ ok: s < 400, error: s >= 400 ? "Nope." : undefined }), { status: s, headers: { "content-type": "application/json" } });

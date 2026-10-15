@@ -40,6 +40,8 @@ step "billing"
 pnpm exec tsx scripts/test-billing.ts > /tmp/youbank-test-billing.log 2>&1 && tail -1 /tmp/youbank-test-billing.log || { cat /tmp/youbank-test-billing.log; fail=1; }
 step "errors"
 pnpm exec tsx scripts/test-errors.ts > /tmp/youbank-test-errors.log 2>&1 && tail -1 /tmp/youbank-test-errors.log || { cat /tmp/youbank-test-errors.log; fail=1; }
+step "production"
+pnpm exec tsx scripts/test-prod.ts > /tmp/youbank-test-prod.log 2>&1 && tail -1 /tmp/youbank-test-prod.log || { cat /tmp/youbank-test-prod.log; fail=1; }
 
 step "tool packs"
 pnpm exec tsx scripts/test-pack.ts all || fail=1
