@@ -159,6 +159,19 @@ are in `src/lib/billing/features/edge-next.ts`.
   presses them, and only on a plan that includes them. Edge's monthly Modal guard ($25) caps the whole
   app's Modal spend as a backstop.
 
+## Quant Edge: no change to the margins
+
+Quant Edge (`docs/quant-edge.md`) adds no cost line. Everything it does runs on free public data (SEC EDGAR,
+the existing price feeds), stored rows and in-process maths. Its Pro layers are uncosted perks: a few
+CPU-seconds on Vercel a use (well under a tenth of a cent), inside the per-person infrastructure already in
+the model, and capped per person per day on the server. The only model spend (reading a 13D's Item 4) is
+recorded in the AI ledger inside the person's allowance. Its background work (a nightly pass of about 30
+Inngest steps on weekdays and a two-step insider poll every ten minutes of EDGAR's day) is about 5,000 Inngest
+executions and a few CPU-hours a month, under $1 a month for the whole app, and is not added to `FIXED`. Deal
+Team's yearly full-allowance margin is unchanged (25.1% at $88.47 of cost). A minute-bar vendor, if bought,
+becomes a `FIXED` line. An "Investor" plan, if the owner adds one, would sit between Free and Pro and is where
+the retail-facing Pro layers (Factor Lab, Risk, Integrity, Sizing and TCA Pro) would naturally unlock.
+
 ## Team seats and the reassignment cooldown
 
 Each Deal Team or Enterprise seat carries its own AI allowance. Without a limit, an owner could give a

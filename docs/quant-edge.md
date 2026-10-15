@@ -10,7 +10,9 @@ in parallel on `claude/new-session-6k1ff0-algo` (broker connections, a strategy 
 live trading, risk controls). Quant Edge **produces** signals, target portfolios, risk budgets, cost estimates
 and integrity reports. The algo engine **consumes** them. Quant Edge never places an order.
 
-Written 15 October 2026 on `claude/new-session-6k1ff0-quant`, from `main` at `06a4628`.
+Written 15 October 2026 on `claude/new-session-6k1ff0-quant`, from `main` at `06a4628`. Built the same day on the
+same branch: see [13. Build status](#13-build-status) for what shipped, the owner's defaults used for the open
+questions, and where the build departs from or corrects this spec.
 
 ## Contents
 
@@ -32,6 +34,7 @@ Written 15 October 2026 on `claude/new-session-6k1ff0-quant`, from `main` at `06
 - [10. Licences to keep out](#10-licences-to-keep-out)
 - [11. Open questions for the owner](#11-open-questions-for-the-owner)
 - [12. Sources](#12-sources)
+- [13. Build status](#13-build-status)
 
 ---
 
@@ -1670,3 +1673,106 @@ Data sources
 document (SEC, FINRA, Cboe, Kenneth French, Nasdaq, Stooq, FRED, JKP). The builder should save one real response per
 source as a fixture under `scripts/fixtures/quant/` before writing its parser, and record any difference from this
 document.
+
+---
+
+## 13. Build status
+
+Built on `claude/new-session-6k1ff0-quant`, 15 October 2026: every step of 7.2. `contracts.ts` is unchanged
+from its first commit. Checks: `scripts/test-quant.ts` (245 checks: known answers for every statistic, then the
+features), typecheck, lint, the billing, premium, Edge next, copy-trading, errors and icon suites, and a
+production build.
+
+### What shipped
+
+| Step | Status | Where |
+|---|---|---|
+| QF1 contracts and stores | Done. `quant_signals`, `quant_targets` (versioned), `quant_trials` (append-only by rule), `quant_runs`; `signalsAsOf`, `latestSignals`, `getTarget`, `logTrial` (dedupes re-runs, marks near-duplicates as aliases), `integrityCheck`, `estimateCost`, `latestRiskBudget`; routes under `/api/quant`; Inngest events `quant/*`; adapters `copy.13f` (targets for copies and curated funds), `edge.pulse` and Deal Radar | `src/lib/quant/`, `api.ts` is the algo engine's entry point; `drizzle/0026_quant.sql` |
+| QF2 statistics kit | Done, each statistic against a known answer (statsmodels, NumPy and SciPy outputs saved in `scripts/fixtures/quant/stats-oracle.json`, or the papers' examples) | `src/lib/quant/stats/` |
+| Q3 BTX | Done: grade A to F with its rule, check a claim, graded uploads (each a trial), families from the trial log, copy-trade clone backtests graded, the live gate with a typed, logged override | `integrity/`, `/app/quant?tab=integrity`, `BTX` |
+| QF3 point-in-time store | Done for the beta: NYSE calendar with special closures, knownAt rules, daily bars in R2 (live fallback), SEC company facts as of acceptance, the top-1,000 universe rebuilt weekly with first and last dates; the nightly pass backfills bars from 2005 in slices. No separate backfill script: the nightly pass's slices are the backfill | `pit/`, `nightly.ts`, `functions.ts` |
+| QF4 factor engine, QF5 event studies | Done: YouBank's own 2x3 factors, the cross-sectional risk model, crowding (valuation spread, comovement, 13F ownership), an ETF-proxy tier until YouBank's factors have history; the market-model event study with a calendar-month bootstrap and the unconditional hit rate | `factors/`, `events/` |
+| Q1 FACT | Done for typed holdings (and the API's copy and broker sources); the copy-portfolio panel in Fund copies is not built | `/app/quant?tab=factors`, `FACT`, `AAPL FACT` |
+| Q2 PORT tabs | Done: PORT gains "Risk model, stress, liquidity" and "Factors" tabs beside its overview | `risk/`, `PORT` |
+| Q4 KELLY | Done; the RiskBudget is saved per account and announced with `quant/riskbudget.updated` | `sizing/`, `KELLY` |
+| Q5 TCA | Done on daily bars: seven broker CSV templates, SnapTrade sync (Pro), the pre-trade estimate, Rule 605/606 parsing and payment for order flow on the person's orders. Minute bars are registered as planned. `estimateCost` is not yet shown on copy-trading rebalance batches | `tca/`, `TCA` |
+| Q7 INSC | Done: Form 4 and 13D/13G polling every ten minutes, routine versus opportunistic, exclusions, clusters and activist events, signals gated on base rates, feed cards, ledger forecasts (kind `quant_event`), Item 4 readings (Pro) | `insiders/`, `INSC`, `AAPL INSC` |
+| Q14 DRILL | Done: intervals, true-or-false with confidence, EV problems, the Kelly coin, personal calls scored from closes (kind `user_call`), team leaderboards (Deal Team). The market-making game is built and tested in `drills/games.ts` but has no screen yet | `drills/`, `DRILL` |
+| Surfaces | `/app/quant` with nine tabs, "Quant" in the navigation after Fund copies, terminal group "Quant", AI tools, five canvas blocks, two Edge feed kinds, two Studio agent tools | see the README's Quant section |
+
+### The owner's open questions: defaults used
+
+1. No price vendor: the beta universe is today's top 1,000 by market value, and every result on it carries the
+   survivorship flag (`DISCLOSURES.survivorship`).
+2. No "Investor" plan was added; `features/quant.ts` and `docs/pricing.md` say where one would go.
+3. Kenneth French's data is neither displayed nor redistributed. YouBank builds its own factors; no offline
+   comparison was run in this round.
+4. A `/app/quant` hub, "Quant" in the navigation, and terminal functions.
+5. No options data: Q9 is out of scope.
+6. No pooling of people's fills: each person's TCA uses their own fills and public data only.
+7. A D or F grade allows live use only with the typed phrase `I accept grade <G> for <family>`, logged in
+   `quant_runs` with its hash.
+8. No "buy" or "sell" in explanations: templates and AI tool descriptions are checked against `FORBIDDEN`; every
+   result carries "hypothetical" and "not investment advice" disclosures where they apply.
+9. The migration is `drizzle/0026_quant.sql` (`IF NOT EXISTS` throughout), mirrored in `schema.ts`.
+
+### Where the build departs from this spec
+
+- **Premium ids** use a hyphen (`quant.factorlab-pro`), as every other area does.
+- **Premium costs.** The Pro layers are perks with no cost of their own (their CPU is under a tenth of a cent a
+  use, inside the per-person infrastructure line, and capped per person per day); only Item 4 readings are
+  metered, inside the AI allowance. This keeps Deal Team's margin where the algo branch leaves it.
+- **AI tools** live in `src/lib/quant/ai-tools.ts` (registered in the chat agent beside the crypto tools), not in
+  `src/lib/ai/tools.ts`, and add `quant_kelly` (person-supplied inputs only).
+- **Canvas.** The five blocks pass portfolios as `companies` (equal weights) or a `table` with symbol and weight
+  columns, and return `table`, `memo` and `findings`; the new value kinds `portfolio`, `quantsignals` and
+  `target` were not added. "Send to Studio" on Q1 to Q3 results is not built; the Studio agent has
+  `quant_factor_exposures` and `quant_stress` instead.
+- **Feed.** `quant.insider_cluster` and `quant.activist` ship; `quant.filing_change`, `quant.regime` and
+  `quant.crowding` belong to features of later rounds. Cards reach people who watch the company in Edge; matching
+  a person's holdings is not built.
+- **Ledger.** Kinds `quant_event`, `quant_signal` and `user_call` and the `return` rule ship; `quant_regime` and
+  `drill` (Q11 and per-question drill forecasts) do not.
+- **Lone peak.** A parameter set is flagged as a lone peak when it beats its neighbours' median Sharpe by more
+  than two standard errors of a Sharpe estimate (not 2.5) and the median is under half of it.
+
+### Corrections to this spec
+
+- **The deflated Sharpe ratio's false-positive rate.** Section 6 (Q3) says DSR keeps the false-positive rate "at
+  about 5%" when the best of many noise strategies is tested. In a 2,000-run check with SciPy (best of 50 noise
+  strategies, a year of daily returns), the 95% DSR test flagged 0.05% of them, against about 92% for the raw
+  PSR: 5% is an upper bound, not the rate. The test's own 300 runs give 0% and 95%; it asserts at most 5% for DSR
+  and over 80% for PSR.
+- **Kelly's drawdown law.** The probability that a fraction c of full Kelly ever falls to x of its *starting*
+  value is x^(2/c - 1) (continuous rebalancing, known edge). It is relative to the starting value, not to the
+  running peak; the screens say "ever falling that far below the starting value". Verified by simulation.
+- **Kelly for one bet with an uncertain win rate.** Expected log growth is linear in p, so averaging over a belief
+  about p gives the same optimum as the midpoint: for a single bet the uncertainty-adjusted fraction equals full
+  Kelly at the midpoint, and the low end of the range is what shows the cost of being wrong. For an asset
+  (uncertain mean return) the adjustment is real, μ/(σ² + var μ).
+- **Newey-West.** statsmodels' HAC errors (the reference) apply no small-sample factor; the kit matches them.
+
+### Known gaps
+
+- **Fixtures are constructed.** Every data host was unreachable from the build sandbox, so each parser's fixture
+  under `scripts/fixtures/quant/` is built from the documented format and says so in its README. Save one real
+  response per source and rerun the tests before relying on a parser in production.
+- **Survivorship.** Until a vendor with delisted history is chosen, YouBank's factors and base rates rest on
+  today's survivors and say so.
+- **Minute bars** (Pro TCA) are planned, not bought.
+- **The ML service** is not used: PBO on more than 500 trials is capped rather than offloaded.
+- **Graded strategies' live follow-up** (out-of-sample tracking after a grade) is left to the algo engine's logs.
+- **The risk model** has no industry factors yet, and funds are not looked through to their N-PORT holdings.
+- **Insider base rates** need stored history: signals publish only once 30 or more past events of a kind have
+  been measured, so the first weeks after deploy show events without signals.
+
+### Notes for the algo branch
+
+- Import only from `src/lib/quant/api.ts` (and `contracts.ts`); listen for `quant/signals.published`,
+  `quant/target.updated`, `quant/trial.logged` and `quant/riskbudget.updated`.
+- Log every backtest run with `logTrial` under one family per strategy, then call `integrityCheck(family)` before
+  going live; `liveGate(report, family)` says whether the typed override is needed, and `logOverride` records it.
+- `estimateCost(symbol, notionalUsd, side)` is free and safe to call per order ticket.
+- Signals publish only with a base rate behind them; a backtest reads them through `signalsAsOf({ at })`, which
+  never returns a signal whose `asOf` is after `at`.
+

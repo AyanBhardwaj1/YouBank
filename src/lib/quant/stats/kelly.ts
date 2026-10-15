@@ -5,8 +5,9 @@
  * - kellyContinuous: f* = (μ - r)/σ² for a lognormal asset (Merton's fraction).
  * - kellyMulti: f* = Σ⁻¹(μ - r) for several assets.
  * - growthShare: growth at fraction c of full Kelly is c(2 - c) of the maximum (Thorp).
- * - drawdownProb: P(wealth ever falls to x of its running peak) = x^(2/c - 1) at c of full Kelly under
- *   geometric Brownian motion (MacLean, Thorp and Ziemba).
+ * - drawdownProb: P(wealth ever falls to x of its starting value) = x^(2/c - 1) at c of full Kelly under
+ *   geometric Brownian motion (MacLean, Thorp and Ziemba). It is measured from the start, not from the running
+ *   peak: over an unbounded horizon a fall of any size from some peak is certain.
  * - expectedLogGrowth / uncertainKelly: the fraction that maximises expected log growth averaged over the
  *   uncertainty in the edge, by Monte Carlo over its distribution.
  */
@@ -30,7 +31,7 @@ export const discreteGrowth = (f: number, p: number, b: number) => (f >= 1 || f 
 /** Continuous growth rate per year at fraction f: r + f(μ - r) - f²σ²/2. */
 export const continuousGrowth = (f: number, mu: number, sigma: number, r = 0) => r + f * (mu - r) - (f * f * sigma * sigma) / 2;
 
-/** P(ever falling to `x` of the running peak) at fraction `c` of full Kelly under GBM: x^(2/c - 1). */
+/** P(ever falling to `x` of the starting value) at fraction `c` of full Kelly under GBM: x^(2/c - 1). */
 export function drawdownProb(c: number, x: number): number {
   if (!(c > 0) || !(x > 0) || x >= 1) return x >= 1 ? 1 : 0;
   if (c >= 2) return 1;

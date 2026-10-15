@@ -43,6 +43,7 @@ Production: **https://youbank-nu.vercel.app** until the custom domain is set (`N
    - [Teams and live collaboration](#teams-and-live-collaboration)
    - [YouBank for desktop](#youbank-for-desktop)
    - [Edge: precedents, alternative data and sale odds](#edge-precedents-alternative-data-and-sale-odds)
+   - [Quant: the quant desk in your pocket](#quant-the-quant-desk-in-your-pocket)
    - [Premium features](#premium-features)
    - [Site, onboarding and styles](#site-onboarding-and-styles)
 3. [Architecture](#architecture)
@@ -1327,6 +1328,65 @@ public data; the paid layers follow [docs/premium.md](docs/premium.md).
   anything by voice. "Commute brief" reads the feed, theses and watched companies with lock-screen controls.
   A live spoken conversation over WebRTC is premium (`EDGE_VOICE_REALTIME=1`).
 
+### Quant: the quant desk in your pocket
+
+Quant ([docs/quant-edge.md](docs/quant-edge.md)) puts the methods a quant desk uses on a person's own portfolio
+and ideas, with an interval and a source on every number. It lives at `/app/quant` ("Quant" in the navigation,
+after Fund copies), in the Terminal, in the AI assistant, on the Edge canvas and in the Edge feed. It produces
+signals, target portfolios, risk budgets, cost estimates and integrity grades for the algo engine; it never
+places an order. Nothing is phrased as advice: explanations come from templates in `src/lib/quant/words.ts`,
+a test checks every template and AI tool description against a list of advice words, and results carry
+"hypothetical" and "not investment advice" disclosures. The terms are accepted once (`quant_consents`).
+
+- **Backtest check (`BTX`).** Grades any backtest A to F: the deflated Sharpe ratio with the effective number of
+  variants tried (every backtest run is logged as a trial in `quant_trials`, append-only), the probability of
+  backtest overfitting by CSCV, minimum track record length, the Harvey-Liu haircut, cost sensitivity and the
+  breakeven cost, year-by-year stability, a block placebo, a lone peak among the parameters, and look-ahead,
+  survivorship and language-model hygiene. "Check a claim" works from typed numbers alone. Copy trading's
+  clone backtests are logged as trials of the fund's family and carry the grade. A D or F needs a typed,
+  logged override before the algo engine trades it live.
+- **Factor Lab (`FACT`).** A portfolio's betas to market, size, value, momentum, quality and low volatility with
+  95% intervals over one and three years, alpha with its t-statistic and how likely luck is, the factor share of
+  risk, the closest mix of index funds, and factor crowding (valuation spread, comovement, 13F ownership).
+  Factors are YouBank's own, built point in time from SEC filings and daily prices (Fama-French 2x3 sorts on the
+  top-1,000 universe); until they have enough history, ETF proxies stand in, and the screen says which.
+  Kenneth French's data is never shown or redistributed.
+- **Portfolio risk (`PORT`, with new tabs).** Risk by holding and factor (Ledoit-Wolf and a factor model), one- and
+  ten-day value at risk and expected shortfall by filtered historical simulation with Kupiec and Christoffersen
+  backtests, replays of 2000, the 2007 quant crunch, 2008, 2020 and 2022 (holdings without prices then replayed
+  through their factors), shocks such as "market -20" with the other factors drawn conditionally, the gentlest
+  scenario that loses a given amount, drawdown odds and days to exit.
+- **Sizing (`KELLY`).** Kelly on the person's own numbers as a range, the growth curve, the chance of halving at
+  full, half and quarter Kelly, volatility targeting, risk parity, and pod-style drawdown rules simulated on a
+  history (with the times they de-risked near a bottom). A saved risk budget is what the algo engine reads; it
+  may adopt or tighten it, never loosen it.
+- **Trading costs (`TCA`).** A pre-trade estimate for any symbol and size (Corwin-Schultz and Abdi-Ranaldo
+  spreads, square-root impact on 20-day volume), the person's own fills from a broker CSV (Schwab, Fidelity,
+  Robinhood, Webull, IBKR, E*TRADE) or, with Pro, a connected broker, measured against each day's bar and
+  projected to a year, and brokers' Rule 605 and 606 reports with the payment for order flow on the person's
+  own orders. Fills are never pooled across people and can be deleted.
+- **Insiders (`INSC`).** Form 4 and Schedule 13D every ten minutes of EDGAR's day: opportunistic insider clusters
+  (routine traders, plan trades, offerings and 10%-owner funds left out), large CEO and CFO purchases, and new
+  or raised activist stakes, each with the base rate of what followed similar events. Cards in the Edge feed
+  for watched companies (`quant.insider_cluster`, `quant.activist`).
+- **Desk drills (`DRILL`).** 90% intervals and true-or-false with a confidence (Brier score), expected-value
+  problems, the Kelly coin, and the person's own calls scored from prices when they close. Virtual: no money,
+  no prizes.
+- **Signals.** Insider events, Edge Pulse change points and Deal Radar odds as `QuantSignal`s with `asOf`
+  (when every input was public), `validUntil`, their base rate and calibration. A signal publishes only once
+  its base rate rests on at least 30 past events. `signalsAsOf` gives a backtest exactly what was knowable.
+
+Underneath: a point-in-time store (an NYSE calendar with special closures; daily bars in R2; SEC company facts
+known from their acceptance time; a top-1,000 US universe rebuilt weekly, flagged survivorship-biased because
+delisted history needs a vendor), a statistics kit with known-answer tests against statsmodels, NumPy and the
+papers' worked examples, and an event-study engine. The nightly pass (Inngest `quant-nightly`, or
+`/api/cron/quant` without Inngest) refreshes it in slices. The algo engine's entry point is
+`src/lib/quant/api.ts`; the contract is `src/lib/quant/contracts.ts`. AI tools: `quant_factor_exposures`,
+`quant_risk`, `quant_backtest_check`, `quant_signals`, `quant_event_base_rates`, `quant_costs`, `quant_kelly`;
+canvas blocks: Factor Lab, Portfolio risk, Backtest check, Event base rates, Insider clusters. Free covers
+the cores; Pro adds depth (200 holdings, ten years, broker holdings, full integrity reports, risk budgets,
+broker sync, the full insider board and Item 4 readings); Deal Team adds team drill leaderboards.
+
 ### Premium features
 
 Premium features are built and switched on per plan: the plan decides who may use one, and for the paid
@@ -1501,6 +1561,7 @@ All tables are in `src/db/schema.ts`.
 | Crypto | `crypto_addresses` (addresses a person reads: own or watched, pasted or connected; never keys), `crypto_cost_basis` (what they say they paid, per asset), `crypto_notarizations` (hash, transaction, sender, chain, status, block) |
 | Calendar | `calendar_accounts` (connected accounts; OAuth tokens and app passwords encrypted), `calendar_calendars` (shown or hidden, sync token, push channel), `calendar_events` (occurrences in the 30-days-back, 90-ahead window, with linked contact and deal ids), `calendar_prefs` (zone, working hours, default calendar, meeting link, the auto-brief switch), `calendar_briefs` (AI meeting briefs) |
 | Fund copies | `copy_filers` (every 13F filer seen, for search), `copy_filings` (each 13F-HR and 13F-HR/A as read, holdings as JSON), `copy_securities` (CUSIP to ticker and sector, with the source), `copy_cusip_overrides` (the owner's corrections), `copy_follows`, `copy_portfolios` (paper and live copies), `copy_brokers` (the SnapTrade user, secret encrypted), `copy_consents`, `copy_batches` and `copy_orders` (proposals and what was sent), `copy_audit` (append-only by rule) |
+| Quant | `quant_signals` (QuantSignals by producer, symbol and `as_of`), `quant_targets` (versioned target portfolios), `quant_trials` (every backtest run, append-only), `quant_runs` (saved analyses, risk budgets, overrides, drills), `quant_fills` (a person's own fills), `quant_factor_returns`, `quant_universe` (the top-1,000 with first and last dates), `quant_insider_tx`, `quant_events`, `quant_base_rates`, `quant_consents` |
 | AI and inference | `ai_usage` (every model call: feature, model, tokens including cached and reasoning, list-price cost); `crm_messages.topics` (each email's topics, tagged once, for contact knowledge tracing); terminal mastery lives in `profiles.extra.skills` |
 
 **Migrations.**
@@ -1523,6 +1584,7 @@ All tables are in `src/db/schema.ts`.
   - `0019_meetings`
   - `0023_copytrade`
   - `0024_seat_cooldown`
+  - `0026_quant`
 - After applying them, `drizzle-kit push` should report no changes.
 
 ---
@@ -1792,6 +1854,7 @@ deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays ever
 | Meetings (83 checks) | `pnpm exec tsx scripts/test-meetings.ts` | Transcript chunk stitching (overlaps, re-sent chunks, per-chunk speaker labels, "You" from the microphone levels); participant matching; the notes parser (action items, owners, dates); proposed deal changes; the notetaker's webhook signatures, events and transcripts; meeting context and auto-join; transcription answers and engine choice; the premium features |
 | Desktop app (27 tests) | `cd desktop && pnpm check:web && pnpm check:rust` | Links, navigation rules, site addresses, settings, the scheduler's timing, which files are indexed, path hashing, the streaming parser; meeting audio (mixing, resampling, levels, WAV, overlapping chunks, silence in loopback), call detection and its parsers, never-record rules, the recording dot; the pages' scripts and that every command they call is registered and allowed |
 | Preflight | `bash scripts/preflight.sh` | Themes, the tool catalog, typecheck, lint, inference, Newsroom, tool packs, production build |
+| Quant (244 checks) | `pnpm exec tsx scripts/test-quant.ts` | Every statistic against a known answer (PSR, DSR and the paper's example, MinTRL, effective trials, haircuts, BH and BHY, PBO, the stationary bootstrap and Politis-White, the Reality Check, purged k-fold, Ledoit-Wolf, the HMM, ADF, Engle-Granger and Johansen against statsmodels, Newey-West, Kelly and its drawdown law); the contract validators; `signalsAsOf` never seeing the future; the wording rules over every template and AI tool; the integrity grade's rules; the trading calendar and knownAt; bars, panels, splits and the universe; factor sorts, crowding and Factor Lab; event studies; VaR, its backtests, replays, shocks and reverse stress; Kelly, the governor and the risk budget; fill imports for seven brokers, spread and impact models, Rule 605 and 606; Form 4 and 13D parsing and the insider rules; drills; the adapters, feed cards, canvas blocks and terminal commands; the premium registry. Fixtures in `scripts/fixtures/quant/` (constructed from documented formats, see its README) |
 | Edge next (260 checks) | `pnpm exec tsx scripts/test-edge-next.ts` | The crosswalk, the change library and its placebo rate, the calibration library and ledger rules, Calibrated Claims, the Precedent Engine (number readers, section location on saved proxies, checks on hand-labelled fields, similarity, the conformal band's coverage), the Pulse (every source's parser on saved responses, title rules on 60 labelled titles, findings) and the Deal Radar (no look-ahead, labels, the model beating its baselines on synthetic data, calibration, card wording) |
 | Deal Radar model (14 checks) | `python ml/test_odds_core.py` | LightGBM training and scoring as the ML service runs them, on a synthetic panel with a known hazard |
 | Edge next evaluations | `scripts/eval-precedents.ts`, `scripts/eval-odds.ts`, `scripts/eval-claims.ts` | Field accuracy, recall@10 of banker-chosen precedents and interval coverage; the Deal Radar's out-of-time scorecard; claim support (against the test branch) |
@@ -2046,6 +2109,9 @@ YouBank/
                            layer, Newsroom signals, assistant tools
     copytrade/             13F parsing and EDGAR ingestion, CUSIP mapping, clone weights, the backtest,
                            paper copies, the rebalance, SnapTrade, one-tap approval, the cron pass
+    quant/                 Quant Edge: the contract and api.ts for the algo engine, the stores, the
+                           statistics kit (stats/), point-in-time data (pit/), factors, event studies,
+                           integrity, risk, sizing, TCA, insiders, drills, adapters, jobs, AI tools
     workflows/             tool contract, prompt builder, registry, a pack per role
     teams/  collab/  auth/ teams and roles, live collaboration, sign-in
     themes.ts calc.ts roles.ts metrics.ts company.ts
@@ -2062,6 +2128,7 @@ YouBank/
 | [docs/meetings.md](docs/meetings.md) | The meeting copilot: desktop capture, the notetaker bot, live suggestions, notes and how they are filed into Relationships, the calendar's place, known gaps |
 | [docs/copy-trading.md](docs/copy-trading.md) | Fund copies: 13F ingestion and CUSIP mapping, the backtest, paper and live copies, SnapTrade, safety rails, and what counsel must review before real trading |
 | [docs/edge-next.md](docs/edge-next.md) | Edge's next round: the 14 proposals, the build order and what each step delivered |
+| [docs/quant-edge.md](docs/quant-edge.md) | Quant Edge: how the top firms get their edge, what a small investor can reproduce, the contract with the algo engine, the features and their build status |
 | [docs/edge-architecture.md](docs/edge-architecture.md) | Edge's parts, tables, background jobs, free-tier guards and operations |
 | [docs/newsroom.md](docs/newsroom.md) | The Newsroom: sources and why each, the pipeline, clustering calibration, ranking, AI and its budget, delivery, the editions |
 | [docs/03-decisions.md](docs/03-decisions.md) | Every decision and its rationale, in order |
