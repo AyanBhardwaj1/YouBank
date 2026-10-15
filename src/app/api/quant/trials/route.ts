@@ -24,7 +24,10 @@ export async function POST(req: Request) {
     await capDaily(user, "trialsPerDay", "That is the most trials one person can log in a day.");
     const b = await jsonBody(req);
     const slug = String(b.name ?? "my strategy").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "strategy";
-    const family = typeof b.family === "string" && b.family.startsWith(`upload:`) ? b.family : `upload:${createHash("sha256").update(user.id).digest("hex").slice(0, 10)}:${slug}`;
+    // A person logs only into their own families: "upload:<their hash>:...". Any other family name (someone
+    // else's upload family, an algo or copy family) would put trials in a family they do not own.
+    const own = `upload:${createHash("sha256").update(user.id).digest("hex").slice(0, 10)}:`;
+    const family = typeof b.family === "string" && b.family.startsWith(own) ? b.family : `${own}${slug}`;
     if (!Array.isArray(b.returns)) throw refuse("Send `returns` as a list of numbers.");
     const h = (b.hygiene && typeof b.hygiene === "object" ? b.hygiene : {}) as TrialHygiene;
     const dates = Array.isArray(b.dates) ? (b.dates as unknown[]).map(String) : undefined;
