@@ -45,15 +45,34 @@ export type OrderIntent = { side: "buy" | "sell"; symbol: string; qty?: number; 
 const SYM = "([A-Za-z]{1,5}(?:[.-][A-Za-z]{1,3})?)";
 
 /**
+ * The person's own words: text they quoted or pasted (in quotation marks, in code, or on "> " lines) is
+ * someone else's, so an instruction inside it ("the article says: \"buy 1000 TSLA\"") is not theirs.
+ * An unclosed quotation runs to the end. Pure.
+ */
+export function ownWords(text: string): string {
+  return text
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/`[^`]*(`|$)/g, " ")
+    .replace(/^[ \t]*>.*$/gm, " ")
+    .replace(/"[^"]*("|$)/g, " ")
+    .replace(/[“„][^”“]*([”“]|$)/g, " ")
+    .replace(/«[^»]*(»|$)/g, " ");
+}
+
+/** Sentences that negate, cancel or report someone else's words are not instructions. */
+const NOT_AN_INSTRUCTION = /\b(should|would|could|whether|if|don['’]?t|do not|never|not|cancel|said|says|saying|wrote|writes|according|recommends?|recommended|suggests?|suggested|tweet(?:s|ed)?|posted|quoted?|article|analysts?|headline)\b/i;
+
+/**
  * Order instructions in the person's own words: "buy 10 AAPL", "sell 5 shares of MSFT", "buy $500 of SPY",
  * "sell all TSLA", "sell all of my NVDA". Only imperative instructions count; questions ("should I buy
- * AAPL?") and negations ("don't sell MSFT") do not. Pure.
+ * AAPL?"), negations ("don't sell MSFT"), reported words ("the analyst says buy NVDA") and quoted or
+ * pasted text do not. Pure.
  */
 export function parseOrderIntents(text: string): OrderIntent[] {
   const out: OrderIntent[] = [];
-  const t = text.replace(/\s+/g, " ");
+  const t = ownWords(text).replace(/\s+/g, " ");
   for (const sentence of t.split(/(?<=[.!?\n;])\s+/)) {
-    if (/\?\s*$/.test(sentence) || /\b(should|would|could|whether|if)\b/i.test(sentence)) continue;
+    if (/\?\s*$/.test(sentence) || NOT_AN_INSTRUCTION.test(sentence)) continue;
     const re = new RegExp(`(?:^|[^a-z'])(?:(don'?t|do not|never|not)\\s+)?(buy|sell)\\s+(?:(all)(?:\\s+(?:of\\s+)?(?:my|the)|\\s+of)?\\s+${SYM}|\\$\\s?([\\d,]+(?:\\.\\d+)?)\\s+(?:of\\s+|worth\\s+of\\s+)?${SYM}|([\\d,]+(?:\\.\\d+)?)\\s+(?:shares?\\s+(?:of\\s+)?|units?\\s+(?:of\\s+)?)?${SYM})`, "gi");
     for (const m of sentence.matchAll(re)) {
       if (m[1]) continue;
@@ -110,10 +129,15 @@ export function gate(call: ToolCall, ctx: GateContext): GateResult {
       const ch = (call.args.changes ?? {}) as Record<string, unknown>;
       if ("mode" in ch) return { allowed: false, reason: "The agent cannot change a strategy's mode; switching to live trading is done by you, with its confirmation, on the strategy's page." };
       const cur = ctx.strategies[sid];
-      const risk = (ch.risk ?? {}) as Partial<RiskLimits>;
-      const loose = cur ? loosens(cur.risk, risk) : [];
-      const moreCapital = cur && typeof ch.capitalUsd === "number" && ch.capitalUsd > cur.capitalUsd;
+      if (!cur) return { allowed: true, needsConfirmation: true, reason: "This strategy's current settings could not be read; you confirm the change before it applies." };
+      const risk = (ch.risk && typeof ch.risk === "object" ? ch.risk : {}) as Partial<RiskLimits>;
+      const loose = loosens(cur.risk, risk);
+      const moreCapital = typeof ch.capitalUsd === "number" && ch.capitalUsd > cur.capitalUsd;
       if (loose.length || moreCapital) return { allowed: true, needsConfirmation: true, reason: `This loosens ${[...loose, ...(moreCapital ? ["capitalUsd"] : [])].join(", ")}; you confirm it before it applies.` };
+      // An autonomous strategy sends real orders without asking: what it trades (universe, signal, sizing,
+      // execution…) changes only with the person's tap. Only tightening its risk limits applies directly.
+      const other = Object.keys(ch).filter((k) => k !== "risk");
+      if (mode === "live_auto" && other.length) return { allowed: true, needsConfirmation: true, reason: `This strategy trades on its own, so a change to ${other.join(", ")} comes back for you to confirm.` };
       return { allowed: true, reason: "Within your limits (tightening or neutral)." };
     }
     case "place_order": {

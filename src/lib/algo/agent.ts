@@ -89,7 +89,9 @@ export async function agentTurn(user: Person, message: string, meta: Meta) {
   const text = message.trim().slice(0, 2000);
   if (!text) throw refuse("Write a message first.");
   const db = requireDb();
-  const history = (await db.select().from(schema.algoAgentMessages).where(eq(schema.algoAgentMessages.userId, user.id)).orderBy(desc(schema.algoAgentMessages.createdAt)).limit(6)).reverse();
+  // The plan step reads no outside text: replies written from news (a turn that read outside text) stay out of its history.
+  const readOutside = (calls: unknown) => Array.isArray(calls) && calls.some((c) => (c as { tool?: string; allowed?: boolean }).tool === "read_news" && (c as { allowed?: boolean }).allowed);
+  const history = (await db.select().from(schema.algoAgentMessages).where(eq(schema.algoAgentMessages.userId, user.id)).orderBy(desc(schema.algoAgentMessages.createdAt)).limit(6)).reverse().filter((h) => h.role === "user" || !readOutside(h.calls));
   const ctx = await context(user);
   const plan = await structured(PlanZ, "algo-agent-plan", SYSTEM, `${ctx.text}\n\nRecent conversation:\n${history.map((h) => `${h.role}: ${h.content.slice(0, 400)}`).join("\n") || "(none)"}\n\nThe person says: ${text}`, { maxTokens: 3000, timeoutMs: 60_000 });
   const c: Ctx = { user, meta, deadline: Date.now() + 80_000 };
@@ -185,8 +187,15 @@ async function agentOrder(user: Person, sid: number, a: Record<string, unknown>,
   const px = q[symbol]?.last;
   if (!px) throw refuse(`There is no current price for ${symbol}.`, 409);
   const held = row.mode === "paper" ? (row.paper as PaperState | null)?.positions[symbol]?.units ?? 0 : row.managed?.[symbol] ?? 0;
-  const units = a.all === true ? held : a.notionalUsd !== undefined ? Math.floor((Number(a.notionalUsd) / px) * 1e4) / 1e4 : Number(a.qty);
-  if (!(units > 0)) throw refuse(side === "SELL" ? `The strategy holds no ${symbol}.` : "The order has no quantity.");
+  const { liveAdapter } = await import("./connections");
+  const live = row.mode !== "paper" && row.connection && row.accountId ? await liveAdapter(user.id, row.connection, row.accountId) : null;
+  if (row.mode !== "paper" && !live) throw refuse("This strategy's broker connection is missing.", 409);
+  // Whole shares where the broker trades no fractions: a dollar amount rounds down; a fractional quantity is refused, not changed.
+  const whole = !!live && !live.adapter.capabilities().fractional && spec.assetClass !== "crypto";
+  if (whole && a.qty !== undefined && !Number.isInteger(Number(a.qty))) throw refuse("This broker trades whole shares only through its API. Ask for a whole number of shares.");
+  const raw = a.all === true ? held : a.notionalUsd !== undefined ? Math.floor((Number(a.notionalUsd) / px) * 1e4) / 1e4 : Number(a.qty);
+  const units = whole ? Math.floor(raw + 1e-9) : raw;
+  if (!(units > 0)) throw refuse(side === "SELL" ? `The strategy holds no ${symbol}.` : whole ? `That is less than one share of ${symbol}.` : "The order has no quantity.");
   const band = spec.execution.limitBandBps / 10_000;
   const limit = spec.execution.orderType === "Limit" ? Math.round(px * (side === "BUY" ? 1 + band : 1 - band) * 100) / 100 : null;
   const [d] = await requireDb().insert(schema.algoDecisions).values({ strategyId: sid, userId: user.id, source: "agent", mode: row.mode, notes: `The person's instruction: "${userText.slice(0, 300)}"` }).returning({ id: schema.algoDecisions.id });
@@ -200,8 +209,6 @@ async function agentOrder(user: Person, sid: number, a: Record<string, unknown>,
     const r = await send(row, spec, batchId, adapter, "paper", m, true, { paper, user });
     return { paper: true, batchId, sent: r.sent, message: r.message, blocked: r.blocked };
   }
-  const { liveAdapter } = await import("./connections");
-  const live = row.connection && row.accountId ? await liveAdapter(user.id, row.connection, row.accountId) : null;
   if (!live) throw refuse("This strategy's broker connection is missing.", 409);
   const batchId = await createBatch(row, spec, d.id, [order], row.accountId!, live.adapter, "agent", new Date());
   await notify(user.id, { key: `algo:batch:${batchId}`, title: `Order to approve: ${side} ${units} ${symbol}`, body: "You asked the agent for this order. It is sent only when you approve it.", url: `/app/algo?strategy=${sid}&tab=live`, reasons: ["Your instruction"] }).catch(() => false);
