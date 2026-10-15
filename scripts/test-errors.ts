@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { fieldLabel, issueSentence, looksInternal, OUR_SIDE, refusalMessage, SETTING_UP, TOO_SLOW } from "@/lib/error-text";
 import { describeFailure, failureMessage, isMissingTable, isPendingMigration, publicMessage, storedMessage } from "@/lib/errors";
 import { toolError } from "@/lib/ai/tools";
+import { evaluateScript } from "@/lib/calc";
 import { incompleteMessage } from "@/lib/ai/agent";
 import { parseStrategy } from "@/lib/algo/strategy";
 import { ApiError, apiError, errorMessage, messageFor, OFFLINE, safeText, statusMessage } from "@/lib/client/errors";
@@ -110,7 +111,7 @@ const quiet = console.error;
 /* ---------------- The source scan ---------------- */
 
 /** A caught error's own text, read raw: its message, String(e), "${e}", JSON of it, a response's statusText. */
-const RAW = /\b(e|err|error|ex|caught|x|failure)\.message\b|String\((e|err|error|ex|x|caught)\)|\$\{(e|err|ex|caught)\}|JSON\.stringify\((err|error|ex|caught)\)|\b(res|r|response)\.statusText\b/;
+const RAW = /\b(e|err|error|ex|caught|x|failure)\.message\b|\bas Error\)\.message\b|String\((e|err|error|ex|x|caught)\)|\$\{(e|err|ex|caught)\}|JSON\.stringify\((err|error|ex|caught)\)|\b(res|r|response)\.statusText\b/;
 /** Where text goes to a person: a response, state, a toast, a stream, a stored error, a payload field, the desktop's DOM. */
 const SINK = /\b(Response|NextResponse)\.json\(|\bjson\(\{|\bset[A-Z]\w*\(|\btoast\(|\bemit\(|\bsend\(|\benqueue\(|\blastError\b|\b(error|message|text|note|reason|summary|answer|why|detail):\s|\.push\(|\bh\("|\balert\(|\breplaceChildren\(|\bthrow new \w*Error\(/;
 /** The screens: a line that passes the text through one of them is fine. */
@@ -128,6 +129,7 @@ const ALLOW: { file: RegExp; line?: RegExp; why: string }[] = [
   { file: /^src\/lib\/crm\/imap\.ts$/, line: /const msg = /, why: "friendlyMailError reads it to classify; it returns our sentences" },
   { file: /^src\/lib\/news\/(pipeline|sources\/\w+)\.ts$|^src\/lib\/crypto\/news\.ts$/, why: "the Newsroom heartbeat's operator report and feed state, answered only to the cron secret; no screen shows them" },
   { file: /^src\/app\/api\/market\/health\/route\.ts$/, why: "a data-source probe answered only to the cron secret" },
+  { file: /^src\/lib\/edge\/pulse\/ingest\.ts$/, line: /lastTried: now, error: \(e as Error\)\.message/, why: "a WARN parser's health, answered only to administrators (api/edge/pulse/status)" },
   { file: /^src\/lib\/billing\/route\.ts$/, line: /BillingError/, why: "BillingError messages are written for people where they are thrown (lib/billing/stripe)" },
   { file: /^src\/lib\/crypto\/wallet\.ts$/, line: /CryptoDataError/, why: "CryptoDataError messages are written for people where they are thrown (lib/crypto/http)" },
   { file: /^src\/lib\/studio\/agent\.ts$/, line: /e\.type === "error"/, why: "an AgentEvent from runChat, already screened by describeError" },
@@ -215,6 +217,8 @@ async function main() {
   check("a whole number says so", issueSentence({ path: ["slices"], code: "invalid_type", message: "Invalid input: expected int, received number", expected: "int" }) === "Slices must be a whole number.");
   check("our own check's message is kept", issueSentence({ path: ["signal", "fast"], code: "custom", message: "The fast average must be shorter than the slow one." }) === "The fast average must be shorter than the slow one.");
   check("labels win over the key", fieldLabel(["risk", "maxOrderUsd"], { maxOrderUsd: "Per-order limit ($)" }) === "Per-order limit ($)" && fieldLabel(["risk", "maxDayUsd"]) === "Max day ($)");
+  check("a schema's own message is kept as a sentence", issueSentence({ path: ["universe", 0], code: "invalid_format", message: "Use ticker symbols like AAPL, BRK-B or BTC-USD", format: "regex" }) === "Use ticker symbols like AAPL, BRK-B or BTC-USD.");
+  check("a record's key is named by its field", fieldLabel(["signal", "weights", "SPY"], { weights: "Weights" }) === "Weights (SPY)");
   const bad = parseStrategy({ name: "", universe: [], signal: { type: "trend" }, execution: { limitBandBps: 900, slices: 2.5 } });
   check("a strategy's errors read as sentences, with no validator wording", !bad.ok && bad.errors.length >= 3 && bad.errors.every((e) => /\.$/.test(e) && !/expected|received|<=|>=|\w+\.\w+:/.test(e)), bad);
 
@@ -223,6 +227,8 @@ async function main() {
   check("a tool's database failure reaches the model as a reference only", /ref [0-9a-f]{8}/.test(toolDb) && !/select|edge_docs/.test(toolDb), toolDb);
   const toolUrl = toolError(new Error("FMP 429 for https://financialmodelingprep.com/stable/profile?apikey=abc"));
   check("a tool's failure with a keyed URL reaches the model as a reference only", !/apikey|https?:/.test(toolUrl), toolUrl);
+  check("an EDGAR 404 reaches the model as a cue, without the URL", /no such document/.test(toolError(new Error("EDGAR 404 for https://www.sec.gov/Archives/edgar/data/1/x.htm"))) && !/https?:/.test(toolError(new Error("EDGAR 404 for https://www.sec.gov/x"))));
+  check("a calc script's mistake reaches the model as written", (() => { try { evaluateScript("1 + )"); return false; } catch (e) { return toolError(e) === (e as Error).message; } })());
   check("a tool's plain refusal reaches the model as written", toolError(new Error("Unknown ticker ZZZZ")) === "Unknown ticker ZZZZ");
   check("an answer cut short says why in words", !/max_|tokens|incomplete/i.test(incompleteMessage("max_output_tokens")) && !/content_filter/.test(incompleteMessage("content_filter")) && incompleteMessage(undefined).length > 10);
 
@@ -290,6 +296,7 @@ async function main() {
   check("every workspace has its own error boundary", bare.length === 0, bare);
   // The scan must still see what it is for: a line it has to catch, and one it has to let pass.
   check("the scan catches setError(e.message)", RAW.test("catch (e) { setError(e.message); }") && SINK.test("catch (e) { setError(e.message); }") && !SCREENED.test("catch (e) { setError(e.message); }"));
+  check("the scan catches a cast error's message", RAW.test("setError((e as Error).message)") && SINK.test("setError((e as Error).message)"));
   check("the scan catches a raw error in a JSON response", RAW.test("return Response.json({ error: String(err) })") && SINK.test("return Response.json({ error: String(err) })"));
   check("the scan catches the desktop's toast(String(e))", RAW.test("toast(String(e), true)") && SINK.test("toast(String(e), true)"));
   check("the scan lets a screened line pass", SCREENED.test("catch (e) { setError(errorMessage(e)); }"));
