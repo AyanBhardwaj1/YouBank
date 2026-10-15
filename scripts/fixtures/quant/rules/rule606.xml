@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Constructed from the SEC Rule 606(a)(1) XML technical specification; fictional broker and venues. -->
+<heldOrderRoutingPublicReport>
+  <bd>Example Brokerage LLC</bd>
+  <year>2026</year>
+  <qtr>2</qtr>
+  <rMonthly>
+    <mon>4</mon>
+    <rSP500>
+      <ndoPct>100.00</ndoPct><ndoMktPct>40.00</ndoMktPct><ndoMktLmtPct>10.00</ndoMktLmtPct><ndoNonMktLmtPct>45.00</ndoNonMktLmtPct><ndoOtherPct>5.00</ndoOtherPct>
+      <rVenues>
+        <rVenue><name>Alpha Securities LLC</name><mic>ALPA</mic><orderPct>60.00</orderPct><marketPct>40.00</marketPct>
+          <netPmtPaidRecvMarketOrdersUsd>100000.00</netPmtPaidRecvMarketOrdersUsd><netPmtPaidRecvMarketOrdersCph>10.0000</netPmtPaidRecvMarketOrdersCph>
+          <netPmtPaidRecvMarketableLimitOrdersUsd>20000.00</netPmtPaidRecvMarketableLimitOrdersUsd><netPmtPaidRecvMarketableLimitOrdersCph>9.0000</netPmtPaidRecvMarketableLimitOrdersCph>
+          <netPmtPaidRecvNonMarketableLimitOrdersUsd>0</netPmtPaidRecvNonMarketableLimitOrdersUsd><netPmtPaidRecvNonMarketableLimitOrdersCph>0</netPmtPaidRecvNonMarketableLimitOrdersCph>
+          <netPmtPaidRecvOtherOrdersUsd>0</netPmtPaidRecvOtherOrdersUsd><netPmtPaidRecvOtherOrdersCph>0</netPmtPaidRecvOtherOrdersCph></rVenue>
+        <rVenue><name>Beta Markets LLC</name><mic>BETA</mic><orderPct>40.00</orderPct><marketPct>60.00</marketPct>
+          <netPmtPaidRecvMarketOrdersUsd>300000.00</netPmtPaidRecvMarketOrdersUsd><netPmtPaidRecvMarketOrdersCph>20.0000</netPmtPaidRecvMarketOrdersCph>
+          <netPmtPaidRecvMarketableLimitOrdersUsd>0</netPmtPaidRecvMarketableLimitOrdersUsd><netPmtPaidRecvMarketableLimitOrdersCph>0</netPmtPaidRecvMarketableLimitOrdersCph>
+          <netPmtPaidRecvNonMarketableLimitOrdersUsd>0</netPmtPaidRecvNonMarketableLimitOrdersUsd><netPmtPaidRecvNonMarketableLimitOrdersCph>0</netPmtPaidRecvNonMarketableLimitOrdersCph>
+          <netPmtPaidRecvOtherOrdersUsd>0</netPmtPaidRecvOtherOrdersUsd><netPmtPaidRecvOtherOrdersCph>0</netPmtPaidRecvOtherOrdersCph></rVenue>
+      </rVenues>
+    </rSP500>
+    <rOtherStocks>
+      <ndoMktPct>50.00</ndoMktPct>
+      <rVenues>
+        <rVenue><name>Alpha Securities LLC</name><mic>ALPA</mic><orderPct>100.00</orderPct>
+          <netPmtPaidRecvMarketOrdersUsd>50000.00</netPmtPaidRecvMarketOrdersUsd><netPmtPaidRecvMarketOrdersCph>15.0000</netPmtPaidRecvMarketOrdersCph></rVenue>
+      </rVenues>
+    </rOtherStocks>
+    <rOptions>
+      <ndoMktPct>70.00</ndoMktPct>
+      <rVenues>
+        <rVenue><name>Gamma Options LLC</name><mic>GAMA</mic><orderPct>100.00</orderPct>
+          <netPmtPaidRecvMarketOrdersUsd>900000.00</netPmtPaidRecvMarketOrdersUsd><netPmtPaidRecvMarketOrdersCph>50.0000</netPmtPaidRecvMarketOrdersCph></rVenue>
+      </rVenues>
+    </rOptions>
+  </rMonthly>
+</heldOrderRoutingPublicReport>

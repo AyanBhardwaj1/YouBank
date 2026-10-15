@@ -35,7 +35,7 @@ export function brokerSetup(): { ready: boolean; trading: boolean; reason: strin
   return { ready: true, trading: tradingEnabled(), reason: tradingEnabled() ? null : "Real trading is switched off on this server. You can connect and see your positions; orders cannot be sent." };
 }
 
-async function snapUser(userId: string): Promise<SnapUser | null> {
+export async function snapUser(userId: string): Promise<SnapUser | null> {
   const [row] = await requireDb().select().from(schema.copyBrokers).where(eq(schema.copyBrokers.userId, userId));
   return row ? { userId: row.snaptradeUser, userSecret: decryptToken(row.secretEnc) } : null;
 }

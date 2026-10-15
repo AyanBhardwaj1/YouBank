@@ -1,0 +1,9 @@
+
+Brokerage
+
+Run Date,Action,Symbol,Description,Type,Quantity,Price ($),Commission ($),Fees ($),Accrued Interest ($),Amount ($),Settlement Date
+10/14/2026,YOU BOUGHT EXAMPLE CORP (EXMP) (Cash),EXMP,EXAMPLE CORP,Cash,25,50.10,,,,-1252.50,10/15/2026
+10/13/2026,YOU SOLD FICTIONAL INC (FICT) (Cash),FICT,FICTIONAL INC,Cash,-15,119.80,,0.01,,1796.99,10/14/2026
+10/10/2026,DIVIDEND RECEIVED EXAMPLE CORP (EXMP) (Cash),EXMP,EXAMPLE CORP,Cash,,,,,,4.00,
+
+"The data and information in this spreadsheet is provided to you solely for your use and is not for distribution."

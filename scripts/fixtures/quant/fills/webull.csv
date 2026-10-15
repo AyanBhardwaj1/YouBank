@@ -1,0 +1,4 @@
+Name,Symbol,Side,Status,Filled,Total Qty,Price,Avg Price,Time-in-Force,Placed Time,Filled Time
+Example Corp,EXMP,Buy,Filled,10,10,MKT,50.27,DAY,10/14/2026 09:30:12 EDT,10/14/2026 09:30:13 EDT
+Fictional Inc,FICT,Sell,Filled,5,5,120.00,120.00,GTC,10/13/2026 11:02:00 EDT,10/13/2026 11:15:41 EDT
+Example Corp,EXMP,Buy,Cancelled,0,10,49.00,,DAY,10/12/2026 10:00:00 EDT,
