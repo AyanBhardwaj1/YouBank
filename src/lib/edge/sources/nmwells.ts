@@ -30,7 +30,7 @@ export function nmPermitsFrom(rows: Row[]): NmPermit[] {
 
 /** Wells permitted in a box since a date (status "New", approved on or after `since`), newest first. */
 export async function nmPermitted(bbox: Bbox, since: string): Promise<NmPermit[]> {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new Error("Bad date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw Object.assign(new Error("That date is not valid. Use YYYY-MM-DD."), { status: 400 });
   const q = new URLSearchParams({
     where: `status = 'New' AND effective_date >= DATE '${since}'`, geometry: bbox.map((v) => v.toFixed(5)).join(","), geometryType: "esriGeometryEnvelope", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
     outFields: "id,name,ogrid_name,type,latitude,longitude,effective_date,spud_date,details", returnGeometry: "false", orderByFields: "effective_date DESC", resultRecordCount: "2000", f: "json",

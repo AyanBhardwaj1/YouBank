@@ -14,7 +14,7 @@ const view = (c: CanvasRow) => ({ id: c.id, title: c.title, description: c.descr
 
 async function idOf(ctx: { params: Promise<{ id: string }> }) {
   const id = Number((await ctx.params).id);
-  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error("bad id"), { status: 400 });
+  if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error("That link is not valid. Check it, or go back and open the item again."), { status: 400 });
   return id;
 }
 
