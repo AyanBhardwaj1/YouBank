@@ -89,6 +89,11 @@ export function fieldLabel(path: readonly PropertyKey[], labels: Record<string, 
   const last = keys[keys.length - 1] ?? "";
   const named = labels[full] ?? labels[last];
   if (named) return named;
+  // A key inside a labelled field (a record's key, "SPY" in weights) is named by that field: "Weights (SPY)".
+  for (let n = keys.length - 1; n > 0; n--) {
+    const parent = labels[keys.slice(0, n).join(".")] ?? labels[keys[n - 1]];
+    if (parent) return `${parent} (${keys.slice(n).join(".")})`;
+  }
   if (!last) return "This value";
   const words = last.replace(/Usd$/, " ($)").replace(/Bps$/, " (bps)").replace(/Pct$/, "").replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -104,6 +109,11 @@ const bound = (v: unknown) => (typeof v === "number" || typeof v === "bigint" ? 
 export function issueSentence(i: FieldIssue, labels: Record<string, string> = {}): string {
   const label = fieldLabel(i.path, labels);
   const received = /received undefined|received null/i.test(i.message);
+  // A message the schema gives (.regex(…, "Use ticker symbols like AAPL")) is ours and says what to do;
+  // the validator's own messages start "Invalid…", "Too big…", "Too small…" or "Unrecognized…".
+  if (i.code !== "custom" && i.message && !/^(Invalid|Too (big|small)|Unrecognized)\b/.test(i.message) && !looksInternal(i.message)) {
+    return /[.!?]$/.test(i.message) ? i.message : `${i.message}.`;
+  }
   switch (i.code) {
     case "custom":
       return i.message && !looksInternal(i.message) ? i.message : `${label} is not valid.`;

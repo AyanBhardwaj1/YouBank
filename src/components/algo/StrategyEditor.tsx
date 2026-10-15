@@ -152,7 +152,7 @@ export function StrategyEditor({ templates, initial, strategyId, riskConfirmed, 
           </section>
         </div>
       )}
-      {mode === "form" && !local.ok && <ul className="rounded-md border border-neg/40 bg-neg/10 p-2.5 text-[12px] text-neg">{local.errors.map((e) => <li key={e}>{e}</li>)}</ul>}
+      {mode === "form" && !local.ok && <ul className="rounded-md border border-neg/40 bg-neg/10 p-2.5 text-[12px] text-neg">{local.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
       <label className="flex items-start gap-2 text-[12px] text-fg"><input type="checkbox" checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} className="mt-0.5" />I reviewed every risk limit above. (Live trading needs this; changing a limit later asks again.)</label>
       {error && <p className="rounded-md border border-neg/40 bg-neg/10 p-2.5 text-[12px] text-neg">{error}</p>}
       <div className="flex flex-wrap justify-end gap-2">
