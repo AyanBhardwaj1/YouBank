@@ -10,6 +10,7 @@
  * Pure apart from `navigator.onLine` (guarded), so scripts/test-errors.ts runs it under Node.
  */
 import { looksInternal, OUR_SIDE, TOO_SLOW } from "@/lib/error-text";
+import { clientFetch } from "@/lib/client/net";
 
 export const OFFLINE = "You seem to be offline, or YouBank could not be reached. Check your connection and try again.";
 
@@ -94,7 +95,8 @@ export const isAbort = (e: unknown) => (e as { name?: unknown } | null)?.name ==
  * rejects with the browser's TypeError (errorMessage turns it into "offline").
  */
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  // A timeout, one retry for a GET that failed on the network or a 502-504, and one send per double click (lib/client/net).
+  const res = await clientFetch(url, init);
   if (!res.ok) throw await apiError(res);
   try { return (await res.json()) as T; } catch { throw new ApiError(`${OUR_SIDE}. Try again in a moment.`, res.status); }
 }

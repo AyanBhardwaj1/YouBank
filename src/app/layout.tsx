@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { DialogHost } from "@/components/ui/Dialog";
 import { MobileViewport } from "@/components/ui/MobileViewport";
+import { Connectivity } from "@/components/ui/Connectivity";
 import { MotionPrefs } from "@/components/motion/MotionPrefs";
 import { THEME_COOKIE, themeById } from "@/lib/themes";
 import { currentUser } from "@/lib/auth/user";
@@ -49,6 +50,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-full">
         <ThemeProvider initial={theme.id} signedIn={!!user}><MotionPrefs>{children}<DialogHost /></MotionPrefs></ThemeProvider>
         <MobileViewport />
+        <Connectivity />
       </body>
     </html>
   );

@@ -12,6 +12,9 @@ import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
 import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
 import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.config";
+import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from "@/lib/client/net";
+import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { StreamDropped, readSse } from "@/lib/client/sse";
 import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, withTimeout } from "@/lib/net";
 
 let pass = 0, fail = 0;
@@ -288,6 +291,78 @@ async function testAuthAndHeaders() {
   check("the Office add-in pages are not framed-blocked", forPath("/office/taskpane", "X-Frame-Options") === undefined && forPath("/office/taskpane", "Content-Security-Policy") === undefined);
 }
 
+async function testClient() {
+  console.log("browser requests");
+  check("a GET is retried once after a network failure", retryPlan("GET", { network: true }, 0) !== null && retryPlan("GET", { network: true }, 1) === null);
+  check("a POST is never retried", retryPlan("POST", { network: true }, 0) === null && retryPlan("POST", { status: 503 }, 0) === null);
+  check("a 503 GET is retried once", retryPlan("GET", { status: 503 }, 0) !== null);
+  check("a 429 with a short Retry-After is waited out", retryPlan("GET", { status: 429, retryAfter: 2000 }, 0) === 2000);
+  check("a 429 with a long one is handed to the caller", retryPlan("GET", { status: 429, retryAfter: 60_000 }, 0) === null && retryPlan("GET", { status: 429 }, 0) === null);
+  check("a 401, 402 or 404 is not retried", [401, 402, 404].every((s) => retryPlan("GET", { status: s }, 0) === null));
+  check("Better Auth's X-Retry-After is read", retryAfterMs(new Headers({ "x-retry-after": "7" })) === 7000);
+  check("sign-in brings the person back to the page", signInHref("/app/news?x=1") === "/sign-in?next=%2Fapp%2Fnews%3Fx%3D1");
+  check("sign-in never sends anyone off the app", signInHref("https://evil.example/") === "/sign-in?next=%2Fapp");
+  check("sign-in's own 401 (a wrong password) is not a lost session", !watchesSession("/api/auth/sign-in/email") && watchesSession("/api/news/feed"));
+
+  const scripted = (steps: (number | Error)[]) => {
+    let n = 0;
+    const f = async (_u: string, _i?: RequestInit) => {
+      const s = steps[Math.min(n++, steps.length - 1)];
+      if (s instanceof Error) throw s;
+      return new Response(JSON.stringify({ ok: s < 400, error: s >= 400 ? "Nope." : undefined }), { status: s, headers: { "content-type": "application/json" } });
+    };
+    return { f, calls: () => n };
+  };
+  {
+    const u = scripted([new TypeError("Failed to fetch"), 200]);
+    const r = await clientFetch("/api/x", {}, u.f);
+    check("clientFetch: a dropped GET gets through on the second try", r.status === 200 && u.calls() === 2);
+  }
+  {
+    const u = scripted([new TypeError("Failed to fetch"), 200]);
+    const e = await clientFetch("/api/order", { method: "POST", body: "{}" }, u.f).then(() => null, (x: unknown) => x);
+    check("clientFetch: a dropped POST is not resent", !!e && u.calls() === 1);
+  }
+  {
+    let n = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const f = async () => { n++; await gate; return new Response("{\"ok\":true}", { status: 200 }); };
+    const a = clientFetch("/api/send", { method: "POST", body: "{\"id\":1}" }, f);
+    const b = clientFetch("/api/send", { method: "POST", body: "{\"id\":1}" }, f);
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    check("clientFetch: a double click sends once and both get the answer", n === 1 && (await ra.json()).ok && (await rb.json()).ok);
+  }
+  {
+    const u = scripted([200]);
+    await clientFetch("/api/send", { method: "POST", body: "{\"id\":2}" }, u.f);
+    await clientFetch("/api/send", { method: "POST", body: "{\"id\":2}" }, u.f);
+    check("clientFetch: the same write sent again later goes out again", u.calls() === 2);
+  }
+  {
+    const f = (_u: string, i?: RequestInit) => new Promise<Response>((_, reject) => i?.signal?.addEventListener("abort", () => reject(i.signal!.reason), { once: true }));
+    const e = await clientFetch("/api/slow", { timeoutMs: 30 }, f).then(() => null, (x: unknown) => x);
+    check("clientFetch: a request that never answers times out", (e as { name?: string })?.name === "TimeoutError" && /too long|longer|slow/i.test(errorMessage(e)), errorMessage(e));
+  }
+  {
+    const realFetch = globalThis.fetch;
+    let n = 0;
+    globalThis.fetch = (async () => { n++; return new Response(JSON.stringify({ error: "This needs Pro." }), { status: 402 }); }) as typeof fetch;
+    const e = await fetchJson("/api/premium").then(() => null, (x: unknown) => x);
+    globalThis.fetch = realFetch;
+    check("fetchJson: a 402 keeps its friendly message and is not retried", errorMessage(e) === "This needs Pro." && n === 1);
+  }
+  {
+    const enc = new TextEncoder();
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({ pull(c) { if (pulled++ === 0) c.enqueue(enc.encode("data: {\"type\":\"text\",\"text\":\"hi\"}\n\n")); else c.error(new TypeError("network error")); } });
+    const seen: string[] = [];
+    const e = await readSse(new Response(body), (ev) => seen.push(ev.type)).then(() => null, (x: unknown) => x);
+    check("a stream that drops mid-answer keeps what arrived and says it dropped", seen[0] === "text" && e instanceof StreamDropped && /dropped/.test(errorMessage(e)), errorMessage(e));
+  }
+}
+
 async function main() {
   // AbortSignal.timeout's timer does not keep Node alive; a server always has something else that does.
   const alive = setInterval(() => undefined, 1_000);
@@ -296,6 +371,9 @@ async function main() {
   testDb();
   testEnvAndHealth();
   await testAuthAndHeaders();
+  const alive2 = setInterval(() => undefined, 1_000);
+  await testClient();
+  clearInterval(alive2);
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
 }
