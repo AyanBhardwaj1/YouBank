@@ -124,7 +124,7 @@ void (async () => {
   check("your own reply withdrew autopilot's", kimAfter?.status === "superseded", kimAfter && { s: kimAfter.status, hold: kimAfter.holdReason });
 
   // 6. What actually left the mailbox: signature, threading headers, the reply-to-self never duplicated.
-  const client = imapClient({ imapHost: "imap.ethereal.email", imapPort: 993, imapSecure: true, smtpHost: "", smtpPort: 0, smtpSecure: false, username: acct.user }, acct.pass);
+  const client = await imapClient({ imapHost: "imap.ethereal.email", imapPort: 993, imapSecure: true, smtpHost: "", smtpPort: 0, smtpSecure: false, username: acct.user }, acct.pass);
   await client.connect();
   const lock = await client.getMailboxLock("INBOX");
   const all = await client.fetchAll("1:*", { envelope: true, source: true });

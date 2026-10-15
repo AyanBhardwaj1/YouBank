@@ -68,9 +68,9 @@ function gmailMailbox(account: AccountRow, token: string): Mailbox {
 
 function imapMailbox(account: AccountRow, settings: ImapSettings, password: string): Mailbox {
   const self = account.address;
-  let client: ReturnType<typeof imapClient> | null = null;
+  let client: Awaited<ReturnType<typeof imapClient>> | null = null;
   const connected = async () => {
-    if (!client) { client = imapClient(settings, password); await client.connect(); }
+    if (!client) { const c = await imapClient(settings, password); await c.connect(); client = c; }
     return client;
   };
   return {
