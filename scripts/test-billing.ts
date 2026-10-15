@@ -89,9 +89,9 @@ async function main() {
   check("feature ids are unique across every area", new Set(FEATURES.map((f) => f.id)).size === FEATURES.length);
   {
     // Every area's file reaches the cost model: each registry list is spread into FEATURES.
-    const areas = ["premium", "maps", "crypto", "desktop", "meetings", "calendar", "news", "copytrade", "edge-next"];
+    const areas = ["premium", "maps", "crypto", "desktop", "meetings", "calendar", "news", "copytrade", "edge-next", "algo"];
     const index = readFileSync(new URL("../src/lib/billing/features/index.ts", import.meta.url), "utf8");
-    check("every area's registry is spread into FEATURES (premium, maps, crypto, desktop, meetings, calendar, news, copytrade, edge-next)", areas.every((a) => new RegExp(`from "\\./${a}"`).test(index)) && (index.match(/\.\.\.[A-Z_]+_FEATURES/g) ?? []).length === areas.length);
+    check("every area's registry is spread into FEATURES (premium, maps, crypto, desktop, meetings, calendar, news, copytrade, edge-next, algo)", areas.every((a) => new RegExp(`from "\\./${a}"`).test(index)) && (index.match(/\.\.\.[A-Z_]+_FEATURES/g) ?? []).length === areas.length);
     // Spend outside the AI ledger is bounded by a server-side daily cap where a click can repeat it.
     const eva = readFileSync(new URL("../src/app/api/edge/calls/[docId]/read/route.ts", import.meta.url), "utf8");
     const lbo = readFileSync(new URL("../src/app/api/edge/scenarios/[id]/refine/route.ts", import.meta.url), "utf8");

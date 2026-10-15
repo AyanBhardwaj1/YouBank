@@ -115,6 +115,10 @@ export const FIXED: { label: string; usdMonth: number; source: string }[] = [
   { label: "Edge: reading the deal database (platform AI, no person attached): at most $0.50 a day while the backfill runs (about two months), about $1.50 a month after", usdMonth: 15, source: "src/lib/edge/deals/jobs.ts (DEFAULT_DAILY_USD, measured from the AI ledger); gpt-6-luna $0.10 / $0.50 per M tokens (src/lib/ai/pricing.ts)" },
   { label: "Edge: background passes on Modal (Deal Radar's monthly training and weekly scoring, the claim checker's NLI on answers)", usdMonth: 6, source: "docs/edge-next.md 5.3 ($3–6 a month); Modal CPU $0.0000131 a core-second and $0.00000222 a GiB-second (ml/edge_ml.py), inside the $25 Edge guard" },
   { label: "Edge: background passes on Vercel and Neon (the weekly Pulse over about 2,000 companies and the daily lists, Deal Radar re-reading filings, thesis ticks, Call Desk's daily pass): about 6 CPU-hours and 10 compute-hours a month", usdMonth: 6 * 0.128 + 10 * 0.106, source: "Vercel Pro active CPU $0.128/hour; Neon Launch $0.106/CU-hour" },
+  // Algo trading (docs/algo-trading.md): paper strategies tick for everyone, Free included, at most daily, a
+  // few strategies per Inngest step inside a deadline. About 2,000 active paper strategies × 21 decision days
+  // × 0.3 s of CPU, their Neon reads and writes and about 2,000 batched steps: under $1 a month, counted at $2.
+  { label: "Algo trading: paper strategy ticks for everyone (decisions at most daily, batched in Inngest steps)", usdMonth: 2, source: "Vercel Pro active CPU $0.128/hour (about 3.5 hours); Neon Launch $0.106/CU-hour (about 2 hours); Inngest steps inside the plan's million" },
   { label: "Edge: platform data (Pulse raw pulls and Deal Radar models in R2, capped at 9 GB by the guard; deals, series and forecasts, about 100 MB in Postgres)", usdMonth: 9 * 0.015 + 0.1 * 0.35, source: "Cloudflare R2 $0.015/GB-month (EDGE R2 guard 9 GB); Neon storage $0.35/GB-month" },
 ];
 
