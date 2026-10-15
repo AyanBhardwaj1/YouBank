@@ -7,7 +7,7 @@ import { requireDb, schema } from "@/db";
 import { cacheJson } from "@/lib/cache";
 import { DAY } from "@/lib/edgar/client";
 import type { Provider } from "@/lib/market/provenance";
-import { indexFrom, metrics, simulate, thin, type CurvePoint, type Metrics, type RebalanceEvent } from "./backtest";
+import { annualTurnover, dailyReturns, indexFrom, metrics, simulate, thin, type CurvePoint, type Metrics, type RebalanceEvent } from "./backtest";
 import { filingIndexUrl, storedFilings, syncFund } from "./edgar13f";
 import { curatedByCik, padCik, type CuratedFund } from "./funds";
 import { dailyCloses } from "./prices";
@@ -174,6 +174,8 @@ export type Backtest = {
   rebalances: { date: string; period: string; lagDays: number; held: number; missing: string[] }[];
   avgLagDays: number; pricedPct: number; providers: Provider[]; notes: string[]; missing: string[];
   assumptions: string[];
+  /** The lagged clone's daily returns and annual turnover, for Quant Edge's integrity grade (not sent to the page). */
+  daily?: { dates: string[]; returns: number[] }; turnoverPerYear?: number;
 };
 
 /** The lag-aware clone backtest for one fund over up to `years`, cached for half a day per filing set. */
@@ -237,6 +239,7 @@ async function runBacktest(cik: string, filings: FilingRecord[], topN: number, y
   const noLag = rebase(raw.curve);
   const spy = indexFrom(spyCloses, start);
   const priced = lag.trades.map((t) => t.pricedWeight);
+  const daily = dailyReturns(lag.curve);
   return {
     cik, topN, from: start, to: calendar.at(-1) ?? start,
     lagged: { curve: thin(lag.curve), metrics: metrics(lag.curve, spy) },
@@ -253,5 +256,6 @@ async function runBacktest(cik: string, filings: FilingRecord[], topN: number, y
       "No fees, commissions, spreads, slippage or taxes. Long-only; options and holdings without a ticker left out.",
       "Sharpe ratio uses a 0% risk-free rate for both the clone and SPY. Beta is against SPY's daily returns.",
     ],
+    daily: { dates: daily.map((d) => d.date), returns: daily.map((d) => d.r) }, turnoverPerYear: annualTurnover(lagEvents),
   };
 }

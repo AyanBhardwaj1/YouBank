@@ -9,7 +9,7 @@ contract every premium feature follows.
 |---|---|---|
 | Plans | `src/lib/billing/plans.ts` | The plans in order (free, campus, pro, team, enterprise), their list prices, minimum seats and AI allowances; why they are what they are is in `docs/pricing.md` |
 | Billing | `src/lib/billing/stripe.ts`, `/api/billing/{checkout,credits,confirm,portal,invoices,seats,webhook,status}` | Stripe Checkout (plans and credit packs), the billing portal, seats and the webhook that writes `subscriptions` and credit grants; Settings, under Plan |
-| Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`, `meetings.ts`, `calendar.ts`, `news.ts`, `copytrade.ts`, `edge-next.ts`, `algo.ts`); each feature names the least plan that includes it. `featuresByArea` groups them for `/pricing` and the Plan tab, leaving out features registered as `planned` |
+| Feature registry | `src/lib/billing/features/*.ts` | One list per area (`premium.ts`, `maps.ts`, `crypto.ts`, `desktop.ts`, `meetings.ts`, `calendar.ts`, `news.ts`, `copytrade.ts`, `edge-next.ts`, `algo.ts`, `quant.ts`); each feature names the least plan that includes it. `featuresByArea` groups them for `/pricing` and the Plan tab, leaving out features registered as `planned` |
 | Entitlements | `src/lib/billing/entitlements.ts` | `entitlements(user)`, `canUse(user, id)` and `requireFeature(user, id)` on the server; a seat on someone's Deal Team or Enterprise subscription counts |
 | Plan API | `GET /api/billing/plan` | The signed-in person's plan and unlocked feature ids |
 | UI | `src/components/billing/Premium.tsx`, `src/lib/client/plan.ts` | `PremiumBadge`, `PremiumGate`, `usePlan()`, `useFeature(id)` |
@@ -72,3 +72,18 @@ route opens a **premium scope** (`src/lib/billing/use.ts`) and the code that cou
 `src/lib/billing/features/premium.ts` lists each feature with `costPerUseUsd` and `perUse` (what one use
 is, so the price can be read). The README's "Premium features" section has the same list by plan and
 where each appears.
+
+### Quant Edge
+
+`src/lib/billing/features/quant.ts` (area `quant`). Ids use a hyphen where the spec wrote a dot
+(`quant.factorlab-pro` for `quant.factorlab.pro`), as every other area does. The free cores (every
+calculator, "check a claim", one graded upload, 30-holding factor and risk views, fill imports, the insider
+board's top 20 and Desk Drills) are not registered. The Pro layers (`quant.factorlab-pro`, `quant.risk-pro`,
+`quant.integrity-pro`, `quant.sizing-pro`, `quant.tca-pro`) are perks with no cost of their own: their CPU is
+a fraction of a cent a use, sits inside the per-person infrastructure line, and is capped per person per day
+in `src/lib/quant/access.ts`. `quant.insiders-pro` is the one model-backed layer (13D Item 4 readings), metered
+inside the AI allowance. `quant.drills-teams` is a Deal Team perk. The rest are registered `planned`
+(minute bars, event-study and filing-diff Pro, the volatility lab, sleeves, crowding Pro). The pairs scanner is
+not registered: its ML scans would be a cost outside the AI allowance. Background passes (the nightly pass, the
+insider poll) never open a premium scope.
+

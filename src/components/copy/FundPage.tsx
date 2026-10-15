@@ -12,6 +12,8 @@ import { HBar } from "@/components/charts/HBar";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import type { Backtest, FundView } from "@/lib/copytrade/analytics";
+import type { IntegrityReport } from "@/lib/quant/contracts";
+import { GradeBadge } from "@/components/quant/ui";
 import { HYPOTHETICAL, NO_LAG_NOTE, NOT_ADVICE_SHORT, TIMING } from "@/lib/copytrade/disclosures";
 import { ChangeBars, LinesChart, Treemap } from "./charts";
 import { json, num, pct, shortCik, usd } from "./client";
@@ -19,7 +21,7 @@ import { ConsentProvider } from "./Consent";
 import { CopyEditor, newDraft, type Plan } from "./CopyEditor";
 
 type View = FundView & { following: boolean };
-type BT = Backtest & { disclosure: string; noLagNote: string };
+type BT = Backtest & { disclosure: string; noLagNote: string; integrity?: IntegrityReport | null };
 
 const CHANGE_STYLE: Record<string, string> = { new: "bg-accent-soft text-accent", added: "bg-pos/15 text-pos", trimmed: "bg-neg/10 text-neg", exited: "bg-neg/10 text-neg", unchanged: "text-muted" };
 const CHANGE_WORD: Record<string, string> = { new: "New", added: "Added", trimmed: "Trimmed", exited: "Exited", unchanged: "Same" };
@@ -207,6 +209,7 @@ function FundInner({ cik }: { cik: string }) {
                 </div>
                 <div className="mt-3 grid gap-3 text-[11px] text-muted md:grid-cols-2">
                   <div>
+                    {bt.integrity && <p className="mb-1.5 flex flex-wrap items-center gap-1.5"><GradeBadge report={bt.integrity} /> <span>Backtest integrity across {bt.integrity.trials} clone variants tried ({bt.integrity.warnings[0] ?? "no warnings"}). <Link href="/app/quant?tab=integrity" className="text-accent hover:underline">How grades work</Link></span></p>}
                     <p><b className="text-fg">Filing lag:</b> on average {bt.avgLagDays} days from quarter end to filing, over {bt.rebalances.length} rebalances. {NO_LAG_NOTE}</p>
                     <p className="mt-1.5"><b className="text-fg">Priced:</b> {pct(bt.pricedPct, 0)} of target weight had a daily price on each rebalance day{bt.missing.length ? `; no prices for ${bt.missing.slice(0, 8).join(", ")}${bt.missing.length > 8 ? "…" : ""}` : ""}.</p>
                   </div>
