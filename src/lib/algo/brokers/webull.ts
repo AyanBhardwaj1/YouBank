@@ -38,8 +38,10 @@ export const WEBULL_PATHS = {
   detail: "/openapi/trade/order/detail",
 } as const;
 
+// Options off: an option order needs Webull's option fields (strike, expiry, right), which this adapter does
+// not send yet, so options strategies are refused at the live gate rather than rejected by Webull.
 const CAPS: Capabilities = {
-  equities: true, fractional: true, options: true, crypto: false, orderTypes: ["market", "limit", "stop", "stop_limit"], timeInForce: ["day", "gtc"],
+  equities: true, fractional: true, options: false, crypto: false, orderTypes: ["market", "limit", "stop", "stop_limit"], timeInForce: ["day", "gtc"],
   extendedHours: true, preview: true, cancel: true, quotes: false, clientOrderId: "dedupe", clientOrderIdMax: 32, paper: false,
 };
 
