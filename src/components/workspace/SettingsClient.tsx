@@ -1,7 +1,7 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
@@ -15,11 +15,11 @@ import { BetaToggle } from "@/components/edge/BetaToggle";
 
 // Each tab's panel loads when the tab is opened; the page itself carries only the default (style) tab.
 const TabLoading = () => <div className="mt-5 shimmer h-48 ctl" />;
-const NewsSettings = dynamic(() => import("@/components/news/NewsSettings").then((m) => m.NewsSettings), { loading: TabLoading });
-const CalendarSettings = dynamic(() => import("@/components/calendar/CalendarSettings").then((m) => m.CalendarSettings), { loading: TabLoading });
-const PlanSettings = dynamic(() => import("@/components/billing/PlanSettings").then((m) => m.PlanSettings), { loading: TabLoading });
-const DesktopSettings = dynamic(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), { loading: TabLoading });
-const EdgeUpgrades = dynamic(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
+const NewsSettings = lazyPanel(() => import("@/components/news/NewsSettings").then((m) => m.NewsSettings), TabLoading);
+const CalendarSettings = lazyPanel(() => import("@/components/calendar/CalendarSettings").then((m) => m.CalendarSettings), TabLoading);
+const PlanSettings = lazyPanel(() => import("@/components/billing/PlanSettings").then((m) => m.PlanSettings), TabLoading);
+const DesktopSettings = lazyPanel(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), TabLoading);
+const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -35,6 +35,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [routing, setRouting] = useState(prefs.routing !== false);

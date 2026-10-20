@@ -7,6 +7,7 @@
  * their own page, as the person prefers. Three other ways in, loaded only when opened: Brief mode
  * (swipe cards), the audio briefing, and the 60-second recap.
  */
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
@@ -32,8 +33,8 @@ const BriefingPlayer = dynamic(() => import("./BriefingPlayer").then((m) => m.Br
 const Recap = dynamic(() => import("./Recap").then((m) => m.Recap), { ssr: false });
 // The sector radar and the story peek (its charts, maps and timeline) load when first shown, and the peek
 // is warmed a few seconds after the page settles so opening a story does not wait on it.
-const RadarView = dynamic(() => import("./Radar").then((m) => m.RadarView), { loading: () => <div className="shimmer m-5 h-[420px] rounded-[var(--nr-radius)]" /> });
-const StoryPeek = dynamic(() => import("./StoryReader").then((m) => m.StoryPeek));
+const RadarView = lazyPanel(() => import("./Radar").then((m) => m.RadarView), () => <div className="shimmer m-5 h-[420px] rounded-[var(--nr-radius)]" />);
+const StoryPeek = lazyPanel(() => import("./StoryReader").then((m) => m.StoryPeek));
 
 type View = "today" | "globe" | "deals" | "radar" | "saved";
 const VIEWS: View[] = ["today", "globe", "deals", "radar", "saved"];
@@ -60,7 +61,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   // The peek mounts with the first story opened and stays mounted, so its closing animation still plays.
   const [peekMounted, setPeekMounted] = useState(initialStory !== null);
   if (peek !== null && !peekMounted) setPeekMounted(true);
-  useEffect(() => { const t = setTimeout(() => { void import("./StoryReader"); }, 3000); return () => clearTimeout(t); }, []);
+  useIdlePreload([StoryPeek, RadarView], 3000);
   const [override, setOverride] = useState<{ edition?: EditionId; look?: LookId; layout?: LayoutId; advanced?: boolean }>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   // The sector radar on screen; empty until chosen here, so the server shows the saved or desk default.

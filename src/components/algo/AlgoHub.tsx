@@ -5,7 +5,7 @@
  * backtests, broker connections, the AI agent and the audit log. The kill switch stays at the top of every
  * tab. Tabs: strategies, brokers, agent, activity; ?strategy=ID opens one strategy.
  */
-import dynamic from "next/dynamic";
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import { useCallback, useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -19,7 +19,7 @@ import { call, json, MODE_LABEL, MODE_TONE, SIGNAL_LABEL, usd, when, type Hub } 
 import { StrategyDetail } from "./StrategyDetail";
 
 // The builder (and the strategy schema it validates with, zod included) loads when a strategy is created or edited.
-const StrategyEditor = dynamic(() => import("./StrategyEditor").then((m) => m.StrategyEditor), { loading: () => <div className="shimmer h-72 rounded-md" /> });
+const StrategyEditor = lazyPanel(() => import("./StrategyEditor").then((m) => m.StrategyEditor), () => <div className="shimmer h-72 rounded-md" />);
 
 type Tab = "strategies" | "brokers" | "agent" | "activity";
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -36,6 +36,7 @@ export function AlgoHub(props: { initialTab?: string; initialStrategy?: number |
 function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?: string; initialStrategy?: number | null; connected?: string | null; reason?: string | null }) {
   const ask = useAlgoConsent();
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "strategies");
+  useIdlePreload([StrategyEditor]);
   const [hub, setHub] = useState<Hub | null>(null);
   const [selected, setSelected] = useState<number | null>(initialStrategy ?? null);
   const [creating, setCreating] = useState(false);

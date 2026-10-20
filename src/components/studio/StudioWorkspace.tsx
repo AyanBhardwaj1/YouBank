@@ -1,7 +1,7 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
@@ -23,7 +23,7 @@ import { usePhone } from "@/components/ui/useMedia";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 
 // The deck (slides, their charts and tables) loads when the Deck tab is opened; the model is the default.
-const DeckView = dynamic(() => import("./DeckView").then((m) => m.DeckView), { loading: () => <div className="shimmer m-4 aspect-video ctl" /> });
+const DeckView = lazyPanel(() => import("./DeckView").then((m) => m.DeckView), () => <div className="shimmer m-4 aspect-video ctl" />);
 
 const TOOL: Record<string, string> = {
   read_range: "Reading", write_cells: "Writing cells", format_cells: "Formatting", fill: "Filling formulas", insert_or_delete: "Moving rows and columns",
@@ -43,7 +43,7 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   const { doc, engine, meta } = st;
   const [tab, setTab] = useState<"model" | "deck">(initialTab);
   // Warm the deck's code once the model is up, so switching tabs never waits on a download.
-  useEffect(() => { const t = setTimeout(() => { void import("./DeckView"); }, 2500); return () => clearTimeout(t); }, []);
+  useIdlePreload([DeckView]);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>(cellSel(1, 1));
   const [slide, setSlide] = useState<string | null>(null);

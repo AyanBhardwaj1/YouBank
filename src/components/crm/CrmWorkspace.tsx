@@ -1,7 +1,7 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { isPlanError, PlanNotice } from "@/components/billing/PlanNotice";
@@ -20,12 +20,12 @@ import { errorMessage } from "@/lib/client/errors";
 
 // The review queue (the default tab) ships with the page; every other tab loads when it is opened.
 const PanelLoading = () => <div className="shimmer h-48 ctl" />;
-const AgentSettings = dynamic(() => import("./AgentSettings").then((m) => m.AgentSettings), { loading: PanelLoading });
-const CampaignsPanel = dynamic(() => import("./CampaignsPanel").then((m) => m.CampaignsPanel), { loading: PanelLoading });
-const ContactsPanel = dynamic(() => import("./ContactsPanel").then((m) => m.ContactsPanel), { loading: PanelLoading });
-const InsightsPanel = dynamic(() => import("./InsightsPanel").then((m) => m.InsightsPanel), { loading: PanelLoading });
-const MeetingsPanel = dynamic(() => import("./MeetingsPanel").then((m) => m.MeetingsPanel), { loading: PanelLoading });
-const NurturePanel = dynamic(() => import("./NurturePanel").then((m) => m.NurturePanel), { loading: PanelLoading });
+const AgentSettings = lazyPanel(() => import("./AgentSettings").then((m) => m.AgentSettings), PanelLoading);
+const CampaignsPanel = lazyPanel(() => import("./CampaignsPanel").then((m) => m.CampaignsPanel), PanelLoading);
+const ContactsPanel = lazyPanel(() => import("./ContactsPanel").then((m) => m.ContactsPanel), PanelLoading);
+const InsightsPanel = lazyPanel(() => import("./InsightsPanel").then((m) => m.InsightsPanel), PanelLoading);
+const MeetingsPanel = lazyPanel(() => import("./MeetingsPanel").then((m) => m.MeetingsPanel), PanelLoading);
+const NurturePanel = lazyPanel(() => import("./NurturePanel").then((m) => m.NurturePanel), PanelLoading);
 
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
@@ -91,6 +91,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null; initialMeeting?: number | null;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
+  useIdlePreload([ContactsPanel, MeetingsPanel, InsightsPanel, NurturePanel, CampaignsPanel, AgentSettings]);
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);

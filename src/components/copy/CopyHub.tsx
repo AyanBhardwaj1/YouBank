@@ -5,8 +5,8 @@
  * paper copies for free, and with Pro connect a broker and run live copies whose orders you approve.
  * Tabs: Discover, My copies, Following, Brokerage, Activity (the audit log).
  */
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -20,7 +20,7 @@ import { ConsentProvider, useConsent } from "./Consent";
 import type { Account, CopyDraft, Plan } from "./CopyEditor";
 
 // A copy's dashboard (its editor and charts with it) loads when a copy is opened, not with the list.
-const CopyDetail = dynamic(() => import("./CopyDetail").then((m) => m.CopyDetail), { loading: () => <div className="shimmer h-64 rounded-md" /> });
+const CopyDetail = lazyPanel(() => import("./CopyDetail").then((m) => m.CopyDetail), () => <div className="shimmer h-64 rounded-md" />);
 
 type Tab = "discover" | "copies" | "following" | "broker" | "activity";
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -39,6 +39,7 @@ export function CopyHub(props: { initialTab?: string; initialCopy?: number | nul
 }
 
 function HubInner({ initialTab, initialCopy, review, connected }: { initialTab?: string; initialCopy?: number | null; review?: boolean; connected?: boolean }) {
+  useIdlePreload([CopyDetail]);
   const [tab, setTab] = useState<Tab>(initialCopy ? "copies" : (TABS.find((t) => t.id === initialTab)?.id ?? "discover"));
   const [hub, setHub] = useState<Hub | null>(null);
   const [selected, setSelected] = useState<number | null>(initialCopy ?? null);

@@ -5,7 +5,7 @@
  * sources and disclosures. Tabs: Overview, Integrity (BTX), Factors (FACT), Risk, Sizing (KELLY), Costs (TCA),
  * Insiders (INSC), Drills (DRILL) and Signals. On phones the tabs scroll and every panel stacks.
  */
-import dynamic from "next/dynamic";
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { QuantSignal } from "@/lib/quant/contracts";
@@ -15,13 +15,13 @@ import { Button, Card, Disclosures, ErrorNote, Field, inputCls, num, pct, QuantC
 
 // The overview ships with the page; each tool tab loads when it is opened.
 const TabLoading = () => <div className="shimmer h-48 ctl" />;
-const CostsTab = dynamic(() => import("./CostsTab").then((m) => m.CostsTab), { loading: TabLoading });
-const DrillsTab = dynamic(() => import("./DrillsTab").then((m) => m.DrillsTab), { loading: TabLoading });
-const InsidersTab = dynamic(() => import("./InsidersTab").then((m) => m.InsidersTab), { loading: TabLoading });
-const IntegrityTab = dynamic(() => import("./IntegrityTab").then((m) => m.IntegrityTab), { loading: TabLoading });
-const SizingTab = dynamic(() => import("./SizingTab").then((m) => m.SizingTab), { loading: TabLoading });
-const FactorsTab = dynamic(() => import("./PortfolioTabs").then((m) => m.FactorsTab), { loading: TabLoading });
-const RiskTab = dynamic(() => import("./PortfolioTabs").then((m) => m.RiskTab), { loading: TabLoading });
+const CostsTab = lazyPanel(() => import("./CostsTab").then((m) => m.CostsTab), TabLoading);
+const DrillsTab = lazyPanel(() => import("./DrillsTab").then((m) => m.DrillsTab), TabLoading);
+const InsidersTab = lazyPanel(() => import("./InsidersTab").then((m) => m.InsidersTab), TabLoading);
+const IntegrityTab = lazyPanel(() => import("./IntegrityTab").then((m) => m.IntegrityTab), TabLoading);
+const SizingTab = lazyPanel(() => import("./SizingTab").then((m) => m.SizingTab), TabLoading);
+const FactorsTab = lazyPanel(() => import("./PortfolioTabs").then((m) => m.FactorsTab), TabLoading);
+const RiskTab = lazyPanel(() => import("./PortfolioTabs").then((m) => m.RiskTab), TabLoading);
 
 export type QuantTab = "overview" | "integrity" | "factors" | "risk" | "sizing" | "costs" | "insiders" | "drills" | "signals";
 export const QUANT_TABS: { id: QuantTab; label: string; icon: string; code?: string }[] = [
@@ -41,6 +41,7 @@ export function QuantHub({ initialTab }: { initialTab?: string }) {
 }
 
 function HubInner({ initialTab }: { initialTab?: string }) {
+  useIdlePreload([IntegrityTab, FactorsTab, SizingTab, CostsTab, InsidersTab, DrillsTab]);
   const [tab, setTab] = useState<QuantTab>(QUANT_TABS.find((t) => t.id === initialTab)?.id ?? "overview");
   useSubNav("/app/quant", (v) => { if (QUANT_TABS.some((t) => t.id === v)) setTab(v as QuantTab); });
   return (
