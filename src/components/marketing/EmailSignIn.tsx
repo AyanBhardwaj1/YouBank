@@ -17,6 +17,7 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgot, setForgot] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +29,8 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
         : await client.signUp.email({ name: name.trim() || email.trim().split("@")[0], email: email.trim(), password });
       if (res?.error) { setError(signInError(res.error)); setBusy(false); return; }
       // A full load, so the server renders the signed-in app with the new session cookie.
-      window.location.assign(mode === "in" ? next : "/onboarding");
+      // A new account goes through onboarding first, then on to where it was headed (an invitation link).
+      window.location.assign(mode === "in" ? next : next === "/app" ? "/onboarding" : `/onboarding?next=${encodeURIComponent(next)}`);
     } catch (err) {
       setError(signInError(err));
       setBusy(false);
@@ -49,8 +51,14 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
         <button type="button" className="hover:text-fg" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(null); }}>
           {mode === "in" ? "New here? Create an account" : "Have an account? Sign in"}
         </button>
-        {mode === "in" && <span title="Password resets are done by the YouBank team for now">Forgot it? Ask support</span>}
+        {mode === "in" && <button type="button" className="hover:text-fg" aria-expanded={forgot} onClick={() => setForgot(!forgot)}>Forgot your password?</button>}
       </div>
+      {/* No emailed reset yet (no mail sender): a hover title would be invisible on a phone, so it is said in place. */}
+      {mode === "in" && forgot && (
+        <p role="status" className="rounded-md border border-line px-3 py-2 text-[11.5px] leading-relaxed text-muted">
+          Password resets are done by the YouBank team for now. Contact the person who invited you, or whoever runs YouBank for your team, and they will reset it for you.
+        </p>
+      )}
     </form>
   );
 }

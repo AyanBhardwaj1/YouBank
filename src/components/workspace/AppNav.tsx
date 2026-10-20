@@ -11,10 +11,10 @@
  * finger size there, and the bar keeps clear of the notch when the page is drawn edge to edge.
  */
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { PanelLeft, PanelLeftClose, Pin, SlidersHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
 import { featureOf, type NavFeature } from "@/lib/nav";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -50,7 +50,6 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
 
 export function AppNav({ email }: { email: string }) {
   const path = usePathname();
-  const router = useRouter();
   const { profile, config } = useWorkspace();
   const { status } = useAiSettings();
   const nav = useNav();
@@ -60,7 +59,21 @@ export function AppNav({ email }: { email: string }) {
   const current = featureOf(path, nav.features);
   const unpinned = current && !nav.prefs.pinned.includes(current.id) ? current : null;
   const iconsOnly = nav.prefs.labels === "icons";
-  const signOut = async () => { await (await getAuthClient()).signOut(); router.push("/"); router.refresh(); };
+  // A full load that replaces this page: nothing signed-in stays in the client's cache, and Back does not
+  // return into the app. A failed request still leaves (the server checks the session on every page).
+  const [leaving, setLeaving] = useState(false);
+  const signOut = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    try { await (await getAuthClient()).signOut(); } catch { /* the cookie is checked server-side anyway */ }
+    window.location.replace("/");
+  };
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
 
   return (
     <div className="glass relative z-50 shrink-0 border-b border-line bg-bg/90 pt-safe px-safe">
@@ -107,7 +120,7 @@ export function AppNav({ email }: { email: string }) {
                 <Link role="menuitem" href="/app/profile" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Users" className="h-3.5 w-3.5" /> Change my role</Link>
                 <Link role="menuitem" href="/app/library" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Library" className="h-3.5 w-3.5" /> Saved work</Link>
                 <Link role="menuitem" href="/download" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Download" className="h-3.5 w-3.5" /> Get the desktop app</Link>
-                <button role="menuitem" type="button" onClick={signOut} className="mt-1 flex w-full items-center gap-2 border-t border-line ctl px-2 py-1.5 text-left text-muted hover:bg-elevated hover:text-neg"><Icon name="LogOut" className="h-3.5 w-3.5" /> Sign out</button>
+                <button role="menuitem" type="button" onClick={signOut} disabled={leaving} className="mt-1 flex w-full items-center gap-2 border-t border-line ctl px-2 py-1.5 text-left text-muted hover:bg-elevated hover:text-neg disabled:opacity-60"><Icon name="LogOut" className="h-3.5 w-3.5" /> {leaving ? "Signing out…" : "Sign out"}</button>
               </div>
             </>
           )}

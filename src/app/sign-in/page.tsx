@@ -7,11 +7,10 @@ import { ROLES, ROLE_IDS } from "@/lib/roles";
 import { Logo } from "@/components/brand/Logo";
 import { SetupScreen } from "@/components/ui/SetupScreen";
 import { setupState } from "@/lib/setup";
+import { safeNext } from "@/lib/safe-next";
 
 export const metadata = { title: "Sign in" };
 
-/** Where to land after signing in: ?next=, only for paths inside the app (never another site). */
-const safeNext = (v: unknown) => (typeof v === "string" && /^\/app(\/[A-Za-z0-9/_\-?=&.%]*)?$/.test(v) && !v.startsWith("//") ? v : "/app");
 
 export default async function SignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const next = safeNext((await searchParams).next);
@@ -31,7 +30,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<R
         </Link>
         <h1 className="mt-5 text-[20px] font-semibold tracking-tight">Sign in</h1>
         <p className="mt-1 text-[12.5px] text-muted">Your watchlists, sheets, saved runs, model and style preferences are kept on your account.</p>
-        {GOOGLE_SIGNIN && <SignInButton next={next} className="mt-5" />}
+        {GOOGLE_SIGNIN && <SignInButton next={next} newUser={next === "/app" ? "/onboarding" : `/onboarding?next=${encodeURIComponent(next)}`} className="mt-5" />}
         {GOOGLE_SIGNIN && <div className="mt-4 text-center text-[10.5px] uppercase tracking-wider text-muted">or with email</div>}
         <EmailSignIn next={next} className={GOOGLE_SIGNIN ? "mt-3" : "mt-5"} />
         <div className="mt-6 border-t border-line pt-4">

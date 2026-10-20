@@ -14,7 +14,7 @@ type Draft = Profile;
 const EMPTY: Draft = { role: "banker", specialty: "", seniority: "", firmType: "", firmName: "", firmTicker: "", sectors: [], goals: "" };
 const ROLE_ICON: Record<RoleId, string> = { banker: "Landmark", pe: "Briefcase", vc: "Rocket", markets: "LineChart", corpfin: "Building2", consultant: "Compass", accountant: "Receipt", student: "GraduationCap" };
 
-export function OnboardingWizard({ initial, userName }: { initial: Partial<Profile> | null; userName: string }) {
+export function OnboardingWizard({ initial, userName, next = "/app" }: { initial: Partial<Profile> | null; userName: string; next?: string }) {
   const router = useRouter();
   const { themeId, setTheme, preview } = useTheme();
   const [d, setD] = useState<Draft>({ ...EMPTY, ...(initial ?? {}) });
@@ -36,7 +36,7 @@ export function OnboardingWizard({ initial, userName }: { initial: Partial<Profi
       const res = await fetch("/api/profile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(d) });
       if (!res.ok) throw await apiError(res);
       await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: themeId }) }).catch(() => {});
-      router.push("/app");
+      router.push(next);
       router.refresh();
     } catch (e) { setError(errorMessage(e)); setBusy(false); }
   };
