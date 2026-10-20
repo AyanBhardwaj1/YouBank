@@ -185,7 +185,7 @@ function FundInner({ cik }: { cik: string }) {
               )}
             </Section>
             <Section title="Sectors" icon="Layers">
-              <HBar title="Share of reported value" data={v.stats.sectors.map((s, i) => ({ key: s.sector, label: s.label.split(" ")[0], value: s.weight, emphasis: i === 0, note: s.label }))} format={(x) => (x === null ? "–" : `${(x * 100).toFixed(0)}%`)} maxBars={9} />
+              <HBar title="Share of reported value" data={v.stats.sectors.map((s, i) => ({ key: s.sector, label: /^not yet/i.test(s.label) ? "Unclassified" : s.label.split(" ")[0], value: s.weight, emphasis: i === 0, note: s.label }))} format={(x) => (x === null ? "–" : `${(x * 100).toFixed(0)}%`)} maxBars={9} />
               <p className="mt-2 text-[10.5px] text-muted">From each issuer&apos;s SIC code at SEC. &quot;Not yet classified&quot; fills in over the next visits.</p>
             </Section>
           </div>
