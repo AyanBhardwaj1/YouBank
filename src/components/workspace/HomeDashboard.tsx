@@ -122,7 +122,7 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
               </section>
             </Reveal>
 
-            <Reveal delay={100}>
+            <Reveal eager delay={100}>
               <section className="panel p-3">
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Recent runs</h2><Link href="/app/library" className="text-[11px] text-muted hover:text-fg">library →</Link></div>
                 {runs === null && <div className="shimmer h-16 ctl" />}
@@ -141,7 +141,7 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
             </Reveal>
 
             {(profile.role === "vc" || profile.role === "pe") && (
-              <Reveal delay={140}>
+              <Reveal eager delay={140}>
                 <Link href="/app/vc" className="lift block panel p-3">
                   <div className="flex items-center gap-2"><Icon name="Rocket" className="h-4 w-4 text-accent" /><h2 className="text-[12.5px] font-semibold">Private markets</h2></div>
                   <p className="mt-1.5 text-[11.5px] text-muted">{facts.directoryTotal ? `${facts.directoryTotal.toLocaleString()} startups` : "The startup directory"} across Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and web discovery, plus every private raise filed this month.</p>
@@ -150,7 +150,7 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
               </Reveal>
             )}
 
-            <Reveal delay={180}>
+            <Reveal eager delay={180}>
               <section className="panel p-3 text-[11.5px]">
                 <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Your saved work</h2>
                 <dl className="space-y-1">
