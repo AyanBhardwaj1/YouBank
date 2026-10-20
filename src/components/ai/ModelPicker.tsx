@@ -9,20 +9,30 @@ type Catalog = { providers: string[]; models: (ModelDef & { available: boolean }
 
 let catalogCache: Catalog | null = null;
 let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string } | null = null;
+// One request each, however many pickers mount together (the terminal and its panels do at once).
+let statusLoading = false;
+let catalogLoading = false;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 
 /** Account-level AI settings, shared by every picker on the page and persisted to the profile. */
-export function useAiSettings() {
+export function useAiSettings({ catalog: wantCatalog = true }: { catalog?: boolean } = {}) {
   // The server has no status, so hydration renders none too (the server snapshot); the shared store
   // takes over after, even when another component on the page fetched it before this one hydrated.
   const statusNow = useSyncExternalStore(subscribe, () => statusCache, () => null);
   const catalogNow = useSyncExternalStore(subscribe, () => catalogCache, () => null);
   useEffect(() => {
-    if (!statusCache) fetch("/api/ai/status").then((r) => (r.ok ? r.json() : null)).then((s) => { if (s && !("error" in s)) { statusCache = s; notify(); } }).catch(() => {});
-    if (!catalogCache) fetch("/api/ai/models").then((r) => r.json()).then((c) => { if (c && Array.isArray(c.models)) { catalogCache = c; notify(); } }).catch(() => {});
-  }, []);
+    if (!statusCache && !statusLoading) {
+      statusLoading = true;
+      fetch("/api/ai/status").then((r) => (r.ok ? r.json() : null)).then((s) => { if (s && !("error" in s)) { statusCache = s; notify(); } }).catch(() => {}).finally(() => { statusLoading = false; });
+    }
+    // The model catalog only for what lists models (the pickers, settings), not the top bar on every page.
+    if (wantCatalog && !catalogCache && !catalogLoading) {
+      catalogLoading = true;
+      fetch("/api/ai/models").then((r) => r.json()).then((c) => { if (c && Array.isArray(c.models)) { catalogCache = c; notify(); } }).catch(() => {}).finally(() => { catalogLoading = false; });
+    }
+  }, [wantCatalog]);
   const settings: AiSettings = { model: statusNow?.model, effort: statusNow?.effort };
   const setSettings = (next: AiSettings, persist = true) => {
     if (statusCache) statusCache = { ...statusCache, model: next.model ?? statusCache.model, effort: next.effort ?? statusCache.effort, label: MODELS.find((m) => m.id === next.model)?.label };
