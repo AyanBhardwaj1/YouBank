@@ -216,26 +216,31 @@ export class SeatError extends Error {
 /** Give one of the owner's seats to a member of one of their teams. `exempt` (administrators) skips the cooldown. */
 export async function assignSeat(ownerUserId: string, targetUserId: string, teamId: number, opts: { exempt?: boolean } = {}): Promise<void> {
   const db = requireDb();
-  const [sub] = await db.select({ plan: schema.subscriptions.plan, status: schema.subscriptions.status, seats: schema.subscriptions.seats })
-    .from(schema.subscriptions).where(eq(schema.subscriptions.userId, ownerUserId));
-  const roles = await db.select({ userId: schema.teamMembers.userId, role: schema.teamMembers.role, email: schema.teamMembers.email, name: schema.teamMembers.name })
-    .from(schema.teamMembers).where(and(eq(schema.teamMembers.teamId, teamId), inArray(schema.teamMembers.userId, [ownerUserId, targetUserId])));
-  const ownerRow = roles.find((r) => r.userId === ownerUserId), target = roles.find((r) => r.userId === targetUserId);
-  const [held] = await db.select({ owner: schema.seatAssignments.ownerUserId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.userId, targetUserId));
-  const current = (await db.select({ userId: schema.seatAssignments.userId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.ownerUserId, ownerUserId))).map((r) => r.userId);
   const history = opts.exempt ? [] : await recentSeats(ownerUserId);
-  const why = assignError({
-    ownerId: ownerUserId, targetId: targetUserId, plan: sub?.plan ?? null, status: sub?.status ?? null, seats: sub?.seats ?? 0, assigned: current.length,
-    ownerRole: ownerRow && isTeamRole(ownerRow.role) ? ownerRow.role : null, targetRole: target && isTeamRole(target.role) ? target.role : null,
-    targetSeatOwner: held?.owner ?? null, current, history, exempt: opts.exempt,
+  // One owner's seat changes run one at a time: the subscription row is locked for the check and the
+  // insert, so two seats given at once cannot both see the last free seat (the count is read inside).
+  const target = await db.transaction(async (tx) => {
+    const [sub] = await tx.select({ plan: schema.subscriptions.plan, status: schema.subscriptions.status, seats: schema.subscriptions.seats })
+      .from(schema.subscriptions).where(eq(schema.subscriptions.userId, ownerUserId)).for("update");
+    const roles = await tx.select({ userId: schema.teamMembers.userId, role: schema.teamMembers.role, email: schema.teamMembers.email, name: schema.teamMembers.name })
+      .from(schema.teamMembers).where(and(eq(schema.teamMembers.teamId, teamId), inArray(schema.teamMembers.userId, [ownerUserId, targetUserId])));
+    const ownerRow = roles.find((r) => r.userId === ownerUserId), target = roles.find((r) => r.userId === targetUserId);
+    const [held] = await tx.select({ owner: schema.seatAssignments.ownerUserId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.userId, targetUserId));
+    const current = (await tx.select({ userId: schema.seatAssignments.userId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.ownerUserId, ownerUserId))).map((r) => r.userId);
+    const why = assignError({
+      ownerId: ownerUserId, targetId: targetUserId, plan: sub?.plan ?? null, status: sub?.status ?? null, seats: sub?.seats ?? 0, assigned: current.length,
+      ownerRole: ownerRow && isTeamRole(ownerRow.role) ? ownerRow.role : null, targetRole: target && isTeamRole(target.role) ? target.role : null,
+      targetSeatOwner: held?.owner ?? null, current, history, exempt: opts.exempt,
+    });
+    if (why) throw new SeatError(why, why.startsWith("Seats come") ? 402 : 409);
+    // The unique index on user_id settles a race between two owners: the second insert does nothing.
+    const rows = await tx.insert(schema.seatAssignments).values({ ownerUserId, userId: targetUserId, teamId, email: target!.email, name: target!.name })
+      .onConflictDoNothing({ target: schema.seatAssignments.userId }).returning({ id: schema.seatAssignments.id });
+    if (!rows.length) throw new SeatError("That person already has a seat.", 409);
+    return target!;
   });
-  if (why) throw new SeatError(why, why.startsWith("Seats come") ? 402 : 409);
-  // The unique index on user_id settles a race between two owners: the second insert does nothing.
-  const rows = await db.insert(schema.seatAssignments).values({ ownerUserId, userId: targetUserId, teamId, email: target!.email, name: target!.name })
-    .onConflictDoNothing({ target: schema.seatAssignments.userId }).returning({ id: schema.seatAssignments.id });
-  if (!rows.length) throw new SeatError("That person already has a seat.", 409);
   // The cooldown's memory: kept after the seat is freed, whichever way (drizzle/0024_seat_cooldown.sql).
-  await db.insert(schema.seatHistory).values({ ownerUserId, userId: targetUserId, teamId, email: target!.email, name: target!.name })
+  await db.insert(schema.seatHistory).values({ ownerUserId, userId: targetUserId, teamId, email: target.email, name: target.name })
     .catch((e) => logError(e, { where: "seat-history" }));
 }
 

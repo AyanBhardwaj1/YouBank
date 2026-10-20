@@ -12,8 +12,10 @@
  *   daily cap is at least CREDIT_DAILY_USD;
  * - a person runs at most two long AI runs (chat, tools, the Studio agent) at once, so parallel runs
  *   cannot all start under the cap.
- * Spend is read from the usage ledger and cached briefly per instance; calls the ledger has not caught
- * up with are added as they happen (noteAiSpend), and long runs add their running cost between turns.
+ * Today's spend comes from atomic running totals (./spend: every instance's calls, added as each is
+ * recorded) read every few seconds, and the month's from the usage ledger, cached briefly per instance;
+ * the ledger also backs the daily totals up (the larger of the two counts). Calls not recorded yet are
+ * added as they happen (noteAiSpend), and long runs add their running cost between turns.
  * The plan is read every 15 seconds per person (and dropped at once on this instance when billing changes
  * it), from the subscription, an assigned seat and the profile's email (Campus needs it), so background
  * runs that carry no session (autopilot, the agent cron) get the same caps.
@@ -21,11 +23,13 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { creditState, noteDraw, NO_CREDITS, packsLeft, type CreditState } from "@/lib/billing/credits";
-import { entitlements } from "@/lib/billing/entitlements";
+import { entitlements, forgetEntitlements } from "@/lib/billing/entitlements";
 import { allowancePeriod, CREDIT_DAILY_USD, splitSpend, type Period } from "@/lib/billing/packs";
 import { PLANS, planAtLeast, type PlanId } from "@/lib/billing/plans";
 import { lease, type Release } from "@/lib/locks";
+import { shared, sharedMap } from "@/lib/shared";
 import { aiAdmin } from "./context";
+import { addSpend, EVERYONE, readSpend, type DayTotals } from "./spend";
 
 export class AiLimitError extends Error {
   /** Read by `guarded()` so these surface as 429 rather than 500. */
@@ -67,21 +71,78 @@ export function monthCapMessage(plan: PlanId, now = new Date(), resetsOn?: Date,
 export const dailyCapWith = (planDailyUsd: number, creditsLeftUsd: number) => (creditsLeftUsd > 0 ? Math.max(planDailyUsd, CREDIT_DAILY_USD) : planDailyUsd);
 
 const DAY_MS = 86_400_000;
-/** Spend is re-read from the ledger this often; plans and credits are re-read as often (billing also drops them at once). */
+/**
+ * Spend is re-read from the ledger this often (the daily window less often while the running totals
+ * answer: they are re-read every COUNTER_TTL_MS); plans and credits are re-read as often (billing also
+ * drops them at once).
+ */
 const USER_TTL_MS = 20_000, GLOBAL_TTL_MS = 60_000, PLAN_TTL_MS = 15_000, CREDIT_TTL_MS = 15_000;
+const COUNTER_TTL_MS = 3_000, DAY_LEDGER_TTL_MS = 60_000;
 type Window = "day" | "month";
 const dayStart = (now = new Date()) => new Date(Math.floor(now.getTime() / DAY_MS) * DAY_MS);
 
-/** Spend memo: `key` is when its window began (ms), so a new day or allowance month reads afresh. */
+/**
+ * Spend memo: `key` is when its window began (ms), so a new day or allowance month reads afresh. Kept per
+ * process (src/lib/shared), so billing's forgetAiCaps and noteAiSpend reach every layer's copy.
+ */
 type Memo = { key: number; usd: number; at: number };
-const memos: Record<Window, Map<string, Memo>> = { day: new Map(), month: new Map() };
-let everyone: Memo | null = null;
+const memos = shared<Record<Window, Map<string, Memo>>>("ai:spend-memos", () => ({ day: new Map(), month: new Map() }));
+const globalMemo = shared<{ everyone: Memo | null }>("ai:spend-global", () => ({ everyone: null }));
+/** The running totals (./spend) by scope (a person's id, or EVERYONE), and whether their table answers. */
+const counters = sharedMap<string, Memo>("ai:spend-counters");
+const counterState = shared("ai:spend-counter-state", () => ({ offUntil: 0 }));
+
+function keepCounter(scope: string, key: number, usd: number) {
+  const prev = counters.get(scope);
+  if (counters.size > 5_000) counters.clear();
+  counters.set(scope, { key, usd: Math.max(usd, prev?.key === key ? prev.usd : 0), at: Date.now() });
+}
+const keepTotals = (userId: string | null, key: number, t: DayTotals) => {
+  keepCounter(EVERYONE, key, t.everyone);
+  if (userId && t.mine !== null) keepCounter(userId, key, t.mine);
+};
+
+/** Today's running total for one person (or everyone, when `userId` is null), or null when the counters do not answer. */
+async function counterSpent(userId: string | null, since: Date): Promise<number | null> {
+  if (Date.now() < counterState.offUntil) return null;
+  const key = since.getTime(), scope = userId ?? EVERYONE;
+  const hit = counters.get(scope);
+  if (hit && hit.key === key && Date.now() - hit.at < COUNTER_TTL_MS) return hit.usd;
+  try {
+    keepTotals(userId, key, await readSpend(userId, since));
+  } catch {
+    // The table is not there yet (drizzle/0027) or the read failed: the ledger answers alone for a while.
+    counterState.offUntil = Date.now() + 60_000;
+    return null;
+  }
+  return counters.get(scope)?.usd ?? 0;
+}
+
+/**
+ * Add a recorded call's cost to the running totals at once (one atomic statement, every instance sees it)
+ * and keep the totals it returns. Never throws. Returns the write, for `after()` to wait on.
+ */
+export function recordSpend(userId: string | null, cost: number): Promise<void> {
+  if (!Number.isFinite(cost) || cost <= 0 || Date.now() < counterState.offUntil) return Promise.resolve();
+  const key = dayStart().getTime();
+  return addSpend(userId, cost).then((t) => keepTotals(userId, key, t), () => { counterState.offUntil = Date.now() + 60_000; });
+}
 
 /** Spend since `since` for one person (in the day or month window), or today's for everyone when `userId` is null. */
 async function spent(userId: string | null, w: Window, since: Date): Promise<number> {
+  if (w === "day") {
+    const [ledger, counter] = await Promise.all([ledgerSpent(userId, w, since, true), counterSpent(userId, since)]);
+    return Math.max(ledger, counter ?? 0);
+  }
+  return ledgerSpent(userId, w, since, false);
+}
+
+/** Spend from the ledger. `backstop`: the running totals answer too, so it is re-read less often (when they do). */
+async function ledgerSpent(userId: string | null, w: Window, since: Date, backstop: boolean): Promise<number> {
   const key = since.getTime();
-  const memo = userId ? memos[w].get(userId) : everyone;
-  if (memo && memo.key === key && Date.now() - memo.at < (userId ? USER_TTL_MS : GLOBAL_TTL_MS)) return memo.usd;
+  const memo = userId ? memos[w].get(userId) : globalMemo.everyone;
+  const ttl = backstop && Date.now() >= counterState.offUntil ? DAY_LEDGER_TTL_MS : userId ? USER_TTL_MS : GLOBAL_TTL_MS;
+  if (memo && memo.key === key && Date.now() - memo.at < ttl) return memo.usd;
   const where = userId ? and(eq(schema.aiUsage.userId, userId), gte(schema.aiUsage.createdAt, since)) : gte(schema.aiUsage.createdAt, since);
   const [r] = await requireDb().select({ usd: sql<number>`coalesce(sum(${schema.aiUsage.costUsd}), 0)::float` }).from(schema.aiUsage).where(where);
   // The ledger can trail spend noted here moments ago (its writes land after the response).
@@ -89,7 +150,7 @@ async function spent(userId: string | null, w: Window, since: Date): Promise<num
   if (userId) {
     if (memos[w].size > 5_000) memos[w].clear();
     memos[w].set(userId, next);
-  } else everyone = next;
+  } else globalMemo.everyone = next;
   return next.usd;
 }
 
@@ -97,7 +158,12 @@ async function spent(userId: string | null, w: Window, since: Date): Promise<num
 export function noteAiSpend(userId: string | null, cost: number) {
   if (!Number.isFinite(cost) || cost <= 0) return;
   const today = dayStart().getTime();
+  const everyone = globalMemo.everyone;
   if (everyone?.key === today) everyone.usd += cost;
+  for (const scope of userId ? [EVERYONE, userId] : [EVERYONE]) {
+    const c = counters.get(scope);
+    if (c?.key === today) c.usd += cost;
+  }
   if (!userId) return;
   const d = memos.day.get(userId);
   if (d?.key === today) d.usd += cost;
@@ -108,7 +174,7 @@ export function noteAiSpend(userId: string | null, cost: number) {
 
 /** A person's plan and caps; null caps mean none (administrators). `anchor` sets their allowance month. */
 export type AiCaps = { plan: PlanId; admin: boolean; dailyUsd: number | null; monthlyUsd: number | null; anchor: Date | null };
-const plans = new Map<string, { at: number; caps: AiCaps }>();
+const plans = sharedMap<string, { at: number; caps: AiCaps }>("ai:plans");
 
 /**
  * The caps for one person, read at most every 15 seconds per instance. The email comes from the profile,
@@ -132,7 +198,7 @@ export async function aiCaps(userId: string): Promise<AiCaps> {
   return caps;
 }
 
-const credits = new Map<string, { at: number; key: number; state: CreditState }>();
+const credits = sharedMap<string, { at: number; key: number; state: CreditState }>("ai:credits");
 
 /** A person's credits for `period`, read at most every 15 seconds per instance. A failed read means none. */
 async function creditsFor(userId: string, period: Period): Promise<CreditState> {
@@ -147,13 +213,14 @@ async function creditsFor(userId: string, period: Period): Promise<CreditState> 
 }
 
 /**
- * Forget a person's cached plan and credits on this instance (billing calls it from the webhook, the
+ * Forget a person's cached plan, entitlements and credits on this instance (billing calls it from the webhook, the
  * return from Checkout and seat changes), so the next call reads them fresh. Other instances catch up
  * within 15 seconds.
  */
 export function forgetAiCaps(userId: string) {
   plans.delete(userId);
   credits.delete(userId);
+  forgetEntitlements(userId);
 }
 
 /**
@@ -161,7 +228,7 @@ export function forgetAiCaps(userId: string) {
  * the person holds credits (even before spend passes the allowance), so the call that crosses it is still
  * settled from the ledger when the period ends; after that, only when the use grows by a cent.
  */
-const drawn = new Map<string, number>();
+const drawn = sharedMap<string, number>("ai:drawn");
 function recordDraw(userId: string, period: Period, cap: number, available: number, spend: number) {
   const used = splitSpend(spend, cap, available).credits;
   const k = `${userId}:${period.start.getTime()}`;
