@@ -319,7 +319,7 @@ export const crmContacts = pgTable("crm_contacts", {
   index("crm_contacts_team_idx").on(t.teamId),
   index("crm_contacts_domain_idx").on(t.domain),
   // drizzle/0027_scale.sql: contacts most recently seen first.
-  index("crm_contacts_user_seen_idx").on(t.userId, t.lastSeenAt.desc(), t.id.desc()),
+  index("crm_contacts_user_seen_idx").on(t.userId, t.lastSeenAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
 ]);
 
 /** A pipeline item: one company moving through the stages of a desk's process. */
@@ -347,7 +347,7 @@ export const crmDeals = pgTable("crm_deals", {
   index("crm_deals_team_idx").on(t.teamId),
   index("crm_deals_contact_idx").on(t.contactId),
   // drizzle/0027_scale.sql: the pipeline newest first, paged by (updated_at, id).
-  index("crm_deals_user_updated_idx").on(t.userId, t.updatedAt.desc(), t.id.desc()),
+  index("crm_deals_user_updated_idx").on(t.userId, t.updatedAt.desc().nullsFirst(), t.id.desc().nullsFirst()),
 ]);
 
 /** An email thread the agent has read, with its triage verdict. */
