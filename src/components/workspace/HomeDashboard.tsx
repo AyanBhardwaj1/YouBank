@@ -9,14 +9,14 @@ import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
-import { HomeBrief } from "@/components/news/HomeBrief";
+import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
 import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
 
 type Run = { id: number; toolId: string; title: string; model: string; status: string; createdAt: string; durationMs: number };
 
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 
-export function HomeDashboard({ facts }: { facts: { directoryTotal: number | null; sheets: number; groups: number } }) {
+export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: number | null; sheets: number; groups: number }; brief?: BriefSeed }) {
   const { profile, config, tools } = useWorkspace();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const { data, loading } = useCompanies(config.watchlist);
@@ -45,7 +45,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <Reveal eager><HomeBrief /></Reveal>
+            <Reveal eager><HomeBrief seed={brief} /></Reveal>
 
             <Reveal eager>
               <section>
