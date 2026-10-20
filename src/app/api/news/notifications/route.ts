@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
-import { afterCursor, cursorTime, decodeCursor, pageOf } from "@/lib/cursor";
+import { afterCursor, cursorParam, cursorTime, pageOf } from "@/lib/cursor";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   return guarded(async (user) => {
     const db = requireDb();
     const t = schema.newsNotifications;
-    const cursor = decodeCursor(new URL(req.url).searchParams.get("cursor"));
+    const cursor = cursorParam(req);
     const [rows, [{ n }]] = await Promise.all([
       db.select({ id: t.id, kind: t.kind, title: t.title, body: t.body, url: t.url, urgent: t.urgent, createdAt: t.createdAt, readAt: t.readAt, delivered: t.delivered, cursorAt: cursorTime(t.createdAt) })
         .from(t).where(and(eq(t.userId, user.id), afterCursor(cursor, t.createdAt, t.id))).orderBy(desc(t.createdAt), desc(t.id)).limit(41),

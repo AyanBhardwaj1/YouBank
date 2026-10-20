@@ -22,12 +22,41 @@ export function encodeCursor(at: string | null, id: number): string {
   return Buffer.from(`${at ?? ""}|${id}`).toString("base64url");
 }
 
-/** The cursor, or null for a missing or malformed one (which reads as the first page). Pure. */
+/** The largest id a cursor may carry: the lists' ids are `serial` (int4), and a larger one fails the query. */
+const MAX_ID = 2_147_483_647;
+
+/**
+ * The cursor, or null for a missing or malformed one. Only a time Postgres will accept passes (a real
+ * calendar moment: "2026-13-45T…" matches the pattern but would fail the cast), and only an id the
+ * column can hold. Routes take it through cursorParam, which refuses a malformed one. Pure.
+ */
 export function decodeCursor(raw: string | null | undefined): Cursor | null {
   if (!raw || raw.length > 120) return null;
-  const m = /^([^|]*)\|(\d{1,15})$/.exec(Buffer.from(raw, "base64url").toString("utf8"));
-  if (!m || (m[1] && !TIME.test(m[1]))) return null;
-  return { at: m[1] || null, id: Number(m[2]) };
+  const m = /^([^|]*)\|(\d{1,10})$/.exec(Buffer.from(raw, "base64url").toString("utf8"));
+  if (!m || (m[1] && !validTime(m[1]))) return null;
+  const id = Number(m[2]);
+  if (!Number.isSafeInteger(id) || id > MAX_ID) return null;
+  return { at: m[1] || null, id };
+}
+
+/** A microsecond UTC time that names a real moment (its millisecond part round-trips through Date). Pure. */
+function validTime(t: string): boolean {
+  if (!TIME.test(t)) return false;
+  const ms = Date.parse(`${t.slice(0, 23)}Z`);
+  return Number.isFinite(ms) && ms >= 0 && new Date(ms).toISOString() === `${t.slice(0, 23)}Z`;
+}
+
+/**
+ * The `?cursor=` of a list request: null when absent (the first page, as before cursors), the cursor when
+ * well formed, and a 400 (thrown, for guarded() to answer) when it is not, so a client with a mangled
+ * cursor is told rather than silently sent back to the first page (which a "load more" loop would repeat).
+ */
+export function cursorParam(req: Request): Cursor | null {
+  const raw = new URL(req.url).searchParams.get("cursor");
+  if (raw === null || raw === "") return null;
+  const c = decodeCursor(raw);
+  if (!c) throw Object.assign(new Error("That page link is not valid any more. Reload the list."), { status: 400 });
+  return c;
 }
 
 /**

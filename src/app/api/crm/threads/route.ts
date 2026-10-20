@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
-import { decodeCursor } from "@/lib/cursor";
+import { cursorParam } from "@/lib/cursor";
 import { ingestThread, listThreads, processThread, threadActivity } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export const maxDuration = 120;
  */
 export async function GET(req: Request) {
   return guarded(async (user) => {
-    const { rows: threads, next } = await listThreads(user.id, 50, decodeCursor(new URL(req.url).searchParams.get("cursor")));
+    const { rows: threads, next } = await listThreads(user.id, 50, cursorParam(req));
     const activity = await threadActivity(user.id, threads.map((t) => t.id));
     return NextResponse.json(threads.map((t) => ({ ...t, activity: activity[t.id] ?? null })), next ? { headers: { "x-next-cursor": next } } : undefined);
   });

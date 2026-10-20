@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
-import { decodeCursor } from "@/lib/cursor";
+import { cursorParam } from "@/lib/cursor";
 import { crmCounts, listContacts, listDeals } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   return guarded(async (user) => {
-    const cursor = decodeCursor(new URL(req.url).searchParams.get("cursor"));
+    const cursor = cursorParam(req);
     const [{ rows: deals, next }, contacts, counts] = await Promise.all([listDeals(user.id, 500, cursor), listContacts(user.id), crmCounts(user.id)]);
     const ids = deals.map((d) => d.id);
     const edge = ids.length ? await requireDb().select({ dealId: schema.crmSignals.dealId, title: schema.crmSignals.title, url: schema.crmSignals.url }).from(schema.crmSignals)
