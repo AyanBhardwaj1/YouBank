@@ -25,6 +25,7 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
   const [remote, setRemote] = useState<TickerRow[]>([]);
+  const [searchDown, setSearchDown] = useState(false);
   const { config, profile, edge } = useWorkspace();
   const watchlist = config.watchlist;
   const isCode = (s: string) => isCommandCode(s, edge);
@@ -35,12 +36,14 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
 
   // Server-side ticker search (SEC company list), debounced.
   useEffect(() => {
-    if (!wantsSearch) { setRemote([]); return; }
+    if (!wantsSearch) { setRemote([]); setSearchDown(false); return; }
     const ctrl = new AbortController();
     const t = setTimeout(() => {
       fetch(`/api/search?q=${encodeURIComponent(first)}`, { signal: ctrl.signal })
-        // Suggestions are a convenience: a failed search (signed out, rate limited) just offers none.
-        .then((r) => (r.ok ? r.json() : [])).then((rows: unknown) => setRemote(Array.isArray(rows) ? (rows as TickerRow[]) : [])).catch(() => {});
+        // Suggestions are a convenience: a failed search offers none, and says so when nothing else matches.
+        .then((r) => { setSearchDown(!r.ok); return r.ok ? r.json() : []; })
+        .then((rows: unknown) => setRemote(Array.isArray(rows) ? (rows as TickerRow[]) : []))
+        .catch((e) => { if ((e as Error)?.name !== "AbortError") setSearchDown(true); });
     }, 120);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [first, wantsSearch]);
@@ -102,6 +105,11 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
         className="num w-full rounded-md border border-line bg-bg py-1.5 pl-7 pr-2 uppercase tracking-wide text-fg placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20"
       />
       {error && <span className="absolute right-2 text-[11px] text-neg" role="alert">{error}</span>}
+      {open && suggestions.length === 0 && wantsSearch && searchDown && (
+        <div role="status" className="rise float absolute left-0 top-full z-50 mt-1 w-[460px] max-w-[calc(100vw-16px)] ctl border border-line-strong bg-raised px-3 py-2 text-[11.5px] text-muted max-md:fixed max-md:inset-x-2 max-md:w-auto max-md:max-w-none">
+          Company search is not answering right now. Type an exact ticker and press Enter, or try again in a moment.
+        </div>
+      )}
       {open && suggestions.length > 0 && (
         <ul className="rise float absolute left-0 top-full z-50 mt-1 w-[460px] max-w-[calc(100vw-16px)] overflow-hidden ctl border border-line-strong bg-raised max-md:fixed max-md:inset-x-2 max-md:top-full max-md:mt-1 max-md:w-auto max-md:max-w-none" role="listbox">
           {suggestions.map((s, i) => (

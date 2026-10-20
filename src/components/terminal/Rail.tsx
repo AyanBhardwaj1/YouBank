@@ -23,7 +23,7 @@ export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "asi
   const onRun = (c: Command) => { run(c); onPicked?.(); };
   const tools = catalogFor(profile).slice(0, 5);
   const watchlist = config.watchlist;
-  const { data } = useCompanies(watchlist);
+  const { data, errors } = useCompanies(watchlist);
   return (
     <aside className={sheet ? "flex flex-col text-[13px] [&_li>button]:min-h-11" : "hidden w-60 shrink-0 flex-col border-r border-line bg-panel lg:flex"}>
       <div className={`flex items-center gap-2 border-b border-line px-3 py-2 ${sheet ? "hidden" : ""}`}>
@@ -40,6 +40,8 @@ export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "asi
           const c = data[t];
           const active = t === activeTicker;
           const chg = c?.price?.changePct ?? null;
+          // A ticker whose load failed stops pulsing and says so; the panel it opens explains and retries.
+          const failed = !c && !!errors[t];
           return (
             <li key={t}>
               <button type="button" onClick={() => onRun({ ticker: t, fn: "DES" })}
@@ -48,10 +50,10 @@ export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "asi
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between">
                     <span className={`font-semibold ${active ? "text-accent" : "text-fg"}`}>{t}</span>
-                    <span className="num text-fg">{c?.price ? c.price.last.toFixed(2) : <span className="inline-block h-3 w-10 animate-pulse rounded bg-elevated" />}</span>
+                    <span className="num text-fg">{c?.price ? c.price.last.toFixed(2) : failed || c ? "—" : <span className="inline-block h-3 w-10 animate-pulse rounded bg-elevated" />}</span>
                   </span>
                   <span className="flex items-baseline justify-between text-[10.5px]">
-                    <span className="truncate text-muted">{c ? shortName(c.name) : "loading…"}</span>
+                    <span className="truncate text-muted">{c ? shortName(c.name) : failed ? "unavailable" : "loading…"}</span>
                     {chg !== null && <span className={`num ${chg >= 0 ? "text-pos" : "text-neg"}`}>{chg >= 0 ? "+" : ""}{chg.toFixed(2)}%</span>}
                   </span>
                 </span>

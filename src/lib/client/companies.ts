@@ -42,6 +42,7 @@ async function loadBatch(tickers: string[]) {
 
 export function refreshCompany(ticker: string) {
   store.delete(ticker.toUpperCase());
+  notify(); // panels show their loading state while it is fetched again
   void loadBatch([ticker.toUpperCase()]);
 }
 
