@@ -22,7 +22,7 @@ import { schedulingNote } from "@/lib/calendar/scheduling";
 export async function composeDraft(userId: string, input: { to: string; name?: string; company?: string; brief: string }, opts: { kind?: "compose" | "intro"; meta?: DraftRow["meta"] } = {}): Promise<DraftRow> {
   const db = requireDb();
   const email = input.to.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw new Error("That is not an email address");
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
   const brief = input.brief.trim().slice(0, 1500);
   if (!brief) throw new Error("Say what the email should do");
 

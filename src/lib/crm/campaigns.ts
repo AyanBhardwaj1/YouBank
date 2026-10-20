@@ -177,7 +177,7 @@ export async function updateLead(userId: string, leadId: number, fields: { email
   if (fields.notes !== undefined) set.notes = fields.notes.slice(0, 1000);
   if (fields.email !== undefined) {
     const email = fields.email.trim().toLowerCase();
-    if (email && !EMAIL.test(email)) throw new Error("That is not an email address");
+    if (email && !EMAIL.test(email)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
     if (lead.lastSentAt && email !== lead.email) throw new Error("This lead has already been written to, so the address cannot change");
     set.email = email;
     if (email) {

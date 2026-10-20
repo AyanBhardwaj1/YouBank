@@ -30,7 +30,7 @@ export async function contactsOverview(userId: string) {
  */
 export async function addContact(userId: string, input: { email: string; name?: string; title?: string; company?: string; kind?: string; notes?: string }): Promise<ContactRow> {
   const email = input.email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw new Error("That is not an email address");
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
   const match = await enrichCompany(input.company ?? "", companyDomain(email)).catch(() => null);
   const contact = await upsertContact(userId, {
     email, name: input.name, title: input.title, company: input.company || match?.name || "",

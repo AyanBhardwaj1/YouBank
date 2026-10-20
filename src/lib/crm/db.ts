@@ -404,6 +404,29 @@ export async function listDrafts(userId: string, status = "pending") {
     .limit(status === "sent" ? 40 : 200);
 }
 
+/**
+ * A deal added by hand (the agent adds the rest as it reads mail). The contact, when given, must be one
+ * of this person's own; a stage outside the pipeline falls back to its first stage.
+ */
+export async function createDeal(userId: string, input: { name: string; stage?: string; contactId?: number | null; amountUsd?: number | null; nextStep?: string }): Promise<DealRow> {
+  const name = input.name.trim().slice(0, 200);
+  if (!name) throw Object.assign(new Error("Give the deal a name"), { status: 400 });
+  const stages = stagesFor((await getSettings(userId)).mode);
+  const stage = isStage(input.stage) && stages.includes(input.stage) ? input.stage : stages[0];
+  const db = requireDb();
+  let contactId: number | null = null;
+  if (typeof input.contactId === "number") {
+    const [c] = await db.select({ id: schema.crmContacts.id }).from(schema.crmContacts).where(and(eq(schema.crmContacts.id, input.contactId), eq(schema.crmContacts.userId, userId)));
+    if (!c) throw Object.assign(new Error("That contact was not found"), { status: 404 });
+    contactId = c.id;
+  }
+  const amount = typeof input.amountUsd === "number" && Number.isFinite(input.amountUsd) && input.amountUsd > 0 ? input.amountUsd : null;
+  const [row] = await db.insert(schema.crmDeals).values({
+    userId, name, stage, status: statusForStage(stage), contactId, amountUsd: amount, source: "manual", nextStep: (input.nextStep ?? "").trim().slice(0, 500),
+  }).returning();
+  return row;
+}
+
 export async function moveDeal(userId: string, dealId: number, stage: Stage): Promise<DealRow> {
   const [row] = await requireDb().update(schema.crmDeals)
     .set({ stage, status: statusForStage(stage), updatedAt: new Date() })

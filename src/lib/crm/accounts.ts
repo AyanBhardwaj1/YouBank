@@ -59,9 +59,9 @@ export async function saveImapAccount(userId: string, input: {
 }): Promise<AccountRow> {
   if (!encryptionReady()) throw new Error("EMAIL_TOKEN_SECRET is not set, so a mailbox password cannot be stored safely. Generate one with: openssl rand -base64 32");
   const address = input.email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(address)) throw new Error("That is not an email address");
+  if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(address)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
   const password = input.password.replace(/\s+/g, ""); // Google shows app passwords in groups of four
-  if (!password) throw new Error("Paste the app password");
+  if (!password) throw Object.assign(new Error("Paste the app password"), { status: 400 });
   const preset = input.preset && MAIL_PRESETS[input.preset] ? MAIL_PRESETS[input.preset] : null;
   const settings: ImapSettings = preset
     ? { imapHost: preset.imapHost, imapPort: preset.imapPort, imapSecure: preset.imapSecure, smtpHost: preset.smtpHost, smtpPort: preset.smtpPort, smtpSecure: preset.smtpSecure, username: input.username?.trim() || address, preset: input.preset }
@@ -70,7 +70,7 @@ export async function saveImapAccount(userId: string, input: {
         smtpHost: (input.smtpHost ?? "").trim(), smtpPort: Number(input.smtpPort) || 465, smtpSecure: (Number(input.smtpPort) || 465) === 465,
         username: input.username?.trim() || address, preset: "custom",
       };
-  if (!settings.imapHost || !settings.smtpHost) throw new Error("Both the IMAP and SMTP server names are needed");
+  if (!settings.imapHost || !settings.smtpHost) throw Object.assign(new Error("Both the IMAP and SMTP server names are needed"), { status: 400 });
   await verifyMailbox(settings, password);
 
   const values = {
