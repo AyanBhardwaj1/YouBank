@@ -32,7 +32,8 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
     const before = document.activeElement as HTMLElement | null;
     const me = {};
     stack.push(me);
-    panel.current?.focus();
+    // A field inside that took focus itself (autoFocus) keeps it.
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (stack[stack.length - 1] !== me) return;
       if (e.key === "Escape") { e.preventDefault(); close.current(); return; }
@@ -44,7 +45,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
       f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i === f.length - 1 ? 0 : i + 1)].focus();
     };
     document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("keydown", onKey); stack.splice(stack.indexOf(me), 1); before?.focus?.(); };
+    return () => { document.removeEventListener("keydown", onKey); stack.splice(stack.indexOf(me), 1); if (before?.isConnected) before.focus?.(); };
   }, []);
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>

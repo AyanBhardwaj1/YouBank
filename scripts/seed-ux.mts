@@ -9,8 +9,19 @@
 import postgres from "postgres";
 
 const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "";
-if (!/@(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) throw new Error("seed-ux only writes to a local database (localhost)");
-const sql = postgres(url, { max: 1, onnotice: () => undefined });
+// The host is read as postgres.js reads it (the part after "://" up to the first "/" or "?"), so a local
+// name elsewhere in the string ("?x=@localhost/") or a second host ("localhost,db.example.com") cannot
+// pass, and the connection is pinned to that host so nothing else (PGHOST) can redirect it.
+const local = (() => {
+  try {
+    const u = new URL(url);
+    const raw = url.slice(url.indexOf("://") + 3).split(/[?/]/)[0];
+    const host = u.hostname;
+    return /^postgres(ql)?:$/.test(u.protocol) && !raw.includes(",") && ["localhost", "127.0.0.1"].includes(host) ? host : null;
+  } catch { return null; }
+})();
+if (!local) throw new Error("seed-ux only writes to a local database (localhost)");
+const sql = postgres(url, { host: local, max: 1, onnotice: () => undefined });
 const now = Date.now();
 // Fictional companies throughout: this is test content, never to be mistaken for news.
 const stories = [

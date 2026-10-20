@@ -22,6 +22,8 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => null)) as { name?: unknown; stage?: unknown; contactId?: unknown; amountUsd?: unknown; nextStep?: unknown } | null;
     if (typeof body?.name !== "string" || !body.name.trim()) return NextResponse.json({ error: "Give the deal a name" }, { status: 400 });
+    // An id the database could not take (1.5, 1e20) is a 400 here, not a failed query.
+    if (body.contactId != null && !(Number.isSafeInteger(body.contactId) && (body.contactId as number) > 0)) return NextResponse.json({ error: "That contact was not found" }, { status: 400 });
     const deal = await createDeal(user.id, {
       name: body.name, stage: typeof body.stage === "string" ? body.stage : undefined,
       contactId: typeof body.contactId === "number" ? body.contactId : null,

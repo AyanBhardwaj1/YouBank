@@ -60,12 +60,15 @@ export function AppNav({ email }: { email: string }) {
   const unpinned = current && !nav.prefs.pinned.includes(current.id) ? current : null;
   const iconsOnly = nav.prefs.labels === "icons";
   // A full load that replaces this page: nothing signed-in stays in the client's cache, and Back does not
-  // return into the app. A failed request still leaves (the server checks the session on every page).
+  // return into the app. It leaves only once the server has cleared the session cookie (httpOnly, so only
+  // its answer can); a failed request stays here and says so, rather than landing home still signed in.
   const [leaving, setLeaving] = useState(false);
+  const [stuck, setStuck] = useState(false);
   const signOut = async () => {
     if (leaving) return;
-    setLeaving(true);
-    try { await (await getAuthClient()).signOut(); } catch { /* the cookie is checked server-side anyway */ }
+    setLeaving(true); setStuck(false);
+    const res = await getAuthClient().then((c) => c.signOut()).catch((error: unknown) => ({ error }));
+    if (res?.error) { setLeaving(false); setStuck(true); return; }
     window.location.replace("/");
   };
   useEffect(() => {
@@ -120,7 +123,7 @@ export function AppNav({ email }: { email: string }) {
                 <Link role="menuitem" href="/app/profile" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Users" className="h-3.5 w-3.5" /> Change my role</Link>
                 <Link role="menuitem" href="/app/library" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Library" className="h-3.5 w-3.5" /> Saved work</Link>
                 <Link role="menuitem" href="/download" onClick={() => setMenu(false)} className="flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated"><Icon name="Download" className="h-3.5 w-3.5" /> Get the desktop app</Link>
-                <button role="menuitem" type="button" onClick={signOut} disabled={leaving} className="mt-1 flex w-full items-center gap-2 border-t border-line ctl px-2 py-1.5 text-left text-muted hover:bg-elevated hover:text-neg disabled:opacity-60"><Icon name="LogOut" className="h-3.5 w-3.5" /> {leaving ? "Signing out…" : "Sign out"}</button>
+                <button role="menuitem" type="button" onClick={signOut} disabled={leaving} className="mt-1 flex w-full items-center gap-2 border-t border-line ctl px-2 py-1.5 text-left text-muted hover:bg-elevated hover:text-neg disabled:opacity-60"><Icon name="LogOut" className="h-3.5 w-3.5" /> {leaving ? "Signing out…" : stuck ? "Could not sign out. Try again" : "Sign out"}</button>
               </div>
             </>
           )}

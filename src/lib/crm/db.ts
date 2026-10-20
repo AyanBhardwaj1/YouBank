@@ -421,6 +421,9 @@ export async function createDeal(userId: string, input: { name: string; stage?: 
     contactId = c.id;
   }
   const amount = typeof input.amountUsd === "number" && Number.isFinite(input.amountUsd) && input.amountUsd > 0 ? input.amountUsd : null;
+  // The same deal sent twice in a few seconds (a double click, a retried request) is added once.
+  const [same] = await db.select().from(schema.crmDeals).where(and(eq(schema.crmDeals.userId, userId), eq(schema.crmDeals.name, name), eq(schema.crmDeals.source, "manual"), sql`${schema.crmDeals.createdAt} > now() - interval '10 seconds'`)).limit(1);
+  if (same) return same;
   const [row] = await db.insert(schema.crmDeals).values({
     userId, name, stage, status: statusForStage(stage), contactId, amountUsd: amount, source: "manual", nextStep: (input.nextStep ?? "").trim().slice(0, 500),
   }).returning();

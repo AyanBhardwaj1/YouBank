@@ -39,7 +39,9 @@ export function useViewInUrl(path: string, param: string, value: string | null, 
       const url = new URL(window.location.href);
       if (value === defaultValue) url.searchParams.delete(param); else url.searchParams.set(param, value);
       const next = `${url.pathname}${url.search}${url.hash}`;
-      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(window.history.state, "", next);
+      // null state, so Next's router takes the new address as its own (it copies its own state over);
+      // passing its state back would skip that, and its next render would put the old address back.
+      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(null, "", next);
     } catch { /* the view still changes */ }
   }, [path, param, value, defaultValue]);
 }
