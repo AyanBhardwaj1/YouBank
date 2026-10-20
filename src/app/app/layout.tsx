@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, type schema } from "@/db";
+import { profileRow } from "@/lib/auth/profile-row";
 import { currentUser } from "@/lib/auth/user";
 import { WorkspaceProvider } from "@/components/workspace/WorkspaceProvider";
 import { AppShell } from "@/components/workspace/AppShell";
@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!db) return <SetupScreen />;
   let p: typeof schema.profiles.$inferSelect | undefined;
   try {
-    [p] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id));
+    p = await profileRow(user.id);
   } catch (e) {
     if (isMissingTable(e)) return <SetupScreen />;
     throw e;

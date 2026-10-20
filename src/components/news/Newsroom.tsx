@@ -13,7 +13,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { Columns3, LayoutDashboard, Newspaper, Rows3, Search, SlidersHorizontal, Terminal as TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, type Category } from "@/lib/news/classify";
-import type { StoryCard as Story } from "@/lib/news/views";
+import type { FeedView, StoryCard as Story } from "@/lib/news/views";
 import { EDITIONS, LAYOUTS, LOOKS, type EditionId, type LayoutId, type LookId } from "@/lib/news/prefs";
 import { ago, MotionContext, post, useApi, useEffectiveMotion, useFeed, useNow, useSparks } from "./client";
 import { DealTracker, LeagueTable, type BriefData, type DealsData } from "./Boards";
@@ -43,7 +43,10 @@ const EDITION_ICON: Record<EditionId, React.ReactNode> = {
 };
 const LAYOUT_OF: Record<LayoutId, (p: LayoutProps) => React.ReactNode> = { front: FrontLayout, wire: WireLayout, magazine: MagazineLayout, hybrid: HybridLayout, dashboard: DashboardLayout };
 
-export function Newsroom({ initialView = "today", initialStory = null, initialOverlay = null }: { initialView?: View; initialStory?: number | null; initialOverlay?: Overlay }) {
+/** The desk and preferences the server read for the first paint (see app/app/news/page.tsx); the feed replaces them. */
+export type NewsroomSeed = { desk: { id: string; label: string }; ownDeskId: string; prefs: FeedView["prefs"] };
+
+export function Newsroom({ initialView = "today", initialStory = null, initialOverlay = null, seed = null }: { initialView?: View; initialStory?: number | null; initialOverlay?: Overlay; seed?: NewsroomSeed | null }) {
   const router = useRouter();
   const now = useNow();
   const [view, setView] = useState<View>(initialView);
@@ -67,13 +70,13 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
 
   const feed = useFeed({ desk, category: view === "today" ? category : "", q: query.applied, saved: view === "saved" ? "1" : "" });
   const data = feed.data;
-  const prefs = data?.prefs;
+  const prefs = data?.prefs ?? seed?.prefs;
   const edition = override.edition ?? prefs?.edition ?? "brief";
   const advanced = override.advanced ?? prefs?.advanced ?? false;
   const look: LookId = advanced ? override.look ?? prefs?.look ?? EDITIONS[edition].look : EDITIONS[edition].look;
   const layout: LayoutId = advanced ? override.layout ?? prefs?.layout ?? EDITIONS[edition].layout : EDITIONS[edition].layout;
   const motionLevel = useEffectiveMotion(prefs?.motion ?? "rich");
-  const deskId = data?.desk.id ?? "";
+  const deskId = data?.desk.id ?? seed?.desk.id ?? "";
 
   // The brief feeds every layout of Today (the wire uses its market tape).
   const brief = useApi<BriefData>(view === "today" && deskId ? `/api/news/brief?desk=${encodeURIComponent(deskId)}` : null, 5 * 60_000);
@@ -126,7 +129,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             <div className="flex min-w-0 items-center gap-2">
               <Newspaper className="h-4 w-4 shrink-0 text-accent" />
               <Select value={desk || deskId} onChange={(v) => setDesk(v === data?.ownDesk.id ? "" : v)} className="nr-head max-w-[260px] truncate bg-transparent text-[15px] text-fg outline-none" aria-label="Desk">
-                {data ? data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>) : <option>Newsroom</option>}
+                {data ? data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>) : seed ? <option value={seed.desk.id}>{seed.desk.label}{seed.desk.id === seed.ownDeskId ? " (your desk)" : ""}</option> : <option>Newsroom</option>}
               </Select>
               <span className="hidden items-center gap-1.5 text-[11px] text-muted md:flex"><span className="pulse-ring inline-block h-1.5 w-1.5 rounded-full bg-pos" />{data && now ? `updated ${ago(data.generatedAt, now)}` : "live"}</span>
             </div>
