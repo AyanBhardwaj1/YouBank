@@ -23,7 +23,7 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { creditState, noteDraw, NO_CREDITS, packsLeft, type CreditState } from "@/lib/billing/credits";
-import { entitlements, forgetEntitlements } from "@/lib/billing/entitlements";
+import { forgetEntitlements, readEntitlements } from "@/lib/billing/entitlements";
 import { allowancePeriod, CREDIT_DAILY_USD, splitSpend, type Period } from "@/lib/billing/packs";
 import { PLANS, planAtLeast, type PlanId } from "@/lib/billing/plans";
 import { lease, type Release } from "@/lib/locks";
@@ -124,8 +124,9 @@ async function counterSpent(userId: string | null, since: Date): Promise<number 
  */
 export function recordSpend(userId: string | null, cost: number): Promise<void> {
   if (!Number.isFinite(cost) || cost <= 0 || Date.now() < counterState.offUntil) return Promise.resolve();
-  const key = dayStart().getTime();
-  return addSpend(userId, cost).then((t) => keepTotals(userId, key, t), () => { counterState.offUntil = Date.now() + 60_000; });
+  // One moment for the row's day and the memo's key, so a call at midnight files both under the same day.
+  const at = new Date(), key = dayStart(at).getTime();
+  return addSpend(userId, cost, at).then((t) => keepTotals(userId, key, t), () => { counterState.offUntil = Date.now() + 60_000; });
 }
 
 /** Spend since `since` for one person (in the day or month window), or today's for everyone when `userId` is null. */
@@ -187,7 +188,8 @@ export async function aiCaps(userId: string): Promise<AiCaps> {
   let plan: PlanId = "free", admin = false, ok = true, anchor: Date | null = null;
   try {
     const [p] = await requireDb().select({ email: schema.profiles.email }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
-    const e = await entitlements({ id: userId, email: p?.email ?? "" });
+    // Read past the shared entitlements cache: this cache is the one TTL (PLAN_TTL_MS), not a second on top.
+    const e = await readEntitlements({ id: userId, email: p?.email ?? "" }, () => { ok = false; });
     plan = e.plan; admin = e.admin; anchor = e.anchor ? new Date(e.anchor) : null;
   } catch { ok = false; /* Free caps; see above */ }
   const caps: AiCaps = { plan, admin, dailyUsd: admin ? null : userDailyUsd(plan), monthlyUsd: admin ? null : userMonthlyUsd(plan), anchor };

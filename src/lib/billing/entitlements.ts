@@ -45,13 +45,13 @@ type OwnRow = { plan: string; status: string; billingAnchor?: Date | null };
  * drizzle/0015 when 0022 has not been applied yet, so a deploy that lands before the migration keeps
  * everyone's plan.
  */
-async function ownRow(userId: string): Promise<OwnRow | null> {
+async function ownRow(userId: string, failed?: () => void): Promise<OwnRow | null> {
   if (!db) return null;
   const t = schema.subscriptions;
   const where = eq(t.userId, userId);
   const [row] = await db.select({ plan: t.plan, status: t.status, billingAnchor: t.billingAnchor }).from(t).where(where)
     .catch(() => db!.select({ plan: t.plan, status: t.status }).from(t).where(where))
-    .catch(() => []);
+    .catch(() => { failed?.(); return []; });
   return row ?? null;
 }
 
@@ -72,7 +72,8 @@ export function forgetEntitlements(userId: string) {
  * This person's plan and what it unlocks. Several pages and checks ask in one request (and the AI caps ask
  * for background work), so the answer is shared: per request by React's cache() (keyed on the id and
  * email, not the object, which callers build afresh), and across requests for ENTITLEMENTS_TTL_MS, with
- * concurrent first asks sharing one read. A failed read is not kept.
+ * concurrent first asks sharing one read. A read whose subscription lookup failed (it answers with the
+ * free plan) is not kept, so a database blip does not hold a paying person to Free for the whole TTL.
  */
 export function entitlements(user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> {
   return entitlementsOf(user.id, user.email ?? "");
@@ -82,19 +83,25 @@ const entitlementsOf = cache((id: string, email: string): Promise<Entitlements> 
   const key = `${id}\n${email}`;
   const hit = recent.get(key);
   if (hit && Date.now() - hit.at < ENTITLEMENTS_TTL_MS) return hit.value;
-  const value = readEntitlements({ id, email });
+  let degraded = false;
+  const value = readEntitlements({ id, email }, () => { degraded = true; });
   if (recent.size > 5_000) recent.clear();
   recent.set(key, { at: Date.now(), value });
-  value.catch(() => { if (recent.get(key)?.value === value) recent.delete(key); });
+  const drop = () => { if (recent.get(key)?.value === value) recent.delete(key); };
+  value.then(() => { if (degraded) drop(); }, drop);
   return value;
 });
 
-async function readEntitlements(user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> {
+/**
+ * The plan read straight from the database, never from the cache above: for callers that keep their own
+ * short cache (the AI caps), so the two TTLs do not stack into twice the staleness.
+ */
+export async function readEntitlements(user: Pick<CurrentUser, "id" | "email">, failed?: () => void): Promise<Entitlements> {
   const admin = isAdmin(user);
   let plan: PlanId = isCampusEmail(user.email) ? "campus" : "free";
   let status = "none";
   let anchor: Date | null = null;
-  const row = await ownRow(user.id);
+  const row = await ownRow(user.id, failed);
   if (row) {
     status = row.status;
     // The anniversary outlives the subscription: a plan that ends (at its period's end, as cancellations

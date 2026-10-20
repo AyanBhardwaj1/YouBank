@@ -100,8 +100,11 @@ export async function renameTeam(teamId: number, name: string): Promise<void> {
 }
 
 export async function deleteTeam(teamId: number): Promise<void> {
+  // Whoever held a plan seat through this team loses it with the membership: drop their cached plans.
+  const seated = await requireDb().select({ userId: schema.seatAssignments.userId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.teamId, teamId)).catch(() => []);
   // Members and invitations cascade. An active-team pointer left behind is ignored on read.
   await requireDb().delete(schema.teams).where(eq(schema.teams.id, teamId));
+  for (const s of seated) forgetAiCaps(s.userId);
 }
 
 /** Invite by email. Re-inviting the same address refreshes the role and token instead of erroring. */
