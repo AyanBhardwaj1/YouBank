@@ -95,6 +95,8 @@ function FundInner({ cik }: { cik: string }) {
   const rows = showAll ? v.holdings : v.holdings.slice(0, 25);
   const m = (k: "lagged" | "noLag" | "spy") => bt?.[k].metrics ?? null;
   return (
+    // The page scrolls inside itself, as every workspace does: the frame around it never scrolls.
+    <div className="h-full overflow-auto">
     <div className="mx-auto max-w-6xl space-y-3 p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -113,7 +115,14 @@ function FundInner({ cik }: { cik: string }) {
       {v.latest?.confidentialOmitted && <p className="flex gap-2 text-[11.5px] text-muted"><Icon name="Lock" className="mt-0.5 h-3.5 w-3.5 shrink-0" />This filing left out some holdings under a request for confidential treatment. They appear later in a 13F/A (NEW HOLDINGS) if SEC denies the request or it expires.</p>}
       {v.latest?.restated && <p className="flex gap-2 text-[11.5px] text-muted"><Icon name="RefreshCw" className="mt-0.5 h-3.5 w-3.5 shrink-0" />This quarter was restated by an amendment; the figures here are the restated ones.</p>}
       {v.pending > 0 && <p className="text-[11.5px] text-muted">{v.pending} older filings are still being read from EDGAR; history and backtests fill in as they arrive.</p>}
-      {!v.latest && <p className="panel p-4 text-[12.5px] text-muted">No 13F holdings report from this filer in the last six years{v.filings.some((f) => f.notice) ? " (it files notices: another manager reports its holdings)" : ""}.</p>}
+      {!v.latest && v.filings.length > 0 && <p className="panel p-4 text-[12.5px] text-muted">No 13F holdings report from this filer in the last six years{v.filings.some((f) => f.notice) ? " (it files notices: another manager reports its holdings)" : ""}.</p>}
+      {/* No filings at all is what an unreachable EDGAR looks like too: say so and offer a retry rather than assert the fund files nothing. */}
+      {!v.latest && v.filings.length === 0 && (
+        <div className="panel p-4 text-[12.5px] text-muted">
+          <p>No 13F filings from this filer could be read from SEC EDGAR. If it does file 13Fs, EDGAR may be slow to answer right now; try again in a few minutes.</p>
+          <button type="button" onClick={load} className="ctl mt-2 border border-line px-2.5 py-1 text-[12px] text-fg hover:border-accent/50">Try again</button>
+        </div>
+      )}
 
       {v.latest && (
         <>
@@ -249,7 +258,7 @@ function FundInner({ cik }: { cik: string }) {
       <Section title="Data and coverage" icon="Database">
         <div className="grid gap-3 text-[11.5px] text-muted md:grid-cols-2">
           <div>
-            <p><b className="text-fg">{pct(v.coverage.mappedPct, 1)}</b> of reported value has a ticker: {Object.entries(v.coverage.bySource).sort((a, b) => b[1] - a[1]).map(([k, w]) => `${({ manual: "owner's corrections", builtin: "built-in list", openfigi: "OpenFIGI", name: "SEC name match", unmapped: "no ticker" } as Record<string, string>)[k] ?? k} ${pct(w, 0)}`).join(", ")}.{v.coverage.onListPct !== null ? ` ${pct(v.coverage.onListPct, 0)} of value is on SEC's current 13(f) list.` : ""}</p>
+            {v.latest && <p><b className="text-fg">{pct(v.coverage.mappedPct, 1)}</b> of reported value has a ticker: {Object.entries(v.coverage.bySource).sort((a, b) => b[1] - a[1]).map(([k, w]) => `${({ manual: "owner's corrections", builtin: "built-in list", openfigi: "OpenFIGI", name: "SEC name match", unmapped: "no ticker" } as Record<string, string>)[k] ?? k} ${pct(w, 0)}`).join(", ")}.{v.coverage.onListPct !== null ? ` ${pct(v.coverage.onListPct, 0)} of value is on SEC's current 13(f) list.` : ""}</p>}
             {v.coverage.unmapped.length > 0 && <p className="mt-1.5">Without a ticker (left out of copies): {v.coverage.unmapped.slice(0, 8).map((u) => `${u.name} (${u.cusip})`).join(", ")}.</p>}
           </div>
           <ul className="space-y-1">{v.sources.map((s) => <li key={s.name}><a href={s.url} target="_blank" rel="noreferrer" className="text-fg hover:text-accent">{s.name}</a>: {s.note}</li>)}</ul>
@@ -258,6 +267,7 @@ function FundInner({ cik }: { cik: string }) {
       </Section>
 
       {editor && v.latest && <CopyEditor draft={newDraft([{ cik: v.cik, name: v.curated?.name ?? v.name, weight: 1 }])} plan={plan} onClose={() => setEditor(false)} onSaved={(id) => router.push(`/app/copy?copy=${id}`)} />}
+    </div>
     </div>
   );
 }
