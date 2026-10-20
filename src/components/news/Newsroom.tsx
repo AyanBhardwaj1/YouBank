@@ -55,7 +55,9 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const [overlay, setOverlay] = useState<Overlay>(initialOverlay);
   const [globeTags, setGlobeTags] = useState<"desk" | "all" | string>("desk");
   const [category, setCategory] = useState("");
-  const [query, setQuery] = useState({ typed: "", applied: "" });
+  // The applied search; what is being typed lives in SearchBox, so a keystroke re-renders the box, not the feed.
+  const [applied, setApplied] = useState("");
+  const [searchKey, setSearchKey] = useState(0);
   const [desk, setDesk] = useState("");
   const [peek, setPeek] = useState<number | null>(initialStory);
   // The peek mounts with the first story opened and stays mounted, so its closing animation still plays.
@@ -69,7 +71,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const feed = useFeed({ desk, category: view === "today" ? category : "", q: query.applied, saved: view === "saved" ? "1" : "" });
+  const feed = useFeed({ desk, category: view === "today" ? category : "", q: applied, saved: view === "saved" ? "1" : "" });
   const data = feed.data;
   const prefs = data?.prefs ?? seed?.prefs;
   const edition = override.edition ?? prefs?.edition ?? "brief";
@@ -150,10 +152,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
                 </button>
               ))}
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); setQuery((q) => ({ ...q, applied: q.typed.trim() })); setView("today"); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1 max-md:order-last max-md:ml-0 max-md:min-h-10 max-md:w-full max-md:px-3.5">
-              <Search className="h-3.5 w-3.5 text-muted" />
-              <input ref={searchRef} value={query.typed} onChange={(e) => { const t = e.target.value; setQuery((q) => ({ typed: t, applied: t ? q.applied : "" })); }} placeholder="Search stories  /" aria-label="Search stories" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint max-md:min-w-0 max-md:flex-1 md:w-56" />
-            </form>
+            <SearchBox key={searchKey} inputRef={searchRef} onApply={(t) => { setApplied(t); setView("today"); }} onCleared={() => setApplied("")} />
             <div className="flex items-center gap-0.5 rounded-full border border-line p-0.5" role="radiogroup" aria-label="Edition">
               {(Object.keys(EDITIONS) as EditionId[]).map((e) => (
                 <button key={e} type="button" role="radio" aria-checked={!advanced && edition === e} onClick={() => chooseEdition(e)} title={`${EDITIONS[e].label}: ${EDITIONS[e].blurb}`}
@@ -182,7 +181,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             <div className="no-scrollbar -mx-1 mt-2 flex gap-1 overflow-x-auto px-1 pb-0.5 max-md:[&>button]:py-1.5">
               <button type="button" onClick={() => setCategory("")} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${!category ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>All</button>
               {cats.map((c) => <button key={c} type="button" onClick={() => setCategory(category === c ? "" : c)} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{CATEGORY_LABEL[c]} <span className="num text-faint">{counts[c]}</span></button>)}
-              {query.applied && <button type="button" onClick={() => setQuery({ typed: "", applied: "" })} className="shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-fg">“{query.applied}” ×</button>}
+              {applied && <button type="button" onClick={() => { setApplied(""); setSearchKey((k) => k + 1); }} className="shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-fg">“{applied}” ×</button>}
             </div>
           )}
         </header>
@@ -197,7 +196,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
                   ? <Layout stories={stories} fresh={feed.fresh} sparks={sparks} now={now} onOpen={open} onSave={save} onOpenCluster={(id) => open(id)} onCategory={setCategory}
                       brief={brief.data} deals={deals.data} radar={radar.data} deskLabel={data.desk.label} showRadar={showRadar} scrollRef={scrollRef}
                       deskTags={deskTags} counts={counts} onAction={(a) => (a === "globe" ? setView("globe") : setOverlay(a))} />
-                  : <Empty text={query.applied ? `No stories match “${query.applied}” in the last month.` : "Your desk's first stories arrive as sources are read, every ten minutes."} />)}
+                  : <Empty text={applied ? `No stories match “${applied}” in the last month.` : "Your desk's first stories arrive as sources are read, every ten minutes."} />)}
                 {view === "saved" && (stories.length
                   ? <div className="mx-auto max-w-[900px] divide-y divide-line px-5 py-6">{stories.map((s, i) => <StoryCard key={s.id} story={s} variant="brief" index={i} sparks={sparks} now={now} onOpen={open} onSave={save} />)}</div>
                   : <Empty text="Nothing saved yet. Use the bookmark on any story to keep it here." />)}
@@ -249,4 +248,15 @@ const SECTOR_NAME: Record<string, string> = { tech: "Technology", healthcare: "H
 
 function Empty({ text }: { text: string }) {
   return <div className="mx-auto flex max-w-[520px] flex-col items-center gap-3 px-6 py-24 text-center"><Columns3 className="h-8 w-8 text-faint" /><p className="text-[13px] text-muted">{text}</p></div>;
+}
+
+/** The story search: Enter applies it; emptying the box clears it. Keeps its own text so typing stays cheap. */
+function SearchBox({ inputRef, onApply, onCleared }: { inputRef: React.RefObject<HTMLInputElement | null>; onApply: (text: string) => void; onCleared: () => void }) {
+  const [typed, setTyped] = useState("");
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onApply(typed.trim()); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1 max-md:order-last max-md:ml-0 max-md:min-h-10 max-md:w-full max-md:px-3.5">
+      <Search className="h-3.5 w-3.5 text-muted" />
+      <input ref={inputRef} value={typed} onChange={(e) => { const t = e.target.value; setTyped(t); if (!t) onCleared(); }} placeholder="Search stories  /" aria-label="Search stories" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint max-md:min-w-0 max-md:flex-1 md:w-56" />
+    </form>
+  );
 }
