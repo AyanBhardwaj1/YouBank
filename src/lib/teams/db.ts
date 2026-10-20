@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
+import { forgetAiCaps } from "@/lib/ai/limits";
 import { releaseTeamSeat } from "@/lib/billing/seats";
 import { can, canAssignRole, isTeamRole, outranks, slugify, type TeamPermission, type TeamRole } from "./roles";
 
@@ -173,6 +174,7 @@ export async function removeMember(teamId: number, actor: TeamMember, targetUser
   await db.delete(schema.teamMembers).where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, targetUserId)));
   // A plan seat given through this team goes with the membership (entitlements also checks membership).
   await releaseTeamSeat(teamId, targetUserId).catch(() => undefined);
+  forgetAiCaps(targetUserId);
 }
 
 /**

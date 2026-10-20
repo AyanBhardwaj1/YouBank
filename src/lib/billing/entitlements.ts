@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { isAdmin } from "@/lib/auth/admin";
 import type { CurrentUser } from "@/lib/auth/user";
+import { sharedMap } from "@/lib/shared";
 import { featureById, FEATURES } from "./features";
 import { isPlanId, LIVE_STATUSES, planAtLeast, PLANS, type PlanId } from "./plans";
 import { heldSeat } from "./seats";
@@ -54,8 +55,41 @@ async function ownRow(userId: string): Promise<OwnRow | null> {
   return row ?? null;
 }
 
-/** This person's plan and what it unlocks; one lookup per request. */
-export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> => {
+/**
+ * How long a plan read is reused across requests on one instance. Billing drops it at once on the instance
+ * that handles the change (forgetEntitlements, called with forgetAiCaps); other instances catch up within
+ * this, as the AI caps do.
+ */
+const ENTITLEMENTS_TTL_MS = 15_000;
+const recent = sharedMap<string, { at: number; value: Promise<Entitlements> }>("billing:entitlements");
+
+/** Forget a person's cached plan on this instance (billing calls it whenever their plan or seat changes). */
+export function forgetEntitlements(userId: string) {
+  for (const k of recent.keys()) if (k.startsWith(`${userId}\n`)) recent.delete(k);
+}
+
+/**
+ * This person's plan and what it unlocks. Several pages and checks ask in one request (and the AI caps ask
+ * for background work), so the answer is shared: per request by React's cache() (keyed on the id and
+ * email, not the object, which callers build afresh), and across requests for ENTITLEMENTS_TTL_MS, with
+ * concurrent first asks sharing one read. A failed read is not kept.
+ */
+export function entitlements(user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> {
+  return entitlementsOf(user.id, user.email ?? "");
+}
+
+const entitlementsOf = cache((id: string, email: string): Promise<Entitlements> => {
+  const key = `${id}\n${email}`;
+  const hit = recent.get(key);
+  if (hit && Date.now() - hit.at < ENTITLEMENTS_TTL_MS) return hit.value;
+  const value = readEntitlements({ id, email });
+  if (recent.size > 5_000) recent.clear();
+  recent.set(key, { at: Date.now(), value });
+  value.catch(() => { if (recent.get(key)?.value === value) recent.delete(key); });
+  return value;
+});
+
+async function readEntitlements(user: Pick<CurrentUser, "id" | "email">): Promise<Entitlements> {
   const admin = isAdmin(user);
   let plan: PlanId = isCampusEmail(user.email) ? "campus" : "free";
   let status = "none";
@@ -81,7 +115,7 @@ export const entitlements = cache(async (user: Pick<CurrentUser, "id" | "email">
   if (admin) plan = "enterprise";
   const features = FEATURES.filter((f) => admin || planAtLeast(plan, f.minPlan)).map((f) => f.id);
   return { plan, admin, status, features, anchor: anchor ? anchor.toISOString() : null, seat };
-});
+}
 
 export async function canUse(user: Pick<CurrentUser, "id" | "email">, featureId: string): Promise<boolean> {
   return (await entitlements(user)).features.includes(featureId);

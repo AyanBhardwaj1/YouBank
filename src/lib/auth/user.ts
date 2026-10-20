@@ -6,6 +6,7 @@ import { runAsUser } from "@/lib/ai/usage";
 import { isAdmin } from "./admin";
 import { errorResponse, isMissingTable } from "@/lib/errors";
 import { db, notConfigured } from "@/db";
+import { sharedMap } from "@/lib/shared";
 
 export type CurrentUser = { id: string; email: string; name: string };
 
@@ -33,11 +34,30 @@ export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   // Anonymous visitors carry no session cookie; skip the lookup entirely.
   const jar = await cookies().catch(() => null);
   if (jar && !jar.getAll().some((c) => c.name.endsWith(SESSION_COOKIE_SUFFIX))) return null;
+  // The same signed cookies seen moments ago on this instance: the same person (see VERIFIED_TTL_MS).
+  const key = jar ? jar.getAll().filter((c) => c.name.includes("better-auth.session")).map((c) => `${c.name}=${c.value}`).sort().join(";") : "";
+  const seen = key ? verified.get(key) : undefined;
+  if (seen && seen.until > Date.now()) return seen.user;
   // Answered from the signed cookie cache while it is fresh (SESSION_DATA_TTL), else from the database.
   const session = await auth.api.getSession({ headers: await headers() });
   const u = session?.user;
-  return u ? { id: u.id, email: u.email ?? "", name: u.name ?? "" } : null;
+  const user = u ? { id: u.id, email: u.email ?? "", name: u.name ?? "" } : null;
+  if (user && key) {
+    if (verified.size >= 5_000) verified.clear();
+    verified.set(key, { user, until: Date.now() + VERIFIED_TTL_MS });
+  }
+  return user;
 });
+
+/**
+ * Sessions verified on this instance in the last few seconds, by their exact cookies. Every API request
+ * otherwise re-parses and re-verifies the same signed cookie (an HMAC, a JSON parse and a schema check);
+ * a person's page polls several routes a minute. Only a successful check is kept, for less time than the
+ * signed cookie itself is trusted (SESSION_DATA_TTL), so it never extends a session: a changed or
+ * removed cookie is a different key, and signing out clears the cookies.
+ */
+const VERIFIED_TTL_MS = 30_000;
+const verified = sharedMap<string, { user: CurrentUser; until: number }>("auth:verified");
 
 export class Unauthorized extends Error {
   constructor() { super("Unauthorized"); }
