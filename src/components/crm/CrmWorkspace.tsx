@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { isPlanError, PlanNotice } from "@/components/billing/PlanNotice";
@@ -8,13 +9,7 @@ import {
   CATEGORY_LABEL, LOST_STAGES, STAGE_BLURB, STAGE_LABEL, isStage, stagesFor,
   type Category, type Mode, type Stage,
 } from "@/lib/crm/model";
-import { AgentSettings } from "./AgentSettings";
-import { CampaignsPanel } from "./CampaignsPanel";
-import { ContactsPanel } from "./ContactsPanel";
-import { InsightsPanel } from "./InsightsPanel";
 import { MailboxBar, type MailboxInfo } from "./MailboxBar";
-import { MeetingsPanel } from "./MeetingsPanel";
-import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
@@ -22,6 +17,15 @@ import { promptDialog } from "@/components/ui/Dialog";
 import { useSubNav } from "@/lib/subnav";
 import { MeetingLine, ScheduleButton, useMeetingSummaries } from "@/components/calendar/MeetingBadges";
 import { errorMessage } from "@/lib/client/errors";
+
+// The review queue (the default tab) ships with the page; every other tab loads when it is opened.
+const PanelLoading = () => <div className="shimmer h-48 ctl" />;
+const AgentSettings = dynamic(() => import("./AgentSettings").then((m) => m.AgentSettings), { loading: PanelLoading });
+const CampaignsPanel = dynamic(() => import("./CampaignsPanel").then((m) => m.CampaignsPanel), { loading: PanelLoading });
+const ContactsPanel = dynamic(() => import("./ContactsPanel").then((m) => m.ContactsPanel), { loading: PanelLoading });
+const InsightsPanel = dynamic(() => import("./InsightsPanel").then((m) => m.InsightsPanel), { loading: PanelLoading });
+const MeetingsPanel = dynamic(() => import("./MeetingsPanel").then((m) => m.MeetingsPanel), { loading: PanelLoading });
+const NurturePanel = dynamic(() => import("./NurturePanel").then((m) => m.NurturePanel), { loading: PanelLoading });
 
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;

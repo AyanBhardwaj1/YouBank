@@ -4,10 +4,14 @@
  * Meetings inside Relationships: "next meeting" and "last met" on contacts and deals, and a Schedule
  * button that opens the scheduler with the person already invited. One request serves a whole list.
  */
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { Scheduler, type SchedulePrefill } from "./Scheduler";
+import type { SchedulePrefill } from "./Scheduler";
 import { browserTz, calApi, fmt } from "./shared";
+
+// The scheduling dialog loads when it is opened.
+const Scheduler = dynamic(() => import("./Scheduler").then((m) => m.Scheduler), { ssr: false });
 
 export type MeetingSummary = { lastMet: string | null; nextMeeting: { id: number; title: string; start: string } | null; upcoming: number };
 type Summaries = { contacts: Record<number, MeetingSummary>; deals: Record<number, MeetingSummary> };

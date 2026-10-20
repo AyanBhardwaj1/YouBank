@@ -5,18 +5,23 @@
  * sources and disclosures. Tabs: Overview, Integrity (BTX), Factors (FACT), Risk, Sizing (KELLY), Costs (TCA),
  * Insiders (INSC), Drills (DRILL) and Signals. On phones the tabs scroll and every panel stacks.
  */
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { QuantSignal } from "@/lib/quant/contracts";
 import { DISCLOSURES } from "@/lib/quant/words";
 import { useSubNav } from "@/lib/subnav";
-import { CostsTab } from "./CostsTab";
-import { DrillsTab } from "./DrillsTab";
-import { InsidersTab } from "./InsidersTab";
-import { IntegrityTab } from "./IntegrityTab";
-import { FactorsTab, RiskTab } from "./PortfolioTabs";
-import { SizingTab } from "./SizingTab";
 import { Button, Card, Disclosures, ErrorNote, Field, inputCls, num, pct, QuantConsent, Stat, useQuantCall, useRun } from "./ui";
+
+// The overview ships with the page; each tool tab loads when it is opened.
+const TabLoading = () => <div className="shimmer h-48 ctl" />;
+const CostsTab = dynamic(() => import("./CostsTab").then((m) => m.CostsTab), { loading: TabLoading });
+const DrillsTab = dynamic(() => import("./DrillsTab").then((m) => m.DrillsTab), { loading: TabLoading });
+const InsidersTab = dynamic(() => import("./InsidersTab").then((m) => m.InsidersTab), { loading: TabLoading });
+const IntegrityTab = dynamic(() => import("./IntegrityTab").then((m) => m.IntegrityTab), { loading: TabLoading });
+const SizingTab = dynamic(() => import("./SizingTab").then((m) => m.SizingTab), { loading: TabLoading });
+const FactorsTab = dynamic(() => import("./PortfolioTabs").then((m) => m.FactorsTab), { loading: TabLoading });
+const RiskTab = dynamic(() => import("./PortfolioTabs").then((m) => m.RiskTab), { loading: TabLoading });
 
 export type QuantTab = "overview" | "integrity" | "factors" | "risk" | "sizing" | "costs" | "insiders" | "drills" | "signals";
 export const QUANT_TABS: { id: QuantTab; label: string; icon: string; code?: string }[] = [

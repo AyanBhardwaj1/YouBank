@@ -6,6 +6,7 @@
  * Tabs: Discover, My copies, Following, Brokerage, Activity (the audit log).
  */
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -16,8 +17,10 @@ import type { CuratedFund } from "@/lib/copytrade/funds";
 import { useSubNav } from "@/lib/subnav";
 import { call, json, shortCik, usd } from "./client";
 import { ConsentProvider, useConsent } from "./Consent";
-import { CopyDetail } from "./CopyDetail";
 import type { Account, CopyDraft, Plan } from "./CopyEditor";
+
+// A copy's dashboard (its editor and charts with it) loads when a copy is opened, not with the list.
+const CopyDetail = dynamic(() => import("./CopyDetail").then((m) => m.CopyDetail), { loading: () => <div className="shimmer h-64 rounded-md" /> });
 
 type Tab = "discover" | "copies" | "following" | "broker" | "activity";
 const TABS: { id: Tab; label: string; icon: string }[] = [

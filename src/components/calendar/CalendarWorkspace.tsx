@@ -8,14 +8,18 @@
  * into columns too narrow to read. Events come from the stored sync window (30 days back, 90 ahead);
  * Sync asks every provider for changes now.
  */
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { safeText } from "@/lib/client/errors";
 import { useSubNav } from "@/lib/subnav";
-import { EventPanel } from "./EventPanel";
-import { Scheduler, type SchedulePrefill } from "./Scheduler";
+import type { SchedulePrefill } from "./Scheduler";
 import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
+
+// The event panel and the scheduling dialog load when one is opened.
+const EventPanel = dynamic(() => import("./EventPanel").then((m) => m.EventPanel), { ssr: false });
+const Scheduler = dynamic(() => import("./Scheduler").then((m) => m.Scheduler), { ssr: false });
 
 type View = "day" | "week" | "agenda";
 const VIEWS: { id: View; label: string }[] = [{ id: "day", label: "Day" }, { id: "week", label: "Week" }, { id: "agenda", label: "Agenda" }];

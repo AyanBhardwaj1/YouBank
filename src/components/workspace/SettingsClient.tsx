@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
@@ -10,12 +11,15 @@ import { ROLES } from "@/lib/roles";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 import { useSubNav } from "@/lib/subnav";
-import { NewsSettings } from "@/components/news/NewsSettings";
 import { BetaToggle } from "@/components/edge/BetaToggle";
-import { EdgeUpgrades } from "@/components/edge/Upgrades";
-import { CalendarSettings } from "@/components/calendar/CalendarSettings";
-import { PlanSettings } from "@/components/billing/PlanSettings";
-import { DesktopSettings } from "@/components/desktop/DesktopConnect";
+
+// Each tab's panel loads when the tab is opened; the page itself carries only the default (style) tab.
+const TabLoading = () => <div className="mt-5 shimmer h-48 ctl" />;
+const NewsSettings = dynamic(() => import("@/components/news/NewsSettings").then((m) => m.NewsSettings), { loading: TabLoading });
+const CalendarSettings = dynamic(() => import("@/components/calendar/CalendarSettings").then((m) => m.CalendarSettings), { loading: TabLoading });
+const PlanSettings = dynamic(() => import("@/components/billing/PlanSettings").then((m) => m.PlanSettings), { loading: TabLoading });
+const DesktopSettings = dynamic(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), { loading: TabLoading });
+const EdgeUpgrades = dynamic(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },

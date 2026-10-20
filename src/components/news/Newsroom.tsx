@@ -18,13 +18,11 @@ import { EDITIONS, LAYOUTS, LOOKS, type EditionId, type LayoutId, type LookId } 
 import { ago, MotionContext, post, useApi, useEffectiveMotion, useFeed, useNow, useSparks } from "./client";
 import { DealTracker, LeagueTable, type BriefData, type DealsData } from "./Boards";
 import type { RadarScreen } from "@/lib/news/radar/view";
-import { RadarView } from "./Radar";
 import { DashboardLayout, HybridLayout, MagazineLayout, WireLayout, type LayoutProps } from "./layouts";
 import { FrontLayout } from "./FrontPage";
 import { Icon } from "@/components/ui/Icon";
 import type { GlobePoint } from "@/lib/news/geo";
 import { StoryCard } from "./StoryCard";
-import { StoryPeek } from "./StoryReader";
 import { useSubNav } from "@/lib/subnav";
 import { Select } from "@/components/ui/Select";
 
@@ -32,6 +30,10 @@ const NewsGlobe = dynamic(() => import("./NewsGlobe"), { ssr: false, loading: ()
 const BriefDeck = dynamic(() => import("./BriefDeck").then((m) => m.BriefDeck), { ssr: false });
 const BriefingPlayer = dynamic(() => import("./BriefingPlayer").then((m) => m.BriefingPlayer), { ssr: false });
 const Recap = dynamic(() => import("./Recap").then((m) => m.Recap), { ssr: false });
+// The sector radar and the story peek (its charts, maps and timeline) load when first shown, and the peek
+// is warmed a few seconds after the page settles so opening a story does not wait on it.
+const RadarView = dynamic(() => import("./Radar").then((m) => m.RadarView), { loading: () => <div className="shimmer m-5 h-[420px] rounded-[var(--nr-radius)]" /> });
+const StoryPeek = dynamic(() => import("./StoryReader").then((m) => m.StoryPeek));
 
 type View = "today" | "globe" | "deals" | "radar" | "saved";
 const VIEWS: View[] = ["today", "globe", "deals", "radar", "saved"];
@@ -52,6 +54,10 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const [query, setQuery] = useState({ typed: "", applied: "" });
   const [desk, setDesk] = useState("");
   const [peek, setPeek] = useState<number | null>(initialStory);
+  // The peek mounts with the first story opened and stays mounted, so its closing animation still plays.
+  const [peekMounted, setPeekMounted] = useState(initialStory !== null);
+  if (peek !== null && !peekMounted) setPeekMounted(true);
+  useEffect(() => { const t = setTimeout(() => { void import("./StoryReader"); }, 3000); return () => clearTimeout(t); }, []);
   const [override, setOverride] = useState<{ edition?: EditionId; look?: LookId; layout?: LayoutId; advanced?: boolean }>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   // The sector radar on screen; empty until chosen here, so the server shows the saved or desk default.
@@ -218,7 +224,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             </AnimatePresence>
           )}
         </div>
-        <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />
+        {peekMounted && <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />}
         {/* On a phone, Brief mode is one tap away, just above the tab bar (the pane ends where the bar starts). */}
         {data && stories.length > 0 && !overlay && view === "today" && (
           <button type="button" onClick={() => setOverlay("brief")} className="absolute bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-fg shadow-float md:hidden" aria-label="Open Brief mode">
