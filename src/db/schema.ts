@@ -62,7 +62,7 @@ export const peerGroups = pgTable("peer_groups", {
   description: text("description").notNull().default(""),
   createdBy: text("created_by").notNull().default("analyst"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index("peer_groups_user_idx").on(t.userId)]);
 
 export const peerGroupMembers = pgTable("peer_group_members", {
   id: serial("id").primaryKey(),
@@ -318,6 +318,8 @@ export const crmContacts = pgTable("crm_contacts", {
   uniqueIndex("crm_contacts_user_email_uidx").on(t.userId, t.email),
   index("crm_contacts_team_idx").on(t.teamId),
   index("crm_contacts_domain_idx").on(t.domain),
+  // drizzle/0027_scale.sql: contacts most recently seen first.
+  index("crm_contacts_user_seen_idx").on(t.userId, t.lastSeenAt.desc(), t.id.desc()),
 ]);
 
 /** A pipeline item: one company moving through the stages of a desk's process. */
@@ -344,6 +346,8 @@ export const crmDeals = pgTable("crm_deals", {
   index("crm_deals_user_stage_idx").on(t.userId, t.stage),
   index("crm_deals_team_idx").on(t.teamId),
   index("crm_deals_contact_idx").on(t.contactId),
+  // drizzle/0027_scale.sql: the pipeline newest first, paged by (updated_at, id).
+  index("crm_deals_user_updated_idx").on(t.userId, t.updatedAt.desc(), t.id.desc()),
 ]);
 
 /** An email thread the agent has read, with its triage verdict. */
@@ -369,6 +373,8 @@ export const crmThreads = pgTable("crm_threads", {
   uniqueIndex("crm_threads_user_provider_uidx").on(t.userId, t.providerThreadId),
   index("crm_threads_user_recent_idx").on(t.userId, t.lastMessageAt),
   index("crm_threads_deal_idx").on(t.dealId),
+  // drizzle/0027_scale.sql: the "needs a reply" count.
+  index("crm_threads_user_needs_reply_idx").on(t.userId).where(sql`needs_reply`),
 ]);
 
 /** One message within a thread. Bodies are stored as plain text. */
@@ -619,6 +625,8 @@ export const crmSignals = pgTable("crm_signals", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("crm_signals_user_contact_source_uidx").on(t.userId, t.contactId, t.sourceKey),
+  // drizzle/0027_scale.sql: a deal's signal (no contact) once per source.
+  uniqueIndex("crm_signals_user_deal_source_uidx").on(t.userId, t.dealId, t.sourceKey).where(sql`contact_id is null and deal_id is not null`),
   index("crm_signals_user_idx").on(t.userId, t.createdAt),
 ]);
 
@@ -850,6 +858,18 @@ export const aiUsage = pgTable("ai_usage", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("ai_usage_user_idx").on(t.userId, t.createdAt), index("ai_usage_created_idx").on(t.createdAt)]);
 
+/**
+ * Running AI spend per UTC day, for one person (`scope` = their id) or everyone ('*'), added to atomically
+ * as each call is recorded, so every instance sees it at once (src/lib/ai/spend.ts; drizzle/0027_scale.sql).
+ */
+export const aiSpend = pgTable("ai_spend", {
+  scope: text("scope").notNull(),
+  day: date("day").notNull(),
+  usd: doublePrecision("usd").notNull().default(0),
+  calls: integer("calls").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.scope, t.day] }), index("ai_spend_day_idx").on(t.day)]);
+
 
 /* ---------------- Newsroom ---------------- */
 
@@ -961,7 +981,12 @@ export const newsUserItems = pgTable("news_user_items", {
   hiddenAt: timestamp("hidden_at", { withTimezone: true }),
   why: jsonb("why").$type<{ text: string; model: string; at: string } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [primaryKey({ columns: [t.userId, t.clusterId] }), index("news_user_items_saved_idx").on(t.userId, t.savedAt)]);
+}, (t) => [
+  primaryKey({ columns: [t.userId, t.clusterId] }), index("news_user_items_saved_idx").on(t.userId, t.savedAt),
+  // drizzle/0027_scale.sql: hidden stories, and the affinity model's recent window.
+  index("news_user_items_hidden_idx").on(t.userId).where(sql`hidden_at is not null`),
+  index("news_user_items_user_updated_idx").on(t.userId, t.updatedAt),
+]);
 
 /** Alerts and briefs for the bell, with where each was delivered. `key` dedupes per person. */
 export const newsNotifications = pgTable("news_notifications", {
@@ -977,7 +1002,11 @@ export const newsNotifications = pgTable("news_notifications", {
   delivered: jsonb("delivered").$type<Record<string, string>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp("read_at", { withTimezone: true }),
-}, (t) => [uniqueIndex("news_notifications_user_key_uidx").on(t.userId, t.key), index("news_notifications_user_idx").on(t.userId, t.createdAt)]);
+}, (t) => [
+  uniqueIndex("news_notifications_user_key_uidx").on(t.userId, t.key), index("news_notifications_user_idx").on(t.userId, t.createdAt),
+  // drizzle/0027_scale.sql: the unread count reads only unread rows.
+  index("news_notifications_user_unread_idx").on(t.userId, t.createdAt).where(sql`read_at is null`),
+]);
 
 /** Browser push subscriptions, one per device. */
 export const newsPushSubs = pgTable("news_push_subs", {
