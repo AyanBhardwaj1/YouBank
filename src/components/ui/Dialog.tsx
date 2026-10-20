@@ -73,7 +73,19 @@ export function promptDialog(opts: PromptOptions): Promise<string | null> {
 type Layer = typeof import("./DialogLayer").default;
 let layer: Layer | null = null;
 let layerLoad: Promise<Layer> | null = null;
-const loadLayer = () => (layerLoad ??= import("./DialogLayer").then((m) => (layer = m.default)));
+// A failed load is not remembered: the next dialog (or warm-up) fetches it afresh.
+const loadLayer = () => (layerLoad ??= import("./DialogLayer").then((m) => (layer = m.default), (e: unknown) => { layerLoad = null; throw e; }));
+
+/**
+ * The browser's own dialog, for when the dialog's code cannot be loaded (offline, or a deploy removed it):
+ * the question is still asked and still blocks, and a prompt keeps its rules (not empty, `match`).
+ */
+function answerNatively(r: Request) {
+  if (r.kind === "confirm") { settle(r.id, window.confirm(plain(r.opts))); return; }
+  const v = window.prompt(plain(r.opts), r.opts.defaultValue ?? "");
+  const ok = v !== null && (r.opts.match !== undefined ? v.trim() === r.opts.match.trim() : v.trim().length > 0);
+  settle(r.id, ok ? v : null);
+}
 
 /** Mount once, in the root layout. */
 export function DialogHost() {
@@ -83,7 +95,7 @@ export function DialogHost() {
     hosts++;
     // Warm the dialog's code before it is needed: at the first press of a pointer or key (a click that
     // opens a dialog starts with one), or once the page has been idle a few seconds.
-    const warm = () => { void loadLayer(); };
+    const warm = () => { loadLayer().catch(() => undefined); };
     const t = setTimeout(warm, 4000);
     window.addEventListener("pointerdown", warm, { once: true, capture: true, passive: true });
     window.addEventListener("keydown", warm, { once: true, capture: true });
@@ -92,7 +104,7 @@ export function DialogHost() {
   const current = q[0];
   // The layer mounts with the first dialog and stays, so a closing dialog still animates out.
   useEffect(() => {
-    if (current && !Layer) void loadLayer().then((l) => setLayer(() => l));
+    if (current && !Layer) loadLayer().then((l) => setLayer(() => l), () => { for (const r of queue.slice()) if (queue.includes(r)) answerNatively(r); });
   }, [current, Layer]);
   return Layer ? <Layer current={current} settle={settle} /> : null;
 }
