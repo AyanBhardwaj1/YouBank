@@ -82,7 +82,7 @@ export async function listInvites(teamId: number): Promise<TeamInvite[]> {
 export async function createTeam(user: CurrentUser, name: string): Promise<TeamSummary> {
   const db = requireDb();
   const trimmed = name.trim();
-  if (!trimmed) throw new Error("A team needs a name");
+  if (!trimmed) throw Object.assign(new Error("A team needs a name"), { status: 400 });
   // Slugs are unique; fall back to a short suffix rather than failing the create.
   let slug = slugify(trimmed);
   const [taken] = await db.select({ id: schema.teams.id }).from(schema.teams).where(eq(schema.teams.slug, slug));
@@ -94,7 +94,7 @@ export async function createTeam(user: CurrentUser, name: string): Promise<TeamS
 
 export async function renameTeam(teamId: number, name: string): Promise<void> {
   const trimmed = name.trim();
-  if (!trimmed) throw new Error("A team needs a name");
+  if (!trimmed) throw Object.assign(new Error("A team needs a name"), { status: 400 });
   await requireDb().update(schema.teams).set({ name: trimmed, updatedAt: new Date() }).where(eq(schema.teams.id, teamId));
 }
 
@@ -107,11 +107,11 @@ export async function deleteTeam(teamId: number): Promise<void> {
 export async function inviteMember(teamId: number, email: string, role: TeamRole, invitedBy: string): Promise<{ token: string; email: string }> {
   const db = requireDb();
   const addr = email.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) throw new Error(`"${email}" is not a valid email address`);
-  if (role === "owner") throw new Error("Ownership is transferred, not invited");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) throw Object.assign(new Error(`"${email}" is not a valid email address`), { status: 400 });
+  if (role === "owner") throw Object.assign(new Error("Ownership is transferred, not invited"), { status: 400 });
   const existing = await db.select({ id: schema.teamMembers.id }).from(schema.teamMembers)
     .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.email, addr)));
-  if (existing.length) throw new Error(`${addr} is already on this team`);
+  if (existing.length) throw Object.assign(new Error(`${addr} is already on this team`), { status: 409 });
   const token = randomBytes(24).toString("base64url");
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000);
   await db.insert(schema.teamInvites).values({ teamId, email: addr, role, token, invitedBy, expiresAt })

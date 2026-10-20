@@ -24,7 +24,7 @@ export async function composeDraft(userId: string, input: { to: string; name?: s
   const email = input.to.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
   const brief = input.brief.trim().slice(0, 1500);
-  if (!brief) throw new Error("Say what the email should do");
+  if (!brief) throw Object.assign(new Error("Say what the email should do"), { status: 400 });
 
   const match = await enrichCompany(input.company ?? "", companyDomain(email)).catch(() => null);
   const contact = await upsertContact(userId, { email, name: input.name, company: input.company || match?.name || "", startupId: match?.id ?? null });

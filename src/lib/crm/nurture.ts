@@ -52,7 +52,7 @@ export async function createRule(userId: string, input: Partial<RuleRow>): Promi
 export async function updateRule(userId: string, id: number, input: Partial<RuleRow>): Promise<RuleRow> {
   const db = requireDb();
   const [base] = await db.select().from(schema.crmNurtureRules).where(and(eq(schema.crmNurtureRules.id, id), eq(schema.crmNurtureRules.userId, userId)));
-  if (!base) throw new Error("Rule not found");
+  if (!base) throw Object.assign(new Error("Rule not found"), { status: 404 });
   const [row] = await db.update(schema.crmNurtureRules).set(ruleValues(input, base)).where(eq(schema.crmNurtureRules.id, id)).returning();
   return row;
 }
@@ -136,7 +136,7 @@ export async function draftReconnect(userId: string, contactId: number, opts?: {
 }): Promise<ReconnectOutcome> {
   const db = requireDb();
   const [contact] = await db.select().from(schema.crmContacts).where(and(eq(schema.crmContacts.id, contactId), eq(schema.crmContacts.userId, userId)));
-  if (!contact) throw new Error("Contact not found");
+  if (!contact) throw Object.assign(new Error("Contact not found"), { status: 404 });
   if (contact.optedOutAt) return { draft: null, reason: `${contact.name || contact.email} asked not to be contacted.` };
 
   const [ctx, settings, history, directory, signals, playbook] = await Promise.all([

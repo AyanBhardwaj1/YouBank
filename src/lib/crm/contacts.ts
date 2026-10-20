@@ -55,6 +55,6 @@ export async function updateContact(userId: string, id: number, fields: {
   if (fields.optedOut === false) set.optedOutAt = null;
   const [row] = await db.update(schema.crmContacts).set(set)
     .where(and(eq(schema.crmContacts.id, id), eq(schema.crmContacts.userId, userId))).returning();
-  if (!row) throw new Error("Contact not found");
+  if (!row) throw Object.assign(new Error("Contact not found"), { status: 404 });
   return row;
 }

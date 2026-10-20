@@ -27,7 +27,7 @@ export const asEntries = (rows: PlaybookRow[]): PlaybookEntry[] => rows.map((r) 
 export async function addPlaybookEntry(userId: string, input: { question: string; answer: string; source?: string }): Promise<PlaybookRow> {
   const question = input.question.trim().slice(0, 500);
   const answer = input.answer.trim().slice(0, 4000);
-  if (!question || !answer) throw new Error("A playbook entry needs both a question and an answer");
+  if (!question || !answer) throw Object.assign(new Error("A playbook entry needs both a question and an answer"), { status: 400 });
   const [row] = await requireDb().insert(schema.crmPlaybook).values({ userId, question, answer, source: input.source ?? "you" }).returning();
   return row;
 }
@@ -36,10 +36,10 @@ export async function updatePlaybookEntry(userId: string, id: number, input: { q
   const set: Partial<PlaybookRow> = { updatedAt: new Date() };
   if (input.question !== undefined) set.question = input.question.trim().slice(0, 500);
   if (input.answer !== undefined) set.answer = input.answer.trim().slice(0, 4000);
-  if (set.question === "" || set.answer === "") throw new Error("A playbook entry needs both a question and an answer");
+  if (set.question === "" || set.answer === "") throw Object.assign(new Error("A playbook entry needs both a question and an answer"), { status: 400 });
   const [row] = await requireDb().update(schema.crmPlaybook).set(set)
     .where(and(eq(schema.crmPlaybook.id, id), eq(schema.crmPlaybook.userId, userId))).returning();
-  if (!row) throw new Error("Playbook entry not found");
+  if (!row) throw Object.assign(new Error("Playbook entry not found"), { status: 404 });
   return row;
 }
 

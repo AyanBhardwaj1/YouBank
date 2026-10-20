@@ -73,10 +73,10 @@ export function isPrivateAddress(ip: string): boolean {
  */
 export async function resolvePublicHost(name: string): Promise<string> {
   const host = name.trim().replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
-  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("That address points at a private network.");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) throw Object.assign(new Error("That address points at a private network."), { status: 400 });
   const addrs = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addrs.length) throw new Error(`Could not find the server ${host}.`);
-  if (addrs.some(isPrivateAddress)) throw new Error("That address points at a private network.");
+  if (addrs.some(isPrivateAddress)) throw Object.assign(new Error("That address points at a private network."), { status: 400 });
   // IPv4 first when the name has both: serverless hosts often have no IPv6 route out.
   return addrs.find((a) => isIP(a) === 4) ?? addrs[0];
 }
@@ -84,8 +84,8 @@ export async function resolvePublicHost(name: string): Promise<string> {
 /** Throws a plain error unless `raw` is an http(s) URL to a public host. Returns the parsed URL. */
 export async function assertPublicUrl(raw: string): Promise<URL> {
   let u: URL;
-  try { u = new URL(raw); } catch { throw new Error("That is not a web address."); }
-  if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Only http and https addresses can be used.");
+  try { u = new URL(raw); } catch { throw Object.assign(new Error("That is not a web address."), { status: 400 }); }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw Object.assign(new Error("Only http and https addresses can be used."), { status: 400 });
   await resolvePublicHost(u.hostname);
   return u;
 }

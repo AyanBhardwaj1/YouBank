@@ -161,7 +161,7 @@ export type ProcessResult = { thread: ThreadRow; triage: TriageResult; contact: 
 export async function processThread(userId: string, threadId: number, opts?: { override?: AiOverride }): Promise<ProcessResult> {
   const db = requireDb();
   const found = await threadWithMessages(userId, threadId);
-  if (!found) throw new Error("Thread not found");
+  if (!found) throw Object.assign(new Error("Thread not found"), { status: 404 });
   const { thread, messages } = found;
   const [ctx, settings, mailboxes] = await Promise.all([loadUserContext(userId), getSettings(userId), mailboxAddresses(userId)]);
   const input = toThreadInput(thread, messages);
@@ -250,7 +250,7 @@ export async function createDraft(userId: string, threadId: number, opts?: {
 }): Promise<DraftRow> {
   const db = requireDb();
   const found = await threadWithMessages(userId, threadId);
-  if (!found) throw new Error("Thread not found");
+  if (!found) throw Object.assign(new Error("Thread not found"), { status: 404 });
   const { thread, messages } = found;
   const [ctx, settings, playbook, mailboxes] = await Promise.all([loadUserContext(userId), getSettings(userId), listPlaybook(userId), mailboxAddresses(userId)]);
   const input = toThreadInput(thread, messages);
@@ -434,7 +434,7 @@ export async function moveDeal(userId: string, dealId: number, stage: Stage): Pr
   const [row] = await requireDb().update(schema.crmDeals)
     .set({ stage, status: statusForStage(stage), updatedAt: new Date() })
     .where(and(eq(schema.crmDeals.id, dealId), eq(schema.crmDeals.userId, userId))).returning();
-  if (!row) throw new Error("Deal not found");
+  if (!row) throw Object.assign(new Error("Deal not found"), { status: 404 });
   return row;
 }
 
@@ -448,7 +448,7 @@ export async function updateDraft(userId: string, draftId: number, fields: { sub
     ...(fields.body !== undefined ? { body: fields.body } : {}),
     scheduledFor: null, holdReason: "",
   }).where(and(eq(schema.crmDrafts.id, draftId), eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.status, "pending"))).returning();
-  if (!row) throw new Error("Draft not found, or already decided");
+  if (!row) throw Object.assign(new Error("Draft not found, or already decided"), { status: 409 });
   return row;
 }
 
@@ -461,7 +461,7 @@ export async function unscheduleDraft(userId: string, draftId: number): Promise<
     .where(and(eq(schema.crmDrafts.id, draftId), eq(schema.crmDrafts.userId, userId)));
   const [row] = await requireDb().update(schema.crmDrafts).set({ scheduledFor: null, holdReason: "You stopped autopilot on this one; it waits for you." })
     .where(and(eq(schema.crmDrafts.id, draftId), eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.status, "pending"))).returning();
-  if (!row) throw new Error("Draft not found, or already decided");
+  if (!row) throw Object.assign(new Error("Draft not found, or already decided"), { status: 409 });
   if (before?.scheduledFor) await recordCancel(userId, row).catch(() => undefined);
   return row;
 }

@@ -78,7 +78,7 @@ export async function createMeeting(user: Pick<CurrentUser, "id" | "email">, inp
   if (!title) throw plain("Give the meeting a title.");
   const { start, end } = times(input.start, input.end);
   const attendees = cleanAttendees(input.attendees ?? []);
-  if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be an https:// address.");
+  if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be a secure web address, one that starts with https.");
 
   const cal = await targetCalendar(user.id, input.calendarId);
   const account = await getAccount(user.id, cal.accountId);
@@ -132,7 +132,7 @@ export async function changeMeeting(userId: string, eventId: number, input: Chan
   if (input.description !== undefined) patch.description = input.description.slice(0, 8000);
   if (input.location !== undefined) patch.location = input.location.slice(0, 500);
   if (input.videoUrl !== undefined) {
-    if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be an https:// address.");
+    if (input.videoUrl && !isUsableLink(input.videoUrl)) throw plain("The video link must be a secure web address, one that starts with https.");
     patch.videoUrl = input.videoUrl;
   }
   // The same limits as a new meeting: an edit must not be a way round the invitation cap.

@@ -46,14 +46,14 @@ export type PrefsInput = Partial<{ timezone: string; workHours: unknown; default
 export async function savePrefs(userId: string, email: string, input: PrefsInput): Promise<CalendarPrefs> {
   const set: Partial<typeof schema.calendarPrefs.$inferInsert> = { email, updatedAt: new Date() };
   if (input.timezone !== undefined) {
-    if (input.timezone && !isIanaZone(input.timezone)) throw new Error("That is not a time zone this server knows.");
+    if (input.timezone && !isIanaZone(input.timezone)) throw Object.assign(new Error("That is not a time zone this server knows."), { status: 400 });
     set.timezone = input.timezone;
   }
   if (input.workHours !== undefined) set.workHours = normalizeWorkHours(input.workHours);
   if (input.defaultCalendarId !== undefined) set.defaultCalendarId = input.defaultCalendarId;
   if (input.defaultDuration !== undefined) set.defaultDuration = Math.min(Math.max(Math.round(Number(input.defaultDuration)) || 30, 5), 480);
   if (input.videoUrl !== undefined) {
-    if (input.videoUrl && !isUsableLink(input.videoUrl)) throw new Error("The meeting link must be an https:// address.");
+    if (input.videoUrl && !isUsableLink(input.videoUrl)) throw Object.assign(new Error("The meeting link must be a secure web address, one that starts with https."), { status: 400 });
     set.videoUrl = input.videoUrl.trim();
   }
   if (input.autoBrief !== undefined) set.autoBrief = input.autoBrief;

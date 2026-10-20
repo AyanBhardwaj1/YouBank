@@ -97,7 +97,7 @@ function imapMailbox(account: AccountRow, settings: ImapSettings, password: stri
 export async function openMailbox(account: AccountRow, origin: string): Promise<Mailbox> {
   if (account.provider === "imap") {
     const s = account.settings as ImapSettings;
-    if (!s.imapHost || !s.smtpHost || !account.secret) throw new Error("This mailbox is missing its server settings. Reconnect it.");
+    if (!s.imapHost || !s.smtpHost || !account.secret) throw Object.assign(new Error("This mailbox is missing its server settings. Reconnect it."), { status: 409 });
     return imapMailbox(account, s, decryptToken(account.secret));
   }
   return gmailMailbox(account, await accessTokenFor(account, origin));

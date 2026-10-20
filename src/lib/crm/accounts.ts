@@ -94,7 +94,7 @@ export async function accessTokenFor(account: AccountRow, origin: string): Promi
   const db = requireDb();
   const stillValid = account.tokenExpiresAt && account.tokenExpiresAt.getTime() > Date.now();
   if (stillValid && account.accessToken) return decryptToken(account.accessToken);
-  if (!account.refreshToken) throw new Error("This mailbox needs to be reconnected");
+  if (!account.refreshToken) throw Object.assign(new Error("This mailbox needs to be reconnected"), { status: 409 });
   try {
     const cfg = googleConfig(origin);
     const t = await refreshAccessToken(cfg, decryptToken(account.refreshToken));

@@ -20,7 +20,7 @@ import { cryptoPeersFor, tokenFinFor } from "@/lib/crypto/studio-data";
 export async function finFor(ticker?: string | null): Promise<Fin> {
   if (!ticker) return ILLUSTRATIVE;
   const c = await getCompanyData(ticker.toUpperCase());
-  if (!c) throw new Error(`No SEC data found for ${ticker.toUpperCase()}. Check the ticker.`);
+  if (!c) throw Object.assign(new Error(`No SEC data found for ${ticker.toUpperCase()}. Check the ticker.`), { status: 404 });
   return finFrom(c);
 }
 
@@ -36,7 +36,8 @@ export async function peerRows(target: string, peers?: string[]): Promise<{ targ
   const list = (peers?.length ? peers.map((p) => p.toUpperCase()) : (group?.members.map((m) => m.ticker) ?? [])).filter((x) => x !== t).slice(0, 14);
   const res = await getCompanies([t, ...list]);
   const tc = res[t];
-  if (!tc || "error" in tc) throw new Error(`No SEC data found for ${t}.`);
+  // An unknown ticker is a 404; a source that failed keeps its error a server fault.
+  if (!tc || "error" in tc) throw Object.assign(new Error(`No SEC data found for ${t}.`), !tc || tc.error === "Unknown ticker" ? { status: 404 } : {});
   const rows = list.map((x) => res[x]).filter((v): v is CompanyData => !!v && !("error" in v)).map(compRow);
   const errors = list.filter((x) => !res[x] || "error" in (res[x] as object)).map((x) => `${x}: no data`);
   return { target: { ...compRow(tc), shares: tc.balance.sharesOut }, peers: rows, asOf: tc.price?.asOf.slice(0, 10) ?? "", errors };
@@ -81,7 +82,7 @@ export async function buildTemplate(template: TemplateId, opts: { ticker?: strin
       return { sheets: b.sheets, names: namesFrom("DCF", b.anchors), deck: null, notes: b.notes, title: `${label}: DCF`, fin };
     }
     case "comps": {
-      if (!opts.ticker) throw new Error("Trading comps need a ticker.");
+      if (!opts.ticker) throw Object.assign(new Error("Trading comps need a ticker."), { status: 400 });
       const p = await peerRows(opts.ticker, opts.peers);
       if (p.errors.length) notes.push(`Skipped peers without data: ${p.errors.join(", ")}.`);
       const b = buildComps(p.target, p.peers, name("Comps"), p.asOf);
