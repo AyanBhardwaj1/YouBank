@@ -5,6 +5,7 @@
  * with lifetimes matched to how often the data changes.
  */
 import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
+import { withinRate } from "@/lib/locks";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 const BASE = "https://financialmodelingprep.com/stable";
@@ -19,6 +20,29 @@ export class MarketDataError extends Error {}
 export const FMP_LIMIT_KEY = "fmp:daily-limit";
 const LIMIT_MESSAGE = "The market-data plan's daily request limit is used up; it resets daily.";
 
+/**
+ * FMP's per-minute call limit (FMP_CALLS_PER_MINUTE, 250 by default: under the Starter plan's 300) counts
+ * every instance's calls together, so each upstream call takes a slot in a budget kept in the database:
+ * per minute, and per second at a twelfth of that so a burst cannot spend the whole minute at once. A call
+ * that finds no slot within a few seconds fails as "busy" (an answer already cached keeps serving), rather
+ * than going over and drawing a 429. Counting fails open (src/lib/locks).
+ */
+export const fmpPerMinute = () => Math.min(Math.max(Math.round(Number(process.env.FMP_CALLS_PER_MINUTE)) || 250, 10), 3_000);
+export const FMP_BUSY = "Market data is busy right now. Try again in a minute.";
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export async function fmpSlot(): Promise<void> {
+  const perMinute = fmpPerMinute(), perSecond = Math.max(2, Math.ceil(perMinute / 12));
+  for (let i = 0; i < 10; i++) {
+    if (await withinRate("fmp:second", perSecond, 1_000)) {
+      if (await withinRate("fmp:minute", perMinute, 60_000)) return;
+      break;
+    }
+    await pause(300 + Math.random() * 400);
+  }
+  throw Object.assign(new MarketDataError(FMP_BUSY), { status: 503 });
+}
+
 async function get<T>(path: string, params: Record<string, string | number | undefined>, ttlMs: number): Promise<T> {
   const key = process.env.FMP_API_KEY;
   if (!key) throw new MarketDataError("Market data is not set up on this server yet.");
@@ -26,13 +50,14 @@ async function get<T>(path: string, params: Record<string, string | number | und
   const cacheKey = `fmp:${path}?${qs}`;
   return cacheJson<T>(cacheKey, ttlMs, async () => {
     if (await cacheGet(FMP_LIMIT_KEY)) throw new MarketDataError(LIMIT_MESSAGE);
+    await fmpSlot();
     // One retry on a network failure or a 5xx; never on 429, which is the plan's quota.
     const res = await fetchRetry(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", timeoutMs: 10_000, retryOn: retryServerErrors });
     const text = await res.text();
     if (/Limit Reach/i.test(text)) { await cacheSet(FMP_LIMIT_KEY, "1", 30 * MIN); throw new MarketDataError(LIMIT_MESSAGE); }
     if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw Object.assign(new MarketDataError("This market data is not available right now; the market-data plan may not include it."), { cause: new Error(`FMP ${res.status} for ${path}`) });
     return JSON.parse(text) as T;
-  });
+  }, { shared: true });
 }
 
 /** How long quote-like data stays fresh: a minute while US markets are open, longer otherwise. */
