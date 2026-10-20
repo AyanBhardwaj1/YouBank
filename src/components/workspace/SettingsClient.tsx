@@ -7,11 +7,10 @@ import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { AiUsage } from "@/components/ai/AiUsage";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
-import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav } from "@/lib/subnav";
+import { NewsSettings } from "@/components/news/NewsSettings";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 import { EdgeUpgrades } from "@/components/edge/Upgrades";
 import { CalendarSettings } from "@/components/calendar/CalendarSettings";
@@ -35,9 +34,8 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   const [routing, setRouting] = useState(prefs.routing !== false);
-  const { profile, config } = useWorkspace();
+  const { profile, config, tools } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
-  const tools = catalogFor(profile);
 
   return (
     <div className="h-full overflow-auto">

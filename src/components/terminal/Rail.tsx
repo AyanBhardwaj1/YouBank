@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { catalogFor } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
@@ -18,10 +17,10 @@ const shortName = (name: string) =>
  * wide screen; below that it is the "Watchlist" sheet (`variant="sheet"`), which closes after a pick.
  */
 export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "aside", onPicked, onHelp }: { activeTicker: string; panels: OpenPanel[]; onRun: (c: Command) => void; aiLabel: string; variant?: "aside" | "sheet"; onPicked?: () => void; onHelp?: () => void }) {
-  const { config, profile } = useWorkspace();
+  const { config, tools: allTools } = useWorkspace();
   const sheet = variant === "sheet";
   const onRun = (c: Command) => { run(c); onPicked?.(); };
-  const tools = catalogFor(profile).slice(0, 5);
+  const tools = allTools.slice(0, 5);
   const watchlist = config.watchlist;
   const { data } = useCompanies(watchlist);
   return (

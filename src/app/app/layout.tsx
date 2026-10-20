@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { currentUser } from "@/lib/auth/user";
 import { WorkspaceProvider } from "@/components/workspace/WorkspaceProvider";
 import { AppShell } from "@/components/workspace/AppShell";
 import { normalizeNavPrefs } from "@/lib/nav";
+import { catalogFor } from "@/lib/workflows/catalog";
 import { edgePrefs } from "@/lib/edge/access";
 import { ThemeSync } from "@/components/theme/ThemeSync";
 import { SetupScreen } from "@/components/ui/SetupScreen";
@@ -34,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const savedTheme = typeof extra.theme === "string" ? extra.theme : null;
   const edge = edgePrefs(extra, profile.role).beta;
   return (
-    <WorkspaceProvider profile={profile} edge={edge}>
+    <WorkspaceProvider profile={profile} edge={edge} tools={catalogFor(profile)}>
       <ThemeSync theme={savedTheme} />
       {/* Keyed on the beta switch so turning Edge on or off rebuilds the bars with it. */}
       <AppShell key={edge ? "edge" : "base"} email={user.email} edge={edge} initialNav={normalizeNavPrefs(extra.nav, profile.role, { edge })}>{children}</AppShell>
