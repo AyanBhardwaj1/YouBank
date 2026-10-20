@@ -6,7 +6,7 @@
  * orders" before the first approval. `useConsent()` returns `ask(kind)`, which resolves true once the
  * person accepted, false if they closed it.
  */
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { CONSENTS, type ConsentKind } from "@/lib/copytrade/disclosures";
@@ -16,11 +16,39 @@ type Ask = (kind: ConsentKind) => Promise<boolean>;
 const Ctx = createContext<Ask>(async () => false);
 export const useConsent = () => useContext(Ctx);
 
-/** A centred panel over a dim backdrop (a bottom sheet on phones). */
+/** Open modals, innermost last: only the top one answers Esc and Tab (the consent opens over the copy editor). */
+const stack: object[] = [];
+
+/**
+ * A centred panel over a dim backdrop (a bottom sheet on phones). It takes focus when it opens (these
+ * often open on their own, after a 428), so Esc and Tab work at once; Esc closes it wherever focus is,
+ * Tab stays inside it, and focus goes back where it was on close.
+ */
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; });
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const me = {};
+    stack.push(me);
+    panel.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (stack[stack.length - 1] !== me) return;
+      if (e.key === "Escape") { e.preventDefault(); close.current(); return; }
+      if (e.key !== "Tab" || !panel.current) return;
+      const f = [...panel.current.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])')];
+      if (!f.length) return;
+      const i = f.indexOf(document.activeElement as HTMLElement);
+      e.preventDefault();
+      f[e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : (i === f.length - 1 ? 0 : i + 1)].focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); stack.splice(stack.indexOf(me), 1); before?.focus?.(); };
+  }, []);
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`panel float max-h-[92dvh] w-full overflow-y-auto rounded-b-none p-4 sm:rounded-[var(--radius)] ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`} style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/55 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={panel} tabIndex={-1} className={`panel float max-h-[92dvh] w-full overflow-y-auto rounded-b-none p-4 outline-none sm:rounded-[var(--radius)] ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`} style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <h2 className="text-[15px] font-semibold text-fg">{title}</h2>
           <button onClick={onClose} className="ctl -mr-1 -mt-1 p-1.5 text-muted hover:bg-elevated hover:text-fg" aria-label="Close"><Icon name="X" /></button>

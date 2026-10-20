@@ -82,7 +82,8 @@ function MyFills() {
   return (
     <div className="grid gap-3 lg:grid-cols-[320px_1fr]">
       <Card title="Your trades">
-        <p className="text-[12px] text-muted">{fills.data ? `${fills.data.fills.length} fills stored.` : "Loading…"} Export your history from your broker and paste or upload it.</p>
+        <p className="text-[12px] text-muted">{fills.data ? `${fills.data.fills.length} fills stored. ` : fills.busy ? "Loading… " : ""}Export your history from your broker and paste or upload it.</p>
+        <ErrorNote error={fills.error} />
         <Field label="Broker export (CSV)"><textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={4} className={`${inputCls} font-mono text-[11px]`} placeholder="Paste the CSV here" /></Field>
         <input type="file" accept=".csv,text/csv" aria-label="Upload a broker export (CSV file)" className="mt-1 text-[11.5px] text-muted" onChange={async (e) => { const file = e.target.files?.[0]; if (file) setCsv(await file.text()); }} />
         <div className="mt-2 flex flex-wrap gap-2"><Button onClick={() => void doImport()} busy={imp.busy} disabled={!csv.trim()}>Import</Button>{(fills.data?.fills.length ?? 0) > 0 && <Button kind="ghost" onClick={() => void removeAll()}>Delete all</Button>}</div>
