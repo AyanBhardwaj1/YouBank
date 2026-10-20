@@ -3,27 +3,19 @@
 /** Today's brief on Home: the desk's title and opener, the top stories, and what is on your watchlist or in your network. */
 import Link from "next/link";
 import { Newspaper, Sparkles } from "lucide-react";
-import { Suspense, use } from "react";
 import type { BriefData } from "./Boards";
 import { useApi } from "./client";
 
-/** The brief the Home page started on the server (see app/app/page.tsx), streamed with the page. */
-export type BriefSeed = Promise<{ data: BriefData; at: number } | null>;
+/** The brief the Home page read on the server (see app/app/page.tsx), with when it was made. */
+export type BriefSeed = { data: BriefData; at: number } | null;
 
 /**
- * With `seed`, the brief arrives in the page's own HTML stream as soon as the server has it, instead of
- * after the page's JavaScript loads and asks for it; the skeleton shows until then. Without it (or if the
- * server could not make it), the brief is fetched from the browser as before. Either way it refreshes
- * every ten minutes.
+ * With `seed`, the brief is in the page's first HTML; the browser skips its first request while that is
+ * fresh. Without it (the server could not make it in time), the brief is fetched from the browser as
+ * before. Either way it refreshes every ten minutes.
  */
 export function HomeBrief({ seed }: { seed?: BriefSeed }) {
-  if (!seed) return <Brief />;
-  return <Suspense fallback={<Frame />}><Seeded seed={seed} /></Suspense>;
-}
-
-function Seeded({ seed }: { seed: BriefSeed }) {
-  const s = use(seed);
-  return <Brief initial={s?.data} seededAt={s?.at} />;
+  return <Brief initial={seed?.data} seededAt={seed?.at} />;
 }
 
 function Frame({ label = "", children }: { label?: string; children?: React.ReactNode }) {
