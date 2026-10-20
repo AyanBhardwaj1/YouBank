@@ -19,7 +19,7 @@ import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { promptDialog } from "@/components/ui/Dialog";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { MeetingLine, ScheduleButton, useMeetingSummaries } from "@/components/calendar/MeetingBadges";
 import { errorMessage } from "@/lib/client/errors";
 import { SetupNotice } from "@/components/ui/SetupScreen";
@@ -92,6 +92,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   const tabRow = useTabInView<HTMLDivElement>(tab);
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
+  useViewInUrl("/app/crm", "tab", tab, "drafts");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);

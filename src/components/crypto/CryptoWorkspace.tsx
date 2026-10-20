@@ -11,7 +11,7 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import type { Command } from "@/lib/functions";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { useTabInView } from "@/components/ui/useTabInView";
 
 const Loading = () => <div className="flex flex-col gap-3 p-3" aria-busy="true"><div className="shimmer h-14 ctl" /><div className="shimmer h-56 ctl" /></div>;
@@ -50,6 +50,7 @@ export function CryptoWorkspace({ initialTab, initialToken }: { initialTab?: str
   const tabRow = useTabInView<HTMLElement>(tab);
   const [token, setToken] = useState(initialToken ?? "");
   useSubNav("/app/crypto", (v) => { if (isTab(v)) setTab(v); });
+  useViewInUrl("/app/crypto", "tab", tab === "token" ? null : tab, "markets");
 
   // Screens ask to open things as terminal commands; here they become tabs, or the terminal for a company.
   const onRun = (c: Command) => {

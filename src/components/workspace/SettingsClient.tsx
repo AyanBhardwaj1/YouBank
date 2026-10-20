@@ -11,7 +11,7 @@ import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 import { NewsSettings } from "@/components/news/NewsSettings";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 import { EdgeUpgrades } from "@/components/edge/Upgrades";
 import { CalendarSettings } from "@/components/calendar/CalendarSettings";
@@ -34,6 +34,7 @@ type Tab = (typeof TABS)[number]["id"];
 export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
+  useViewInUrl("/app/settings", "tab", tab, "style");
   const [routing, setRouting] = useState(prefs.routing !== false);
   const { profile, config } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();

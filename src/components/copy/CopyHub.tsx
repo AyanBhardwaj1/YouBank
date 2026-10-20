@@ -13,7 +13,7 @@ import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { NOT_ADVICE_SHORT, TIMING } from "@/lib/copytrade/disclosures";
 import type { CuratedFund } from "@/lib/copytrade/funds";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { call, json, shortCik, usd } from "./client";
 import { ConsentProvider, useConsent } from "./Consent";
 import { CopyDetail } from "./CopyDetail";
@@ -43,6 +43,7 @@ function HubInner({ initialTab, initialCopy, review, connected }: { initialTab?:
   const [selected, setSelected] = useState<number | null>(initialCopy ?? null);
   const [error, setError] = useState<string | null>(null);
   useSubNav("/app/copy", (v) => { if (TABS.some((t) => t.id === v)) setTab(v as Tab); });
+  useViewInUrl("/app/copy", "tab", tab, "discover");
   const load = useCallback(() => fetchJson<Hub>("/api/copy/copies").then(setHub).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { void load(); }, [load]);
 

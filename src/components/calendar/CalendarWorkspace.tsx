@@ -12,7 +12,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { safeText } from "@/lib/client/errors";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { EventPanel } from "./EventPanel";
 import { Scheduler, type SchedulePrefill } from "./Scheduler";
 import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
@@ -64,6 +64,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
   const [tick, setTick] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   useSubNav("/app/calendar", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as View); });
+  useViewInUrl("/app/calendar", "view", picked); // no default: on a phone the unpicked view is the agenda
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
 

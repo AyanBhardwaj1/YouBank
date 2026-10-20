@@ -10,7 +10,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { AgentChat } from "./AgentChat";
 import { AlgoConsentProvider, useAlgoConsent } from "./AlgoConsent";
 import { Brokers } from "./Brokers";
@@ -40,6 +40,7 @@ function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useSubNav("/app/algo", (v) => { if (TABS.some((t) => t.id === v)) { setTab(v as Tab); setSelected(null); } });
+  useViewInUrl("/app/algo", "tab", tab, "strategies");
   const load = useCallback(() => fetchJson<Hub>("/api/algo/strategies").then(setHub).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { void load(); }, [load]);
   const toggleKill = async () => {

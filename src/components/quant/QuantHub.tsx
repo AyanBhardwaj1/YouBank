@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { QuantSignal } from "@/lib/quant/contracts";
 import { DISCLOSURES } from "@/lib/quant/words";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { CostsTab } from "./CostsTab";
 import { DrillsTab } from "./DrillsTab";
 import { InsidersTab } from "./InsidersTab";
@@ -40,6 +40,7 @@ function HubInner({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<QuantTab>(QUANT_TABS.find((t) => t.id === initialTab)?.id ?? "overview");
   const tabRow = useTabInView<HTMLElement>(tab);
   useSubNav("/app/quant", (v) => { if (QUANT_TABS.some((t) => t.id === v)) setTab(v as QuantTab); });
+  useViewInUrl("/app/quant", "tab", tab, "overview");
   return (
     // The page scrolls inside itself, as every workspace does: the frame around it never scrolls.
     <div className="h-full overflow-auto">
