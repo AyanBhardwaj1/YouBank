@@ -9,6 +9,10 @@
  *
  *   node scripts/perf/vitals.mjs --base http://localhost:3201 --users /tmp/users.json --out /tmp/vitals.json
  *     [--runs 3] [--profiles desktop,mobile] [--routes /app,/app/news] [--chromium /path/to/chrome]
+ *     [--compare http://localhost:3202]
+ *
+ * --compare measures a second build (another `next start` on the same database) alternately with the
+ * first, run by run, so both see the same machine load; rows are labelled "base" and "compare".
  *
  * Needs Playwright (global or local install) and the users file from scripts/load/setup.mjs.
  */
@@ -17,8 +21,8 @@ import { createRequire } from "node:module";
 import { execSync } from "node:child_process";
 
 const arg = (k, d) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const base = arg("base", "http://localhost:3201");
-if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(base)) throw new Error("vitals.mjs measures a local build only");
+const servers = [["base", arg("base", "http://localhost:3201")], ...(arg("compare", "") ? [["compare", arg("compare", "")]] : [])];
+for (const [, url] of servers) if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url)) throw new Error("vitals.mjs measures a local build only");
 const runs = Number(arg("runs", "3"));
 const profiles = arg("profiles", "desktop,mobile").split(",");
 const users = JSON.parse(readFileSync(arg("users", ""), "utf8"));
@@ -68,7 +72,7 @@ const INIT = `
 const browser = await chromium.launch({ executablePath: arg("chromium", "/opt/pw-browsers/chromium"), args: ["--no-sandbox"] });
 const cookies = user.cookie.split("; ").map((c) => { const i = c.indexOf("="); return { name: c.slice(0, i), value: c.slice(i + 1), domain: "localhost", path: "/" }; });
 
-async function measure(route, profile, interact) {
+async function measure(base, route, profile, interact) {
   const mobile = profile === "mobile";
   const ctx = await browser.newContext(mobile ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true } : { viewport: { width: 1440, height: 900 } });
   await ctx.addCookies(cookies);
@@ -111,14 +115,17 @@ async function measure(route, profile, interact) {
 const out = [];
 for (const profile of profiles) {
   for (const route of routes) {
-    const rs = [];
-    for (let i = 0; i < runs; i++) rs.push(await measure(route, profile, i === runs - 1));
+    const all = Object.fromEntries(servers.map(([label]) => [label, []]));
+    for (let i = 0; i < runs; i++) for (const [label, url] of servers) all[label].push(await measure(url, route, profile, i === runs - 1));
+    for (const [label] of servers) {
+    const rs = all[label];
     const pick = (k) => median(rs.map((r) => r[k]));
-    const row = { route: route.name, path: route.path.replace(/\/\d+$/, "/[id]"), profile, landedOn: rs[0].url, ttfb: pick("ttfb"), fcp: pick("fcp"), lcp: pick("lcp"), cls: pick("cls"), tbt: pick("tbt"), longTasks: pick("longTasks"), maxLong: pick("maxLong"), jsKB: pick("jsKB"), domNodes: pick("domNodes"), apiCount: pick("apiCount"), api: rs.at(-1).api, dupes: rs.at(-1).dupes, interactions: rs.at(-1).interactions };
+    const row = { server: label, route: route.name, path: route.path.replace(/\/\d+$/, "/[id]"), profile, landedOn: rs[0].url, ttfb: pick("ttfb"), fcp: pick("fcp"), lcp: pick("lcp"), cls: pick("cls"), tbt: pick("tbt"), longTasks: pick("longTasks"), maxLong: pick("maxLong"), jsKB: pick("jsKB"), domNodes: pick("domNodes"), apiCount: pick("apiCount"), api: rs.at(-1).api, dupes: rs.at(-1).dupes, interactions: rs.at(-1).interactions };
     out.push(row);
     const f = (v) => (v === null ? "-" : Math.round(v));
-    console.log(`${profile.padEnd(7)} ${row.route.padEnd(9)} FCP ${f(row.fcp)}  LCP ${f(row.lcp)}  CLS ${row.cls?.toFixed(3)}  TBT ${f(row.tbt)} (${row.longTasks} long, max ${f(row.maxLong)})  JS ${f(row.jsKB)}KB  api ${row.apiCount}${row.dupes.length ? ` dupes ${row.dupes.map(([p, n]) => `${p}x${n}`).join(",")}` : ""}${row.landedOn !== route.path ? ` (landed ${row.landedOn})` : ""}`);
+    console.log(`${servers.length > 1 ? `${label.padEnd(8)}` : ""}${profile.padEnd(7)} ${row.route.padEnd(9)} FCP ${f(row.fcp)}  LCP ${f(row.lcp)}  CLS ${row.cls?.toFixed(3)}  TBT ${f(row.tbt)} (${row.longTasks} long, max ${f(row.maxLong)})  JS ${f(row.jsKB)}KB  api ${row.apiCount}${row.dupes.length ? ` dupes ${row.dupes.map(([p, n]) => `${p}x${n}`).join(",")}` : ""}${row.landedOn !== route.path ? ` (landed ${row.landedOn})` : ""}`);
     for (const it of row.interactions ?? []) console.log(`          - ${it.label.padEnd(16)} ${it.ok ? "" : "(failed) "}max event ${f(it.maxEventMs)} ms, long tasks ${it.longTaskMs} ms`);
+    }
   }
 }
 const file = arg("out", "");
