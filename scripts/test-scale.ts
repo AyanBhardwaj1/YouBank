@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { shared, sharedMap } from "@/lib/shared";
 import { forgetMemo, memo } from "@/lib/memo";
 import { cacheJson, cacheSet } from "@/lib/cache";
-import { decodeCursor, encodeCursor, pageOf } from "@/lib/cursor";
+import { cursorParam, decodeCursor, encodeCursor, pageOf } from "@/lib/cursor";
 import { EVERYONE, totalsOf, utcDay } from "@/lib/ai/spend";
 import { byOwner } from "@/lib/algo/functions";
 
@@ -75,13 +75,43 @@ function testCursor() {
   const c = decodeCursor(encodeCursor(at, 42));
   check("a cursor round-trips at microsecond precision", c?.at === at && c?.id === 42, c);
   check("a cursor for an untimed row round-trips", JSON.stringify(decodeCursor(encodeCursor(null, 7))) === JSON.stringify({ at: null, id: 7 }));
-  check("garbage is the first page", decodeCursor("not a cursor") === null && decodeCursor(Buffer.from("x|y").toString("base64url")) === null && decodeCursor(null) === null);
+  check("garbage decodes to no cursor", decodeCursor("not a cursor") === null && decodeCursor(Buffer.from("x|y").toString("base64url")) === null && decodeCursor(null) === null);
   check("a millisecond time is refused (it would skip rows)", decodeCursor(encodeCursor("2026-10-20T01:02:03.123Z", 1)) === null);
   const rows = Array.from({ length: 6 }, (_, i) => ({ id: 10 - i, cursorAt: `2026-10-20T00:00:0${i}.000000Z`, name: `r${i}` }));
   const p = pageOf(rows, 5);
   check("a page of five from six rows has a next cursor at the fifth", p.rows.length === 5 && decodeCursor(p.next)?.id === 6, p.next);
   check("rows leave without their cursor time", !("cursorAt" in p.rows[0]));
   check("the last page has no next cursor", pageOf(rows.slice(0, 3), 5).next === null);
+}
+
+function testCursorInput() {
+  console.log("keyset cursors: input from the browser");
+  check("a calendar-impossible time is refused (the cast would fail the query)", decodeCursor(encodeCursor("2026-13-45T25:61:61.000000Z", 1)) === null && decodeCursor(encodeCursor("2026-02-30T00:00:00.000000Z", 1)) === null);
+  check("an id beyond the int4 column is refused", decodeCursor(encodeCursor(null, 2_147_483_648)) === null && decodeCursor(encodeCursor(null, 2_147_483_647))?.id === 2_147_483_647);
+  const req = (q: string) => new Request(`http://localhost/api/crm/deals${q}`);
+  check("no cursor is the first page", cursorParam(req("")) === null && cursorParam(req("?cursor=")) === null);
+  check("a good cursor is read", cursorParam(req(`?cursor=${encodeCursor("2026-10-20T01:02:03.123456Z", 5)}`))?.id === 5);
+  let status: unknown = null;
+  try { cursorParam(req("?cursor=garbage")); } catch (e) { status = (e as { status?: unknown }).status; }
+  check("a malformed cursor is a 400, not the first page again or a 500", status === 400, status);
+}
+
+async function testSessions() {
+  console.log("session reuse: keys, expiry and revocation on this instance");
+  const { sessionKey, cookieCacheExpiry, revokedHere, noteSessionChange } = await import("@/lib/auth/user");
+  const a = sessionKey([{ name: "better-auth.session_token", value: "tok.sigAAAA" }, { name: "other", value: "x" }]);
+  const b = sessionKey([{ name: "better-auth.session_token", value: "tok.sigAAAB" }]);
+  check("the key is every session cookie's full signed value (one changed character is another key)", a !== b && a === "better-auth.session_token=tok.sigAAAA");
+  const data = Buffer.from(JSON.stringify({ session: {}, expiresAt: 1_800_000_000_000, signature: "s" })).toString("base64url");
+  check("the signed cookie's own expiry is read, to cap the reuse", cookieCacheExpiry([{ name: "__Secure-better-auth.session_data", value: data }]) === 1_800_000_000_000);
+  check("an unreadable session-data cookie caps nothing", cookieCacheExpiry([{ name: "better-auth.session_data", value: "%%%" }]) === null);
+  const user = `test-user-${randomUUID()}`, old = Date.now() - 60_000;
+  check("a session nobody revoked is accepted", !revokedHere(user, "t1", old));
+  noteSessionChange(user, { kind: "revoke-token", token: "t1" });
+  check("signing out refuses that session at once on this instance", revokedHere(user, "t1", old) && !revokedHere(user, "t2", old));
+  noteSessionChange(user, { kind: "revoke-all", before: Date.now(), keep: "t3" });
+  check("signing other sessions out refuses the older ones but keeps the current one", revokedHere(user, "t2", old) && !revokedHere(user, "t3", old));
+  check("a session made after the revoke (a new sign-in) is accepted", !revokedHere(user, "t4", Date.now() + 1));
 }
 
 function testPure() {
@@ -171,13 +201,113 @@ async function testDb() {
   }
 }
 
+/** Keyset paging against Postgres: rows sharing a microsecond time, walked two at a time, none skipped or repeated. */
+async function testCursorDb() {
+  const { requireDb, schema } = await import("@/db");
+  const { sql, eq, and, desc } = await import("drizzle-orm");
+  const { afterCursor, cursorTime } = await import("@/lib/cursor");
+  const db = requireDb(), t = schema.newsNotifications;
+  console.log("database: keyset paging");
+  const user = `test-cursor-${randomUUID()}`;
+  try {
+    // Three rows written in one statement share now() to the microsecond; the others differ by a microsecond.
+    await db.execute(sql`insert into news_notifications (user_id, key, kind, title, created_at) values
+      (${user}, 'a', 'system', 'a', '2026-10-20 10:00:00.000001+00'), (${user}, 'b', 'system', 'b', '2026-10-20 10:00:00.000002+00'),
+      (${user}, 'c', 'system', 'c', '2026-10-20 10:00:00.000002+00'), (${user}, 'd', 'system', 'd', '2026-10-20 10:00:00.000002+00'),
+      (${user}, 'e', 'system', 'e', '2026-10-20 10:00:00.000003+00')`);
+    const all = await db.select({ id: t.id }).from(t).where(eq(t.userId, user)).orderBy(desc(t.createdAt), desc(t.id));
+    const walked: number[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 10; i++) {
+      const after = decodeCursor(cursor);
+      const rows: { id: number; cursorAt: string | null }[] = await db.select({ id: t.id, cursorAt: cursorTime(t.createdAt) }).from(t)
+        .where(and(eq(t.userId, user), afterCursor(after, t.createdAt, t.id))).orderBy(desc(t.createdAt), desc(t.id)).limit(3);
+      const page: { rows: { id: number }[]; next: string | null } = pageOf(rows, 2);
+      walked.push(...page.rows.map((r) => r.id));
+      cursor = page.next;
+      if (!cursor) break;
+    }
+    check("pages of two walk five rows (three sharing a microsecond) in order, none skipped or repeated", JSON.stringify(walked) === JSON.stringify(all.map((r) => r.id)), { walked, all: all.map((r) => r.id) });
+  } finally {
+    await db.delete(t).where(eq(t.userId, user));
+  }
+}
+
+/** The AI caps: the running totals stop a person at the cap; without the table, the ledger answers alone. */
+async function testAiCapsDb() {
+  const { requireDb } = await import("@/db");
+  const { sql } = await import("drizzle-orm");
+  const { aiBlocked, aiAllowance } = await import("@/lib/ai/limits");
+  const db = requireDb();
+  console.log("database: AI caps from the running totals");
+  const user = `test-cap-${randomUUID()}`;
+  try {
+    // Spend recorded by another instance moments ago: only the running total knows it yet (no ledger row).
+    await db.execute(sql`insert into ai_spend (scope, day, usd, calls) values (${user}, ${utcDay()}::date, 1000, 1)`);
+    const why = await aiBlocked(user);
+    check("another instance's spend in the running total stops the person at the daily cap", !!why && /today's AI limit/.test(why), why);
+  } finally {
+    await db.execute(sql`delete from ai_spend where scope = ${user}`);
+  }
+  console.log("database: AI caps before drizzle/0027 (no ai_spend table)");
+  const other = `test-cap-${randomUUID()}`;
+  await db.execute(sql`alter table ai_spend rename to ai_spend_hidden_for_test`);
+  try {
+    let threw: unknown = null;
+    const why = await aiBlocked(other).catch((e) => { threw = e; return "threw"; });
+    check("a missing table neither blocks AI nor throws: the ledger answers", why === null && threw === null, { why, threw: String(threw) });
+    const allowance = await aiAllowance(other).catch(() => null);
+    check("the plan page's allowance still reads", allowance !== null && allowance.todayUsd === 0);
+  } finally {
+    await db.execute(sql`alter table ai_spend_hidden_for_test rename to ai_spend`);
+  }
+}
+
+/** Seats: the cooldown's history is read under the lock and written before it is released. */
+async function testSeatCooldownDb() {
+  const { requireDb, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const { assignSeat, releaseSeat } = await import("@/lib/billing/seats");
+  const db = requireDb();
+  console.log("database: seat cooldown under concurrency");
+  const owner = `test-owner-${randomUUID()}`;
+  const [a, b, c] = Array.from({ length: 3 }, (_, i) => `test-member-${i}-${randomUUID()}`);
+  const [team] = await db.insert(schema.teams).values({ name: "Seat cooldown", slug: `seat-cool-${randomUUID()}`, createdBy: owner }).returning({ id: schema.teams.id });
+  try {
+    await db.insert(schema.subscriptions).values({ userId: owner, plan: "team", status: "active", seats: 2 });
+    await db.insert(schema.teamMembers).values([{ teamId: team.id, userId: owner, role: "owner" }, ...[a, b, c].map((m) => ({ teamId: team.id, userId: m, role: "member" }))]);
+    await assignSeat(owner, a, team.id);
+    const hist = await db.select({ userId: schema.seatHistory.userId }).from(schema.seatHistory).where(eq(schema.seatHistory.ownerUserId, owner));
+    check("giving a seat records it in the cooldown's history (in the same transaction)", hist.length === 1 && hist[0].userId === a);
+    await releaseSeat(owner, a);
+    // The one seat is now cooling for A: two new people asked for at once must both be refused.
+    const outcomes = await Promise.allSettled([assignSeat(owner, b, team.id), assignSeat(owner, c, team.id)]);
+    check("a cooling seat goes to neither of two people asked for at once", outcomes.every((o) => o.status === "rejected" && /can be given to someone else on/.test(String(o.reason?.message))), outcomes.map((o) => o.status));
+    await assignSeat(owner, a, team.id);
+    check("the cooling seat can go back to its last holder", (await db.select().from(schema.seatAssignments).where(eq(schema.seatAssignments.ownerUserId, owner))).length === 1);
+  } finally {
+    await db.delete(schema.seatHistory).where(eq(schema.seatHistory.ownerUserId, owner));
+    await db.delete(schema.seatAssignments).where(eq(schema.seatAssignments.ownerUserId, owner));
+    await db.delete(schema.subscriptions).where(eq(schema.subscriptions.userId, owner));
+    await db.delete(schema.teams).where(eq(schema.teams.id, team.id));
+  }
+}
+
 async function main() {
   testShared();
   await testMemo();
   await testCacheJson();
   testCursor();
+  testCursorInput();
+  await testSessions();
   testPure();
-  if (localDb()) await testDb();
+  if (localDb()) {
+    await testDb();
+    await testCursorDb();
+    await testSeatCooldownDb();
+    // Last: it hides the ai_spend table for a moment, which turns the running totals off for a minute.
+    await testAiCapsDb();
+  }
   else console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");
