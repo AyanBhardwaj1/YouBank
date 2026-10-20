@@ -1,5 +1,6 @@
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, ne, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
+import { afterCursor, cursorTime, pageOf, type Cursor } from "@/lib/cursor";
 import type { EmailAddress } from "@/db/schema";
 import { loadUserContext } from "@/lib/ai/persona";
 import type { AiOverride } from "@/lib/ai/config";
@@ -383,18 +384,27 @@ export async function recordReplies(userId: string, threadId: number, messages: 
 /* ---------------- Reads and queue decisions ---------------- */
 
 /** The inbox: email threads. Meeting entries (category "meeting") are history on a contact, not mail to answer. */
-export async function listThreads(userId: string, limit = 50) {
-  return requireDb().select().from(schema.crmThreads).where(and(eq(schema.crmThreads.userId, userId), ne(schema.crmThreads.category, "meeting")))
-    .orderBy(desc(schema.crmThreads.lastMessageAt)).limit(limit);
+/** The inbox, newest first, a page at a time: `next` is the cursor for the page after (null on the last). */
+export async function listThreads(userId: string, limit = 50, cursor: Cursor | null = null) {
+  const t = schema.crmThreads;
+  const rows = await requireDb().select({ ...getTableColumns(t), cursorAt: cursorTime(t.lastMessageAt) }).from(t)
+    .where(and(eq(t.userId, userId), ne(t.category, "meeting"), afterCursor(cursor, t.lastMessageAt, t.id)))
+    .orderBy(desc(t.lastMessageAt), desc(t.id)).limit(limit + 1);
+  return pageOf(rows, limit);
 }
 
-export async function listDeals(userId: string) {
-  return requireDb().select().from(schema.crmDeals).where(eq(schema.crmDeals.userId, userId)).orderBy(desc(schema.crmDeals.updatedAt));
+/** The pipeline, most recently changed first, a page at a time (500 by default: a desk's whole board). */
+export async function listDeals(userId: string, limit = 500, cursor: Cursor | null = null) {
+  const d = schema.crmDeals;
+  const rows = await requireDb().select({ ...getTableColumns(d), cursorAt: cursorTime(d.updatedAt) }).from(d)
+    .where(and(eq(d.userId, userId), afterCursor(cursor, d.updatedAt, d.id)))
+    .orderBy(desc(d.updatedAt), desc(d.id)).limit(limit + 1);
+  return pageOf(rows, limit);
 }
 
 export async function listContacts(userId: string, limit = 200) {
   return requireDb().select().from(schema.crmContacts).where(eq(schema.crmContacts.userId, userId))
-    .orderBy(desc(schema.crmContacts.lastSeenAt)).limit(limit);
+    .orderBy(desc(schema.crmContacts.lastSeenAt), desc(schema.crmContacts.id)).limit(limit);
 }
 
 export async function listDrafts(userId: string, status = "pending") {
@@ -467,34 +477,38 @@ export async function discardDraft(userId: string, draftId: number): Promise<voi
 export async function threadActivity(userId: string, threadIds: number[]) {
   if (threadIds.length === 0) return {};
   const db = requireDb();
-  const drafts = await db.select({
-    threadId: schema.crmDrafts.threadId, status: schema.crmDrafts.status, scheduledFor: schema.crmDrafts.scheduledFor,
-    sentBy: schema.crmDrafts.sentBy, sentAt: schema.crmDrafts.sentAt, holdReason: schema.crmDrafts.holdReason, createdAt: schema.crmDrafts.createdAt,
-  }).from(schema.crmDrafts).where(and(eq(schema.crmDrafts.userId, userId), inArray(schema.crmDrafts.threadId, threadIds))).orderBy(desc(schema.crmDrafts.createdAt));
-  const questions = await db.select({ threadId: schema.crmQuestions.threadId, n: sql<number>`count(*)::int` }).from(schema.crmQuestions)
-    .where(and(eq(schema.crmQuestions.userId, userId), eq(schema.crmQuestions.status, "open"), inArray(schema.crmQuestions.threadId, threadIds)))
-    .groupBy(schema.crmQuestions.threadId);
+  // Both reads at once: they do not depend on each other.
+  const [drafts, questions] = await Promise.all([
+    db.select({
+      threadId: schema.crmDrafts.threadId, status: schema.crmDrafts.status, scheduledFor: schema.crmDrafts.scheduledFor,
+      sentBy: schema.crmDrafts.sentBy, sentAt: schema.crmDrafts.sentAt, holdReason: schema.crmDrafts.holdReason, createdAt: schema.crmDrafts.createdAt,
+    }).from(schema.crmDrafts).where(and(eq(schema.crmDrafts.userId, userId), inArray(schema.crmDrafts.threadId, threadIds))).orderBy(desc(schema.crmDrafts.createdAt)),
+    db.select({ threadId: schema.crmQuestions.threadId, n: sql<number>`count(*)::int` }).from(schema.crmQuestions)
+      .where(and(eq(schema.crmQuestions.userId, userId), eq(schema.crmQuestions.status, "open"), inArray(schema.crmQuestions.threadId, threadIds)))
+      .groupBy(schema.crmQuestions.threadId),
+  ]);
+  // The newest draft per thread (the rows come newest first), and the open questions per thread.
+  const draftOf = new Map<number, (typeof drafts)[number]>();
+  for (const d of drafts) if (d.threadId !== null && !draftOf.has(d.threadId)) draftOf.set(d.threadId, d);
+  const asked = new Map(questions.map((q) => [q.threadId, q.n]));
   const out: Record<number, { draft: (typeof drafts)[number] | null; questions: number }> = {};
-  for (const id of threadIds) out[id] = { draft: drafts.find((d) => d.threadId === id) ?? null, questions: questions.find((q) => q.threadId === id)?.n ?? 0 };
+  for (const id of threadIds) out[id] = { draft: draftOf.get(id) ?? null, questions: asked.get(id) ?? 0 };
   return out;
 }
 
 /** Counts for the dashboard header. */
+/** Counts for the dashboard header: one statement (one round trip), each count on its own index. */
 export async function crmCounts(userId: string) {
-  const db = requireDb();
-  const [threads] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.crmThreads).where(eq(schema.crmThreads.userId, userId));
-  const [pending] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.crmDrafts)
-    .where(and(eq(schema.crmDrafts.userId, userId), eq(schema.crmDrafts.status, "pending")));
-  const [needsReply] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.crmThreads)
-    .where(and(eq(schema.crmThreads.userId, userId), eq(schema.crmThreads.needsReply, true)));
-  const stages = await db.select({ stage: schema.crmDeals.stage, n: sql<number>`count(*)::int` })
-    .from(schema.crmDeals).where(and(eq(schema.crmDeals.userId, userId), eq(schema.crmDeals.status, "open")))
-    .groupBy(schema.crmDeals.stage);
-  const [actions] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.crmActions)
-    .where(and(eq(schema.crmActions.userId, userId), eq(schema.crmActions.status, "pending")));
+  const r = await requireDb().execute<{ threads: number; pending: number; needs_reply: number; actions: number; stages: Record<string, number> | null }>(sql`select
+    (select count(*)::int from ${schema.crmThreads} where user_id = ${userId}) as threads,
+    (select count(*)::int from ${schema.crmDrafts} where user_id = ${userId} and status = 'pending') as pending,
+    (select count(*)::int from ${schema.crmThreads} where user_id = ${userId} and needs_reply) as needs_reply,
+    (select count(*)::int from ${schema.crmActions} where user_id = ${userId} and status = 'pending') as actions,
+    (select jsonb_object_agg(stage, n) from (select stage, count(*)::int as n from ${schema.crmDeals} where user_id = ${userId} and status = 'open' group by stage) s) as stages`);
+  const c = r.rows[0];
   return {
-    threads: threads?.n ?? 0, pendingDrafts: pending?.n ?? 0, needsReply: needsReply?.n ?? 0, pendingActions: actions?.n ?? 0,
-    byStage: Object.fromEntries(stages.map((s) => [s.stage, s.n])),
+    threads: Number(c?.threads ?? 0), pendingDrafts: Number(c?.pending ?? 0), needsReply: Number(c?.needs_reply ?? 0), pendingActions: Number(c?.actions ?? 0),
+    byStage: (c?.stages ?? {}) as Record<string, number>,
   };
 }
 

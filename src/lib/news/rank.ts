@@ -29,9 +29,19 @@ export type Ranked<T> = T & { score: number; reasons: string[]; explain: Explain
 /** How much a learned affinity of 1 (or -1) moves a story: about as much as a followed topic. */
 export const LEARNED_WEIGHT = 0.35;
 
-/** "Acme Holdings, Inc." and "ACME HOLDINGS INC" both become "acme holdings". */
+/**
+ * "Acme Holdings, Inc." and "ACME HOLDINGS INC" both become "acme holdings". Every feed request ranks
+ * hundreds of stories and looks each named company up in the reader's network, so the answers are kept
+ * (the same few thousand names come up again and again); the map is bounded.
+ */
+const normalized = new Map<string, string>();
 export function normCompany(name: string): string {
-  return name.toLowerCase().replace(/[.,'’]/g, " ").replace(/\b(inc|incorporated|corp|corporation|co|company|ltd|limited|llc|lp|plc|holdings?|group|the|sa|nv|ag|se)\b/g, " ").replace(/\s+/g, " ").trim();
+  let k = normalized.get(name);
+  if (k !== undefined) return k;
+  k = name.toLowerCase().replace(/[.,'’]/g, " ").replace(/\b(inc|incorporated|corp|corporation|co|company|ltd|limited|llc|lp|plc|holdings?|group|the|sa|nv|ag|se)\b/g, " ").replace(/\s+/g, " ").trim();
+  if (normalized.size >= 20_000) normalized.clear();
+  normalized.set(name, k);
+  return k;
 }
 
 const NONE: Explain = { fit: 0, importance: 0, personal: 0, learned: 0, freshness: 0 };

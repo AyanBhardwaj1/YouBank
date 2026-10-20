@@ -70,13 +70,17 @@ export function readerFromParts(profile: Profile, prefs: NewsPrefs, network: Map
  * list, delivery checks) pass it, so they do not read every person's history every ten minutes.
  */
 export async function readerFor(userId: string, opts: { learned?: boolean } = {}): Promise<ReaderContext | null> {
-  const [p] = await requireDb().select().from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  // The profile, the network and the learned affinities are independent reads: all at once. Contacts
+  // change slowly, and every news pass and feed poll asks: an hour of reuse per instance.
+  const [[p], network, affinity] = await Promise.all([
+    requireDb().select().from(schema.profiles).where(eq(schema.profiles.userId, userId)),
+    memo(`news:network:${userId}`, 3_600_000, () => networkOf(userId)).catch(() => new Map<string, NetworkPerson[]>()),
+    opts.learned === false ? undefined : affinityOf(userId),
+  ]);
   if (!p) return null;
   const profile = profileOf(p);
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const prefs = normalizeNewsPrefs(extra.news, profile);
-  // Contacts change slowly, and every news pass and feed poll asks: an hour of reuse per instance.
-  const [network, affinity] = await Promise.all([memo(`news:network:${userId}`, 3_600_000, () => networkOf(userId)).catch(() => new Map()), opts.learned === false ? undefined : affinityOf(userId)]);
   const parts = readerFromParts(profile, prefs, network, affinity);
   return { userId, email: p.email, name: p.name, profile, prefs, extra, ...parts };
 }
