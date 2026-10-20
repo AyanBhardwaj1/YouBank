@@ -95,7 +95,7 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 | `AI_DISABLED=1`, `AI_GLOBAL_DAILY_USD`, `AI_USER_DAILY_USD` | AI spend (see docs/launch-readiness.md) |
 | `STREAM_MODE=slow` | Live updates poll five times less (database load) |
 | `MARKET_BACKUP=off` | Stop the Nasdaq fallback |
-| `DB_POOL_MAX` | Connections per instance (default 6, max 20) |
+| `DB_POOL_MAX` | Database connections per instance (default 10, max 30; see docs/scale.md) |
 | `AUTH_SESSION_DATA_TTL` | Seconds the session cookie is trusted before a database read (default 900) |
 | `AUTH_TRUSTED_ORIGINS` | Extra addresses allowed to post to sign-in, comma-separated exact origins (an entry with `*` is ignored) |
 | `CSP_REPORT_ONLY=1` | Turns the Content-Security-Policy into report-only, if it ever blocks something real |

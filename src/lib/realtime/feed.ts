@@ -9,6 +9,7 @@
  * - the browser closes its stream while the tab is hidden and resumes from its last event on return.
  */
 import { describeFailure, logError } from "@/lib/errors";
+import { sharedMap } from "@/lib/shared";
 
 export const STREAM_LIFETIME_MS = 120_000;
 /** A comment line now and then, so proxies never see an idle connection and closed readers are noticed. */
@@ -29,9 +30,10 @@ export type Batch<E, X> = { events: E[]; extra?: X };
 type Sub<E, X> = { cursor: number; deliver: (b: Batch<E, X>) => void };
 type Feed<E, X> = { subs: Set<Sub<E, X>>; load: (since: number) => Promise<Batch<E, X>>; quietSince: number; wake: (() => void) | null };
 
-// Entries are typed per key by the caller; the map itself cannot know them.
+// Entries are typed per key by the caller; the map itself cannot know them. One map per process
+// (src/lib/shared), so a write's touch() reaches followers whichever build layer handles it.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const feeds = new Map<string, Feed<any, any>>();
+const feeds = sharedMap<string, Feed<any, any>>("realtime:feeds");
 
 /**
  * Follow a log from `cursor`: `deliver` receives every later entry in order, plus `extra` on each poll.
