@@ -19,6 +19,9 @@ Contents:
 8. [Security settings](#security-settings)
 9. [Known risks](#known-risks)
 
+At hundreds of people online at once, see [docs/scale.md](scale.md): measured capacity, the Neon, Vercel
+and Inngest settings to use, and how to rerun the load test against a Neon test branch.
+
 ---
 
 ## Environment variables
@@ -96,6 +99,7 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 | `STREAM_MODE=slow` | Live updates poll five times less (database load) |
 | `MARKET_BACKUP=off` | Stop the Nasdaq fallback |
 | `DB_POOL_MAX` | Database connections per instance (default 10, max 30; see docs/scale.md) |
+| `FMP_CALLS_PER_MINUTE` | Market-data calls a minute across every instance (default 250; your FMP plan's limit minus a margin) |
 | `AUTH_SESSION_DATA_TTL` | Seconds the session cookie is trusted before a database read (default 900) |
 | `AUTH_TRUSTED_ORIGINS` | Extra addresses allowed to post to sign-in, comma-separated exact origins (an entry with `*` is ignored) |
 | `CSP_REPORT_ONLY=1` | Turns the Content-Security-Policy into report-only, if it ever blocks something real |
@@ -280,6 +284,8 @@ logs older than an hour, or more than a few hundred people online at once (docs/
 numbers). Pro also allows 800 s functions and per-minute crons, which would let the heartbeats move back from
 Neon Functions. **Neon**: move off Free (512 MB, 2 CU, compute-hour cap) to Launch before launch; set the
 production branch's autoscaling maximum to 4 CU.
+[docs/scale.md](scale.md) has the measured numbers behind these settings and the connection arithmetic
+(`DB_POOL_MAX`, the pooler, compute size).
 
 ---
 
