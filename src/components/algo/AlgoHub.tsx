@@ -5,6 +5,7 @@
  * backtests, broker connections, the AI agent and the audit log. The kill switch stays at the top of every
  * tab. Tabs: strategies, brokers, agent, activity; ?strategy=ID opens one strategy.
  */
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -16,7 +17,9 @@ import { AlgoConsentProvider, useAlgoConsent } from "./AlgoConsent";
 import { Brokers } from "./Brokers";
 import { call, json, MODE_LABEL, MODE_TONE, SIGNAL_LABEL, usd, when, type Hub } from "./client";
 import { StrategyDetail } from "./StrategyDetail";
-import { StrategyEditor } from "./StrategyEditor";
+
+// The builder (and the strategy schema it validates with, zod included) loads when a strategy is created or edited.
+const StrategyEditor = dynamic(() => import("./StrategyEditor").then((m) => m.StrategyEditor), { loading: () => <div className="shimmer h-72 rounded-md" /> });
 
 type Tab = "strategies" | "brokers" | "agent" | "activity";
 const TABS: { id: Tab; label: string; icon: string }[] = [

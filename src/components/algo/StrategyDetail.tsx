@@ -5,6 +5,7 @@
  * approval, orders with their lifecycle, and every decision with its reasons), its backtests, its settings,
  * and its mode with the live checklist. Every control here is also checked on the server.
  */
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { LinesChart } from "@/components/copy/charts";
@@ -15,7 +16,9 @@ import { useAlgoConsent } from "./AlgoConsent";
 import { BacktestPanel, type BacktestView } from "./BacktestPanel";
 import { RiskGauges, Stat, type Gauge } from "./charts";
 import { call, json, MODE_LABEL, MODE_TONE, newKey, num, pct, SIGNAL_LABEL, usd, when, type Hub, type Unmet } from "./client";
-import { StrategyEditor } from "./StrategyEditor";
+
+// The builder (and the strategy schema it validates with, zod included) loads when a strategy is created or edited.
+const StrategyEditor = dynamic(() => import("./StrategyEditor").then((m) => m.StrategyEditor), { loading: () => <div className="shimmer h-72 rounded-md" /> });
 
 type Order = { id: number; at?: string; symbol: string; action: string; units: number; orderType: string; limitPrice: number | null; estValue: number; status: string; filledUnits: number; fillPrice: number | null; error: string | null; slice: number; slices: number; notBefore?: string | null; clientOrderId: string };
 type Batch = { id: number; status: string; open: boolean; source: string; confirmation: string | null; createdAt: string; approvedAt: string | null; expiresAt: string; buyValue: number; sellValue: number; orderCount: number; orders: Order[] };
