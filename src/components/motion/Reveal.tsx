@@ -5,13 +5,17 @@ import { useEffect, useRef, useState } from "react";
 /**
  * Adds the "in" class when the element scrolls into view (CSS handles the transition). It starts out
  * hidden on the server and in the browser alike, so hydration matches.
+ *
+ * `eager` is for what the first screen shows: the same rise plays as a CSS animation from the first
+ * paint, without waiting for the page's JavaScript to load and an observer to fire. Hidden-until-hydrated
+ * content is what the browser counts as the largest paint, so the eager hero paints (and counts) at once.
  */
-export function Reveal({ children, className = "", delay = 0, as: Tag = "div", once = true }: { children: React.ReactNode; className?: string; delay?: number; as?: "div" | "section" | "li" | "article"; once?: boolean }) {
+export function Reveal({ children, className = "", delay = 0, as: Tag = "div", once = true, eager = false }: { children: React.ReactNode; className?: string; delay?: number; as?: "div" | "section" | "li" | "article"; once?: boolean; eager?: boolean }) {
   const ref = useRef<HTMLElement | null>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || eager) return;
     if (typeof IntersectionObserver === "undefined") { queueMicrotask(() => setInView(true)); return; }
     const io = new IntersectionObserver((entries) => {
       for (const e of entries) {
@@ -21,8 +25,9 @@ export function Reveal({ children, className = "", delay = 0, as: Tag = "div", o
     }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
     io.observe(el);
     return () => io.disconnect();
-  }, [once]);
+  }, [once, eager]);
   const Comp = Tag as unknown as React.ElementType;
+  if (eager) return <Comp className={`reveal-now ${className}`} style={delay ? { animationDelay: `${delay}ms` } : undefined}>{children}</Comp>;
   return <Comp ref={ref} className={`reveal ${inView ? "in" : ""} ${className}`} style={{ transitionDelay: `${delay}ms` }}>{children}</Comp>;
 }
 

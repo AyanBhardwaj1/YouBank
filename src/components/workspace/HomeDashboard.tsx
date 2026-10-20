@@ -29,7 +29,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1280px] px-5 py-6">
-        <Reveal>
+        <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[22px] font-semibold tracking-tight">{greeting()}{profile.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1>
@@ -45,9 +45,9 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <Reveal><HomeBrief /></Reveal>
+            <Reveal eager><HomeBrief /></Reveal>
 
-            <Reveal>
+            <Reveal eager>
               <section>
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Start here</h2><Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link></div>
                 <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -56,7 +56,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
               </section>
             </Reveal>
 
-            <Reveal>
+            <Reveal eager>
               <section className="panel p-3">
                 <div className="mb-2 flex items-baseline justify-between">
                   <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
@@ -111,7 +111,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
           </div>
 
           <div className="space-y-4">
-            <Reveal delay={60}>
+            <Reveal eager delay={60}>
               <section className="panel p-3">
                 <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Ask the assistant</h2>
                 <div className="space-y-1.5">

@@ -175,16 +175,16 @@ export function RolePage({ role, tools }: { role: RoleId; tools: ToolSummary[] }
       <section className="mx-auto max-w-[1240px] px-5 pb-8 pt-12">
         <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,48%)_minmax(0,52%)]">
           <div>
-            <Reveal><span className="text-[11px] uppercase tracking-[0.2em] text-accent">For {r.label.toLowerCase()}s</span></Reveal>
-            <Reveal delay={60}><h1 className="mt-3 text-[34px] font-semibold leading-[1.08] tracking-tight sm:text-[40px]">{r.blurb}</h1></Reveal>
-            <Reveal delay={120}><p className="mt-4 max-w-[58ch] text-[14px] leading-relaxed text-muted">{r.pitch}</p></Reveal>
-            <Reveal delay={180}>
+            <Reveal eager><span className="text-[11px] uppercase tracking-[0.2em] text-accent">For {r.label.toLowerCase()}s</span></Reveal>
+            <Reveal eager delay={60}><h1 className="mt-3 text-[34px] font-semibold leading-[1.08] tracking-tight sm:text-[40px]">{r.blurb}</h1></Reveal>
+            <Reveal eager delay={120}><p className="mt-4 max-w-[58ch] text-[14px] leading-relaxed text-muted">{r.pitch}</p></Reveal>
+            <Reveal eager delay={180}>
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <SignInButton label={`Start as ${r.label.toLowerCase()}`} />
                 <Link href="/" className="ctl border border-line px-4 py-2.5 text-[13px] text-muted hover:border-accent/50 hover:text-fg">All roles</Link>
               </div>
             </Reveal>
-            <Reveal delay={240}>
+            <Reveal eager delay={240}>
               <dl className="mt-7 grid grid-cols-3 gap-4 border-t border-line pt-5 text-center sm:text-left">
                 <div><dt className="num text-[20px] font-semibold text-accent">{tools.length}</dt><dd className="text-[11px] text-muted">tools for this seat</dd></div>
                 <div><dt className="num text-[20px] font-semibold text-accent">{r.specialties.length}</dt><dd className="text-[11px] text-muted">specialties covered</dd></div>
@@ -192,7 +192,7 @@ export function RolePage({ role, tools }: { role: RoleId; tools: ToolSummary[] }
               </dl>
             </Reveal>
           </div>
-          <Reveal delay={120}>{role === "vc" || role === "student" ? <DemoAi height={420} /> : <DemoTerminal />}</Reveal>
+          <Reveal eager delay={120}>{role === "vc" || role === "student" ? <DemoAi height={420} /> : <DemoTerminal />}</Reveal>
         </div>
       </section>
 

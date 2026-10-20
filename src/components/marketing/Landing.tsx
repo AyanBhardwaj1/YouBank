@@ -153,29 +153,29 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
       <section className="mx-auto max-w-[1240px] px-5 pb-8 pt-12 lg:pt-16">
         <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)]">
           <div>
-            <Reveal>
+            <Reveal eager>
               <span className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-[11px] text-muted">
                 <span className="pulse-ring h-1.5 w-1.5 rounded-full bg-accent" /> New: an email agent that earns autopilot · free in beta
               </span>
             </Reveal>
-            <Reveal delay={60}>
+            <Reveal eager delay={60}>
               <h1 className="mt-4 text-[38px] font-semibold leading-[1.06] tracking-tight sm:text-[46px]">
                 The AI deal desk that <span className="gradient-text">does the work, and learns how you do it</span>.
               </h1>
             </Reveal>
-            <Reveal delay={120}>
+            <Reveal eager delay={120}>
               <p className="mt-4 max-w-[58ch] text-[14.5px] leading-relaxed text-muted">
                 Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and earns the right to send on its own. For boutique advisors, emerging managers, founders, and the students who will join them.
               </p>
             </Reveal>
-            <Reveal delay={180}>
+            <Reveal eager delay={180}>
               <div className="mt-7 flex flex-wrap items-center gap-3">
                 <SignInButton label="Start free with Google" />
                 <a href="#engine" className="ctl border border-line px-4 py-2.5 text-[13px] font-semibold text-fg transition hover:border-accent/60 hover:text-accent">Try the adaptive engine</a>
               </div>
               <p className="mt-3 text-[11px] text-muted">No credit card. Nothing is sent from your mailbox unless you switch that on.</p>
             </Reveal>
-            <Reveal delay={240}>
+            <Reveal eager delay={240}>
               <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-6 sm:grid-cols-4">
                 {[
                   { n: toolCounts.total, l: "tools across 8 careers" },
@@ -191,7 +191,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
               </dl>
             </Reveal>
           </div>
-          <Reveal delay={120}><DemoTerminal /></Reveal>
+          <Reveal eager delay={120}><DemoTerminal /></Reveal>
         </div>
       </section>
 
