@@ -180,6 +180,14 @@ fetch has one), transactions (none spans an outside call), and `Promise.all` fan
 
 - The app's pages (`src/app/app/*`) still read the profile and the home counts directly; they are cheap
   with the new indexes but not shared with the API's caches.
+- Sessions: a verified cookie is reused for up to 30 seconds per instance (never past the session's or
+  the signed cookie's own expiry). Signing out, revoking a session, signing other sessions out (or a
+  password change that does) and account changes take effect at once on the instance that handled them,
+  even for a copied cookie. On other instances a revoked cookie keeps working for up to those 30 seconds
+  from this cache and, as before this pass, for up to `AUTH_SESSION_DATA_TTL` (15 minutes by default)
+  from Better Auth's own signed cookie cache, which does not ask the database while fresh. Lower
+  `AUTH_SESSION_DATA_TTL` (60 seconds at least) to shorten that window at the cost of a session read per
+  request.
 - A plan change reaches other instances within 15 seconds (entitlements, AI caps); this month's AI spend
   still comes from the ledger, so a person running two AI runs on two instances can pass the monthly cap
   by about one call's cost.
