@@ -13,7 +13,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useSyncExternalStore } from "react";
-import { Icon } from "@/components/ui/Icon";
+// Icons imported one by one: every page loads this screen with its error boundary, and the by-name
+// <Icon> map would bring all of its icons along.
+import { AlertTriangle, Home, RefreshCw } from "lucide-react";
 import { OFFLINE } from "@/lib/client/errors";
 
 type Props = {
@@ -57,7 +59,7 @@ export function ErrorScreen({ error, retry, home = { href: "/app", label: "Home"
     <main role="alert" className={`flex items-center justify-center px-4 py-12 ${full ? "min-h-dvh" : "h-full min-h-[320px]"}`}>
       <div className="rise panel float w-full max-w-md p-6">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center ctl bg-accent-soft text-accent"><Icon name="AlertTriangle" className="h-4 w-4" /></span>
+          <span className="grid h-8 w-8 shrink-0 place-items-center ctl bg-accent-soft text-accent"><AlertTriangle className="h-4 w-4" strokeWidth={1.75} aria-hidden /></span>
           <h1 className="text-[16px] font-semibold">{title}</h1>
         </div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{body}</p>
@@ -68,10 +70,10 @@ export function ErrorScreen({ error, retry, home = { href: "/app", label: "Home"
         )}
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" onClick={again} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg">
-            <Icon name="RefreshCw" className="h-3.5 w-3.5" />{stale ? "Reload" : "Try again"}
+            <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />{stale ? "Reload" : "Try again"}
           </button>
           <Link href={home.href} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg">
-            <Icon name="Home" className="h-3.5 w-3.5" />{home.label}
+            <Home className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden />{home.label}
           </Link>
         </div>
       </div>
