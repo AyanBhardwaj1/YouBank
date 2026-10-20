@@ -8,7 +8,7 @@ export type AiSettings = { model?: string; effort?: Effort };
 type Catalog = { providers: string[]; models: (ModelDef & { available: boolean })[] };
 
 let catalogCache: Catalog | null = null;
-let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string } | null = null;
+let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string; reason?: string } | null = null;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };

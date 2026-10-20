@@ -52,7 +52,7 @@ export function Brokers({ connected, reason }: { connected?: string | null; reas
           </li>
         ))}
       </ul>
-      {!s.encryption && <p className="text-[12px] text-muted">Direct broker connections are not set up on this server yet (EMAIL_TOKEN_SECRET).</p>}
+      {!s.encryption && <p className="text-[12px] text-muted">Direct broker connections are not switched on yet. Paper trading works without one.</p>}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="panel p-3"><h3 className="text-[13px] font-semibold text-fg">Alpaca</h3><p className="mt-1 text-[11.5px] text-muted">Stocks, ETFs, options and crypto, with free paper trading.</p>
           <div className="mt-2 flex flex-wrap gap-1.5">{s.alpacaOAuth && <><button onClick={() => oauth("paper")} className="ctl border border-line px-2.5 py-1.5 text-[12px]">Sign in (paper)</button><button onClick={() => oauth("live")} className="ctl border border-line px-2.5 py-1.5 text-[12px]">Sign in (live)</button></>}<button onClick={() => { setForm("alpaca"); setF({ env: "paper" }); }} className="ctl border border-line px-2.5 py-1.5 text-[12px]">Paste paper keys</button></div></div>
