@@ -23,10 +23,13 @@
  * again is a new payment). Administrators (ADMIN_EMAILS) are exempt.
  */
 import { and, asc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
-import { requireDb, schema } from "@/db";
+import { requireDb, schema, type Db } from "@/db";
 import { logError } from "@/lib/errors";
 import { can, isTeamRole, type TeamRole } from "@/lib/teams/roles";
 import { isPlanId, LIVE_STATUSES, PLANS, type PlanId } from "./plans";
+
+/** A transaction (or savepoint) handle, as `Db.transaction` passes it. */
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** The plans whose seats can be shared. */
 export const SEAT_PLANS: PlanId[] = ["team", "enterprise"];
@@ -147,10 +150,12 @@ export async function seatHolders(ownerUserId: string): Promise<string[]> {
  * Seats this owner gave in the last 30 days, trimmed ones left out. Empty (and logged) when the table is not
  * there yet, so a deploy that lands before drizzle/0024 keeps seats working without the cooldown.
  */
-export async function recentSeats(ownerUserId: string, now = new Date()): Promise<SeatGiven[]> {
+export async function recentSeats(ownerUserId: string, now = new Date(), tx?: Tx): Promise<SeatGiven[]> {
   const h = schema.seatHistory;
-  return requireDb().select({ userId: h.userId, assignedAt: h.assignedAt, email: h.email, name: h.name }).from(h)
-    .where(and(eq(h.ownerUserId, ownerUserId), isNull(h.trimmedAt), gt(h.assignedAt, new Date(now.getTime() - COOLDOWN_MS))))
+  const read = (d: Tx | Db) => d.select({ userId: h.userId, assignedAt: h.assignedAt, email: h.email, name: h.name }).from(h)
+    .where(and(eq(h.ownerUserId, ownerUserId), isNull(h.trimmedAt), gt(h.assignedAt, new Date(now.getTime() - COOLDOWN_MS))));
+  // Inside a transaction, in a savepoint: a missing table must not abort the transaction around it.
+  return (tx ? tx.transaction((sp) => read(sp)) : read(requireDb()))
     .catch((e) => { logError(e, { where: "seat-history" }); return []; });
 }
 
@@ -215,11 +220,12 @@ export class SeatError extends Error {
 
 /** Give one of the owner's seats to a member of one of their teams. `exempt` (administrators) skips the cooldown. */
 export async function assignSeat(ownerUserId: string, targetUserId: string, teamId: number, opts: { exempt?: boolean } = {}): Promise<void> {
-  const db = requireDb();
-  const history = opts.exempt ? [] : await recentSeats(ownerUserId);
-  // One owner's seat changes run one at a time: the subscription row is locked for the check and the
-  // insert, so two seats given at once cannot both see the last free seat (the count is read inside).
-  const target = await db.transaction(async (tx) => {
+  // One owner's seat changes run one at a time: the subscription row is locked (FOR UPDATE, in a real
+  // transaction on one connection) for the checks and the writes, so two seats given at once cannot both
+  // see the last free seat, nor both pass the cooldown: the count and the cooldown's history are read
+  // inside, after the lock, and the history row is written before it is released. Every read and write
+  // here goes through `tx` (never a second pool connection while one is held, which could starve the pool).
+  await requireDb().transaction(async (tx) => {
     const [sub] = await tx.select({ plan: schema.subscriptions.plan, status: schema.subscriptions.status, seats: schema.subscriptions.seats })
       .from(schema.subscriptions).where(eq(schema.subscriptions.userId, ownerUserId)).for("update");
     const roles = await tx.select({ userId: schema.teamMembers.userId, role: schema.teamMembers.role, email: schema.teamMembers.email, name: schema.teamMembers.name })
@@ -227,6 +233,7 @@ export async function assignSeat(ownerUserId: string, targetUserId: string, team
     const ownerRow = roles.find((r) => r.userId === ownerUserId), target = roles.find((r) => r.userId === targetUserId);
     const [held] = await tx.select({ owner: schema.seatAssignments.ownerUserId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.userId, targetUserId));
     const current = (await tx.select({ userId: schema.seatAssignments.userId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.ownerUserId, ownerUserId))).map((r) => r.userId);
+    const history = opts.exempt ? [] : await recentSeats(ownerUserId, new Date(), tx);
     const why = assignError({
       ownerId: ownerUserId, targetId: targetUserId, plan: sub?.plan ?? null, status: sub?.status ?? null, seats: sub?.seats ?? 0, assigned: current.length,
       ownerRole: ownerRow && isTeamRole(ownerRow.role) ? ownerRow.role : null, targetRole: target && isTeamRole(target.role) ? target.role : null,
@@ -237,11 +244,11 @@ export async function assignSeat(ownerUserId: string, targetUserId: string, team
     const rows = await tx.insert(schema.seatAssignments).values({ ownerUserId, userId: targetUserId, teamId, email: target!.email, name: target!.name })
       .onConflictDoNothing({ target: schema.seatAssignments.userId }).returning({ id: schema.seatAssignments.id });
     if (!rows.length) throw new SeatError("That person already has a seat.", 409);
-    return target!;
+    // The cooldown's memory: kept after the seat is freed, whichever way (drizzle/0024_seat_cooldown.sql).
+    // In a savepoint, so a database without the table (0024 not applied) still gives the seat.
+    await tx.transaction((sp) => sp.insert(schema.seatHistory).values({ ownerUserId, userId: targetUserId, teamId, email: target!.email, name: target!.name }))
+      .catch((e) => logError(e, { where: "seat-history" }));
   });
-  // The cooldown's memory: kept after the seat is freed, whichever way (drizzle/0024_seat_cooldown.sql).
-  await db.insert(schema.seatHistory).values({ ownerUserId, userId: targetUserId, teamId, email: target.email, name: target.name })
-    .catch((e) => logError(e, { where: "seat-history" }));
 }
 
 /** Take a seat back (the owner), or give it up (the holder). */
