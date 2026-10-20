@@ -30,8 +30,9 @@ async function inline(docId: number, deadline: number) {
   }
 }
 
-export async function ingest(docId: number): Promise<"queued" | "inline"> {
-  const sent = await sendJob("edge/doc.uploaded", { docId }, { id: `edge-doc-${docId}-${Date.now()}` }).catch(() => ({ sent: false as const, reason: "" }));
+export async function ingest(docId: number, userId?: string): Promise<"queued" | "inline"> {
+  // userId keys the per-person concurrency limit (edge/functions.ts).
+  const sent = await sendJob("edge/doc.uploaded", { docId, ...(userId ? { userId } : {}) }, { id: `edge-doc-${docId}-${Date.now()}` }).catch(() => ({ sent: false as const, reason: "" }));
   if (sent.sent) return "queued";
   after(() => inline(docId, Date.now() + 280_000));
   return "inline";
