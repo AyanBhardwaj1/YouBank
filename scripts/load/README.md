@@ -2,8 +2,9 @@
 
 Signed-in users driving a **local production build** on a **test database** (a local Postgres, or a
 Neon test branch), with every outside service switched off. Never point it at production: the scripts
-refuse any host that is not localhost, or a Vercel preview when `LOADTEST_ALLOW_PREVIEW=1` is set (and
-only a preview with its own database). The database side refuses anything but a local database, unless
+refuse any host that is not localhost, or a Vercel preview whose hostname `LOADTEST_ALLOW_PREVIEW` names
+exactly (and only a preview with its own database; never the production site, its aliases or the main
+branch's preview). The database side refuses anything but a local database, unless
 `LOADTEST_DB_CONFIRM` names the test branch's host exactly, and seeding refuses a database whose users
 are mostly not load-test users. docs/scale.md has the latest numbers and what to set at hundreds of users.
 

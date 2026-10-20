@@ -72,7 +72,9 @@ async function compute(fn: string, p: URLSearchParams, userId: string): Promise<
 }
 
 function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers: Record<string, string> = {}) {
-  const planLimited = e instanceof MarketDataError;
+  // The shared FMP budget being spent for the moment (a 503, market/fmp) is not a plan limit: answered as
+  // busy, so the screen retries on its next open instead of keeping a "not on the plan" answer.
+  const planLimited = e instanceof MarketDataError && (e as { status?: unknown }).status !== 503;
   const f = describeFailure(e, planLimited ? 402 : 502);
   return NextResponse.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), planLimited, ...extra }, { status: f.status, headers });
 }
