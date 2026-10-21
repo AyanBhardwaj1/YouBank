@@ -36,22 +36,23 @@ export const backupEnabled = () => (process.env.MARKET_BACKUP ?? "on").trim().to
  * the backup everywhere.
  */
 async function get<T>(path: string, ttlMs: number): Promise<T | null> {
+  return getOrThrow<T>(path, ttlMs).catch(() => null);
+}
+
+/** As `get`, but a failure is thrown rather than read as null (to tell "nothing here" from "Nasdaq failed"). */
+async function getOrThrow<T>(path: string, ttlMs: number): Promise<T | null> {
   if (!backupEnabled()) return null;
   const op = path.split("?")[0].replace(/\/(quote|company|analyst)\/[^/]+\//, "/$1/X/");
-  try {
-    const e = await cacheEntry<T | null>(`nasdaq:${path}`, ttlMs, () => callSource("nasdaq", op, async () => {
-      const b = budget();
-      // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try in background jobs.
-      const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: b.nasdaqTimeoutMs, retries: b.nasdaqRetries, retryOn: retryServerErrors });
-      if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`Nasdaq ${res.status}`), { status: res.status });
-      if (!res.ok) return null; // a refusal or "not found": nothing, kept five minutes as before
-      return ((await res.json()) as { data?: T | null })?.data ?? null;
-    }, { label: "Nasdaq" }), { staleMs: ttlMs, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS, ttlFor: (v) => (v === null ? 5 * MIN : undefined) });
-    if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
-    return e.value;
-  } catch {
-    return null;
-  }
+  const e = await cacheEntry<T | null>(`nasdaq:${path}`, ttlMs, () => callSource("nasdaq", op, async () => {
+    const b = budget();
+    // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try in background jobs.
+    const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: b.nasdaqTimeoutMs, retries: b.nasdaqRetries, retryOn: retryServerErrors });
+    if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`Nasdaq ${res.status}`), { status: res.status });
+    if (!res.ok) return null; // a refusal or "not found": nothing, kept five minutes as before
+    return ((await res.json()) as { data?: T | null })?.data ?? null;
+  }, { label: "Nasdaq" }), { staleMs: ttlMs, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS, ttlFor: (v) => (v === null ? 5 * MIN : undefined) });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  return e.value;
 }
 
 /* ---------------- Parsing ---------------- */
@@ -89,12 +90,14 @@ async function assetClassOf(symbol: string): Promise<AssetClass | null> {
   const key = `nasdaq:class:${symbol}`;
   const hit = await cacheGet(key);
   if (hit) return hit === "none" ? null : (hit as AssetClass);
+  // undefined: Nasdaq failed (an outage, a timeout, an open breaker), which says nothing about the symbol.
   const answers = await Promise.all((["stocks", "etf"] as const).map(async (c) => {
-    const info = await get<{ symbol?: string; primaryData?: { lastSalePrice?: string } }>(`/quote/${encodeURIComponent(symbol)}/info?assetclass=${c}`, 15 * MIN);
-    return info?.primaryData && num(info.primaryData.lastSalePrice) !== null ? c : null;
+    const info = await getOrThrow<{ symbol?: string; primaryData?: { lastSalePrice?: string } }>(`/quote/${encodeURIComponent(symbol)}/info?assetclass=${c}`, 15 * MIN).catch(() => undefined);
+    return info === undefined ? undefined : info?.primaryData && num(info.primaryData.lastSalePrice) !== null ? c : null;
   }));
-  const c = answers.find(Boolean) ?? null;
-  await cacheSet(key, c ?? "none", c ? 24 * HOUR : 30 * MIN);
+  const c = answers.find((a): a is AssetClass => !!a) ?? null;
+  // "none" only from two well-formed answers: a failure must not hide the symbol from the backup for half an hour.
+  if (c || answers.every((a) => a === null)) await cacheSet(key, c ?? "none", c ? 24 * HOUR : 30 * MIN);
   return c;
 }
 

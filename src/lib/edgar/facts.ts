@@ -2,7 +2,7 @@ import { cacheEntry } from "@/lib/cache";
 import { SEC_STALE_IF_ERROR_MS } from "@/lib/market/budgets";
 import { noteFreshness } from "@/lib/market/provenance";
 import { HOUR, edgarJson } from "./client";
-import { compactFacts } from "./compact";
+import { compactFacts, compactVersion } from "./compact";
 
 /**
  * XBRL "company facts" parsing. Every reported value arrives as a (start, end, value) triple.
@@ -25,7 +25,7 @@ export function factsUrl(cik: string) {
  * and for a week when SEC fails (flagged stale).
  */
 export async function getCompanyFacts(cik: string): Promise<CompanyFacts> {
-  const e = await cacheEntry<CompanyFacts>(`edgar:facts:compact:v1:${cik}`, 12 * HOUR, async () => compactFacts(await getCompanyFactsFull(cik)), { shared: true, staleMs: 12 * HOUR, staleIfErrorMs: SEC_STALE_IF_ERROR_MS });
+  const e = await cacheEntry<CompanyFacts>(`edgar:facts:compact:${compactVersion()}:${cik}`, 12 * HOUR, async () => compactFacts(await getCompanyFactsFull(cik)), { shared: true, staleMs: 12 * HOUR, staleIfErrorMs: SEC_STALE_IF_ERROR_MS });
   if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
   return e.value;
 }

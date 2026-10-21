@@ -11,6 +11,14 @@ import { flushSourceStats, sourceHealth } from "@/lib/market/stats";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/** The database reads below get this long each (the probes have their own 12 s): health must answer when Postgres does not. */
+const DB_MS = 5_000;
+/** `p`, or `fallback` when it fails or takes longer than `ms`. */
+const within = <T,>(p: Promise<T>, ms: number, fallback: T): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p.catch(() => fallback), new Promise<T>((r) => { timer = setTimeout(() => r(fallback), ms); })]).finally(() => clearTimeout(timer));
+};
+
 /** Sources the data layer calls, so each shows a breaker state even before any call was recorded. */
 const SOURCES = ["fmp", "nasdaq", "sec", "treasury", "fred", "bls", "ecb", "coingecko", "defillama"];
 
@@ -48,7 +56,7 @@ export async function GET(req: Request) {
   const at = (j: unknown, ...path: string[]) => path.reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), j);
   const key = process.env.FMP_API_KEY;
   // This instance's last calls first, so the rollups below include them.
-  await flushSourceStats();
+  await within(flushSourceStats(), DB_MS, undefined);
   const [results, sources] = await Promise.all([
     Promise.all([
       key ? probe("FMP profile", `https://financialmodelingprep.com/stable/profile?symbol=AAPL&apikey=${key}`, json, (j) => Array.isArray(j) && j.length > 0) : { name: "FMP profile", ok: false, ms: 0, error: "no FMP_API_KEY" },
@@ -63,14 +71,14 @@ export async function GET(req: Request) {
       probe("CoinGecko", "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", json, (j) => Number(at(j, "bitcoin", "usd")) > 0),
       probe("DefiLlama", "https://api.llama.fi/v2/chains", json, (j) => Array.isArray(j) && j.length > 10),
     ]),
-    sourceHealth(60).catch(() => []),
+    within(sourceHealth(60), DB_MS, []),
   ]);
   const names = [...new Set([...SOURCES, ...sources.map((s) => s.source)])];
-  const breakerViews = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await breakers.view(n).catch(() => "unknown")] as const)));
+  const breakerViews = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await within<string>(breakers.view(n), DB_MS, "unknown")] as const)));
   const b = budget("interactive");
   return NextResponse.json({
     backups: backupEnabled() ? "on" : "off (MARKET_BACKUP=off)",
-    fmpDailyLimitHit: !!(await cacheGet("fmp:daily-limit")),
+    fmpDailyLimitHit: !!(await within(cacheGet("fmp:daily-limit"), DB_MS, null)),
     secUserAgentSet: !!process.env.EDGAR_USER_AGENT,
     research: { model: process.env.MARKET_RESEARCH_MODEL || "gpt-5.6-luna", escalation: process.env.MARKET_RESEARCH_ESCALATION_MODEL || "gpt-5.4-mini", openaiKey: !!process.env.OPENAI_API_KEY, budgetMs: b.researchMs },
     budgets: { hedgeDelayMs: b.hedgeDelayMs, fmpTimeoutMs: b.fmpTimeoutMs, nasdaqTimeoutMs: b.nasdaqTimeoutMs, secTimeoutMs: b.secTimeoutMs, macroTimeoutMs: b.macroTimeoutMs },

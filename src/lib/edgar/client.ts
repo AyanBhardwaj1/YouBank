@@ -66,6 +66,11 @@ async function secRequest(url: string, init: RetryInit, op: string): Promise<Res
   // Every instance's budget was spent for three seconds running: wait for a quieter moment rather than
   // go over SEC's limit (which blocks our addresses for ten minutes).
   if (!slot) throw Object.assign(new Error(SEC_BUSY), { status: 503 });
+  // Paced here, after the slot: requests that waited for the shared budget would otherwise all start
+  // together when a new second opens.
+  await nextStart();
+  // A 429/403 that arrived while this one waited for its start: do not add to it.
+  if (Date.now() < backoffUntil) throw Object.assign(new Error("SEC EDGAR asked us to slow down. Try again in a minute."), { status: 503 });
   // One retry on a network failure or a 5xx. Never on 429 or 403: those start the shared back-off below.
   // A 5xx, 429 or 403 counts as a failure for the breaker and the stats; the response still goes back.
   let res: Response;
@@ -87,12 +92,12 @@ async function secRequest(url: string, init: RetryInit, op: string): Promise<Res
   return res;
 }
 
-/** Start `fn` in this process's next free 125 ms slot. Only the starts are paced: requests run at once. */
-function throttle<T>(fn: () => Promise<T>): Promise<T> {
+/** Wait for this process's next free 125 ms start slot. Only the starts are paced: requests run at once. */
+function nextStart(): Promise<void> {
   const now = Date.now();
   const start = Math.max(now, pace.lastRequest + MIN_GAP_MS);
   pace.lastRequest = start;
-  return start > now ? sleep(start - now).then(fn) : fn();
+  return start > now ? sleep(start - now).then(() => undefined) : Promise.resolve();
 }
 
 /** The kind of SEC request, for the stats: "companyfacts", "submissions", "frames", "efts", "archives". */
@@ -144,7 +149,7 @@ export async function edgarJson<T>(url: string, cacheKey: string, ttlMs: number,
   const disk = await readDisk<T>(cacheKey, ttlMs);
   if (disk) { remember(cacheKey, disk, Date.now()); return disk; }
   const e = await cacheEntry<T>(`edgar:json:${cacheKey}`, ttlMs, () => once(`json:${cacheKey}`, async () => {
-    const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs: budget().secTimeoutMs }, opOf(url)));
+    const res = await secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs: budget().secTimeoutMs }, opOf(url));
     if (!res.ok) throw Object.assign(new Error(`EDGAR ${res.status} for ${url}`), { status: res.status });
     const data = (await res.json()) as T;
     await writeDisk(cacheKey, data);
@@ -160,7 +165,7 @@ export const DAY = 24 * HOUR;
 
 /** A throttled request to sec.gov with the User-Agent SEC requires, uncached: for live feeds polled often. */
 export function edgarFetch(url: string, timeoutMs = 25_000): Promise<Response> {
-  return throttle(() => secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs }, opOf(url)));
+  return secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs }, opOf(url));
 }
 
 /** Fetch a text/HTML document from sec.gov with the same throttle and User-Agent; cached on disk as text. */
@@ -168,7 +173,7 @@ export async function edgarText(url: string, cacheKey: string, ttlMs: number): P
   const cached = await cacheGet(`edgar:${cacheKey}`);
   if (cached) return cached;
   return once(`text:${cacheKey}`, async () => {
-    const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA }, cache: "no-store", timeoutMs: budget().secTimeoutMs }, opOf(url)));
+    const res = await secRequest(url, { headers: { "User-Agent": UA }, cache: "no-store", timeoutMs: budget().secTimeoutMs }, opOf(url));
     if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
     const text = await res.text();
     await cacheSet(`edgar:${cacheKey}`, text, ttlMs);

@@ -554,6 +554,80 @@ async function testLatencyScript() {
   check("A10 it counts stale answers from x-data-sources", (report.samples ?? []).filter((x) => x.stale).length === 3);
 }
 
+/* ---------------- Review regressions ---------------- */
+
+/** A Nasdaq outage (or its open breaker) must not be remembered as "this symbol is not on Nasdaq". */
+async function testNasdaqClassAfterOutage() {
+  const { nasdaqHistory } = await import("@/lib/market/nasdaq");
+  const { sharedMap } = await import("@/lib/shared");
+  const sym = `N${uid()}`;
+  const from = DAYS[DAYS.length - 30];
+  forced[`/quote/${sym}/info`] = "503";
+  let during: unknown[] = [];
+  try { during = await nasdaqHistory(sym, from); } finally { delete forced[`/quote/${sym}/info`]; }
+  sharedMap("cache:failed").clear(); // the half-minute failure memo has passed
+  const after = await nasdaqHistory(sym, from);
+  check("R1 a Nasdaq 503 while probing a symbol's class is not cached as \"none\" (bars come back once Nasdaq does)", during.length === 0 && after.length > 0, { during: during.length, after: after.length });
+}
+
+/** Under a full shared SEC budget, requests that wait for a slot still start ≥ 125 ms apart in this process. */
+async function testSecPacingContendedDb() {
+  const { edgarFetch } = await import("@/lib/edgar/client");
+  const { db, schema } = await import("@/db");
+  const { like } = await import("drizzle-orm");
+  await sleep(1_000 - (Date.now() % 1_000) + 5); // the start of a fresh one-second window
+  const win = Math.floor(Date.now() / 1_000);
+  await db!.insert(schema.kvCache).values({ key: `rate:edgar:${win}`, value: "100", expiresAt: new Date(Date.now() + 120_000) })
+    .onConflictDoUpdate({ target: schema.kvCache.key, set: { value: "100" } });
+  const t0 = performance.now(), starts: number[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (u: string | URL | Request, i?: RequestInit) => { if (String(u).includes("contended-")) starts.push(performance.now() - t0); return realFetch(u, i); }) as typeof fetch;
+  try {
+    await Promise.all(Array.from({ length: 8 }, () => edgarFetch(`https://www.sec.gov/contended-${uid()}`).catch(() => null)));
+  } finally {
+    globalThis.fetch = realFetch;
+    await db!.delete(schema.kvCache).where(like(schema.kvCache.key, "rate:edgar:%"));
+  }
+  starts.sort((a, b) => a - b);
+  const gaps = starts.slice(1).map((x, i) => x - starts[i]);
+  check("R2 SEC request starts stay ≥ 125 ms apart after waiting for the shared budget (no burst when a window opens)", starts.length === 8 && gaps.every((g) => g >= 110), { starts: starts.map(Math.round) });
+}
+
+/** source_stats keeps 30 days: older rows are pruned, a batch at a time. */
+async function testStatsPruneDb() {
+  const st = await import("@/lib/market/stats");
+  const { db, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const src = `test-prune-${uid()}`.toLowerCase();
+  const minute = (daysAgo: number) => new Date(Math.floor((Date.now() - daysAgo * 86_400_000) / 60_000) * 60_000);
+  await db!.insert(schema.sourceStats).values([{ minute: minute(40), source: src, op: "old", calls: 1 }, { minute: minute(1), source: src, op: "recent", calls: 1 }]);
+  try {
+    await st.pruneSourceStats();
+    const left = (await db!.select().from(schema.sourceStats).where(eq(schema.sourceStats.source, src))).map((r) => r.op).sort();
+    check("R3 rows older than 30 days are pruned and recent ones kept", JSON.stringify(left) === '["recent"]', left);
+  } finally {
+    await db!.delete(schema.sourceStats).where(eq(schema.sourceStats.source, src));
+  }
+}
+
+/** The latency script refuses aggressive runs against a non-local deployment, before any request. */
+async function testLatencyScriptLimits() {
+  const { execFile } = await import("node:child_process");
+  const run = (args: string[]) => new Promise<{ code: number; out: string }>((resolve) => {
+    execFile("pnpm", ["exec", "tsx", "scripts/data-latency.mts", ...args], { timeout: 60_000 }, (err, stdout, stderr) => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, out: `${stdout}${stderr}` }));
+  });
+  const many = await run(["--base", "https://youbank.invalid", "--runs", "50", "--fns", "price"]);
+  const fast = await run(["--base", "https://youbank.invalid", "--gap", "0", "--fns", "price"]);
+  check("R4 data-latency.mts refuses more than 20 runs per command against a non-local deployment", many.code === 2 && /refus/i.test(many.out) && !/Measuring/.test(many.out), many);
+  check("R4 data-latency.mts refuses a gap under 500 ms between requests against a non-local deployment", fast.code === 2 && /refus/i.test(fast.out) && !/Measuring/.test(fast.out), fast);
+}
+
+/** The compact companyfacts cache key changes when the allowlist does, so a new concept is never read from an old entry. */
+async function testCompactVersion() {
+  const { compactVersion, FACT_CONCEPTS } = await import("@/lib/edgar/compact");
+  check("R5 the compact companyfacts version follows the allowlist", compactVersion() === compactVersion(FACT_CONCEPTS) && compactVersion(new Set([...FACT_CONCEPTS, "SomeNewConcept"])) !== compactVersion(), compactVersion());
+}
+
 /* ---------------- Main ---------------- */
 
 async function main() {
@@ -581,6 +655,11 @@ async function main() {
   if (localDb()) await section("A8 telemetry: per-minute rollups in Postgres", testStatsDb);
   await section("A8 health route", testHealthRoute);
   await section("A10 the latency script", testLatencyScript);
+  await section("R1 a Nasdaq outage is not cached as \"not on Nasdaq\"", testNasdaqClassAfterOutage);
+  if (localDb()) await section("R2 SEC starts stay paced under a full shared budget", testSecPacingContendedDb);
+  if (localDb()) await section("R3 source_stats retention", testStatsPruneDb);
+  await section("R4 the latency script's limits", testLatencyScriptLimits);
+  await section("R5 compact companyfacts versioning", testCompactVersion);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");

@@ -5,7 +5,9 @@
  * - kept in a short in-memory window per source (the hedge decision, chain.ts);
  * - summed into per-minute rollups that are written to `source_stats` in one batched upsert at most every
  *   STATS_FLUSH_MS per instance (and at the end of a route, in the background). Never a row per call;
- *   a failed write is logged and dropped, never thrown.
+ *   a failed write is logged and dropped, never thrown. Rollups still buffered when a serverless instance
+ *   is frozen or recycled are lost (that instance's calls since its last flush): telemetry, not a ledger.
+ * - kept STATS_RETENTION_DAYS (pruned now and then by a flush).
  * /api/market/health reads the rollups back as p50/p95, error rate and fallback use per source.
  */
 import { gte, sql } from "drizzle-orm";
@@ -148,6 +150,8 @@ export async function flushSourceStats(): Promise<void> {
         kTimeout: add("k_timeout"), kNetwork: add("k_network"), kHttp: add("k_http"), kRateLimit: add("k_rate_limit"), kSchema: add("k_schema"), kEmpty: add("k_empty"), kSkipped: add("k_skipped"),
       },
     });
+    // Retention, now and then (one flush in fifty per instance): the table stays at about a month.
+    if (Math.random() < 0.02) await pruneSourceStats().catch(() => undefined);
   } catch (e) {
     // Telemetry never breaks a request: one log line a minute at most (a missing table means 0028 is not applied).
     if (Date.now() - buf.warnedAt > 60_000) {
@@ -156,6 +160,15 @@ export async function flushSourceStats(): Promise<void> {
       console.warn(JSON.stringify({ level: "warn", where: "source-stats", error: (e as { name?: string } | null)?.name ?? "Error", code: (e as { code?: unknown } | null)?.code ?? null, dropped: rows.length }));
     }
   }
+}
+
+/** Rollups are kept this long; the health page reads the last hour. */
+export const STATS_RETENTION_DAYS = 30;
+
+/** Delete rollups older than STATS_RETENTION_DAYS, a batch at a time (the minute index). Throws on a database error. */
+export async function pruneSourceStats(batch = 5_000): Promise<void> {
+  if (!db) return;
+  await db.execute(sql`delete from ${schema.sourceStats} where ctid in (select ctid from ${schema.sourceStats} where ${schema.sourceStats.minute} < now() - make_interval(days => ${STATS_RETENTION_DAYS}) limit ${batch})`);
 }
 
 /* ---------------- Reading ---------------- */

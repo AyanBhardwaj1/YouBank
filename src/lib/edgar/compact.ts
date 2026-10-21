@@ -12,6 +12,7 @@
  * Reading a new concept on an interactive path? Add it here (or make sure CONCEPT_FAMILIES matches it).
  * Screens that browse every concept (the XBRL screen) and background jobs use getCompanyFactsFull.
  */
+import { createHash } from "node:crypto";
 import type { CompanyFacts } from "./facts";
 
 export const FACT_CONCEPTS = new Set([
@@ -57,6 +58,18 @@ const CONCEPT_FAMILIES = /^(Revenue|Revenues|SalesRevenue|NetIncome|ProfitLoss|O
 
 /** Company extension concepts that company.ts considers for revenue. */
 const EXTENSION_REVENUE = /Revenue/i;
+
+/**
+ * A short fingerprint of what compactFacts keeps, part of the shared cache key (facts.ts): a concept added
+ * here is never looked for in an entry compacted without it (those simply miss and are rebuilt). Pure.
+ */
+export function compactVersion(concepts: ReadonlySet<string> = FACT_CONCEPTS): string {
+  if (concepts === FACT_CONCEPTS && defaultVersion) return defaultVersion;
+  const v = createHash("sha256").update([...concepts].sort().join(",")).update(`|${CONCEPT_FAMILIES.source}|${EXTENSION_REVENUE.source}`).digest("hex").slice(0, 10);
+  if (concepts === FACT_CONCEPTS) defaultVersion = v;
+  return v;
+}
+let defaultVersion = "";
 
 /** The facts the app reads, in the same shape. Pure. */
 export function compactFacts(cf: CompanyFacts): CompanyFacts {

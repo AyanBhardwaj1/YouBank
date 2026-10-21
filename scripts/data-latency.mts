@@ -14,7 +14,12 @@
  *   --runs N         YB_RUNS      requests per command (default 5); the first is reported apart (it may be cold)
  *   --tickers LIST   YB_TICKERS   company commands' tickers (default AAPL,MSFT,BRK.B)
  *   --fns LIST       YB_FNS       commands to measure (default: every one below)
+ *   --gap MS         YB_GAP       pause between requests (default 1000; requests are sent one at a time)
  *   --json FILE                   also write the raw samples and summaries as JSON
+ *
+ * It measures; it is not a load test. Against anything but localhost it refuses more than 20 runs per
+ * command, more than 5 tickers, or a gap under 500 ms, so a run costs production at most a couple of
+ * requests a second (each may reach FMP's, Nasdaq's or SEC's shared quotas behind the cache).
  *
  * Per command it reports wall time (p50, p95, max) as the browser would see it, plus HTTP statuses. Per
  * source it reads each answer's Server-Timing header (the server's own time for each upstream source,
@@ -37,6 +42,13 @@ const cookie = opt("cookie", "YB_COOKIE");
 const secret = opt("secret", "CRON_SECRET");
 const runs = Math.max(1, Math.min(100, Number(opt("runs", "YB_RUNS", "5")) || 5));
 const tickers = opt("tickers", "YB_TICKERS", "AAPL,MSFT,BRK.B").split(",").map((t) => t.trim().toUpperCase()).filter(Boolean);
+const gapMs = Math.max(0, Number(opt("gap", "YB_GAP", "1000")) || 0);
+// Not a load test: anything but this machine gets a gentle run, or none.
+const local = (() => { try { return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(base).hostname); } catch { return false; } })();
+if (!local) {
+  const why = runs > 20 ? `--runs ${runs} (at most 20)` : tickers.length > 5 ? `${tickers.length} tickers (at most 5)` : gapMs < 500 ? `--gap ${gapMs} (at least 500 ms)` : "";
+  if (why) { console.error(`Refusing ${why} against ${base}: this script measures latency, it is not a load test. Use a local server for more.`); process.exit(2); }
+}
 const COMPANY_FNS = ["price", "credit", "quality", "forecast", "debt", "earnings", "analysts", "dividends", "wacc", "snapshot"];
 const MARKET_FNS = ["indices", "fx", "commodities", "movers", "sectors", "deals", "curve", "macro"];
 const ALL = [...COMPANY_FNS, ...MARKET_FNS, "companies"];
@@ -88,7 +100,10 @@ const samples: Sample[] = [];
 console.log(`Measuring ${base}: ${fns.length} commands × ${runs} runs${tickers.length ? `, tickers ${tickers.join(", ")}` : ""}${cookie ? "" : " (no --cookie: signed-in routes will answer 401)"}\n`);
 for (const fn of fns) {
   const targets = COMPANY_FNS.includes(fn) || fn === "companies" ? tickers : ["-"];
-  for (const t of targets) for (let r = 0; r < runs; r++) samples.push(await one(fn, t, r));
+  for (const t of targets) for (let r = 0; r < runs; r++) {
+    if (samples.length && gapMs) await new Promise((res) => setTimeout(res, gapMs));
+    samples.push(await one(fn, t, r));
+  }
 }
 
 // Per command: wall time, first run apart.
