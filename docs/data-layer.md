@@ -32,7 +32,10 @@ Backups (Nasdaq, the ECB, CoinGecko, AI research) are off with `MARKET_BACKUP=of
 removes excluded ones; `fromChain(dataset, args, opts)`, `historyFrom(…, opts)`, `quotes(…, opts)` and
 `quoteProfile(symbol, opts)` take the same options. Without options the default order applies. Nothing
 is stored per person yet. The adapter that answered is in the response's `x-data-sources`
-(`sources: [{ id, label }]`).
+(`sources: [{ id, label, provider }]`). Both routes build that header and Server-Timing with one
+function, `sourceHeaders()` in `src/lib/market/source-header.ts`: providers, notes (an ETF stand-in's
+label, "S&P 500 via SPY", which the registry also returns as the data's `label`), sources, the oldest
+`asOf` and `oldestFetchedAt`, and `stale`/`delayed` when set; at most eight notes and eight sources.
 
 **What counts as a failure.** Any `SourceError` kind (`src/lib/market/source-error.ts`): timeout,
 network, a 5xx, a rate limit (FMP's "Limit Reach", our own FMP budget being full), a schema failure (an
