@@ -109,8 +109,10 @@ export async function cacheExpiry(key: string): Promise<number | null> {
   return null;
 }
 
-export async function cacheSet(key: string, value: string, ttlMs: number, local = false): Promise<void> {
-  const exp = Date.now() + ttlMs;
+export async function cacheSet(key: string, value: string, ttlMs: number, local = false, now = Date.now()): Promise<void> {
+  // `now` lets a caller stamp the expiry from the same clock reading as its own timestamps (cacheEntry's
+  // staleUntil is this row's expiry, so it must equal fetchedAt + ttl + window exactly).
+  const exp = now + ttlMs;
   remember(key, { exp, value });
   if (DISK_OK) {
     try { await mkdir(DISK_DIR, { recursive: true }); await writeFile(path.join(DISK_DIR, safe(key)), JSON.stringify({ exp, value })); } catch { /* ignore */ }
@@ -215,7 +217,7 @@ function fill<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: FillO
       const ttl = opts.ttlFor?.(value) ?? ttlMs;
       const fetchedAt = Date.now(), freshUntil = fetchedAt + ttl;
       const json = JSON.stringify(value);
-      await cacheSet(ENTRY + key, encode(fetchedAt, freshUntil, json), ttl + windowMs, opts.local);
+      await cacheSet(ENTRY + key, encode(fetchedAt, freshUntil, json), ttl + windowMs, opts.local, fetchedAt);
       return { value, fetchedAt, freshUntil, staleUntil: freshUntil + windowMs, stale: false };
     } catch (e) {
       if (!(e as { benign?: boolean }).benign) {
