@@ -5,7 +5,6 @@ import { EDGE_CODES, FUNCTIONS, FUNCTION_CODES, isCommandCode, needsTicker, pars
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { getCached } from "@/lib/client/companies";
 import type { TickerRow } from "@/lib/types";
-import { catalogFor } from "@/lib/workflows/catalog";
 
 type Props = { activeTicker: string; onRun: (command: Command) => void };
 type Suggestion = { text: string; label: string; hint: string; command: Command };
@@ -26,7 +25,7 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
   const [index, setIndex] = useState(0);
   const [remote, setRemote] = useState<TickerRow[]>([]);
   const [searchDown, setSearchDown] = useState(false);
-  const { config, profile, edge } = useWorkspace();
+  const { config, profile, edge, tools } = useWorkspace();
   const watchlist = config.watchlist;
   const isCode = (s: string) => isCommandCode(s, edge);
 
@@ -61,11 +60,11 @@ export const CommandBar = forwardRef<HTMLInputElement, Props>(function CommandBa
     const toolArg = value.trim().split(/\s+/).slice(isCode(tk) ? 1 : 2).join(" ").toLowerCase();
     const tickerForTool = isCode(tk) ? activeTicker : tk;
     if ((tk === "TOOL" && tokens.length >= 1) || (second === "TOOL")) {
-      return catalogFor(profile).filter((t) => !toolArg || t.id.includes(toolArg) || t.title.toLowerCase().includes(toolArg)).slice(0, 9)
+      return tools.filter((t) => !toolArg || t.id.includes(toolArg) || t.title.toLowerCase().includes(toolArg)).slice(0, 9)
         .map((t) => ({ text: `${tickerForTool} TOOL ${t.id}`, label: t.id, hint: t.title, command: { ticker: tickerForTool, fn: "TOOL" as FunctionCode, arg: t.id } }));
     }
     return isCode(tk) ? [] : fnSuggestions(tk, second ?? "", edge);
-  }, [tokens.length, first, remote, activeTicker, value, watchlist, profile, edge]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tokens.length, first, remote, activeTicker, value, watchlist, profile, edge, tools]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => setIndex(0), [suggestions.length, value]);
 

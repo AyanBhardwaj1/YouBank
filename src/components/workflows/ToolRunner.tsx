@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { ToolDef, WorkflowOutput, Inputs } from "@/lib/workflows/types";
-import { WorkflowOutput as OutputSchema } from "@/lib/workflows/schema";
 import { FieldsForm, defaultInputs } from "./FieldsForm";
 import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
@@ -35,7 +34,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [showThinking, setShowThinking] = useState(false);
-  const { settings, setSettings } = useAiSettings();
+  const { settings, setSettings } = useAiSettings({ catalog: false });
   const prefillTicker = tool.kind === "calc" && tool.prefill ? (ticker ?? String(inputs.ticker ?? "")) : null;
   const { data: company } = useCompany(prefillTicker || null);
   const prefilled = useRef(false);
@@ -75,6 +74,8 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
       const r = await fetch(`/api/tools/runs/${id}`);
       if (!r.ok) throw new Error(await errorOf(r));
       const row = await r.json();
+      // The output schema (zod) loads only when a saved run is opened, not with every tool page.
+      const { WorkflowOutput: OutputSchema } = await import("@/lib/workflows/schema");
       const parsed = OutputSchema.safeParse(row.output);
       if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
     } catch (e) { setError(errorMessage(e)); }

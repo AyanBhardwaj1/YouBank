@@ -42,11 +42,10 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
     return base;
   });
   const [maximized, setMaximized] = useState<number | null>(null);
-  const [clock, setClock] = useState("");
   const [help, setHelp] = useState(false);
   // Below the wide layout the rail (watchlist, shortcuts, tools) is a sheet behind the header's list button.
   const [rail, setRail] = useState(false);
-  const { status } = useAiSettings();
+  const { status } = useAiSettings({ catalog: false });
   const nextId = useRef(100);
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: active } = useCompany(activeTicker);
@@ -93,13 +92,6 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  useEffect(() => {
-    const tick = () => setClock(new Date().toLocaleTimeString("en-US", { hour12: false, timeZone: "America/New_York" }) + " ET");
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
-
   const ai: AiStatus | null = status ? { configured: status.configured, provider: status.provider, model: status.model, label: status.label } : null;
   const chg = active?.price?.changePct ?? null;
   const shown = maximized === null ? panels : panels.filter((p) => p.id === maximized);
@@ -118,7 +110,7 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
           <CommandBar ref={inputRef} activeTicker={activeTicker} onRun={run} />
           <div className="num hidden items-center gap-3 text-[11px] text-muted md:flex">
             <span className="flex items-center gap-1.5"><span className="pulse-ring h-1.5 w-1.5 rounded-full bg-pos" /> Live</span>
-            <span suppressHydrationWarning>{clock}</span>
+            <Clock />
             <button type="button" onClick={() => setHelp(true)} title="Commands and keys (?)" className="ctl border border-line px-1.5 py-0.5 font-sans hover:border-accent/50 hover:text-fg">?</button>
           </div>
         </header>
@@ -180,4 +172,19 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
       {help && <HelpOverlay onClose={() => setHelp(false)} />}
     </div>
   );
+}
+
+/**
+ * The New York clock in the header. It ticks every second in its own component, so the tick re-renders
+ * this one span instead of the whole terminal (every open panel with it).
+ */
+function Clock() {
+  const [clock, setClock] = useState("");
+  useEffect(() => {
+    const tick = () => setClock(new Date().toLocaleTimeString("en-US", { hour12: false, timeZone: "America/New_York" }) + " ET");
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span suppressHydrationWarning>{clock}</span>;
 }

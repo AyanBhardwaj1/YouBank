@@ -7,24 +7,23 @@
  * their own page, as the person prefers. Three other ways in, loaded only when opened: Brief mode
  * (swipe cards), the audio briefing, and the 60-second recap.
  */
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Columns3, LayoutDashboard, Newspaper, Rows3, Search, SlidersHorizontal, Terminal as TerminalIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, type Category } from "@/lib/news/classify";
-import type { StoryCard as Story } from "@/lib/news/views";
+import type { FeedView, StoryCard as Story } from "@/lib/news/views";
 import { EDITIONS, LAYOUTS, LOOKS, type EditionId, type LayoutId, type LookId } from "@/lib/news/prefs";
 import { ago, MotionContext, post, useApi, useEffectiveMotion, useFeed, useNow, useSparks } from "./client";
 import { DealTracker, LeagueTable, type BriefData, type DealsData } from "./Boards";
 import type { RadarScreen } from "@/lib/news/radar/view";
-import { RadarView } from "./Radar";
 import { DashboardLayout, HybridLayout, MagazineLayout, WireLayout, type LayoutProps } from "./layouts";
 import { FrontLayout } from "./FrontPage";
 import { Icon } from "@/components/ui/Icon";
 import type { GlobePoint } from "@/lib/news/geo";
 import { StoryCard } from "./StoryCard";
-import { StoryPeek } from "./StoryReader";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { Select } from "@/components/ui/Select";
 
@@ -32,6 +31,10 @@ const NewsGlobe = dynamic(() => import("./NewsGlobe"), { ssr: false, loading: ()
 const BriefDeck = dynamic(() => import("./BriefDeck").then((m) => m.BriefDeck), { ssr: false });
 const BriefingPlayer = dynamic(() => import("./BriefingPlayer").then((m) => m.BriefingPlayer), { ssr: false });
 const Recap = dynamic(() => import("./Recap").then((m) => m.Recap), { ssr: false });
+// The sector radar and the story peek (its charts, maps and timeline) load when first shown, and the peek
+// is warmed a few seconds after the page settles so opening a story does not wait on it.
+const RadarView = lazyPanel(() => import("./Radar").then((m) => m.RadarView), () => <div className="shimmer m-5 h-[420px] rounded-[var(--nr-radius)]" />);
+const StoryPeek = lazyPanel(() => import("./StoryReader").then((m) => m.StoryPeek));
 
 type View = "today" | "globe" | "deals" | "radar" | "saved";
 const VIEWS: View[] = ["today", "globe", "deals", "radar", "saved"];
@@ -41,7 +44,10 @@ const EDITION_ICON: Record<EditionId, React.ReactNode> = {
 };
 const LAYOUT_OF: Record<LayoutId, (p: LayoutProps) => React.ReactNode> = { front: FrontLayout, wire: WireLayout, magazine: MagazineLayout, hybrid: HybridLayout, dashboard: DashboardLayout };
 
-export function Newsroom({ initialView = "today", initialStory = null, initialOverlay = null }: { initialView?: View; initialStory?: number | null; initialOverlay?: Overlay }) {
+/** The desk and preferences the server read for the first paint (see app/app/news/page.tsx); the feed replaces them. */
+export type NewsroomSeed = { desk: { id: string; label: string }; ownDeskId: string; prefs: FeedView["prefs"] };
+
+export function Newsroom({ initialView = "today", initialStory = null, initialOverlay = null, seed = null }: { initialView?: View; initialStory?: number | null; initialOverlay?: Overlay; seed?: NewsroomSeed | null }) {
   const router = useRouter();
   const now = useNow();
   const [view, setView] = useState<View>(initialView);
@@ -50,9 +56,15 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const [overlay, setOverlay] = useState<Overlay>(initialOverlay);
   const [globeTags, setGlobeTags] = useState<"desk" | "all" | string>("desk");
   const [category, setCategory] = useState("");
-  const [query, setQuery] = useState({ typed: "", applied: "" });
+  // The applied search; what is being typed lives in SearchBox, so a keystroke re-renders the box, not the feed.
+  const [applied, setApplied] = useState("");
+  const [searchKey, setSearchKey] = useState(0);
   const [desk, setDesk] = useState("");
   const [peek, setPeek] = useState<number | null>(initialStory);
+  // The peek mounts with the first story opened and stays mounted, so its closing animation still plays.
+  const [peekMounted, setPeekMounted] = useState(initialStory !== null);
+  if (peek !== null && !peekMounted) setPeekMounted(true);
+  useIdlePreload([StoryPeek, RadarView], 3000);
   const [override, setOverride] = useState<{ edition?: EditionId; look?: LookId; layout?: LayoutId; advanced?: boolean }>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   // The sector radar on screen; empty until chosen here, so the server shows the saved or desk default.
@@ -60,15 +72,15 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const feed = useFeed({ desk, category: view === "today" ? category : "", q: query.applied, saved: view === "saved" ? "1" : "" });
+  const feed = useFeed({ desk, category: view === "today" ? category : "", q: applied, saved: view === "saved" ? "1" : "" });
   const data = feed.data;
-  const prefs = data?.prefs;
+  const prefs = data?.prefs ?? seed?.prefs;
   const edition = override.edition ?? prefs?.edition ?? "brief";
   const advanced = override.advanced ?? prefs?.advanced ?? false;
   const look: LookId = advanced ? override.look ?? prefs?.look ?? EDITIONS[edition].look : EDITIONS[edition].look;
   const layout: LayoutId = advanced ? override.layout ?? prefs?.layout ?? EDITIONS[edition].layout : EDITIONS[edition].layout;
   const motionLevel = useEffectiveMotion(prefs?.motion ?? "rich");
-  const deskId = data?.desk.id ?? "";
+  const deskId = data?.desk.id ?? seed?.desk.id ?? "";
 
   // The brief feeds every layout of Today (the wire uses its market tape).
   const brief = useApi<BriefData>(view === "today" && deskId ? `/api/news/brief?desk=${encodeURIComponent(deskId)}` : null, 5 * 60_000);
@@ -121,7 +133,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             <div className="flex min-w-0 items-center gap-2">
               <Newspaper className="h-4 w-4 shrink-0 text-accent" />
               <Select value={desk || deskId} onChange={(v) => setDesk(v === data?.ownDesk.id ? "" : v)} className="nr-head max-w-[260px] truncate bg-transparent text-[15px] text-fg outline-none" aria-label="Desk">
-                {data ? data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>) : <option>Newsroom</option>}
+                {data ? data.desks.map((d) => <option key={d.id} value={d.id}>{d.label}{d.id === data.ownDesk.id ? " (your desk)" : ""}</option>) : seed ? <option value={seed.desk.id}>{seed.desk.label}{seed.desk.id === seed.ownDeskId ? " (your desk)" : ""}</option> : <option>Newsroom</option>}
               </Select>
               <span className="hidden items-center gap-1.5 text-[11px] text-muted md:flex"><span className="pulse-ring inline-block h-1.5 w-1.5 rounded-full bg-pos" />{data && now ? `updated ${ago(data.generatedAt, now)}` : "live"}</span>
             </div>
@@ -141,10 +153,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
                 </button>
               ))}
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); setQuery((q) => ({ ...q, applied: q.typed.trim() })); setView("today"); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1 max-md:order-last max-md:ml-0 max-md:min-h-10 max-md:w-full max-md:px-3.5">
-              <Search className="h-3.5 w-3.5 text-muted" />
-              <input ref={searchRef} value={query.typed} onChange={(e) => { const t = e.target.value; setQuery((q) => ({ typed: t, applied: t ? q.applied : "" })); }} placeholder="Search stories  /" aria-label="Search stories" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint max-md:min-w-0 max-md:flex-1 md:w-56" />
-            </form>
+            <SearchBox key={searchKey} inputRef={searchRef} onApply={(t) => { setApplied(t); setView("today"); }} onCleared={() => setApplied("")} />
             <div className="flex items-center gap-0.5 rounded-full border border-line p-0.5" role="radiogroup" aria-label="Edition">
               {(Object.keys(EDITIONS) as EditionId[]).map((e) => (
                 <button key={e} type="button" role="radio" aria-checked={!advanced && edition === e} onClick={() => chooseEdition(e)} title={`${EDITIONS[e].label}: ${EDITIONS[e].blurb}`}
@@ -173,7 +182,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             <div className="no-scrollbar -mx-1 mt-2 flex gap-1 overflow-x-auto px-1 pb-0.5 max-md:[&>button]:py-1.5">
               <button type="button" onClick={() => setCategory("")} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${!category ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>All</button>
               {cats.map((c) => <button key={c} type="button" onClick={() => setCategory(category === c ? "" : c)} className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] ${category === c ? "border-accent/50 bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{CATEGORY_LABEL[c]} <span className="num text-faint">{counts[c]}</span></button>)}
-              {query.applied && <button type="button" onClick={() => setQuery({ typed: "", applied: "" })} className="shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-fg">“{query.applied}” ×</button>}
+              {applied && <button type="button" onClick={() => { setApplied(""); setSearchKey((k) => k + 1); }} className="shrink-0 rounded-full border border-line px-2.5 py-0.5 text-[11px] text-muted hover:text-fg">“{applied}” ×</button>}
             </div>
           )}
         </header>
@@ -188,7 +197,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
                   ? <Layout stories={stories} fresh={feed.fresh} sparks={sparks} now={now} onOpen={open} onSave={save} onOpenCluster={(id) => open(id)} onCategory={setCategory}
                       brief={brief.data} deals={deals.data} radar={radar.data} deskLabel={data.desk.label} showRadar={showRadar} scrollRef={scrollRef}
                       deskTags={deskTags} counts={counts} onAction={(a) => (a === "globe" ? setView("globe") : setOverlay(a))} />
-                  : <Empty text={query.applied ? `No stories match “${query.applied}” in the last month.` : "Your desk's first stories arrive as sources are read, every ten minutes."} />)}
+                  : <Empty text={applied ? `No stories match “${applied}” in the last month.` : "Your desk's first stories arrive as sources are read, every ten minutes."} />)}
                 {view === "saved" && (stories.length
                   ? <div className="mx-auto max-w-[900px] divide-y divide-line px-5 py-6">{stories.map((s, i) => <StoryCard key={s.id} story={s} variant="brief" index={i} sparks={sparks} now={now} onOpen={open} onSave={save} />)}</div>
                   : <Empty text="Nothing saved yet. Use the bookmark on any story to keep it here." />)}
@@ -219,7 +228,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
             </AnimatePresence>
           )}
         </div>
-        <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />
+        {peekMounted && <StoryPeek id={peek} onClose={() => setPeek(null)} onStep={step} onChanged={() => feed.reload()} />}
         {/* On a phone, Brief mode is one tap away, just above the tab bar (the pane ends where the bar starts). */}
         {data && stories.length > 0 && !overlay && view === "today" && (
           <button type="button" onClick={() => setOverlay("brief")} className="absolute bottom-4 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-fg shadow-float md:hidden" aria-label="Open Brief mode">
@@ -240,4 +249,15 @@ const SECTOR_NAME: Record<string, string> = { tech: "Technology", healthcare: "H
 
 function Empty({ text }: { text: string }) {
   return <div className="mx-auto flex max-w-[520px] flex-col items-center gap-3 px-6 py-24 text-center"><Columns3 className="h-8 w-8 text-faint" /><p className="text-[13px] text-muted">{text}</p></div>;
+}
+
+/** The story search: Enter applies it; emptying the box clears it. Keeps its own text so typing stays cheap. */
+function SearchBox({ inputRef, onApply, onCleared }: { inputRef: React.RefObject<HTMLInputElement | null>; onApply: (text: string) => void; onCleared: () => void }) {
+  const [typed, setTyped] = useState("");
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onApply(typed.trim()); }} className="ml-auto flex items-center gap-1.5 rounded-full border border-line bg-elevated/50 px-2.5 py-1 max-md:order-last max-md:ml-0 max-md:min-h-10 max-md:w-full max-md:px-3.5">
+      <Search className="h-3.5 w-3.5 text-muted" />
+      <input ref={inputRef} value={typed} onChange={(e) => { const t = e.target.value; setTyped(t); if (!t) onCleared(); }} placeholder="Search stories  /" aria-label="Search stories" className="w-40 bg-transparent text-[12px] text-fg outline-none placeholder:text-faint max-md:min-w-0 max-md:flex-1 md:w-56" />
+    </form>
+  );
 }

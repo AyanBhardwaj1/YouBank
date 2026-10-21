@@ -4,22 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { catalogFor } from "@/lib/workflows/catalog";
-import { ToolCard } from "@/components/workflows/ToolsGallery";
+import { ToolCard } from "@/components/workflows/ToolCard";
 import { useCompanies } from "@/lib/client/companies";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
-import { HomeBrief } from "@/components/news/HomeBrief";
+import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
 import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
 
 type Run = { id: number; toolId: string; title: string; model: string; status: string; createdAt: string; durationMs: number };
 
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 
-export function HomeDashboard({ facts }: { facts: { directoryTotal: number | null; sheets: number; groups: number } }) {
-  const { profile, config } = useWorkspace();
-  const tools = catalogFor(profile);
+export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: number | null; sheets: number; groups: number }; brief?: BriefSeed }) {
+  const { profile, config, tools } = useWorkspace();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const { data, errors, loading } = useCompanies(config.watchlist);
   const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
@@ -31,7 +29,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1280px] px-5 py-6">
-        <Reveal>
+        <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h1 className="text-[22px] font-semibold tracking-tight">{greeting()}{profile.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1>
@@ -47,9 +45,9 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="space-y-4">
-            <Reveal><HomeBrief /></Reveal>
+            <Reveal eager><HomeBrief seed={brief} /></Reveal>
 
-            <Reveal>
+            <Reveal eager>
               <section>
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Start here</h2><Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link></div>
                 <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -58,7 +56,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
               </section>
             </Reveal>
 
-            <Reveal>
+            <Reveal eager>
               <section className="panel p-3">
                 <div className="mb-2 flex items-baseline justify-between">
                   <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
@@ -121,7 +119,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
           </div>
 
           <div className="space-y-4">
-            <Reveal delay={60}>
+            <Reveal eager delay={60}>
               <section className="panel p-3">
                 <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Ask the assistant</h2>
                 <div className="space-y-1.5">
@@ -132,7 +130,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
               </section>
             </Reveal>
 
-            <Reveal delay={100}>
+            <Reveal eager delay={100}>
               <section className="panel p-3">
                 <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Recent runs</h2><Link href="/app/library" className="text-[11px] text-muted hover:text-fg">library →</Link></div>
                 {runs === null && <div className="shimmer h-16 ctl" />}
@@ -151,7 +149,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
             </Reveal>
 
             {(profile.role === "vc" || profile.role === "pe") && (
-              <Reveal delay={140}>
+              <Reveal eager delay={140}>
                 <Link href="/app/vc" className="lift block panel p-3">
                   <div className="flex items-center gap-2"><Icon name="Rocket" className="h-4 w-4 text-accent" /><h2 className="text-[12.5px] font-semibold">Private markets</h2></div>
                   <p className="mt-1.5 text-[11.5px] text-muted">{facts.directoryTotal ? `${facts.directoryTotal.toLocaleString()} startups` : "The startup directory"} across Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and web discovery, plus every private raise filed this month.</p>
@@ -160,7 +158,7 @@ export function HomeDashboard({ facts }: { facts: { directoryTotal: number | nul
               </Reveal>
             )}
 
-            <Reveal delay={180}>
+            <Reveal eager delay={180}>
               <section className="panel p-3 text-[11.5px]">
                 <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Your saved work</h2>
                 <dl className="space-y-1">

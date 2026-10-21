@@ -1,5 +1,6 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
@@ -10,7 +11,6 @@ import { addSheet, deleteSheet, formatRange, renameSheet, type Patch } from "@/l
 import { tasksFor } from "@/lib/studio/roles";
 import type { SemDiff } from "@/lib/studio/checkpoints";
 import { newId, type CellStyle } from "@/lib/studio/types";
-import { DeckView } from "./DeckView";
 import { EdgePushes } from "./EdgePushes";
 import { Grid, cellSel, selRange, type Sel } from "./Grid";
 import { useStudio, type LogItem } from "./useStudio";
@@ -21,6 +21,9 @@ import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { Sheet } from "@/components/ui/Sheet";
 import { usePhone } from "@/components/ui/useMedia";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+
+// The deck (slides, their charts and tables) loads when the Deck tab is opened; the model is the default.
+const DeckView = lazyPanel(() => import("./DeckView").then((m) => m.DeckView), () => <div className="shimmer m-4 aspect-video ctl" />);
 
 const TOOL: Record<string, string> = {
   read_range: "Reading", write_cells: "Writing cells", format_cells: "Formatting", fill: "Filling formulas", insert_or_delete: "Moving rows and columns",
@@ -39,6 +42,8 @@ export function StudioWorkspace({ id, initialAsk = null, initialTab = "model", i
   const st = useStudio(id);
   const { doc, engine, meta } = st;
   const [tab, setTab] = useState<"model" | "deck">(initialTab);
+  // Warm the deck's code once the model is up, so switching tabs never waits on a download.
+  useIdlePreload([DeckView]);
   const [sheetId, setSheetId] = useState<string | null>(null);
   const [sel, setSel] = useState<Sel>(cellSel(1, 1));
   const [slide, setSlide] = useState<string | null>(null);

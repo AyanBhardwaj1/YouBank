@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { requireFeature } from "@/lib/billing/entitlements";
-import { capDaily, CROSS_SITE, jsonBody, refuse, requireQuantConsent, sameSiteJson } from "@/lib/quant/access";
+import { capDaily, CROSS_SITE, hasQuantConsent, jsonBody, refuse, requireQuantConsent, sameSiteJson } from "@/lib/quant/access";
 import { brokerFills } from "@/lib/quant/broker";
 import { importFills, TEMPLATES } from "@/lib/quant/tca/import";
 import { deleteFills, fillsOf, saveFills } from "@/lib/quant/tca/run";
@@ -9,10 +9,15 @@ import { deleteFills, fillsOf, saveFills } from "@/lib/quant/tca/run";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** GET — the person's fills (newest first) and the CSV templates YouBank reads. */
+/**
+ * GET — the person's fills (newest first) and the CSV templates YouBank reads. Before the Quant terms are
+ * accepted it answers with no fills instead of a 428: the Costs tab reads this as it opens, and a 428 put the
+ * terms over the whole hub unasked, where they then blocked the next tabs (Insiders, Drills) until answered.
+ * Importing fills and analysing them still ask for the terms.
+ */
 export async function GET() {
   return guarded(async (user) => {
-    await requireQuantConsent(user.id);
+    if (!(await hasQuantConsent(user.id))) return NextResponse.json({ fills: [], templates: TEMPLATES });
     const rows = await fillsOf(user.id, 1_000);
     const fills = rows.map((row) => {
       const out: Record<string, unknown> = { ...row, executedAt: row.executedAt.toISOString(), placedAt: row.placedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString() };

@@ -8,15 +8,19 @@
  * into columns too narrow to read. Events come from the stored sync window (30 days back, 90 ahead);
  * Sync asks every provider for changes now.
  */
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { safeText } from "@/lib/client/errors";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
-import { EventPanel } from "./EventPanel";
-import { Scheduler, type SchedulePrefill } from "./Scheduler";
+import type { SchedulePrefill } from "./Scheduler";
 import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
 import { SetupNotice } from "@/components/ui/SetupScreen";
+
+// The event panel and the scheduling dialog load when one is opened.
+const EventPanel = lazyPanel(() => import("./EventPanel").then((m) => m.EventPanel));
+const Scheduler = lazyPanel(() => import("./Scheduler").then((m) => m.Scheduler));
 
 type View = "day" | "week" | "agenda";
 const VIEWS: { id: View; label: string }[] = [{ id: "day", label: "Day" }, { id: "week", label: "Week" }, { id: "agenda", label: "Agenda" }];
@@ -47,6 +51,7 @@ function layout(items: Meeting[]): Map<number, { lane: number; lanes: number }> 
 }
 
 export function CalendarWorkspace({ needsMigration, initialView }: { needsMigration: boolean; initialView?: string | null }) {
+  useIdlePreload([EventPanel, Scheduler]);
   const [ov, setOv] = useState<Overview | null>(null);
   // Null until the person picks: then phones get the agenda (a seven-column grid is unreadable at
   // 375px) and wider screens the week.

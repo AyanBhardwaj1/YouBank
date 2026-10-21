@@ -51,7 +51,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
 export function AppNav({ email }: { email: string }) {
   const path = usePathname();
   const { profile, config } = useWorkspace();
-  const { status } = useAiSettings();
+  const { status } = useAiSettings({ catalog: false });
   const nav = useNav();
   const [menu, setMenu] = useState(false);
   const byId = new Map(nav.features.map((f) => [f.id, f]));

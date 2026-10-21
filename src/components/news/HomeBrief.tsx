@@ -6,19 +6,38 @@ import { Newspaper, Sparkles } from "lucide-react";
 import type { BriefData } from "./Boards";
 import { useApi } from "./client";
 
-export function HomeBrief() {
-  const { data, error } = useApi<BriefData>("/api/news/brief", 10 * 60_000);
-  if (error && !data) return null;
-  const b = data?.brief;
+/** The brief the Home page read on the server (see app/app/page.tsx), with when it was made. */
+export type BriefSeed = { data: BriefData; at: number } | null;
+
+/**
+ * With `seed`, the brief is in the page's first HTML; the browser skips its first request while that is
+ * fresh. Without it (the server could not make it in time), the brief is fetched from the browser as
+ * before. Either way it refreshes every ten minutes.
+ */
+export function HomeBrief({ seed }: { seed?: BriefSeed }) {
+  return <Brief initial={seed?.data} seededAt={seed?.at} />;
+}
+
+function Frame({ label = "", children }: { label?: string; children?: React.ReactNode }) {
   return (
     <section className="panel overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-3 py-2">
-        <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted"><Newspaper className="h-3.5 w-3.5 text-accent" /> Today&apos;s brief{b ? ` · ${b.deskLabel}` : ""}</h2>
+        <h2 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted"><Newspaper className="h-3.5 w-3.5 text-accent" /> Today&apos;s brief{label ? ` · ${label}` : ""}</h2>
         <Link href="/app/news" className="text-[11px] text-muted hover:text-fg">Newsroom →</Link>
       </div>
-      {!b ? (
-        <div className="space-y-2 p-3">{[0, 1, 2].map((i) => <div key={i} className="shimmer h-4 rounded" style={{ width: `${88 - i * 14}%` }} />)}</div>
-      ) : !b.items.length ? (
+      {children ?? <div className="space-y-2 p-3">{[0, 1, 2].map((i) => <div key={i} className="shimmer h-4 rounded" style={{ width: `${88 - i * 14}%` }} />)}</div>}
+    </section>
+  );
+}
+
+function Brief({ initial, seededAt }: { initial?: BriefData; seededAt?: number }) {
+  const { data, error } = useApi<BriefData>("/api/news/brief", 10 * 60_000, initial, seededAt);
+  if (error && !data) return null;
+  const b = data?.brief;
+  if (!b) return <Frame />;
+  return (
+    <Frame label={b.deskLabel}>
+      {!b.items.length ? (
         <p className="p-3 text-[12px] text-muted">The first brief for your desk is written once its stories are in, within the hour.</p>
       ) : (
         <div className="p-3">
@@ -42,6 +61,6 @@ export function HomeBrief() {
           )}
         </div>
       )}
-    </section>
+    </Frame>
   );
 }

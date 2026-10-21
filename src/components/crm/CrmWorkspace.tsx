@@ -1,5 +1,6 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
@@ -8,13 +9,7 @@ import {
   CATEGORY_LABEL, LOST_STAGES, STAGE_BLURB, STAGE_LABEL, isStage, stagesFor,
   type Category, type Mode, type Stage,
 } from "@/lib/crm/model";
-import { AgentSettings } from "./AgentSettings";
-import { CampaignsPanel } from "./CampaignsPanel";
-import { ContactsPanel } from "./ContactsPanel";
-import { InsightsPanel } from "./InsightsPanel";
 import { MailboxBar, type MailboxInfo } from "./MailboxBar";
-import { MeetingsPanel } from "./MeetingsPanel";
-import { NurturePanel } from "./NurturePanel";
 import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
@@ -28,6 +23,15 @@ import { AddDeal } from "./AddDeal";
 
 /** Pages of 500 deals the pipeline loads at most (10,000 deals). */
 const MAX_DEAL_PAGES = 20;
+
+// The review queue (the default tab) ships with the page; every other tab loads when it is opened.
+const PanelLoading = () => <div className="shimmer h-48 ctl" />;
+const AgentSettings = lazyPanel(() => import("./AgentSettings").then((m) => m.AgentSettings), PanelLoading);
+const CampaignsPanel = lazyPanel(() => import("./CampaignsPanel").then((m) => m.CampaignsPanel), PanelLoading);
+const ContactsPanel = lazyPanel(() => import("./ContactsPanel").then((m) => m.ContactsPanel), PanelLoading);
+const InsightsPanel = lazyPanel(() => import("./InsightsPanel").then((m) => m.InsightsPanel), PanelLoading);
+const MeetingsPanel = lazyPanel(() => import("./MeetingsPanel").then((m) => m.MeetingsPanel), PanelLoading);
+const NurturePanel = lazyPanel(() => import("./NurturePanel").then((m) => m.NurturePanel), PanelLoading);
 
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
@@ -93,6 +97,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null; initialMeeting?: number | null;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
+  useIdlePreload([ContactsPanel, MeetingsPanel, InsightsPanel, NurturePanel, CampaignsPanel, AgentSettings]);
   const tabRow = useTabInView<HTMLDivElement>(tab);
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/crm", "tab", tab, "drafts");

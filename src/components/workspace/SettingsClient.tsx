@@ -1,5 +1,6 @@
 "use client";
 
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
@@ -7,16 +8,18 @@ import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { AiUsage } from "@/components/ai/AiUsage";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { catalogFor } from "@/lib/workflows/catalog";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
-import { NewsSettings } from "@/components/news/NewsSettings";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
-import { EdgeUpgrades } from "@/components/edge/Upgrades";
-import { CalendarSettings } from "@/components/calendar/CalendarSettings";
-import { PlanSettings } from "@/components/billing/PlanSettings";
-import { DesktopSettings } from "@/components/desktop/DesktopConnect";
+
+// Each tab's panel loads when the tab is opened; the page itself carries only the default (style) tab.
+const TabLoading = () => <div className="mt-5 shimmer h-48 ctl" />;
+const NewsSettings = lazyPanel(() => import("@/components/news/NewsSettings").then((m) => m.NewsSettings), TabLoading);
+const CalendarSettings = lazyPanel(() => import("@/components/calendar/CalendarSettings").then((m) => m.CalendarSettings), TabLoading);
+const PlanSettings = lazyPanel(() => import("@/components/billing/PlanSettings").then((m) => m.PlanSettings), TabLoading);
+const DesktopSettings = lazyPanel(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), TabLoading);
+const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -32,13 +35,13 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
   const [routing, setRouting] = useState(prefs.routing !== false);
-  const { profile, config } = useWorkspace();
+  const { profile, config, tools } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
-  const tools = catalogFor(profile);
 
   return (
     <div className="h-full overflow-auto">

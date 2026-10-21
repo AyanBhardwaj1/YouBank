@@ -2,15 +2,14 @@
 
 import { FUNCTIONS, FUNCTION_CODES, functionsForProfile, type FunctionGroup } from "@/lib/functions";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
-import { catalogFor } from "@/lib/workflows/catalog";
 
 const GROUPS: [FunctionGroup, string][] = [["company", "Company"], ["edge", "Edge (beta)"], ["market", "Markets and economy"], ["crypto", "Crypto"], ["quant", "Quant"], ["workspace", "Workspace"]];
 
 /** Keyboard and command reference, opened with "?" in the terminal. */
 export function HelpOverlay({ onClose }: { onClose: () => void }) {
-  const { profile, config, edge } = useWorkspace();
+  const { profile, config, edge, tools: allTools } = useWorkspace();
   const fns = functionsForProfile(profile);
-  const tools = catalogFor(profile).slice(0, 8);
+  const tools = allTools.slice(0, 8);
   const keys: [string, string][] = [
     ["/", "focus the command bar"], ["Cmd or Ctrl + K", "focus and select the command bar"], ["Tab", "complete the highlighted suggestion"],
     ["Enter", "run the command"], ["↑ ↓", "move through suggestions"], ["Esc", "close a menu, restore a maximized panel"], ["?", "this reference"],

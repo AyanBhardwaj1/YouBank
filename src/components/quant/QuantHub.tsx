@@ -5,19 +5,24 @@
  * sources and disclosures. Tabs: Overview, Integrity (BTX), Factors (FACT), Risk, Sizing (KELLY), Costs (TCA),
  * Insiders (INSC), Drills (DRILL) and Signals. On phones the tabs scroll and every panel stacks.
  */
+import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { QuantSignal } from "@/lib/quant/contracts";
 import { DISCLOSURES } from "@/lib/quant/words";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
-import { CostsTab } from "./CostsTab";
-import { DrillsTab } from "./DrillsTab";
-import { InsidersTab } from "./InsidersTab";
-import { IntegrityTab } from "./IntegrityTab";
-import { FactorsTab, RiskTab } from "./PortfolioTabs";
-import { SizingTab } from "./SizingTab";
 import { Button, Card, Disclosures, ErrorNote, Field, inputCls, num, pct, QuantConsent, Stat, useQuantCall, useRun } from "./ui";
 import { useTabInView } from "@/components/ui/useTabInView";
+
+// The overview ships with the page; each tool tab loads when it is opened.
+const TabLoading = () => <div className="shimmer h-48 ctl" />;
+const CostsTab = lazyPanel(() => import("./CostsTab").then((m) => m.CostsTab), TabLoading);
+const DrillsTab = lazyPanel(() => import("./DrillsTab").then((m) => m.DrillsTab), TabLoading);
+const InsidersTab = lazyPanel(() => import("./InsidersTab").then((m) => m.InsidersTab), TabLoading);
+const IntegrityTab = lazyPanel(() => import("./IntegrityTab").then((m) => m.IntegrityTab), TabLoading);
+const SizingTab = lazyPanel(() => import("./SizingTab").then((m) => m.SizingTab), TabLoading);
+const FactorsTab = lazyPanel(() => import("./PortfolioTabs").then((m) => m.FactorsTab), TabLoading);
+const RiskTab = lazyPanel(() => import("./PortfolioTabs").then((m) => m.RiskTab), TabLoading);
 
 export type QuantTab = "overview" | "integrity" | "factors" | "risk" | "sizing" | "costs" | "insiders" | "drills" | "signals";
 export const QUANT_TABS: { id: QuantTab; label: string; icon: string; code?: string }[] = [
@@ -37,6 +42,7 @@ export function QuantHub({ initialTab }: { initialTab?: string }) {
 }
 
 function HubInner({ initialTab }: { initialTab?: string }) {
+  useIdlePreload([IntegrityTab, FactorsTab, SizingTab, CostsTab, InsidersTab, DrillsTab]);
   const [tab, setTab] = useState<QuantTab>(QUANT_TABS.find((t) => t.id === initialTab)?.id ?? "overview");
   const tabRow = useTabInView<HTMLElement>(tab);
   useSubNav("/app/quant", (v) => { if (QUANT_TABS.some((t) => t.id === v)) setTab(v as QuantTab); });

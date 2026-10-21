@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import type { Command } from "@/lib/functions";
-import { TOOL_CATALOG, catalogFor, metaById } from "@/lib/workflows/catalog";
+import { TOOL_CATALOG, metaById } from "@/lib/workflows/catalog";
 import { useTool } from "@/components/workflows/useTool";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Icon } from "@/components/ui/Icon";
@@ -20,12 +20,12 @@ export function findToolId(keywords: string[]): string | null {
 
 /** Compact gallery inside a terminal panel; picking a tool replaces it with a TOOL panel for the active ticker. */
 export function ToolsPanel({ ticker, onRun }: { ticker: string; onRun: (c: Command) => void }) {
-  const { profile } = useWorkspace();
+  const { tools: mine } = useWorkspace();
   const [q, setQ] = useState("");
   const tools = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return catalogFor(profile).filter((t) => !s || [t.title, t.tagline, t.category, ...(t.tags ?? [])].join(" ").toLowerCase().includes(s));
-  }, [profile, q]);
+    return mine.filter((t) => !s || [t.title, t.tagline, t.category, ...(t.tags ?? [])].join(" ").toLowerCase().includes(s));
+  }, [mine, q]);
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-[11px]">
