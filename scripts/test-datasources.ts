@@ -773,6 +773,18 @@ async function testFredNotBrowserCached() {
   } finally { delete process.env.YOUBANK_DEV_USER; }
 }
 
+/** Review fix: NIPA table 2.8.4's addenda carry both core PCE and market-based core PCE; ECO's core PCE reads the first only, one value a month. */
+async function testBeaCorePce() {
+  const { parseBea } = await import("@/lib/market/macro-sources");
+  const rows = months(14).flatMap((m, i) => [
+    { LineNumber: "25", LineDescription: "PCE excluding food and energy", TimePeriod: `${m.year}${m.period}`, DataValue: String(125 - i * 0.2), UNIT_MULT: "0" },
+    { LineNumber: "29", LineDescription: "Market-based PCE excluding food and energy", TimePeriod: `${m.year}${m.period}`, DataValue: String(120 - i * 0.2), UNIT_MULT: "0" },
+  ]);
+  const obs = parseBea({ BEAAPI: { Results: { Data: rows } } }, "PCEPILFE");
+  const dates = new Set(obs.map((o) => o.date));
+  check("C1(review) BEA core PCE: one observation a month from the core PCE line, never the market-based one", obs.length === 14 && dates.size === 14 && obs.every((o) => o.value >= 122), { n: obs.length, distinct: dates.size, sample: obs.slice(-2) });
+}
+
 /* ---------------- C5 field-level fallthrough ---------------- */
 
 async function testMerge() {
@@ -837,6 +849,7 @@ async function main() {
   if (localDb()) await section("C3 review: pasted-key checks are capped per person per day and per address", testKeyCheckLimits);
   if (localDb()) await section("C3 review: key storage under concurrency, and a purge during a fetch", testStoreRaces);
   if (localDb()) await section("C1 review: answers that used FRED are not cached by the browser", testFredNotBrowserCached);
+  await section("C1 review: BEA's core PCE line", testBeaCorePce);
   await section("C5 field-level fallthrough and badges", testMerge);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);

@@ -37,7 +37,8 @@ const BEA_URL = "https://apps.bea.gov/api/data/";
 /** FRED id -> BEA NIPA table, frequency, the line it reads (by description, never position) and a scale to FRED's units. */
 export const BEA_SERIES: Record<string, { table: string; freq: "Q" | "M"; line: RegExp; toUnits: (v: number, mult: number) => number }> = {
   GDPC1: { table: "T10106", freq: "Q", line: /^Gross domestic product$/i, toUnits: (v, mult) => (v * 10 ** mult) / 1e9 },
-  PCEPILFE: { table: "T20804", freq: "M", line: /excluding food and energy/i, toUnits: (v) => v },
+  // Anchored: the table's addenda also carry "Market-based PCE excluding food and energy".
+  PCEPILFE: { table: "T20804", freq: "M", line: /^PCE excluding food and energy$/i, toUnits: (v) => v },
 };
 export const beaCovers = (series: string) => Object.hasOwn(BEA_SERIES, series);
 
@@ -61,10 +62,14 @@ export function beaPeriod(p: string): string | null {
 export function parseBea(raw: unknown, series: string): Obs[] {
   const spec = BEA_SERIES[series];
   const rows = parseOrThrow(BeaAnswer, raw, "BEA", `NIPA ${spec.table}`).BEAAPI.Results.Data;
-  return rows.filter((r) => spec.line.test(r.LineDescription.trim())).flatMap((r) => {
+  // One observation per period: the first matching line's (a table that repeats a line never doubles a month).
+  const byDate = new Map<string, number>();
+  for (const r of rows) {
+    if (!spec.line.test(r.LineDescription.trim())) continue;
     const date = beaPeriod(r.TimePeriod), v = Number(r.DataValue.replace(/,/g, ""));
-    return date && Number.isFinite(v) ? [{ date, value: spec.toUnits(v, Number(r.UNIT_MULT ?? 0) || 0) }] : [];
-  }).sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (date && Number.isFinite(v) && !byDate.has(date)) byDate.set(date, spec.toUnits(v, Number(r.UNIT_MULT ?? 0) || 0));
+  }
+  return [...byDate].map(([date, value]) => ({ date, value })).sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 export async function beaSeries(series: string): Promise<Obs[]> {
