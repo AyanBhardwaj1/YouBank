@@ -61,7 +61,7 @@ export function GcScreen({ onRun }: Props) {
             <Why items={[
               ["Recession probability", "Estrella and Mishkin's probit as the New York Fed runs it: P = N(-0.5333 - 0.6330 x spread), with the spread the monthly average of the 10-year minus the 3-month Treasury in percentage points."],
               ["Nelson-Siegel", "y(τ) = β0 + β1·(1 - e^(-λτ))/(λτ) + β2·[(1 - e^(-λτ))/(λτ) - e^(-λτ)], with Diebold and Li's λ fixed and the three betas fitted by least squares to today's par yields."],
-            ]} sources={["U.S. Treasury daily par yield curve (public domain)"]} />
+            ]} sources={[d.source?.attribution || "U.S. Treasury daily par yield curve (public domain)"]} />
           </div>
         );
       }}
@@ -105,7 +105,7 @@ export function EcoScreen({ onRun }: Props) {
               <Section key={g} title={g}>
                 <div className="grid grid-cols-2 gap-2 @2xl:grid-cols-3 @4xl:grid-cols-4">
                   {d.series.filter((s) => s.group === g).map((s) => (
-                    <div key={s.id} className="flex min-w-0 flex-col rounded-md border border-line bg-elevated/50 px-2.5 py-2" title={`${s.id} · source: ${s.source}`}>
+                    <div key={s.id} className="flex min-w-0 flex-col rounded-md border border-line bg-elevated/50 px-2.5 py-2" title={`${s.id} · ${s.answeredBy?.attribution ?? `source: ${s.source}`}`}>
                       <div className="truncate text-[10px] uppercase tracking-wider text-muted">{s.label}</div>
                       <div className="mt-1 flex items-end justify-between gap-2">
                         <div>
@@ -115,7 +115,7 @@ export function EcoScreen({ onRun }: Props) {
                         <Sparkline values={s.spark} width={70} height={24} />
                       </div>
                       {s.percentile10y !== null && <div className="mt-1.5 h-1 rounded-full bg-elevated"><div className="h-full rounded-full bg-chart-1/70" style={{ width: `${Math.max(3, s.percentile10y * 100)}%` }} title={`${Math.round(s.percentile10y * 100)}th percentile of the last ten years`} /></div>}
-                      <div className="mt-1 text-[9.5px] text-faint">{s.source} via FRED</div>
+                      <div className="mt-1 text-[9.5px] text-faint">{!s.answeredBy ? `${s.source} · no source answered` : s.answeredBy.id === "fred" ? `${s.source} via FRED` : s.answeredBy.label}</div>
                     </div>
                   ))}
                 </div>
@@ -124,8 +124,8 @@ export function EcoScreen({ onRun }: Props) {
             <Why items={[
               ["Outlooks", "Damped-trend exponential smoothing on the level of each BLS series (CPI, core CPI, unemployment, payrolls, earnings), transformed to the displayed change, with conformal 80% intervals from a rolling backtest."],
               ["Sahm rule", "Computed from the BLS unemployment rate: the three-month average minus its low over the prior twelve months."],
-              ["Data and licences", "Forecasts use BLS and Treasury data, which are public domain. The tiles are FRED series, shown with attribution; under FRED's terms they are not sent to the AI or used to fit models."],
-            ]} sources={["Bureau of Labor Statistics (public domain)", "U.S. Treasury (public domain)", "FRED, Federal Reserve Bank of St. Louis (display)"]} />
+              ["Data and licences", "Each tile comes from its original publisher where YouBank can reach it (BLS, BEA, the EIA, the Treasury, all public domain), and from FRED only otherwise. FRED's copies are shown with attribution, never cached, never sent to the AI and never used to fit models. Forecasts use BLS and Treasury data."],
+            ]} sources={[...new Set(d.series.map((s) => s.answeredBy?.attribution).filter((a): a is string => !!a))]} />
           </div>
         );
       }}

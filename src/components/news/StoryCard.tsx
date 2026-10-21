@@ -30,6 +30,8 @@ export function Kicker({ s, now }: { s: Story; now: number }) {
       <span className="text-faint">·</span>
       <span className="truncate font-medium normal-case tracking-normal text-muted">{sourceLine(s)}</span>
       {s.sources.some((x) => x.via === "research") && <span className="rounded-full bg-chart-emphasis/15 px-1.5 text-[9.5px] normal-case tracking-normal text-chart-emphasis" title="Found by AI research, checked against its page">research</span>}
+      {/* GDELT's terms ask for a citation and a link wherever its data is used (market/sources-meta). */}
+      {s.sources.some((x) => x.via === "gdelt") && <a href="https://www.gdeltproject.org/" target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()} className="text-[9.5px] normal-case tracking-normal text-faint hover:text-fg" title="Source: The GDELT Project">via GDELT</a>}
     </div>
   );
 }
