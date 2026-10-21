@@ -3,8 +3,11 @@
  * keyless v1 API allows 25 requests a day, so every series is fetched in one request and cached for
  * twelve hours. These are the series YouBank forecasts: primary-source data carries no licence limits.
  */
-import { cacheJson } from "@/lib/cache";
+import { cacheEntry } from "@/lib/cache";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
+import { budget, MACRO_STALE_IF_ERROR_MS } from "./budgets";
+import { noteFreshness } from "./provenance";
+import { callSource } from "./source";
 
 export const BLS_SERIES: Record<string, { label: string; unit: string; transform: "level" | "yoy" | "diff" }> = {
   CUUR0000SA0: { label: "CPI inflation", unit: "% y/y", transform: "yoy" },
@@ -17,14 +20,16 @@ export const BLS_SERIES: Record<string, { label: string; unit: string; transform
 export type BlsObs = { date: string; value: number };
 
 export async function blsSeries(): Promise<Record<string, BlsObs[]>> {
-  return cacheJson<Record<string, BlsObs[]>>("bls:core", 12 * 3_600_000, async () => {
+  const e = await cacheEntry<Record<string, BlsObs[]>>("bls:core", 12 * 3_600_000, async () => {
     const end = new Date().getUTCFullYear();
-    // A read-only query, so it may be repeated, but only on a server failure: BLS's keyless quota is 25 a day.
-    const res = await fetchRetry("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
-      method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", timeoutMs: 15_000, idempotent: true, retryOn: retryServerErrors,
-      body: JSON.stringify({ seriesid: Object.keys(BLS_SERIES), startyear: String(end - 9), endyear: String(end) }),
-    });
-    const json = (await res.json()) as { status: string; Results?: { series: { seriesID: string; data: { year: string; period: string; value: string }[] }[] } };
+    const json = await callSource("bls", "timeseries", async () => {
+      // A read-only query, so it may be repeated, but only on a server failure: BLS's keyless quota is 25 a day.
+      const res = await fetchRetry("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
+        method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", timeoutMs: budget().macroTimeoutMs, idempotent: true, retryOn: retryServerErrors,
+        body: JSON.stringify({ seriesid: Object.keys(BLS_SERIES), startyear: String(end - 9), endyear: String(end) }),
+      });
+      return (await res.json()) as { status: string; Results?: { series: { seriesID: string; data: { year: string; period: string; value: string }[] }[] } };
+    }, { label: "BLS" });
     if (json.status !== "REQUEST_SUCCEEDED" || !json.Results) throw new Error("BLS data unavailable");
     const out: Record<string, BlsObs[]> = {};
     for (const s of json.Results.series) {
@@ -33,5 +38,7 @@ export async function blsSeries(): Promise<Record<string, BlsObs[]>> {
         .filter((o) => Number.isFinite(o.value)).sort((a, b) => (a.date < b.date ? -1 : 1));
     }
     return out;
-  });
+  }, { staleMs: 12 * 3_600_000, staleIfErrorMs: MACRO_STALE_IF_ERROR_MS });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  return e.value;
 }

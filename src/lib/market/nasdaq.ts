@@ -8,8 +8,11 @@
  * a backup for the free beta, switched off everywhere with MARKET_BACKUP=off; a paid plan (FMP Starter
  * and its display licence) is the answer before charging users.
  */
-import { cacheGet, cacheSet } from "@/lib/cache";
+import { cacheEntry, cacheGet, cacheSet } from "@/lib/cache";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
+import { budget, MARKET_STALE_IF_ERROR_MS } from "./budgets";
+import { noteFreshness } from "./provenance";
+import { callSource } from "./source";
 
 export const BASE = "https://api.nasdaq.com/api";
 /** The headers a browser on nasdaq.com sends; without them the API refuses or hangs. */
@@ -25,20 +28,29 @@ const MIN = 60_000, HOUR = 60 * MIN;
 /** Backups (Nasdaq, AI research) are on unless MARKET_BACKUP=off. */
 export const backupEnabled = () => (process.env.MARKET_BACKUP ?? "on").trim().toLowerCase() !== "off";
 
-/** One GET, cached: answers for `ttlMs`, failures for five minutes (so a hiccup does not stick for hours). */
+/**
+ * One GET, cached: answers for `ttlMs` (then served while one refresh runs, and for a day when Nasdaq
+ * fails, flagged stale), a well-formed "nothing here" for five minutes. A failure (network, timeout, 5xx,
+ * a blocked request) is not cached across instances: it is remembered for half a minute in this process
+ * (cache.ts), counted for the breaker, and read here as null, so one instance's hiccup does not remove
+ * the backup everywhere.
+ */
 async function get<T>(path: string, ttlMs: number): Promise<T | null> {
   if (!backupEnabled()) return null;
-  const key = `nasdaq:${path}`;
-  const hit = await cacheGet(key);
-  if (hit) return JSON.parse(hit) as T | null;
-  let data: T | null = null;
+  const op = path.split("?")[0].replace(/\/(quote|company|analyst)\/[^/]+\//, "/$1/X/");
   try {
-    // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try.
-    const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: 12_000, retryOn: retryServerErrors });
-    if (res.ok) data = ((await res.json()) as { data?: T | null })?.data ?? null;
-  } catch { /* network, timeout or a blocked request */ }
-  await cacheSet(key, JSON.stringify(data), data ? ttlMs : 5 * MIN);
-  return data;
+    const e = await cacheEntry<T | null>(`nasdaq:${path}`, ttlMs, () => callSource("nasdaq", op, async () => {
+      const b = budget();
+      // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try in background jobs.
+      const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: b.nasdaqTimeoutMs, retries: b.nasdaqRetries, retryOn: retryServerErrors });
+      if (!res.ok) throw Object.assign(new Error(`Nasdaq ${res.status}`), { status: res.status });
+      return ((await res.json()) as { data?: T | null })?.data ?? null;
+    }, { label: "Nasdaq" }), { staleMs: ttlMs, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS, ttlFor: (v) => (v === null ? 5 * MIN : undefined) });
+    if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+    return e.value;
+  } catch {
+    return null;
+  }
 }
 
 /* ---------------- Parsing ---------------- */
@@ -71,17 +83,18 @@ export type AssetClass = "stocks" | "etf";
 type HistRow = { date: string; close: string; volume: string; open: string; high: string; low: string };
 export type NasdaqBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
-/** Which asset class a symbol answers to (stocks first, then ETFs), remembered for a day. */
+/** Which asset class a symbol answers to (stocks, else ETFs; both asked at once), remembered for a day. */
 async function assetClassOf(symbol: string): Promise<AssetClass | null> {
   const key = `nasdaq:class:${symbol}`;
   const hit = await cacheGet(key);
   if (hit) return hit === "none" ? null : (hit as AssetClass);
-  for (const c of ["stocks", "etf"] as const) {
+  const answers = await Promise.all((["stocks", "etf"] as const).map(async (c) => {
     const info = await get<{ symbol?: string; primaryData?: { lastSalePrice?: string } }>(`/quote/${encodeURIComponent(symbol)}/info?assetclass=${c}`, 15 * MIN);
-    if (info?.primaryData && num(info.primaryData.lastSalePrice) !== null) { await cacheSet(key, c, 24 * HOUR); return c; }
-  }
-  await cacheSet(key, "none", 30 * MIN);
-  return null;
+    return info?.primaryData && num(info.primaryData.lastSalePrice) !== null ? c : null;
+  }));
+  const c = answers.find(Boolean) ?? null;
+  await cacheSet(key, c ?? "none", c ? 24 * HOUR : 30 * MIN);
+  return c;
 }
 
 /** Daily bars, oldest first, from `from` (ISO) to today. */

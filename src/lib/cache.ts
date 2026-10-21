@@ -61,7 +61,7 @@ const safe = (key: string) => key.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 180
  * query for all of them. Expiry is checked in the query, so an expired value (up to MAX_DB_BYTES) is
  * never transferred.
  */
-async function readRaw(keys: string[]): Promise<{ key: string; value: string; exp: number } | null> {
+async function readRaw(keys: string[], local = false): Promise<{ key: string; value: string; exp: number } | null> {
   const now = Date.now();
   for (const key of keys) { const m = mem.get(key); if (m && m.exp > now) return { key, value: m.value, exp: m.exp }; }
   if (DISK_OK) {
@@ -72,7 +72,7 @@ async function readRaw(keys: string[]): Promise<{ key: string; value: string; ex
       } catch { /* miss */ }
     }
   }
-  if (db) {
+  if (db && !local) {
     try {
       const rows = await db.select({ key: schema.kvCache.key, value: schema.kvCache.value, expiresAt: schema.kvCache.expiresAt }).from(schema.kvCache)
         .where(and(inArray(schema.kvCache.key, keys), gt(schema.kvCache.expiresAt, new Date())));
@@ -109,13 +109,13 @@ export async function cacheExpiry(key: string): Promise<number | null> {
   return null;
 }
 
-export async function cacheSet(key: string, value: string, ttlMs: number): Promise<void> {
+export async function cacheSet(key: string, value: string, ttlMs: number, local = false): Promise<void> {
   const exp = Date.now() + ttlMs;
   remember(key, { exp, value });
   if (DISK_OK) {
     try { await mkdir(DISK_DIR, { recursive: true }); await writeFile(path.join(DISK_DIR, safe(key)), JSON.stringify({ exp, value })); } catch { /* ignore */ }
   }
-  if (db && value.length <= MAX_DB_BYTES) {
+  if (db && !local && value.length <= MAX_DB_BYTES) {
     try {
       await db.insert(schema.kvCache).values({ key, value, expiresAt: new Date(exp) }).onConflictDoUpdate({ target: schema.kvCache.key, set: { value, expiresAt: new Date(exp) } });
       // Opportunistic cleanup of expired rows, a batch at a time (indexed on expires_at).
@@ -137,6 +137,10 @@ export type CacheJsonOptions = {
   staleMs?: number;
   /** Stale-if-error: how long past its fresh lifetime the last value answers when a refresh fails. Default 0 (or staleMs, if longer). */
   staleIfErrorMs?: number;
+  /** Keep it in this instance only (memory, and disk in development), never in Postgres: large documents. */
+  local?: boolean;
+  /** A shorter fresh lifetime for some answers (a well-formed "nothing here" kept five minutes instead of hours). */
+  ttlFor?: (value: unknown) => number | undefined;
 };
 
 /** A cached value and its ages (epoch ms). `stale`: served past freshUntil (stale-while-revalidate or stale-if-error). */
@@ -162,8 +166,8 @@ function decode(raw: string, exp: number): Stored | null {
 }
 
 /** The live entry for `key`: the aged format first, then a value the older format left under the bare key. */
-async function readEntry(key: string, ttlMs: number): Promise<Stored | null> {
-  const r = await readRaw([ENTRY + key, key]);
+async function readEntry(key: string, ttlMs: number, local = false): Promise<Stored | null> {
+  const r = await readRaw([ENTRY + key, key], local);
   if (!r) return null;
   if (r.key === key) return { fetchedAt: Math.max(0, r.exp - ttlMs), freshUntil: r.exp, staleUntil: r.exp, json: r.value };
   return decode(r.value, r.exp);
@@ -172,10 +176,10 @@ async function readEntry(key: string, ttlMs: number): Promise<Stored | null> {
 const toEntry = <T>(s: Stored, stale: boolean): CacheEntry<T> => ({ value: JSON.parse(s.json) as T, fetchedAt: s.fetchedAt, freshUntil: s.freshUntil, staleUntil: s.staleUntil, stale });
 
 /** Wait for another instance's load to land in the shared cache (polling it), up to `waitMs`: a value newer than `after`. */
-async function awaitOtherFill(key: string, ttlMs: number, waitMs: number, newerThan: number): Promise<Stored | null> {
+async function awaitOtherFill(key: string, ttlMs: number, waitMs: number, newerThan: number, local = false): Promise<Stored | null> {
   for (let waited = 0; waited < waitMs; waited += 200) {
     await sleep(200);
-    const hit = await readEntry(key, ttlMs);
+    const hit = await readEntry(key, ttlMs, local);
     if (hit && hit.fetchedAt > newerThan && Date.now() < hit.freshUntil) return hit;
   }
   return null;
@@ -197,20 +201,21 @@ function fill<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: FillO
   const p = (async (): Promise<CacheEntry<T>> => {
     let release: Release | null = null;
     try {
-      if (opts.shared && db) {
+      if (opts.shared && !opts.local && db) {
         release = await lease(`fill:${key}`, 20_000);
         if (!release) {
           // Another instance is loading. A background refresh leaves it to them; a reader waits a moment.
           if (opts.background) throw Object.assign(new Error("refresh in progress elsewhere"), { benign: true });
-          const other = await awaitOtherFill(key, ttlMs, opts.waitMs ?? 2_000, opts.staleSince ?? 0);
+          const other = await awaitOtherFill(key, ttlMs, opts.waitMs ?? 2_000, opts.staleSince ?? 0, opts.local);
           if (other) return toEntry<T>(other, false);
         }
       }
       const value = await load();
       failed.delete(key);
-      const fetchedAt = Date.now(), freshUntil = fetchedAt + ttlMs;
+      const ttl = opts.ttlFor?.(value) ?? ttlMs;
+      const fetchedAt = Date.now(), freshUntil = fetchedAt + ttl;
       const json = JSON.stringify(value);
-      await cacheSet(ENTRY + key, encode(fetchedAt, freshUntil, json), ttlMs + windowMs);
+      await cacheSet(ENTRY + key, encode(fetchedAt, freshUntil, json), ttl + windowMs, opts.local);
       return { value, fetchedAt, freshUntil, staleUntil: freshUntil + windowMs, stale: false };
     } catch (e) {
       if (!(e as { benign?: boolean }).benign) {
@@ -233,7 +238,7 @@ function fill<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: FillO
  * value young enough to stand in (and, for half a minute after a failure, without asking again).
  */
 export async function cacheEntry<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: CacheJsonOptions = {}): Promise<CacheEntry<T>> {
-  const hit = await readEntry(key, ttlMs);
+  const hit = await readEntry(key, ttlMs, opts.local);
   const now = Date.now();
   if (hit && now < hit.freshUntil) return toEntry<T>(hit, false);
   const f = failed.get(key);

@@ -18,10 +18,11 @@ import { history } from "@/lib/market/data";
 import { dividends as fmpDividends, earnings as fmpEarnings, estimates, grades, MarketDataError, priceTarget, ratingSnapshot, type Bar } from "@/lib/market/fmp";
 import { backupEnabled, nasdaqDividends, nasdaqEarningsDate, nasdaqEarningsSurprise, nasdaqEpsForecast, nasdaqRatings, nasdaqTargets } from "@/lib/market/nasdaq";
 import { noteSource } from "@/lib/market/provenance";
+import { isSourceFailure } from "@/lib/market/source-error";
 import { factNum, factStr, research, type Field, type Researched } from "@/lib/market/research";
 
-/** FMP's answer, or null when FMP is out (a plan limit), so the caller can fall back. Other errors still throw. */
-const orNull = <T>(p: Promise<T>) => p.catch((e) => { if (e instanceof MarketDataError) return null; throw e; });
+/** FMP's answer, or null when FMP is out (a plan limit, a timeout, a network failure, an open breaker, an unreadable answer), so the caller can fall back. Other errors still throw. */
+const orNull = <T>(p: Promise<T>) => p.catch((e) => { if (e instanceof MarketDataError || isSourceFailure(e) || e instanceof SyntaxError) return null; throw e; });
 const subjectOf = async (ticker: string) => { const c = await getCompanyData(ticker).catch(() => null); return { company: c, subject: c ? `${c.name} (${c.exchange ? `${c.exchange}: ` : ""}${c.ticker})` : ticker.toUpperCase() }; };
 
 /* ---------------- Earnings ---------------- */

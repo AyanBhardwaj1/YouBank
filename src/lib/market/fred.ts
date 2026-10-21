@@ -8,18 +8,25 @@
  * below keeps to public-domain originals (BLS, BEA, the Fed, the Department of Labor, the EIA) plus
  * Moody's yield spread, which FRED allows with a citation. Forecasts use BLS data directly.
  */
-import { cacheJson } from "@/lib/cache";
+import { cacheEntry } from "@/lib/cache";
 import { fetchRetry } from "@/lib/net";
+import { budget, MACRO_STALE_IF_ERROR_MS } from "./budgets";
+import { noteFreshness } from "./provenance";
+import { callSource } from "./source";
 
 export type Obs = { date: string; value: number };
 
 export async function fredSeries(id: string, start?: string): Promise<Obs[]> {
-  const rows = await cacheJson<Obs[]>(`fred:${id}`, 12 * 3_600_000, async () => {
-    const res = await fetchRetry(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" }, timeoutMs: 15_000 });
-    if (!res.ok) throw new Error(`FRED ${res.status} for ${id}`);
-    const text = await res.text();
+  const e = await cacheEntry<Obs[]>(`fred:${id}`, 12 * 3_600_000, async () => {
+    const text = await callSource("fred", "series", async () => {
+      const res = await fetchRetry(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" }, timeoutMs: budget().macroTimeoutMs });
+      if (!res.ok) throw Object.assign(new Error(`FRED ${res.status} for ${id}`), { status: res.status });
+      return res.text();
+    }, { label: "FRED" });
     return text.split("\n").slice(1).map((l) => l.split(",")).filter((p) => p.length >= 2 && p[1] !== "." && p[1] !== "").map((p) => ({ date: p[0], value: Number(p[1]) })).filter((o) => Number.isFinite(o.value));
-  });
+  }, { staleMs: 12 * 3_600_000, staleIfErrorMs: MACRO_STALE_IF_ERROR_MS });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  const rows = e.value;
   return start ? rows.filter((r) => r.date >= start) : rows;
 }
 

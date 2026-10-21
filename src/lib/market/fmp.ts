@@ -4,9 +4,13 @@
  * Treasury rates, movers, sectors, M&A and insider feeds. Every call is cached (memory, then Postgres),
  * with lifetimes matched to how often the data changes.
  */
-import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
+import { cacheEntry, cacheGet, cacheSet, type CacheEntry } from "@/lib/cache";
 import { withinRate } from "@/lib/locks";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
+import { budget, MARKET_STALE_IF_ERROR_MS } from "./budgets";
+import { noteFreshness } from "./provenance";
+import { callSource, classifyAs } from "./source";
+import { SourceError } from "./source-error";
 
 const BASE = "https://financialmodelingprep.com/stable";
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -33,7 +37,8 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function fmpSlot(): Promise<void> {
   const perMinute = fmpPerMinute(), perSecond = Math.max(2, Math.ceil(perMinute / 12));
-  for (let i = 0; i < 10; i++) {
+  // Interactive requests give up sooner (budgets.ts): the next source answers instead.
+  for (let i = 0, tries = budget().fmpSlotTries; i < tries; i++) {
     if (await withinRate("fmp:second", perSecond, 1_000)) {
       if (await withinRate("fmp:minute", perMinute, 60_000)) return;
       break;
@@ -43,21 +48,53 @@ export async function fmpSlot(): Promise<void> {
   throw Object.assign(new MarketDataError(FMP_BUSY), { status: 503 });
 }
 
-async function get<T>(path: string, params: Record<string, string | number | undefined>, ttlMs: number): Promise<T> {
+/**
+ * How FMP failed, for the fallback and the breaker (source-error.ts): its "Limit Reach" message and our own
+ * budget being spent are rate limits; a plan that does not include an endpoint or symbol is "empty" (not
+ * an outage); a status is kept from the cause.
+ */
+function classify(e: unknown): SourceError | undefined {
+  if (!(e instanceof MarketDataError)) return undefined;
+  if (e.message === LIMIT_MESSAGE || e.message === FMP_BUSY) return new SourceError("fmp", "rate-limit", e.message, 429, { cause: e });
+  const status = (e as { upstreamStatus?: number }).upstreamStatus;
+  if (status !== undefined && status >= 500) return new SourceError("fmp", "http", e.message, status, { cause: e });
+  return new SourceError("fmp", "empty", e.message, status, { cause: e });
+}
+
+/** One upstream request (no cache): the daily-limit flag, the shared budget, the interactive or background timeout. */
+async function fetchFmp<T>(path: string, qs: string, op: string): Promise<T> {
   const key = process.env.FMP_API_KEY;
   if (!key) throw new MarketDataError("Market data is not set up on this server yet.");
-  const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
-  const cacheKey = `fmp:${path}?${qs}`;
-  return cacheJson<T>(cacheKey, ttlMs, async () => {
-    if (await cacheGet(FMP_LIMIT_KEY)) throw new MarketDataError(LIMIT_MESSAGE);
+  if (await cacheGet(FMP_LIMIT_KEY)) throw classifyAs(new MarketDataError(LIMIT_MESSAGE), new SourceError("fmp", "rate-limit", LIMIT_MESSAGE, 429));
+  return callSource("fmp", op, async () => {
     await fmpSlot();
-    // One retry on a network failure or a 5xx; never on 429, which is the plan's quota.
-    const res = await fetchRetry(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", timeoutMs: 10_000, retryOn: retryServerErrors });
+    const b = budget();
+    // One retry on a network failure or a 5xx in background jobs; none on interactive paths (the next
+    // source is the retry); never on 429, which is the plan's quota.
+    const res = await fetchRetry(`${BASE}/${path}?${qs}${qs ? "&" : ""}apikey=${key}`, { cache: "no-store", timeoutMs: b.fmpTimeoutMs, retries: b.fmpRetries, retryOn: retryServerErrors });
     const text = await res.text();
     if (/Limit Reach/i.test(text)) { await cacheSet(FMP_LIMIT_KEY, "1", 30 * MIN); throw new MarketDataError(LIMIT_MESSAGE); }
-    if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw Object.assign(new MarketDataError("This market data is not available right now; the market-data plan may not include it."), { cause: new Error(`FMP ${res.status} for ${path}`) });
+    if (!res.ok || /^\s*(Restricted Endpoint|Premium|\{\s*"Error Message")/.test(text)) throw Object.assign(new MarketDataError("This market data is not available right now; the market-data plan may not include it."), { cause: new Error(`FMP ${res.status} for ${path}`), upstreamStatus: res.status });
     return JSON.parse(text) as T;
-  }, { shared: true });
+  }, { classify, label: "FMP" });
+}
+
+/**
+ * Stale windows for every FMP answer: past its lifetime the last answer keeps serving for as long again
+ * while one refresh runs (capped at an hour), and for a day when FMP fails, flagged stale (provenance).
+ */
+const staleFor = (ttlMs: number) => ({ staleMs: Math.min(ttlMs, HOUR), staleIfErrorMs: MARKET_STALE_IF_ERROR_MS });
+
+async function getEntry<T>(path: string, params: Record<string, string | number | undefined>, ttlMs: number, cacheKey?: string): Promise<CacheEntry<T>> {
+  if (!process.env.FMP_API_KEY) throw new MarketDataError("Market data is not set up on this server yet.");
+  const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+  const e = await cacheEntry<T>(cacheKey ?? `fmp:${path}?${qs}`, ttlMs, () => fetchFmp<T>(path, qs, path), { shared: true, ...staleFor(ttlMs) });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  return e;
+}
+
+async function get<T>(path: string, params: Record<string, string | number | undefined>, ttlMs: number): Promise<T> {
+  return (await getEntry<T>(path, params, ttlMs)).value;
 }
 
 /** How long quote-like data stays fresh: a minute while US markets are open, longer otherwise. */
@@ -72,9 +109,13 @@ export type Quote = {
   dayLow: number; dayHigh: number; yearHigh: number; yearLow: number; marketCap: number; priceAvg50: number; priceAvg200: number;
   exchange: string; open: number; previousClose: number; timestamp: number;
 };
+/** The latest quote, or null when FMP has none; FMP's failures are thrown (the registry falls back on them). */
+export async function quoteEntry(symbol: string, ttlMs = quoteTtl()): Promise<{ quote: Quote | null; fetchedAt: number; stale: boolean }> {
+  const e = await getEntry<Quote[]>("quote", { symbol }, ttlMs);
+  return { quote: e.value?.[0] ?? null, fetchedAt: e.fetchedAt, stale: e.stale };
+}
 export async function quote(symbol: string, ttlMs = quoteTtl()): Promise<Quote | null> {
-  const rows = await get<Quote[]>("quote", { symbol }, ttlMs).catch(() => []);
-  return rows[0] ?? null;
+  return (await quoteEntry(symbol, ttlMs).catch(() => null))?.quote ?? null;
 }
 
 /** Quotes for several symbols in parallel (the batch endpoint is not on this plan), a few at a time. */
@@ -89,18 +130,47 @@ export async function quotes(symbols: string[], ttlMs = quoteTtl()): Promise<Rec
 
 export type Bar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
-/** Daily bars, oldest first. `from` is an ISO date (default five years back). */
-export async function history(symbol: string, from?: string): Promise<Bar[]> {
-  const start = from ?? new Date(Date.now() - 5 * 365.25 * 86_400_000).toISOString().slice(0, 10);
-  const rows = await get<{ date: string; open: number; high: number; low: number; close: number; volume: number }[]>("historical-price-eod/full", { symbol, from: start }, 3 * HOUR);
-  return rows.map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume })).filter((r) => r.close > 0).sort((a, b) => (a.date < b.date ? -1 : 1));
+/** The start of the canonical bars range: five years back (every feature's window fits inside it). */
+export const barsFrom = () => new Date(Date.now() - 5 * 365.25 * 86_400_000).toISOString().slice(0, 10);
+const BARS_TTL = 3 * HOUR;
+type FullRow = { date: string; open: number; high: number; low: number; close: number; volume: number };
+
+/**
+ * Daily bars for a symbol over the canonical range, oldest first: one cache key per symbol (not per
+ * start date), so GP, the boards, PORT, the news sparks and copy trading share one upstream call and
+ * each slices its own window. The full endpoint covers stocks, ETFs, indices, FX, commodities and crypto;
+ * when the plan answers nothing there for a symbol, the closes-only endpoint is tried once in the same
+ * load. A caller asking for more than five years gets a key of its own.
+ */
+export async function barsEntry(symbol: string, from?: string): Promise<{ bars: Bar[]; fetchedAt: number; stale: boolean }> {
+  const canonical = barsFrom();
+  const start = from && from < canonical ? from : canonical;
+  const key = start === canonical ? `fmp:bars:v1:${symbol}` : `fmp:bars:v1:${symbol}:${start}`;
+  if (!process.env.FMP_API_KEY) throw new MarketDataError("Market data is not set up on this server yet.");
+  const e = await cacheEntry<Bar[]>(key, BARS_TTL, async () => {
+    const qs = `symbol=${encodeURIComponent(symbol)}&from=${start}`;
+    let rows: Bar[] = [];
+    try {
+      rows = (await fetchFmp<FullRow[]>("historical-price-eod/full", qs, "historical-price-eod/full")).map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
+    } catch (err) {
+      if (!(err instanceof MarketDataError) || err.message === LIMIT_MESSAGE || err.message === FMP_BUSY) throw err;
+    }
+    if (!rows.length) rows = (await fetchFmp<{ date: string; price: number }[]>("historical-price-eod/light", qs, "historical-price-eod/light")).map((r) => ({ date: r.date, open: r.price, high: r.price, low: r.price, close: r.price, volume: 0 }));
+    return rows.filter((r) => r.close > 0).sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, { shared: true, ...staleFor(BARS_TTL) });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  const since = from ?? canonical;
+  return { bars: e.value.filter((b) => b.date >= since), fetchedAt: e.fetchedAt, stale: e.stale };
 }
 
-/** Daily closes only (lighter), oldest first; works for indices, FX pairs, commodities and crypto. */
+/** Daily bars, oldest first. `from` is an ISO date (default five years back). */
+export async function history(symbol: string, from?: string): Promise<Bar[]> {
+  return (await barsEntry(symbol, from)).bars;
+}
+
+/** Daily closes only, oldest first; works for indices, FX pairs, commodities and crypto. */
 export async function closes(symbol: string, from?: string): Promise<{ date: string; close: number }[]> {
-  const start = from ?? new Date(Date.now() - 5 * 365.25 * 86_400_000).toISOString().slice(0, 10);
-  const rows = await get<{ date: string; price: number }[]>("historical-price-eod/light", { symbol, from: start }, 3 * HOUR);
-  return rows.map((r) => ({ date: r.date, close: r.price })).filter((r) => r.close > 0).sort((a, b) => (a.date < b.date ? -1 : 1));
+  return (await barsEntry(symbol, from)).bars.map((r) => ({ date: r.date, close: r.close }));
 }
 
 export type PriceChange = Record<"1D" | "5D" | "1M" | "3M" | "6M" | "ytd" | "1Y" | "3Y" | "5Y" | "10Y" | "max", number>;
