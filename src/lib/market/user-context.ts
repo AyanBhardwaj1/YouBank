@@ -23,6 +23,8 @@ export type DataUser = {
   keyed: ReadonlySet<KeyProvider>;
   /** The decrypted key, read when a keyed adapter fetches (server only). */
   key: (p: KeyProvider) => Promise<string | null>;
+  /** Whether the key is still saved, read now: an answer fetched while the key was being removed is not cached. */
+  held?: (p: KeyProvider) => Promise<boolean>;
   /** This view's source for its main dataset (`AAPL GP @tiingo`, the "Source ▾" chip), tried first. */
   override?: { dataset: DatasetName; id: SourceId };
 };
@@ -68,9 +70,9 @@ export function keyedEligibility(p: KeyProvider): { ok: true } | { ok: false; re
 }
 
 /** The current person's key for `p`, only where it may be used (keyedEligibility); else null. Server only. */
-export async function keyFor(p: KeyProvider): Promise<{ userId: string; key: string } | null> {
+export async function keyFor(p: KeyProvider): Promise<{ userId: string; key: string; held: () => Promise<boolean> } | null> {
   if (!keyedEligibility(p).ok) return null;
   const u = users.getStore()!;
   const key = await u.key(p);
-  return key ? { userId: u.userId, key } : null;
+  return key ? { userId: u.userId, key, held: () => (u.held ? u.held(p) : Promise.resolve(true)) } : null;
 }

@@ -693,6 +693,58 @@ async function testKeyCheckLimits() {
   } finally { delete process.env.YOUBANK_DEV_USER; }
 }
 
+/**
+ * Review fixes: a person's row changes from what is stored now, under a lock (two saves at once keep both
+ * keys; another instance's removal is not undone by this instance's few-seconds-old copy), and a key
+ * removed while one of its fetches is in flight leaves nothing cached behind the purge.
+ */
+async function testStoreRaces() {
+  const { saveKey, removeKey, loadSettings, savedKey, forgetSettings, dataUserFor } = await import("@/lib/market/byo/store");
+  const { keyedPrefix } = await import("@/lib/market/byo/cache");
+  const { historyFrom } = await import("@/lib/market/data");
+  const { db } = await import("@/db");
+  const { sql } = await import("drizzle-orm");
+  const u1 = `race-${uid()}`;
+  await Promise.all([saveKey(u1, "tiingo", KEYS.tiingoA, "individual"), saveKey(u1, "finnhub", KEYS.finnhubA, "individual")]);
+  forgetSettings(u1);
+  const meta = (await loadSettings(u1)).keyMeta;
+  const both = !!meta.tiingo && !!meta.finnhub && (await savedKey(u1, "tiingo"))?.key === KEYS.tiingoA && (await savedKey(u1, "finnhub"))?.key === KEYS.finnhubA;
+  check("C3(review) two keys saved at once are both kept, encrypted and listed (no lost write)", both, { meta: Object.keys(meta), t: !!(await savedKey(u1, "tiingo")), f: !!(await savedKey(u1, "finnhub")) });
+
+  const u2 = `stale-${uid()}`;
+  await saveKey(u2, "tiingo", KEYS.tiingoA, "individual");
+  await loadSettings(u2); // this instance's copy, a few seconds old
+  await db!.execute(sql`update user_data_sources set keys_enc = '', key_meta = '{}'::jsonb where user_id = ${u2}`); // removed on another instance
+  await saveKey(u2, "finnhub", KEYS.finnhubA, "individual");
+  forgetSettings(u2);
+  const after = (await loadSettings(u2)).keyMeta;
+  check("C3(review) a key removed on another instance is not brought back by this instance's stale copy", !after.tiingo && !!after.finnhub && !(await savedKey(u2, "tiingo")), Object.keys(after));
+
+  const u3 = `purge-${uid()}`;
+  await saveKey(u3, "tiingo", KEYS.tiingoA, "individual");
+  const person3 = await dataUserFor(u3);
+  const sym = `R${uid()}`.slice(0, 6);
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const orig = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("api.tiingo.com") && url.includes(sym.toLowerCase())) await gate;
+    return orig(input, init);
+  }) as typeof fetch;
+  try {
+    const pending = as({ ...person3, order: { "daily-bars": ["tiingo"] } }, () => historyFrom(sym, from30()).catch(() => null));
+    for (let i = 0; i < 100 && !calls.some((c) => c.includes("api.tiingo.com") && c.includes(sym.toLowerCase())); i++) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 20));
+    await removeKey(u3, "tiingo");
+    release();
+    await pending;
+    await new Promise((r) => setTimeout(r, 700)); // a hedged-past fetch finishes after the answer
+  } finally { globalThis.fetch = orig; release(); }
+  const left = (await db!.execute<{ n: number }>(sql`select count(*)::int as n from kv_cache where key like ${`${keyedPrefix(u3, "tiingo")}%`}`)).rows[0].n;
+  check("C3(review) a key removed while its fetch was in flight leaves nothing cached behind the purge", left === 0, left);
+}
+
 /* ---------------- C5 field-level fallthrough ---------------- */
 
 async function testMerge() {
@@ -755,6 +807,7 @@ async function main() {
   if (localDb()) await section("C4 storage: encrypted keys, prefs, purge (Postgres)", testStoreDb);
   if (localDb()) await section("C4 the settings route: 400s, owner-only, keys never returned", testRouteDb);
   if (localDb()) await section("C3 review: pasted-key checks are capped per person per day and per address", testKeyCheckLimits);
+  if (localDb()) await section("C3 review: key storage under concurrency, and a purge during a fetch", testStoreRaces);
   await section("C5 field-level fallthrough and badges", testMerge);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);

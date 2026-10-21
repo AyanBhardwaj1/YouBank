@@ -51,7 +51,7 @@ function keyed<A, R>(id: SourceId, fields: string[], ttlMs: number, what: (a: A)
     fetch: async (a) => {
       const k = await keyFor(p);
       if (!k) return null;
-      const { value, fetchedAt } = await keyedCache(k.userId, p, `${id}:${what(a)}`, ttlMs, () => load(k.key, a));
+      const { value, fetchedAt } = await keyedCache(k.userId, p, `${id}:${what(a)}`, ttlMs, () => load(k.key, a), k.held);
       if (empty(value)) return null;
       const base = finish ? finish(value as R, a) : { data: value as R };
       return { ...base, meta: { ...base.meta, fetchedAt: new Date(fetchedAt).toISOString() }, yourKey: true };

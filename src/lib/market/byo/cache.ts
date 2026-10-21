@@ -54,8 +54,12 @@ async function write(key: string, s: Stored, ttlMs: number) {
   try { await db.insert(schema.kvCache).values({ key, value, expiresAt: new Date(exp) }).onConflictDoUpdate({ target: schema.kvCache.key, set: { value, expiresAt: new Date(exp) } }); } catch { /* not cached */ }
 }
 
-/** A keyed answer, cached for `ttlMs` in the person's own partition; one load per key per instance. */
-export async function keyedCache<T>(userId: string, provider: KeyProvider, what: string, ttlMs: number, load: () => Promise<T>): Promise<{ value: T; fetchedAt: number }> {
+/**
+ * A keyed answer, cached for `ttlMs` in the person's own partition; one load per key per instance.
+ * `held` is asked just before the answer is written: a key removed while its fetch was in flight (the
+ * purge already ran) leaves nothing behind.
+ */
+export async function keyedCache<T>(userId: string, provider: KeyProvider, what: string, ttlMs: number, load: () => Promise<T>, held: () => Promise<boolean> = async () => true): Promise<{ value: T; fetchedAt: number }> {
   const key = keyedKey(userId, provider, what);
   const hit = await read(key);
   if (hit) return { value: JSON.parse(hit.json) as T, fetchedAt: hit.fetchedAt };
@@ -65,7 +69,7 @@ export async function keyedCache<T>(userId: string, provider: KeyProvider, what:
     try {
       const value = await load();
       const fetchedAt = Date.now();
-      if (value !== null && value !== undefined) await write(key, { fetchedAt, json: JSON.stringify(value) }, ttlMs);
+      if (value !== null && value !== undefined && (await held())) await write(key, { fetchedAt, json: JSON.stringify(value) }, ttlMs);
       return { value, fetchedAt };
     } finally { inflight.delete(key); }
   })();

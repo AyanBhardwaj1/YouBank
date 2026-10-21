@@ -51,57 +51,91 @@ export async function loadSettings(userId: string): Promise<Settings> {
   return s;
 }
 
+type StoredKeys = Partial<Record<KeyProvider, StoredKey>>;
+
+/** A stored blob's keys. Server only; never logged, never returned to a client. */
+const keysOf = (keysEnc: string | null | undefined): StoredKeys => (keysEnc ? (JSON.parse(decryptToken(keysEnc)) as StoredKeys) : {});
+
 /** The person's decrypted keys. Server only; never logged, never returned to a client. */
-async function loadKeys(userId: string): Promise<Partial<Record<KeyProvider, StoredKey>>> {
+async function loadKeys(userId: string): Promise<StoredKeys> {
   const [row] = await requireDb().select({ keysEnc: schema.userDataSources.keysEnc }).from(schema.userDataSources).where(eq(schema.userDataSources.userId, userId));
-  if (!row?.keysEnc) return {};
-  return JSON.parse(decryptToken(row.keysEnc)) as Partial<Record<KeyProvider, StoredKey>>;
+  return keysOf(row?.keysEnc);
 }
 
-async function upsert(userId: string, set: Partial<typeof schema.userDataSources.$inferInsert>) {
-  await requireDb().insert(schema.userDataSources).values({ userId, ...set, updatedAt: new Date() })
-    .onConflictDoUpdate({ target: schema.userDataSources.userId, set: { ...set, updatedAt: new Date() } });
+type Row = { order: Settings["order"]; keyMeta: Settings["keyMeta"]; keysEnc: string };
+
+/**
+ * Change a person's row from what is stored now, never from a copy: the row is locked for the change, so
+ * two changes at once (two tabs, two instances) cannot write over each other, and a key added on one
+ * instance is never dropped, nor a removed one brought back, by another instance's few-seconds-old copy.
+ */
+async function mutate<T>(userId: string, change: (row: Row) => { set: Partial<typeof schema.userDataSources.$inferInsert>; result: T }): Promise<T> {
+  const out = await requireDb().transaction(async (tx) => {
+    await tx.insert(schema.userDataSources).values({ userId }).onConflictDoNothing();
+    const [row] = await tx.select({ prefs: schema.userDataSources.prefs, keyMeta: schema.userDataSources.keyMeta, keysEnc: schema.userDataSources.keysEnc })
+      .from(schema.userDataSources).where(eq(schema.userDataSources.userId, userId)).for("update");
+    const { set, result } = change({ order: cleanOrder(row?.prefs), keyMeta: cleanMeta(row?.keyMeta), keysEnc: row?.keysEnc ?? "" });
+    await tx.update(schema.userDataSources).set({ ...set, updatedAt: new Date() }).where(eq(schema.userDataSources.userId, userId));
+    return result;
+  });
   memo.delete(userId);
+  return out;
 }
+
+/** A stored blob's keys, or none when it cannot be read (the server's secret changed): a new key then starts afresh. */
+const readableKeys = (keysEnc: string): StoredKeys => { try { return keysOf(keysEnc); } catch { return {}; } };
 
 /**
  * Save the person's order for the datasets given (already validated by the route); other datasets keep
  * theirs, and an empty list goes back to the default order.
  */
 export async function saveOrder(userId: string, order: Settings["order"]): Promise<void> {
-  memo.delete(userId);
-  const merged: Settings["order"] = { ...(await loadSettings(userId)).order, ...order };
-  for (const [d, ids] of Object.entries(merged)) if (!ids?.length) delete merged[d as DatasetName];
-  await upsert(userId, { prefs: { order: merged } });
+  await mutate(userId, (row) => {
+    const merged: Settings["order"] = { ...row.order, ...order };
+    for (const [d, ids] of Object.entries(merged)) if (!ids?.length) delete merged[d as DatasetName];
+    return { set: { prefs: { order: merged } }, result: undefined };
+  });
 }
 
 /** Save (or replace) a key: encrypted with the others, its last four and plan shown. Purges data cached with the old one. */
 export async function saveKey(userId: string, provider: KeyProvider, key: string, plan: PlanType, lastTest?: KeyMeta["lastTest"]): Promise<KeyMeta> {
   if (!encryptionReady()) throw Object.assign(new Error("Saving keys is not set up on this server yet."), { status: 503 });
-  const [keys, s] = await Promise.all([loadKeys(userId).catch(() => ({}) as Partial<Record<KeyProvider, StoredKey>>), loadSettings(userId)]);
-  const addedAt = new Date().toISOString();
-  const meta: KeyMeta = { last4: key.slice(-4), plan, addedAt, ...(lastTest ? { lastTest } : {}) };
-  await upsert(userId, { keysEnc: encryptToken(JSON.stringify({ ...keys, [provider]: { key, plan, addedAt } })), keyMeta: { ...s.keyMeta, [provider]: meta } });
+  const meta = await mutate(userId, (row) => {
+    const keys = readableKeys(row.keysEnc);
+    const addedAt = new Date().toISOString();
+    const m: KeyMeta = { last4: key.slice(-4), plan, addedAt, ...(lastTest ? { lastTest } : {}) };
+    // What is shown follows what is stored: a key that could not be read is not listed as saved.
+    const shown = Object.fromEntries(Object.entries(row.keyMeta).filter(([p]) => !!keys[p as KeyProvider]));
+    return { set: { keysEnc: encryptToken(JSON.stringify({ ...keys, [provider]: { key, plan, addedAt } })), keyMeta: { ...shown, [provider]: m } }, result: m };
+  });
   await purgeKeyed(userId, provider);
   return meta;
 }
 
 /** Remove a key and purge every cached answer fetched with it. Returns whether there was one. */
 export async function removeKey(userId: string, provider: KeyProvider): Promise<{ removed: boolean; purged: number }> {
-  const [keys, s] = await Promise.all([loadKeys(userId).catch(() => ({}) as Partial<Record<KeyProvider, StoredKey>>), loadSettings(userId)]);
-  const had = !!keys[provider] || !!s.keyMeta[provider];
-  const rest = { ...keys }, meta = { ...s.keyMeta };
-  delete rest[provider];
-  delete meta[provider];
-  await upsert(userId, { keysEnc: Object.keys(rest).length ? encryptToken(JSON.stringify(rest)) : "", keyMeta: meta });
+  const had = await mutate(userId, (row) => {
+    const rest = readableKeys(row.keysEnc), meta = { ...row.keyMeta };
+    const was = !!rest[provider] || !!meta[provider];
+    delete rest[provider];
+    delete meta[provider];
+    return { set: { keysEnc: Object.keys(rest).length ? encryptToken(JSON.stringify(rest)) : "", keyMeta: meta }, result: was };
+  });
   return { removed: had, purged: await purgeKeyed(userId, provider) };
 }
 
 /** Record a saved key's last test on its shown facts. */
 export async function noteKeyTest(userId: string, provider: KeyProvider, lastTest: NonNullable<KeyMeta["lastTest"]>): Promise<void> {
-  const s = await loadSettings(userId);
-  if (!s.keyMeta[provider]) return;
-  await upsert(userId, { keyMeta: { ...s.keyMeta, [provider]: { ...s.keyMeta[provider], lastTest } } });
+  await mutate(userId, (row) => {
+    const m = row.keyMeta[provider];
+    return { set: m ? { keyMeta: { ...row.keyMeta, [provider]: { ...m, lastTest } } } : {}, result: undefined };
+  });
+}
+
+/** Whether the person still holds a key for `provider`, read now (not from a copy): a fetch that started before the key was removed does not cache its answer. */
+export async function keyStillHeld(userId: string, provider: KeyProvider): Promise<boolean> {
+  const [row] = await requireDb().select({ keyMeta: schema.userDataSources.keyMeta }).from(schema.userDataSources).where(eq(schema.userDataSources.userId, userId));
+  return !!cleanMeta(row?.keyMeta)[provider];
 }
 
 /** A saved key, decrypted, for a test the person asked for. Server only. */
@@ -120,6 +154,7 @@ export async function dataUserFor(userId: string, override?: DataUser["override"
   return {
     userId, order: s.order, keyed: new Set(Object.keys(s.keyMeta) as KeyProvider[]), ...(override ? { override } : {}),
     key: async (p) => { keys ??= loadKeys(userId).catch(() => ({})); return (await keys)[p]?.key ?? null; },
+    held: (p) => keyStillHeld(userId, p).catch(() => false),
   };
 }
 
