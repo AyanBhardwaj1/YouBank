@@ -105,7 +105,8 @@ export { etClock } from "./units";
 export function parseEtStamp(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.replace(/^\s*data as of\s*/i, "").trim();
-  const day = isoDay(s);
+  // The date may follow a prefix ("Closed at Oct 20, 2026 4:00 PM ET"): take the first date in the text.
+  const day = isoDay(s) ?? isoDay(/[A-Za-z]{3}[a-z]*\.? \d{1,2}, \d{4}|\d{1,2}\/\d{1,2}\/\d{4}/.exec(s)?.[0]);
   if (!day) return null;
   const m = /(\d{1,2}):(\d{2})\s*([AP]M)/i.exec(s);
   if (!m) { const c = closeMinutes(day); return nyLocalToIso(day, `${Math.floor(c / 60)}:${String(c % 60).padStart(2, "0")}`); }

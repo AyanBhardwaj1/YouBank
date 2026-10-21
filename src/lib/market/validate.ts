@@ -12,7 +12,8 @@ const logged = new Set<string>();
 
 /** Log a drift event once per source, endpoint and set of issue paths. */
 function logDrift(source: string, endpoint: string, issues: z.core.$ZodIssue[]) {
-  const paths = [...new Set(issues.slice(0, 8).map((i) => `${i.path.join(".") || "(root)"}: ${i.code}`))];
+  // Row numbers are folded ("#.close"), so one bad row at a different index per symbol is still one event.
+  const paths = [...new Set(issues.slice(0, 8).map((i) => `${i.path.map((p) => (typeof p === "number" ? "#" : String(p))).join(".") || "(root)"}: ${i.code}`))];
   const key = `${source}|${endpoint}|${paths.join(",")}`;
   if (logged.has(key)) return;
   logged.add(key);

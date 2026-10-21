@@ -20,6 +20,8 @@ const CsvShape = z.object({
 
 /** The Treasury's daily par yield curve CSV (yields in percent, as published), checked: drift is SourceError "schema". */
 export function parseTreasuryCsv(text: string): CurveRow[] {
+  // A year with nothing published yet (the first days of January) can come back empty: no rows, not drift.
+  if (!text.trim()) return [];
   const [head = "", ...lines] = text.trim().split("\n");
   const cols = head.split(",").map((c) => c.replace(/"/g, "").trim());
   const rows = lines.map((l) => {

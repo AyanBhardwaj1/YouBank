@@ -6,14 +6,18 @@
  */
 import { z } from "zod";
 
-/** A number or Nasdaq's display text for one ("$1.2", "-0.5%", "1,000", "N/A", "--", ""). */
-const numish = z.union([z.number(), z.string().regex(/^\s*(?:[-+$\d.,%\s]*|n\/?a|--)\s*$/i, "not a number")]).nullish();
+/**
+ * A number or Nasdaq's display text for one ("$1.2", "-0.5%", "1,000", "($0.05)") or for none ("N/A",
+ * "NA", "NM", "--", "-", "", and "UNCH" for an unchanged price). Words like these read as null downstream
+ * (canonical.toNumber), as they did before the schema; any other text is drift.
+ */
+const numish = z.union([z.number(), z.string().regex(/^\s*(?:[-+$\d.,%()\s]*|n\/?a|nm|unch|-{1,2})\s*$/i, "not a number")]).nullish();
 const text = z.string().nullish().transform((v) => v ?? "");
 const rowsOf = <T extends z.ZodType>(row: T) => z.looseObject({ rows: z.array(row).nullish() }).nullish();
 
 export const Info = z.looseObject({
   symbol: z.string(), companyName: text, exchange: text,
-  primaryData: z.looseObject({ lastSalePrice: z.string(), netChange: numish, percentageChange: numish, lastTradeTimestamp: text, isRealTime: z.boolean().nullish(), volume: numish }),
+  primaryData: z.looseObject({ lastSalePrice: z.string().nullable(), netChange: numish, percentageChange: numish, lastTradeTimestamp: text, isRealTime: z.boolean().nullish(), volume: numish }),
 });
 
 export const Historical = z.looseObject({
@@ -45,5 +49,6 @@ export const Ratings = z.looseObject({
   upgradesDowngrades: z.array(z.looseObject({ date: text, brokerName: text, action: text, previousRating: text, newRating: text, ratingsChange: text })).nullish(),
 });
 
-const MoverTable = z.looseObject({ table: rowsOf(z.looseObject({ symbol: z.string(), name: text, lastSalePrice: z.string(), lastSaleChange: numish, change: numish })) });
-export const Movers = z.looseObject({ STOCKS: z.record(z.string(), MoverTable).nullish() });
+const MoverTable = z.looseObject({ table: rowsOf(z.looseObject({ symbol: z.string(), name: text, lastSalePrice: numish, lastSaleChange: numish, change: numish })) }).nullish();
+/** Only the three tables the screen reads are checked; other members of STOCKS may be anything (or null). */
+export const Movers = z.looseObject({ STOCKS: z.looseObject({ MostActiveByShareVolume: MoverTable, MostAdvanced: MoverTable, MostDeclined: MoverTable }).nullish() });

@@ -46,9 +46,15 @@ export function mergeFrames(tags: string[], period: string, frames: (Frame | nul
     if (!f) continue;
     for (const [cik, v] of Object.entries(f.values)) if (!(cik in out.values)) { out.values[cik] = v; out.names[cik] = f.names[cik]; }
   }
+  // The first whole-line tag (in chain order) that a company reports stands for its whole line.
+  const judged = new Set<string>();
   for (const f of frames) {
     if (!f || !chain?.wholeLine?.includes(f.tag)) continue;
-    for (const [cik, v] of Object.entries(f.values)) if (v > out.values[cik]) out.values[cik] = v;
+    for (const [cik, v] of Object.entries(f.values)) {
+      if (judged.has(cik)) continue;
+      judged.add(cik);
+      if (v > out.values[cik]) out.values[cik] = v;
+    }
   }
   return out;
 }

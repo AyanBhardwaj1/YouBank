@@ -32,7 +32,8 @@ export const CHAINS = {
       { tag: "RevenueFromContractWithCustomerExcludingAssessedTax" }, { tag: "Revenues" }, { tag: "RevenueFromContractWithCustomerIncludingAssessedTax" },
       { tag: "SalesRevenueNet", until: SALES_REVENUE_NET_UNTIL }, ...t("SalesRevenueGoodsNet", "SalesRevenueServicesNet", "RevenuesNetOfInterestExpense", "RevenuesExcludingInterestAndDividends"),
     ],
-    wholeLine: ["Revenues"],
+    // Whole-line totals, in priority order: Revenues, then a bank's total net revenue (its ASC 606 tag covers fees only).
+    wholeLine: ["Revenues", "RevenuesNetOfInterestExpense"],
     extensions: { include: /Revenue/i, exclude: /Cost|Deferred|Unearned|Proceeds|PerShare|Percent|Tax|Receivable|Contract(Liability|Asset)|Segment|Intersegment|Excise/i },
   },
   /** Attributable to the parent first (EPS and P/E); ProfitLoss (with minority interests) when that is all there is. */
@@ -64,7 +65,7 @@ function mergeChain(cf: CompanyFacts, chain: Chain): Resolved["rows"] {
     for (const r of rowsFor(cf, "us-gaap", tag, unit)) {
       const k = periodKey(r);
       if (!merged.has(k)) merged.set(k, { ...r, concept: tag });
-      if (chain.wholeLine?.includes(tag)) whole.set(k, { ...r, concept: tag });
+      if (chain.wholeLine?.includes(tag) && !whole.has(k)) whole.set(k, { ...r, concept: tag });
     }
   }
   for (const [k, m] of merged) {

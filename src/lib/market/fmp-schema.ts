@@ -7,9 +7,11 @@
 import { z } from "zod";
 import { epochToIso, pctToFraction, type DailyBar, type Profile, type Quote } from "./canonical";
 
-const num = z.number().refine(Number.isFinite, "not a finite number");
-/** An optional number: missing or null reads as null. */
-const opt = z.number().nullish().transform((v) => (typeof v === "number" && Number.isFinite(v) ? v : null));
+/** A number, or one written as text ("123.45", which FMP sends for some fields and plans); anything else is drift. */
+const numText = z.string().regex(/^\s*[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?\s*$/, "not a number").transform(Number);
+const num = z.union([z.number(), numText]).refine(Number.isFinite, "not a finite number");
+/** An optional number: missing, null or empty text reads as null. */
+const opt = z.union([z.number(), numText, z.literal("")]).nullish().transform((v) => (typeof v === "number" && Number.isFinite(v) ? v : null));
 /** An optional string: missing or null reads as "". */
 const text = z.string().nullish().transform((v) => v ?? "");
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}/, "not a date");
@@ -22,7 +24,7 @@ export const QuoteRows = z.array(QuoteRow);
 export type FmpQuoteRow = z.output<typeof QuoteRow>;
 
 /** Volume an index or a thin day leaves out reads as 0, the convention of closes-only sources (asBars). */
-export const BarRows = z.array(z.looseObject({ date: day, open: num, high: num, low: num, close: num, volume: z.number().nullish().transform((v) => v ?? 0) }));
+export const BarRows = z.array(z.looseObject({ date: day, open: num, high: num, low: num, close: num, volume: opt.transform((v) => v ?? 0) }));
 export const LightRows = z.array(z.looseObject({ date: day, price: num }));
 
 export const PriceChangeRows = z.array(z.looseObject({ symbol: z.string(), "1D": opt, "5D": opt, "1M": opt, "3M": opt, "6M": opt, ytd: opt, "1Y": opt, "3Y": opt, "5Y": opt, "10Y": opt, max: opt }));

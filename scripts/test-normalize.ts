@@ -421,6 +421,92 @@ async function main() {
     check("DES shows the price badges", /PriceBadges/.test(src("src/components/terminal/screens/DesScreen.tsx")));
   });
 
+  /* ================= Review regressions (each failed before its fix) ================= */
+  await section("review: foreign listings keep their exchange suffix", async () => {
+    const { canonical, forFmp, forNasdaq, forSec, hasExchangeSuffix } = await import("@/lib/market/symbols");
+    for (const s of ["SHOP.TO", "VOD.L", "SAP.DE", "BHP.AX", "NESN.SW", "MC.PA", "0700.HK"]) check(`${s} is a listing, not a class: FMP and Nasdaq get ${s}`, canonical(s) === s && forFmp(s) === s && forNasdaq(s) === s && hasExchangeSuffix(s), [canonical(s), forFmp(s), forNasdaq(s)]);
+    check("share classes are still classes (BF.B, MKC.V, BAC-PL, BRK/B)", forFmp("BF.B") === "BF-B" && forFmp("MKC.V") === "MKC-V" && forSec("BAC-PL") === "BAC-PL" && canonical("BRK/B") === "BRK.B" && !hasExchangeSuffix("BRK.B"));
+    const fmp = await import("@/lib/market/fmp");
+    serve({ match: /historical-price-eod\/full\?symbol=SHOP\.TO/, body: [{ symbol: "SHOP.TO", date: "2026-10-20", open: 150, high: 152, low: 149, close: 151, volume: 10 }] });
+    const bars = await fmp.history("shop.to").catch(() => []);
+    check("GP SHOP.TO asks FMP for SHOP.TO (not SHOP-TO) and gets bars", bars.length === 1 && calls.some((u) => /symbol=SHOP\.TO/.test(u)), calls);
+  });
+
+  await section("review: Nasdaq's normal answers are not drift", async () => {
+    const nasdaq = await import("@/lib/market/nasdaq");
+    serve({ match: /\/quote\/FLAT\/info\?assetclass=stocks/, body: { data: { symbol: "FLAT", companyName: "Flat Co. Common Stock", exchange: "NYSE", primaryData: { lastSalePrice: "$12.00", netChange: "UNCH", percentageChange: "UNCH", lastTradeTimestamp: "Oct 20, 2026 4:00 PM ET", isRealTime: false, volume: "1,234" } } } });
+    const q = await nasdaq.nasdaqQuote("FLAT").catch((e: unknown) => e);
+    check("an unchanged quote (netChange UNCH) is a quote with no change, not a schema failure", !!q && (q as { price?: number }).price === 12 && (q as { change?: unknown }).change === null && (q as { changePct?: unknown }).changePct === null, q);
+    const row = (symbol: string, change: string, pct: string) => ({ symbol, name: symbol, lastSalePrice: "$10.00", lastSaleChange: change, change: pct });
+    serve({ match: /\/marketmovers/, body: { data: { asOf: "Oct 20, 2026", STOCKS: { MostActiveByShareVolume: { table: { rows: [row("AA", "UNCH", "1,000")] } }, MostAdvanced: { table: { rows: [row("BB", "+1.00", "+11.11%")] } }, MostDeclined: { table: { rows: [row("CC", "-1.00", "-9.09%")] } }, MostActiveByDollarVolume: null } } } });
+    const m = await nasdaq.nasdaqMovers().catch((e: unknown) => e);
+    check("movers with an UNCH row and another null table parse", !!m && (m as { actives?: unknown[] }).actives?.length === 1 && (m as { gainers: { changePct: number }[] }).gainers[0]?.changePct === 0.1111, m);
+    serve({ match: /\/analyst\/NMTG\/earnings-forecast/, body: { data: { quarterlyForecast: { rows: [{ fiscalEnd: "Dec 2026", consensusEPSForecast: "NM", highEPSForecast: "--", lowEPSForecast: "($0.05)", noOfEstimates: "N/A" }] }, yearlyForecast: null } } });
+    const f = await nasdaq.nasdaqEpsForecast("NMTG").catch((e: unknown) => e);
+    check("forecast words (NM, --, N/A) read as null, not drift", !!f && (f as { quarterly: { consensus: unknown }[] }).quarterly?.[0]?.consensus === null, f);
+  });
+
+  await section("review: FMP numbers written as text are numbers", async () => {
+    const fmp = await import("@/lib/market/fmp");
+    serve({ match: /\/quote\?symbol=TXTQ/, body: [{ symbol: "TXTQ", name: "T", price: "10.50", changePercentage: "1.2", change: "0.12", volume: "", exchange: "NYSE", timestamp: 1792512000 }] });
+    const q = await fmp.fmpQuote("TXTQ");
+    check("a quote with numeric text parses to numbers (and a fraction change)", q?.price === 10.5 && q.changePct === 0.012 && q.volume === null, q);
+    serve({ match: /\/quote\?symbol=TXTB/, body: [{ symbol: "TXTB", price: "ten" }] });
+    check("non-numeric text is still drift (no quote, never NaN)", (await fmp.quote("TXTB")) === null);
+  });
+
+  await section("review: off-session quotes are not flagged stale by New York's clock", async () => {
+    const { nyseSession, quotes } = await import("@/lib/market/data");
+    const { withProvenance } = await import("@/lib/market/provenance");
+    check("NYSE-session symbols", nyseSession("AAPL") && nyseSession("brk-b") && nyseSession("^GSPC"));
+    check("not NYSE-session: foreign index, foreign listing, FX, crypto, commodity", !nyseSession("^N225") && !nyseSession("^GDAXI") && !nyseSession("SHOP.TO") && !nyseSession("EURUSD") && !nyseSession("BTCUSD") && !nyseSession("GCUSD") && !nyseSession("000001.SS"));
+    const old = 1577984400; // 2020-01-02: behind any session
+    const qrow = (symbol: string) => ({ symbol, name: symbol, price: 100, changePercentage: 0.5, exchange: "X", timestamp: old });
+    serve({ match: /\/quote\?symbol=%5EN225/, body: [qrow("^N225")] });
+    const n = await withProvenance(() => quotes(["^N225"]));
+    check("a Nikkei quote from Tokyo's close is not marked stale on the board", n.value["^N225"]?.price === 100 && !n.meta.stale, n.meta);
+    serve({ match: /\/quote\?symbol=OLDQ/, body: [qrow("OLDQ")] });
+    const u = await withProvenance(() => quotes(["OLDQ"]));
+    check("a US quote that far behind is still stale", u.meta.stale === true, u.meta);
+  });
+
+  await section("review: a bank's total net revenue is the whole line", async () => {
+    const { resolveRevenue, CHAINS } = await import("@/lib/edgar/concepts");
+    const { ltmAt, latestEnd } = await import("@/lib/edgar/facts");
+    // Fees under the ASC 606 tag (20%), total net revenue under RevenuesNetOfInterestExpense, in the same filings.
+    const bank = cfOf({ "us-gaap": { [REV_606]: years(2019, 2025, 2e8, "bank"), RevenuesNetOfInterestExpense: years(2019, 2025, 1e9, "bank") } });
+    const r = resolveRevenue(bank as never);
+    const end = r ? latestEnd(r.rows) : null;
+    const ltm = r && end ? ltmAt(r.rows, end)?.value : null;
+    check("DES/FCST revenue for a bank is total net revenue, not fee income", ltm === Math.round(1e9 * 1.6), { concept: r?.concept, ltm });
+    const { mergeFrames } = await import("@/lib/market/frames");
+    const fr = (tag: string, v: number) => ({ period: "CY2025", tag, values: { "1": v }, names: { "1": "Bank" } });
+    const m = mergeFrames([REV_606, "Revenues", "RevenuesNetOfInterestExpense"], "CY2025", [fr(REV_606, 200), null, fr("RevenuesNetOfInterestExpense", 1000)], CHAINS.revenue);
+    check("EQS frames agree for the bank", m.values["1"] === 1000, m.values);
+    const both = mergeFrames([REV_606, "Revenues", "RevenuesNetOfInterestExpense"], "CY2025", [fr(REV_606, 200), fr("Revenues", 900), fr("RevenuesNetOfInterestExpense", 1000)], CHAINS.revenue);
+    check("with Revenues reported too, Revenues stays the whole line", both.values["1"] === 900, both.values);
+  });
+
+  await section("review: smaller fixes", async () => {
+    const { parseTreasuryCsv } = await import("@/lib/market/treasury");
+    check("an empty Treasury year (early January) is no rows, not a schema failure", (await Promise.resolve().then(() => parseTreasuryCsv("")).catch(() => "threw")) instanceof Array);
+    const cal = await import("@/lib/market/calendar");
+    check("a Nasdaq stamp with a prefix still gives its time", cal.parseEtStamp("Closed at Oct 20, 2026 4:00 PM ET") === "2026-10-20T20:00:00.000Z", cal.parseEtStamp("Closed at Oct 20, 2026 4:00 PM ET"));
+    check("after 2027 the exchange rules stand in (Good Friday 2028 closed, a normal Monday open)", !cal.isTradingDay("2028-04-14") && cal.isTradingDay("2028-10-16"));
+    const { parseOrThrow } = await import("@/lib/market/validate");
+    const { z } = await import("zod");
+    const warn = console.warn; let warned = 0; console.warn = () => { warned++; };
+    const Rows = z.array(z.object({ close: z.number() }));
+    for (const bad of [[{ close: "x" }], [{ close: 1 }, { close: "x" }], [{ close: 1 }, { close: 1 }, { close: "x" }]]) { try { parseOrThrow(Rows, bad, "Test", "rows"); } catch { /* expected */ } }
+    console.warn = warn;
+    check("one bad row at a different index per answer is logged once", warned === 1, warned);
+    check("the demo snapshot stays in percent (the landing demo prints it with %)", /changePct \* 1e7\) \/ 1e5/.test(src("scripts/snapshot.ts")));
+    const { STUDENT_PACK } = await import("@/lib/workflows/packs/student");
+    const lbo = STUDENT_PACK.find((t) => t.id === "paper-lbo-timed") as unknown as { prefill: (c: unknown) => { entryMultiple: number } };
+    const multiClass = { ltm: { adjEbitda: 100, ebitda: 100 }, price: { last: 50, marketCap: null }, balance: { debt: 300, cash: 50 } };
+    check("paper LBO with no market cap uses the default multiple, not debt alone (2.5x)", lbo.prefill(multiClass).entryMultiple === 10, lbo.prefill(multiClass));
+  });
+
   globalThis.fetch = realFetch;
   console.log(`\n${pass} passed, ${fail} failed (${Date.now() - t0} ms)`);
   process.exit(fail ? 1 : 0);

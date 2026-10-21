@@ -15,7 +15,7 @@ import { quoteOf } from "./fmp-schema";
 import { coinGeckoHistory, ecbPair, isCrypto } from "./free";
 import { backupEnabled, nasdaqHistory, nasdaqQuote, nasdaqSummary } from "./nasdaq";
 import { noteSource, type Provider } from "./provenance";
-import { canonical } from "./symbols";
+import { canonical, hasExchangeSuffix } from "./symbols";
 
 /** Symbols Nasdaq does not list, and the ETF that stands in for each (its returns, not its level). */
 export const PROXIES: Record<string, string> = {
@@ -92,9 +92,23 @@ export const closes = async (symbol: string, from?: string): Promise<{ date: str
 /** A latest quote: price and the day's change as a fraction (null when the feed has none), with its as-of. */
 export type LiveQuote = { price: number; changePct: number | null; asOf: string | null; source: Provider };
 
-/** Note a quote's source with its as-of, flagged stale when it is behind the market (calendar.ts) and delayed when the feed says so. */
-function noteQuote(source: Provider, asOf: string | null, delayed?: boolean) {
-  noteSource(source, undefined, { ...(asOf ? { asOf, stale: isStaleQuote(asOf) } : {}), ...(delayed ? { delayed } : {}) });
+/** US indices that trade on the NYSE session; any other "^" index (Nikkei, DAX…) keeps its own exchange's hours. */
+const US_INDICES = new Set(["^GSPC", "^DJI", "^IXIC", "^NDX", "^RUT", "^VIX"]);
+
+/**
+ * Whether a symbol's quotes follow the NYSE session, so "behind the market" can be judged by calendar.ts.
+ * A foreign index or listing (its own hours), an FX pair or crypto (around the clock) and a commodity
+ * future (nearly so) are not: their as-of is reported, never flagged stale by New York's clock.
+ */
+export const nyseSession = (symbol: string): boolean => {
+  const s = canonical(symbol);
+  return s.startsWith("^") ? US_INDICES.has(s) : !isFxPair(s) && !isCrypto(s) && !/USD$|USX$/.test(s) && !hasExchangeSuffix(s) && !/^\d/.test(s);
+};
+
+/** Note a quote's source with its as-of, flagged stale when it is behind the NYSE session (calendar.ts) and delayed when the feed says so. */
+function noteQuote(source: Provider, asOf: string | null, delayed?: boolean, session = true) {
+  // Off-session quotes are not judged, and their as-of is left out of the answer's oldest as-of (the badge's "as of").
+  noteSource(source, undefined, { ...(asOf && session ? { asOf, stale: isStaleQuote(asOf) } : {}), ...(delayed ? { delayed } : {}) });
 }
 
 /**
@@ -104,7 +118,7 @@ function noteQuote(source: Provider, asOf: string | null, delayed?: boolean) {
 export async function quotes(symbols: string[], ttlMs?: number): Promise<Record<string, LiveQuote>> {
   const out: Record<string, LiveQuote> = {};
   const fmp = await fmpQuotes(symbols, ttlMs).catch(() => ({}));
-  for (const [s, raw] of Object.entries(fmp)) { const q = quoteOf(raw); out[s] = { price: q.price, changePct: q.changePct, asOf: q.asOf, source: "FMP" }; noteQuote("FMP", q.asOf); }
+  for (const [s, raw] of Object.entries(fmp)) { const q = quoteOf(raw); out[s] = { price: q.price, changePct: q.changePct, asOf: q.asOf, source: "FMP" }; noteQuote("FMP", q.asOf, false, nyseSession(s)); }
   if (!backupEnabled()) return out;
   const missing = symbols.filter((s) => !out[s] && !isFxPair(s) && !isCrypto(s) && !PROXIES[s]);
   await Promise.all(missing.map(async (s) => {

@@ -201,8 +201,8 @@ export async function nasdaqMovers(): Promise<{ actives: NasdaqMover[]; gainers:
   const d = check(S.Movers, await get<unknown>(`/marketmovers?assetclass=stocks&exchangestatus=currentMarket&limit=25`, 5 * MIN), "marketmovers");
   const s = d?.STOCKS;
   if (!s) return null;
-  type T = z.output<typeof S.Movers>["STOCKS"] extends infer R ? (R extends Record<string, infer V> ? V : never) : never;
-  const rows = (t: T | undefined, pctColumn: boolean): NasdaqMover[] => (t?.table?.rows ?? []).flatMap((r) => {
+  type T = NonNullable<z.output<typeof S.Movers>["STOCKS"]>["MostAdvanced"];
+  const rows = (t: T, pctColumn: boolean): NasdaqMover[] => (t?.table?.rows ?? []).flatMap((r) => {
     const price = num(r.lastSalePrice), change = num(r.lastSaleChange);
     if (price === null) return [];
     return [{ symbol: r.symbol, name: r.name, price, change, changePct: pctColumn ? pctToFraction(r.change) : change !== null && price - change ? change / (price - change) : null, volume: pctColumn ? null : num(r.change) }];
