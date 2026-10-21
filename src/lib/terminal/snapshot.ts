@@ -24,7 +24,7 @@ export async function companySnapshot(ticker: string, needs: Need[] = ["quote"])
   if (!c) throw Object.assign(new Error(`No SEC data for ${ticker.toUpperCase()}`), { status: 404 });
   const fromFeeds: string[] = [];
   const snap: Snapshot = {
-    ticker: c.ticker, name: c.name, price: c.price?.last ?? null, changePct: c.price ? c.price.changePct / 100 : null,
+    ticker: c.ticker, name: c.name, price: c.price?.last ?? null, changePct: c.price?.changePct ?? null,
     marketCap: c.price?.marketCap ?? null, high52: c.price?.high52 ?? null, low52: c.price?.low52 ?? null,
     beta: null, description: c.description || null, sector: null, industry: c.industry || null, fromFeeds, research: null,
   };

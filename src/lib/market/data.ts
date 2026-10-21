@@ -13,19 +13,20 @@
  */
 import { BOARD_QUOTE_CONCURRENCY } from "./budgets";
 import { mapLimit } from "./chain";
-import { MarketDataError, type Bar, type Quote } from "./fmp";
+import { MarketDataError, type Bar } from "./fmp";
 import { isCrypto } from "./free";
-import { isFxPair, PROXIES } from "./kinds";
+import { isFxPair, nyseSession, PROXIES } from "./kinds";
 import type { AnsweredBy, Provider } from "./provenance";
-import { fromChain, isEmptyAnswer, NoSourceError, type ChainOptions, type DatasetId, type Profile as RegistryProfile } from "./registry";
+import { fromChain, isEmptyAnswer, NoSourceError, standInLabel, type ChainOptions, type DatasetId, type LiveQuote, type Profile } from "./registry";
 
-export { isFxPair, PROXIES };
-export type { ChainOptions };
+export { isFxPair, nyseSession, PROXIES, standInLabel };
+export type { ChainOptions, LiveQuote, Profile };
 
 const defaultFrom = () => new Date(Date.now() - 5 * 365.25 * 86_400_000).toISOString().slice(0, 10);
 const asBars = (xs: { date: string; close: number }[]): Bar[] => xs.map((x) => ({ date: x.date, open: x.close, high: x.close, low: x.close, close: x.close, volume: 0 }));
 
-export type Sourced<T> = { data: T; source: Provider; via?: string; by?: AnsweredBy };
+/** `via` is the ETF or fixing that stood in; `label` says so in words ("S&P 500 via SPY"); `by` is the registry adapter that answered. */
+export type Sourced<T> = { data: T; source: Provider; via?: string; label?: string; by?: AnsweredBy };
 
 /** The daily-bars dataset for a symbol: currencies and crypto have their own backups. */
 const barsDataset = (symbol: string): DatasetId => (isFxPair(symbol.toUpperCase()) ? "fx" : isCrypto(symbol) ? "crypto" : "daily-bars");
@@ -37,7 +38,7 @@ export async function historyFrom(symbol: string, from?: string, closesOnly = fa
     const a = await fromChain(barsDataset(symbol) as "daily-bars", { symbol, from: start }, opts);
     // Closes only, as FMP's light endpoint gave them (the backups keep their full bars, as before).
     const data = closesOnly && a.by.id === "fmp" ? asBars(a.data) : a.data;
-    return { data, source: a.provider, by: a.by, ...(a.via ? { via: a.via } : {}) };
+    return { data, source: a.provider, by: a.by, ...(a.via ? { via: a.via } : {}), ...(a.label ? { label: a.label } : {}) };
   } catch (e) {
     // Nothing anywhere: say so. Otherwise the first source's own error (a plan limit's words, a timeout).
     if (isEmptyAnswer(e) || e instanceof NoSourceError) throw new MarketDataError(`No price history for ${symbol.toUpperCase()}`);
@@ -55,20 +56,19 @@ export const closes = async (symbol: string, from?: string): Promise<{ date: str
  * Latest quotes for a list: FMP where it answers, Nasdaq for the rest (not for currencies, crypto or
  * proxied symbols). Symbols with no quote are left out; callers fall back to the last daily close.
  */
-export async function quotes(symbols: string[], ttlMs?: number, opts: ChainOptions = {}): Promise<Record<string, Pick<Quote, "price" | "changePercentage">>> {
-  const out: Record<string, Pick<Quote, "price" | "changePercentage">> = {};
+export async function quotes(symbols: string[], ttlMs?: number, opts: ChainOptions = {}): Promise<Record<string, LiveQuote>> {
+  const out: Record<string, LiveQuote> = {};
   await mapLimit([...new Set(symbols)], BOARD_QUOTE_CONCURRENCY, async (s) => {
     const a = await fromChain("quote", { symbol: s, ttlMs }, opts).catch(() => null);
-    if (a) out[s] = { price: a.data.price, changePercentage: a.data.changePercentage };
+    if (a) out[s] = a.data;
   });
   return out;
 }
 
-export type Profile = RegistryProfile;
-
 /**
  * Price, change, market cap and 52-week range for a company: FMP's profile, then Nasdaq's quote and
  * summary. Nasdaq has no description or website; those stay empty (the terminal can research them).
+ * Missing figures stay null (never 0), and the price keeps the provider's own as-of.
  */
 export async function quoteProfile(symbol: string, opts: ChainOptions = {}): Promise<Profile | null> {
   return (await fromChain("profile", { symbol }, opts).catch(() => null))?.data ?? null;

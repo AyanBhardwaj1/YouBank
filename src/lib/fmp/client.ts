@@ -1,32 +1,34 @@
 import { cacheEntry, cacheGet, cacheSet } from "@/lib/cache";
 import { budget, MARKET_STALE_IF_ERROR_MS } from "@/lib/market/budgets";
+import type { Profile } from "@/lib/market/canonical";
 import { fmpSlot, MarketDataError } from "@/lib/market/fmp";
+import { ProfileRows, profileOf } from "@/lib/market/fmp-schema";
 import { noteFreshness } from "@/lib/market/provenance";
 import { callSource } from "@/lib/market/source";
 import { SourceError } from "@/lib/market/source-error";
+import { forFmp } from "@/lib/market/symbols";
+import { parseOrThrow } from "@/lib/market/validate";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 /** Financial Modeling Prep. Free tier: `profile` (price, market cap, change, 52w range) and `search-name`. */
 const BASE = "https://financialmodelingprep.com/stable";
 
-export type FmpProfile = {
-  symbol: string; price: number; marketCap: number; change: number; changePercentage: number; range: string;
-  companyName: string; cik: string; exchange: string; exchangeFullName: string; industry: string; sector: string;
-  website: string; description: string; city?: string; state?: string; ipoDate?: string; fullTimeEmployees?: string;
-};
-
 const PROFILE_TTL = 15 * 60_000;
 
 /**
- * The profile, or null when FMP has none for the symbol (or no key is set). A failure (timeout, network,
- * 5xx, the daily limit, an unreadable answer) is thrown, not cached, so the registry falls back at once and
- * the next request asks again; past its 15 minutes the last profile keeps answering while one refresh
- * runs, and for a day when FMP fails, flagged stale. `fetchedAt` is when FMP answered, not when the cache did.
+ * A company's profile in the canonical shape (fraction change, market cap in dollars or null), or null
+ * when FMP has none for the symbol (or no key is set). A failure (timeout, network, 5xx, the daily limit,
+ * an unreadable answer, drift: SourceError "schema") is thrown, not cached, so the registry falls back at
+ * once and the next request asks again; past its 15 minutes the last profile keeps answering while one
+ * refresh runs, and for a day when FMP fails, flagged stale. FMP's profile carries no quote time, so its
+ * as-of is when FMP answered (kept through the cache): a cache hit 14 minutes later still says when the
+ * price was read.
  */
-export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetchedAt: string; stale?: boolean }) | null> {
+export async function fmpProfile(raw: string): Promise<Profile | null> {
   const key = process.env.FMP_API_KEY;
   if (!key) return null;
-  const e = await cacheEntry<FmpProfile[] | null>(`fmp:profile:${symbol}`, PROFILE_TTL, async () => {
+  const symbol = forFmp(raw);
+  const e = await cacheEntry<unknown[] | null>(`fmp:profile:${symbol}`, PROFILE_TTL, async () => {
     // The plan's daily limit (see FMP_LIMIT_KEY in market/fmp): skip the request while it is in force.
     if (await cacheGet("fmp:daily-limit")) throw new MarketDataError("The market-data plan's daily request limit is used up; it resets daily.");
     return callSource("fmp", "profile", async () => {
@@ -43,11 +45,15 @@ export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetche
         await cacheSet("fmp:daily-limit", "1", 30 * 60_000);
         throw new SourceError("fmp", "rate-limit", "FMP's daily limit was reached", 429);
       }
-      return Array.isArray(data) ? (data as FmpProfile[]) : null; // FMP returns an object with a message on plan errors
+      if (!Array.isArray(data)) return null; // FMP returns an object with a message on plan errors
+      // Drift is FMP failing: counted for the breaker and never cached, so the last good profile keeps serving.
+      if (data.length) parseOrThrow(ProfileRows, data, "FMP", "profile");
+      return data;
     }, { label: "FMP" });
   }, { shared: true, staleMs: PROFILE_TTL, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS });
   const fetchedAt = new Date(e.fetchedAt).toISOString();
   if (e.stale) noteFreshness({ stale: true, fetchedAt });
-  const p = e.value?.[0];
-  return p ? { ...p, fetchedAt, ...(e.stale ? { stale: true } : {}) } : null;
+  if (!e.value?.length) return null;
+  const [p] = parseOrThrow(ProfileRows, e.value, "FMP", "profile");
+  return { ...profileOf(p, fetchedAt), ...(e.stale ? { stale: true } : {}) };
 }

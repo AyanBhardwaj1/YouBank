@@ -5,7 +5,8 @@ import { structured } from "@/lib/ai/agent";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MarketDataError } from "@/lib/market/fmp";
 import { withMode } from "@/lib/market/budgets";
-import { provenanceHeaders, withProvenance, type ProvenanceRun } from "@/lib/market/provenance";
+import { withProvenance, type ProvenanceRun } from "@/lib/market/provenance";
+import { sourceHeaders as buildSourceHeaders } from "@/lib/market/source-header";
 import { flushSourceStats } from "@/lib/market/stats";
 import { companySnapshot, type Need } from "@/lib/terminal/snapshot";
 import { creditView, debtView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
@@ -84,10 +85,13 @@ function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers:
 
 /**
  * The sources an answer used, for the screen's badge (x-data-sources: providers, notes such as "S&P 500
- * tracked by the SPY ETF", the adapters that answered, and whether anything was stale or delayed), and
- * Server-Timing with each source's time.
+ * via SPY", the adapters that answered, and whether anything was stale or delayed, with the oldest as-of),
+ * and Server-Timing with each source's time. One builder (market/source-header) for every route.
  */
-const sourceHeaders = (run: ProvenanceRun<unknown>, t0?: number): Record<string, string> => provenanceHeaders(run, t0 === undefined ? undefined : performance.now() - t0);
+const sourceHeaders = (run: ProvenanceRun<unknown>, t0?: number): Record<string, string> => buildSourceHeaders(run, t0 === undefined ? undefined : performance.now() - t0);
+
+/** The older of two ISO times (either may be missing). */
+const oldest = (a?: string, b?: string) => (!a ? b : !b ? a : Date.parse(b) < Date.parse(a) ? b : a);
 
 /** The per-minute source rollups are written after the answer is sent (market/stats). */
 const flushLater = () => { try { after(flushSourceStats); } catch { /* outside a request */ } };
@@ -115,7 +119,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
     if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {
       const snap = await withProvenance(() => withMode("interactive", () => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null)));
       if (snap.value) {
-        const both = { ...snap, providers: [...run.providers, ...snap.providers], notes: [...run.notes, ...snap.notes], sources: [...run.sources, ...snap.sources], timings: [...run.timings, ...snap.timings], stale: run.stale || snap.stale, delayed: run.delayed || snap.delayed };
+        const both = {
+          ...snap, providers: [...run.providers, ...snap.providers], notes: [...run.notes, ...snap.notes], sources: [...run.sources, ...snap.sources], timings: [...run.timings, ...snap.timings],
+          stale: run.stale || snap.stale, delayed: run.delayed || snap.delayed, asOf: oldest(run.asOf, snap.asOf), oldestFetchedAt: oldest(run.oldestFetchedAt, snap.oldestFetchedAt), meta: {},
+        };
         return errorResponse(e, { snapshot: snap.value }, sourceHeaders(both, t0));
       }
     }

@@ -250,13 +250,14 @@ async function testStats() {
   check("A8 Server-Timing header format", h === 'fmp;dur=412.3;desc="2 calls, 1 failed", nasdaq;dur=88.0;desc="1 call, 1 hedged", cache;desc="stale", total;dur=530.0', h);
   const parsed = parseServerTiming(h);
   check("A8 Server-Timing parses back", parsed.length === 4 && parsed[0].name === "fmp" && parsed[0].dur === 412.3 && parsed[2].dur === null && parsed[3].dur === 530, parsed);
-  const { withProvenance, noteSource, provenanceHeaders } = await import("@/lib/market/provenance");
+  const { withProvenance, noteSource } = await import("@/lib/market/provenance");
+  const { sourceHeaders } = await import("@/lib/market/source-header");
   const run = await withProvenance(async () => {
     noteSource("FMP", undefined, { fetchedAt: "2026-10-21T10:00:00Z", asOf: "2026-10-21T09:59:00Z" });
     noteSource("Nasdaq", "S&P 500 tracked by the SPY ETF", { fetchedAt: "2026-10-21T08:00:00Z", stale: true, delayed: true });
     st.recordSourceCall({ source: "fmp", op: "test", ms: 5, outcome: "ok" });
   });
-  const hdr = provenanceHeaders(run, 10);
+  const hdr = sourceHeaders(run, 10);
   const xs = JSON.parse(hdr["x-data-sources"]);
   check("A8/contract withProvenance exposes stale, delayed, oldestFetchedAt and asOf", run.stale && run.delayed && run.oldestFetchedAt === "2026-10-21T08:00:00Z" && run.asOf === "2026-10-21T09:59:00Z", run);
   check("A8/contract x-data-sources carries the freshness summary", xs.stale === true && xs.delayed === true && xs.oldestFetchedAt === "2026-10-21T08:00:00Z" && xs.providers.length === 2, xs);

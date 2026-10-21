@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { Command } from "@/lib/functions";
 import type { AnalystView, DividendView, EarningsView } from "@/lib/terminal/street";
+import { NA } from "@/lib/market/units";
 import { AiRead, AskAi, BarList, DataTable, fbig, fn, fp, Frame, fsp, Hint, Meter, Pill, SeriesChart, Section, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
 
 type Props = { ticker: string; onRun?: (c: Command) => void };
@@ -86,13 +87,14 @@ export function AnrScreen({ ticker, onRun }: Props) {
   return (
     <Frame q={q} what={`${ticker} analyst views`}>
       {(d) => {
-        const total = d.counts.buy + d.counts.hold + d.counts.sell;
+        const c = d.counts;
+        const total = c && c.buy !== null && c.hold !== null && c.sell !== null ? c.buy + c.hold + c.sell : null;
         return (
           <div className="flex flex-col gap-3 p-3">
             <Tiles>
               <Tile label="Consensus target" value={d.target ? fn(d.target.consensus) : "—"} sub={d.target?.upside !== null && d.target?.upside !== undefined ? `${fsp(d.target.upside)} from ${fn(d.last)}` : undefined} subTone={tone(d.target?.upside)} />
               <Tile label="Target range" value={d.target ? `${fn(d.target.low, 0)}–${fn(d.target.high, 0)}` : "—"} sub={d.target?.dispersion !== null && d.target?.dispersion !== undefined ? `dispersion ${fp(d.target.dispersion, 0)}` : undefined} />
-              <Tile label="Buy / hold / sell" value={total ? `${d.counts.buy} / ${d.counts.hold} / ${d.counts.sell}` : "—"} sub={total ? `${fp(d.counts.buy / total, 0)} buy` : "no recent ratings"} />
+              <Tile label="Buy / hold / sell" value={c ? `${c.buy ?? NA} / ${c.hold ?? NA} / ${c.sell ?? NA}` : NA} sub={total && c?.buy !== null && c?.buy !== undefined ? `${fp(c.buy / total, 0)} buy` : c ? "counts incomplete" : "no source reported the counts"} />
               <Tile label="Upgrades, 90 days" value={String(d.drift.upgrades90)} subTone="text-pos" />
               <Tile label="Downgrades, 90 days" value={String(d.drift.downgrades90)} subTone="text-neg" />
               {d.snapshot || !d.consensusRating
@@ -143,7 +145,7 @@ export function DvdScreen({ ticker, onRun }: Props) {
     <Frame q={q} what={`${ticker} dividends`}>
       {(d) => {
         // AI research, the last backup, finds the current dividend but no payment history.
-        const current = !d.payments.length && d.ttm > 0;
+        const current = !d.payments.length && d.ttm !== null && d.ttm > 0;
         if (!d.payments.length && !current) return <div className="p-4 text-[11px] text-muted">{ticker} has not paid a dividend in the available history.</div>;
         // Filings give fiscal years from the 10-K; payments by ex-date are summed by calendar year.
         const byYear = new Map<string, number>();
@@ -154,7 +156,7 @@ export function DvdScreen({ ticker, onRun }: Props) {
         return (
           <div className="flex flex-col gap-3 p-3">
             <Tiles>
-              <Tile label={current ? "Annual dividend" : "Trailing 12 months"} value={fn(d.ttm, 2)} sub={d.frequency || undefined} />
+              <Tile label={current ? "Annual dividend" : "Trailing 12 months"} value={d.ttm === null ? NA : fn(d.ttm, 2)} sub={d.frequency || undefined} />
               <Tile label="Yield" value={fp(d.yield, 2)} />
               <Tile label="Payout ratio" value={fp(d.payout, 0)} sub="of trailing EPS" subTone={d.payout !== null && d.payout > 0.8 ? "text-neg" : "text-muted"} />
               {!current && <Tile label="Growth, 1 / 3 / 5y" value={`${fsp(d.growth.y1, 0)} / ${fsp(d.growth.y3, 0)}`} sub={`5y ${fsp(d.growth.y5, 0)} a year`} />}

@@ -15,9 +15,11 @@ import { SECT_DATE_CONCURRENCY } from "@/lib/market/budgets";
 import { mapLimit } from "@/lib/market/chain";
 import { historyFrom, quotes } from "@/lib/market/data";
 import { MarketDataError, mergers, movers, sectorHistory, sectorSnapshot, type Deal, type Mover, type Quote } from "@/lib/market/fmp";
-import { backupEnabled, nasdaqHistory, nasdaqMovers } from "@/lib/market/nasdaq";
+import { backupEnabled, nasdaqHistory, nasdaqMovers, type NasdaqMover } from "@/lib/market/nasdaq";
 import { noteSource } from "@/lib/market/provenance";
 import { fromChain, isEmptyAnswer, NoSourceError } from "@/lib/market/registry";
+import { latestTradingDay, marketDate, marketYear, previousTradingDay } from "@/lib/market/calendar";
+import { pctToFraction } from "@/lib/market/units";
 import { factNum, research } from "@/lib/market/research";
 
 export type AssetRow = {
@@ -25,6 +27,8 @@ export type AssetRow = {
   vol: number | null; z: number | null; spark: number[];
   /** When a backup stood in: the ETF that tracks it ("SPY"), "ECB fixing", or "AI research" (latest level only). */
   via?: string;
+  /** For an ETF stand-in, what the level is ("S&P 500 via SPY"): the price is the ETF's, never the index level. */
+  label?: string;
 };
 
 /** Boards refresh their quotes every ten minutes at most: each quote is one request against the plan's daily limit. */
@@ -45,15 +49,15 @@ async function rows(list: { symbol: string; name: string; region?: string }[]): 
     const live = got?.via ? undefined : q[l.symbol];
     const last = live?.price ?? c[c.length - 1] ?? null;
     const back = (n: number) => (c.length > n ? c[c.length - 1 - n] : null);
-    const y0 = h.findIndex((x) => x.date.slice(0, 4) === new Date().toISOString().slice(0, 4));
+    const y0 = h.findIndex((x) => x.date.slice(0, 4) === String(marketYear()));
     const r = returns(c.slice(-253), true);
     const daily = r.length > 20 ? stdev(r) : null;
-    const d1 = live?.changePercentage !== undefined ? live.changePercentage / 100 : (back(1) && last ? last / (back(1) as number) - 1 : null);
+    const d1 = live?.changePct ?? (back(1) && last ? last / (back(1) as number) - 1 : null);
     const ch = (b: number | null) => (b && last ? last / b - 1 : null);
     return {
       ...l, price: last, d1, w1: ch(back(5)), m1: ch(back(21)), ytd: y0 > 0 ? ch(c[y0 - 1]) : null, y1: ch(back(252)),
       vol: daily !== null ? daily * Math.sqrt(252) : null, z: daily && d1 !== null ? d1 / daily : null, spark: c.slice(-60),
-      ...(got?.via ? { via: got.via } : {}),
+      ...(got?.via ? { via: got.via } : {}), ...(got?.label ? { label: got.label } : {}),
     };
   });
   // Rows no feed covers (the VIX has no ETF that tracks its level): AI research for the latest level,
@@ -96,22 +100,30 @@ export const commodities = () => rows(COMMODITIES);
 /** Penny stocks crowd the raw feeds; the screen shows them but sorts real companies first. */
 const realFirst = <T extends { price: number }>(xs: T[]) => [...xs].sort((a, b) => Number(b.price >= 5) - Number(a.price >= 5));
 
+/** A mover as the screen shows it: change as a fraction, null when the feed has none. */
+export type MoverRow = { symbol: string; name: string; price: number; change: number | null; changePct: number | null; exchange: string };
+const fromFmpMover = (m: Mover): MoverRow => ({ symbol: m.symbol, name: m.name, price: m.price, change: m.change, changePct: pctToFraction(m.changesPercentage), exchange: m.exchange });
+
 /** FMP's three movers lists, or null when none answered. */
-export async function fmpMovers(): Promise<{ actives: Mover[]; gainers: Mover[]; losers: Mover[] } | null> {
+export async function fmpMovers(): Promise<{ actives: MoverRow[]; gainers: MoverRow[]; losers: MoverRow[] } | null> {
   const [actives, gainers, losers] = await Promise.all([movers("most-actives"), movers("biggest-gainers"), movers("biggest-losers")].map((p) => p.catch(() => null)));
   if (!actives?.length && !gainers?.length && !losers?.length) return null;
-  return { actives: realFirst(actives ?? []).slice(0, 25), gainers: realFirst(gainers ?? []).slice(0, 25), losers: realFirst(losers ?? []).slice(0, 25) };
+  const top = (xs: Mover[] | null) => realFirst((xs ?? []).map(fromFmpMover)).slice(0, 25);
+  return { actives: top(actives), gainers: top(gainers), losers: top(losers) };
 }
 
 /** Nasdaq's movers in the same shape, or null. */
-export async function nasdaqMoversView(): Promise<{ actives: Mover[]; gainers: Mover[]; losers: Mover[] } | null> {
+export async function nasdaqMoversView(): Promise<{ actives: MoverRow[]; gainers: MoverRow[]; losers: MoverRow[] } | null> {
   const n = await nasdaqMovers().catch(() => null);
   if (!n) return null;
-  const asMover = (m: (typeof n.actives)[number]): Mover => ({ symbol: m.symbol, name: m.name, price: m.price, change: m.change ?? 0, changesPercentage: m.changePct ?? 0, exchange: "" });
+  const asMover = fromNasdaqMover;
   return { actives: realFirst(n.actives.map(asMover)).slice(0, 25), gainers: realFirst(n.gainers.map(asMover)).slice(0, 25), losers: realFirst(n.losers.map(asMover)).slice(0, 25) };
 }
 
-export async function moversView(): Promise<{ actives: Mover[]; gainers: Mover[]; losers: Mover[] }> {
+/** A Nasdaq mover as the screen's row (a missing change stays null). */
+export const fromNasdaqMover = (m: NasdaqMover): MoverRow => ({ symbol: m.symbol, name: m.name, price: m.price, change: m.change, changePct: m.changePct, exchange: "" });
+
+export async function moversView(): Promise<{ actives: MoverRow[]; gainers: MoverRow[]; losers: MoverRow[] }> {
   try {
     return (await fromChain("movers", {})).data;
   } catch (e) {
@@ -130,17 +142,19 @@ const SECTOR_ETFS: Record<string, string> = {
 
 type SectorsView = { date: string; sectors: { sector: string; d1: number; m1: number | null; ytd: number | null }[]; via?: string };
 
-/** FMP's sector snapshot (the newest of the last six days that has one; tried a few at once) and its month and year-to-date history, or null. */
+/** FMP's sector snapshot (the newest of the last six trading days that has one; tried a few at once) and its month and year-to-date history, or null. */
 export async function fmpSectors(): Promise<SectorsView | null> {
-  // The snapshot is by exchange; average the NYSE and Nasdaq figures. Weekends and holidays need older days.
-  const dates = Array.from({ length: 6 }, (_, back) => new Date(Date.now() - back * 86_400_000).toISOString().slice(0, 10));
+  // The snapshot is by exchange; average the NYSE and Nasdaq figures. Weekends and holidays need older days:
+  // trading days in New York, latest first (after 8 pm ET the UTC date is already tomorrow).
+  const dates: string[] = [];
+  for (let back = 0, d = latestTradingDay(); back < 6; back++, d = previousTradingDay(d)) dates.push(d);
   const snaps = await mapLimit(dates, SECT_DATE_CONCURRENCY, (d) => sectorSnapshot(d).catch(() => [] as Awaited<ReturnType<typeof sectorSnapshot>>));
   const i = snaps.findIndex((x) => x.length);
   if (i < 0) return null;
   const date = dates[i], snap = snaps[i];
   const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const ytdStart = `${new Date().getUTCFullYear()}-01-01`;
-  const today = new Date().toISOString().slice(0, 10);
+  const ytdStart = `${marketYear()}-01-01`;
+  const today = marketDate();
   const bySector = new Map<string, number[]>();
   for (const s of snap) bySector.set(s.sector, [...(bySector.get(s.sector) ?? []), s.averageChange]);
   const sectors = await Promise.all([...bySector.entries()].map(async ([sector, v]) => {
@@ -169,7 +183,7 @@ export async function sectorsView(): Promise<SectorsView> {
 /** Sector performance from the SPDR sector ETFs (a close proxy for the large-cap sectors), or null. */
 export async function etfSectors(): Promise<SectorsView | null> {
   const monthAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-  const ytdStart = `${new Date().getUTCFullYear()}-01-01`;
+  const ytdStart = `${marketYear()}-01-01`;
   const from = monthAgo < ytdStart ? new Date(Date.parse(monthAgo) - 10 * 86_400_000).toISOString().slice(0, 10) : new Date(Date.parse(ytdStart) - 10 * 86_400_000).toISOString().slice(0, 10);
   const got = await Promise.all(Object.entries(SECTOR_ETFS).map(async ([sector, etf]) => ({ sector, bars: await nasdaqHistory(etf, from).catch(() => []) })));
   const live = got.filter((g) => g.bars.length > 2);

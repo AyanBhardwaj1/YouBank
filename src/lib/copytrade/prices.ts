@@ -5,10 +5,8 @@
  */
 import { historyFrom, quotes } from "@/lib/market/data";
 import { withProvenance, type Provider } from "@/lib/market/provenance";
+import { canonical } from "@/lib/market/symbols";
 import type { Close } from "./backtest";
-
-/** Tickers as quote services write them: SEC's "BRK-B" is "BRK.B" on Nasdaq. Tried in this order. */
-const variants = (t: string) => [...new Set([t, t.replace(/-/g, "."), t.replace(/-/g, "/")])];
 
 async function pool<T, R>(xs: T[], n: number, f: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(xs.length);
@@ -25,12 +23,11 @@ export async function dailyCloses(tickers: string[], from: string, opts: { max?:
     const missing: string[] = [];
     await pool(list, 6, async (t) => {
       if (opts.deadline && Date.now() > opts.deadline) { missing.push(t); return; }
-      for (const v of variants(t)) {
-        try {
-          const r = await historyFrom(v, from, true);
-          if (r.data.length) { prices[t] = r.data.map((b) => ({ date: b.date, close: b.close })).sort((a, b) => (a.date < b.date ? -1 : 1)); return; }
-        } catch { /* next spelling */ }
-      }
+      // One request: each feed spells the symbol its own way (SEC's BRK-B is BRK.B on Nasdaq) at its boundary.
+      try {
+        const r = await historyFrom(canonical(t), from, true);
+        if (r.data.length) { prices[t] = r.data.map((b) => ({ date: b.date, close: b.close })).sort((a, b) => (a.date < b.date ? -1 : 1)); return; }
+      } catch { /* no source has it */ }
       missing.push(t);
     });
     return { prices, missing };
@@ -43,8 +40,8 @@ export async function latestPrices(tickers: string[]): Promise<{ prices: Record<
   const list = [...new Set(tickers)];
   const { value, providers } = await withProvenance(async () => {
     const out: Record<string, number> = {};
-    const q = await quotes(list.map((t) => t.replace(/-/g, "."))).catch(() => ({} as Record<string, { price: number }>));
-    for (const t of list) { const p = q[t.replace(/-/g, ".")]?.price ?? (q as Record<string, { price: number }>)[t]?.price; if (p && p > 0) out[t] = p; }
+    const q = await quotes(list.map(canonical)).catch(() => ({} as Record<string, { price: number }>));
+    for (const t of list) { const p = q[canonical(t)]?.price; if (p && p > 0) out[t] = p; }
     const missing = list.filter((t) => !out[t]);
     if (missing.length) {
       const from = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);

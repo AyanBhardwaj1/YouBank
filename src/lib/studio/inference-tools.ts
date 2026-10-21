@@ -23,6 +23,7 @@ import { getCompanyData } from "@/lib/company";
 import { getCompanyFacts } from "@/lib/edgar/facts";
 import { creditView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
 import { waccView } from "@/lib/terminal/wacc";
+import { withProvenance } from "@/lib/market/provenance";
 import type { Tranche } from "@/lib/edge/scen/lbo";
 import { runLab } from "@/lib/edge/scen/lab";
 import { rateModel } from "@/lib/edge/scen/rates";
@@ -205,11 +206,14 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
       schema: z.object({ ticker: z.string() }),
       run: ({ ticker }) => s.guard(async () => {
         const t = ticker.toUpperCase();
-        const [c, q] = await Promise.all([creditView(t).catch((e: unknown) => ({ error: toolError(e) })), qualityView(t).catch((e: unknown) => ({ error: toolError(e) }))]);
+        const run = await withProvenance(() => Promise.all([creditView(t).catch((e: unknown) => ({ error: toolError(e) })), qualityView(t).catch((e: unknown) => ({ error: toolError(e) }))]));
+        const [c, q] = run.value;
+        // Name the price feeds that answered (the credit model's equity volatility), not a fixed vendor.
+        const feeds = run.providers.filter((p) => p !== "SEC EDGAR");
         return J({
           credit: "error" in c ? c : { rating: c.rating.rating, grade: c.rating.grade, views: c.rating.views, mortality: c.rating.mortality, coverage: c.coverage, caveat: c.caveat },
           quality: "error" in q ? q : { fy: q.fy, beneishM: q.beneish?.m ?? null, beneishFlag: q.beneish?.flag ?? null, piotroski: q.piotroski?.score ?? null, accruals: q.accruals, flags: q.flags },
-          sources: ["SEC XBRL company facts", "Prices: Financial Modeling Prep (when on the plan)"],
+          sources: ["SEC XBRL company facts", feeds.length ? `Prices: ${feeds.join(", ")}` : "Prices: no feed answered (volatility from the 52-week range)"],
         });
       }),
     }),

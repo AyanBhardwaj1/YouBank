@@ -5,6 +5,7 @@ import { siteLink } from "@/lib/site";
  * A frozen snapshot of real YouBank data (SEC XBRL fundamentals, FMP prices, the startup directory),
  * built by scripts/snapshot.ts. The landing page demos run on this so they work signed out and offline.
  */
+/** `changePct` here is in percent (-1.76 is -1.76%), as the landing demos display it; CompanyData's is a fraction. */
 export type DemoComp = {
   ticker: string; name: string; price: number | null; changePct: number | null; marketCap: number | null; ev: number | null;
   evRevLtm: number | null; evEbitdaLtm: number | null; growth: number | null; gm: number | null; fcfm: number | null; r40: number | null;

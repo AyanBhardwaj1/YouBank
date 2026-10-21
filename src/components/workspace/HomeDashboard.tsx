@@ -11,6 +11,7 @@ import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
 import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
 import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
+import { changeTone, fmtChange } from "@/lib/market/units";
 
 type Run = { id: number; toolId: string; title: string; model: string; status: string; createdAt: string; durationMs: number };
 
@@ -73,7 +74,7 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
                           <tr key={c.ticker} className="border-b border-line/50 hover:bg-elevated/60">
                             <td className="py-1.5"><Link href={`/app/terminal?ticker=${c.ticker}`} className="num font-semibold hover:text-accent">{c.ticker}</Link> <span className="hidden max-w-[150px] truncate text-[10.5px] text-muted xl:inline">{c.name.replace(/,? (Inc|Corp|Holdings|plc)\.?$/i, "")}</span></td>
                             <td className="num py-1.5 pr-3 text-right">{c.price ? c.price.last.toFixed(2) : "—"}</td>
-                            <td className={`num py-1.5 pr-3 text-right ${chg === null ? "" : chg >= 0 ? "text-pos" : "text-neg"}`}>{chg === null ? "—" : `${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%`}</td>
+                            <td className={`num py-1.5 pr-3 text-right ${chg === null ? "" : chg >= 0 ? "text-pos" : "text-neg"}`}>{fmtChange(chg)}</td>
                             <td className="num py-1.5 pr-3 text-right">{fmtX(d.evRevLtm)}</td>
                             <td className="num py-1.5 pr-3 text-right">{fmtPct(d.revenueGrowth)}</td>
                             <td className="num py-1.5 pr-3 text-right">{fmtPct(d.fcfMargin)}</td>
@@ -103,10 +104,10 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
                   <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                     {movers.slice(0, 3).map((c) => {
                       const d = derive(c);
-                      const chg = c.price?.changePct ?? 0;
+                      const chg = c.price?.changePct ?? null;
                       return (
                         <Link key={c.ticker} href={`/app/terminal?ticker=${c.ticker}&fn=DES`} className="lift panel p-3">
-                          <div className="flex items-baseline justify-between"><span className="num text-[13px] font-semibold">{c.ticker}</span><span className={`num text-[11.5px] ${chg >= 0 ? "text-pos" : "text-neg"}`}>{chg >= 0 ? "▲" : "▼"} {Math.abs(chg).toFixed(2)}%</span></div>
+                          <div className="flex items-baseline justify-between"><span className="num text-[13px] font-semibold">{c.ticker}</span><span className={`num text-[11.5px] ${changeTone(chg)}`}>{fmtChange(chg, 2, true)}</span></div>
                           <div className="mt-0.5 truncate text-[11px] text-muted">{c.name}</div>
                           <div className="num mt-2 flex items-baseline gap-3 text-[11px]"><span>EV {d.ev !== null ? `$${fmtMoney(d.ev)}` : "n/a"}</span><span className="text-muted">{fmtX(d.evRevLtm)} rev</span></div>
                         </Link>

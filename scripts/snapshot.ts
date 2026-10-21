@@ -7,7 +7,7 @@ import { searchStartups } from "../src/lib/vc/directory";
 async function main() {
   const tickers = ["SNOW", "DDOG", "MDB", "NET", "CRWD", "GTLB", "PLTR", "NOW", "ESTC", "CCL", "AAL", "LUMN"];
   const res = await getCompanies(tickers, 3);
-  const comps = tickers.map((t) => { const c = res[t]; if (!c || "error" in c) return null; const d = derive(c); return { ticker: c.ticker, name: c.name, price: c.price?.last ?? null, changePct: c.price?.changePct ?? null, marketCap: d.marketCap, ev: d.ev, evRevLtm: d.evRevLtm, evEbitdaLtm: d.evEbitdaLtm, growth: d.revenueGrowth, gm: d.grossMargin, fcfm: d.fcfMargin, r40: d.ruleOf40, revenue: c.ltm.revenue, debt: c.balance.debt, cash: c.balance.cash, ltmEnd: c.ltm.periodEnd, quarters: c.quarters.map((q) => ({ label: q.label, revenue: q.revenue })), fye: c.fye }; }).filter(Boolean);
+  const comps = tickers.map((t) => { const c = res[t]; if (!c || "error" in c) return null; const d = derive(c); return { ticker: c.ticker, name: c.name, price: c.price?.last ?? null, changePct: typeof c.price?.changePct === "number" ? Math.round(c.price.changePct * 1e7) / 1e5 : null /* the demo shows percent; CompanyData holds a fraction */, marketCap: d.marketCap, ev: d.ev, evRevLtm: d.evRevLtm, evEbitdaLtm: d.evEbitdaLtm, growth: d.revenueGrowth, gm: d.grossMargin, fcfm: d.fcfMargin, r40: d.ruleOf40, revenue: c.ltm.revenue, debt: c.balance.debt, cash: c.balance.cash, ltmEnd: c.ltm.periodEnd, quarters: c.quarters.map((q) => ({ label: q.label, revenue: q.revenue })), fye: c.fye }; }).filter(Boolean);
   const startups = await searchStartups({ q: "", pageSize: 12, source: "yc" });
   const formd = await searchStartups({ q: "", pageSize: 6, source: "formd" });
   const hn = await searchStartups({ q: "", pageSize: 6, source: "hn" });

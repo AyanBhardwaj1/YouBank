@@ -12,6 +12,7 @@
  * Asking about a meeting is an ordinary AI question over its transcript, inside the person's normal
  * daily AI allowance, like quick ask.
  */
+import { fmtChange } from "@/lib/market/units";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { requireDb, schema } from "@/db";
@@ -58,7 +59,7 @@ async function companyFacts(name: string): Promise<BriefCompany> {
   if (!c) return { name, ticker: hit.ticker, facts: [] };
   const growth = c.ltm.revenue && c.ltm.priorRevenue ? ` (${c.ltm.revenue >= c.ltm.priorRevenue ? "+" : ""}${Math.round((c.ltm.revenue / c.ltm.priorRevenue - 1) * 100)}% a year)` : "";
   const facts = [
-    c.price ? `Market cap ${fmtMm(c.price.marketCap)}, shares at ${c.price.last.toFixed(2)} (${c.price.changePct >= 0 ? "+" : ""}${c.price.changePct.toFixed(1)}% today)` : "",
+    c.price ? `Market cap ${fmtMm(c.price.marketCap) ?? "n/a"}, shares at ${c.price.last.toFixed(2)} (${fmtChange(c.price.changePct, 1)} today)` : "",
     c.ltm.revenue != null ? `Revenue over the last twelve months ${fmtMm(c.ltm.revenue)}${growth}` : "",
     c.ltm.ebitda != null ? `EBITDA ${fmtMm(c.ltm.ebitda)}` : "",
     c.balance.cash != null || c.balance.debt != null ? `Cash ${fmtMm(c.balance.cash) ?? "n/a"}, debt ${fmtMm(c.balance.debt) ?? "n/a"}` : "",

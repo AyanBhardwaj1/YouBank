@@ -812,7 +812,7 @@ const MA_CALCS: ToolDef[] = [
       { key: "exitMultiple", label: "Exit EV/EBITDA", type: "number", unit: "x", default: 12 },
     ],
     example: { ebitda: 150, entryMultiple: 12, tlbTurns: 4, secondTurns: 1.5, sofr: 3.75, tlbSpread: 375, secondRate: 10.5, oid: 99.5, financeFeePct: 2, txnFeePct: 2, minCash: 25, growth: 9, daPct: 20, capexPct: 15, nwcPct: 15, tax: 25, amortPct: 1, sweep: 75, years: 5, exitMultiple: 12 },
-    prefill: (c) => ({ ebitda: c.ltm.adjEbitda ?? c.ltm.ebitda ?? 150, entryMultiple: c.ltm.adjEbitda && c.price ? Math.max(4, Math.round((c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0)) / c.ltm.adjEbitda)) : 12 }),
+    prefill: (c) => ({ ebitda: c.ltm.adjEbitda ?? c.ltm.ebitda ?? 150, entryMultiple: c.ltm.adjEbitda && c.price && c.price.marketCap !== null ? Math.max(4, Math.round((c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0)) / c.ltm.adjEbitda)) : 12 }),
     compute: (i: Inputs): WorkflowOutput => {
       // The shared LBO engine (src/lib/edge/scen/lbo.ts), run yearly on this deterministic path; the LBO Stress
       // Lab runs the same function quarterly on simulated paths, so the two agree exactly on a steady path.

@@ -563,8 +563,9 @@ const paperLbo: ToolDef = {
   example: { entryEbitda: 100, entryMultiple: 10, debtTurns: 5, feesPct: 2, ebitdaGrowth: 8.45, exitMultiple: 10, years: 5, interestRate: 9, taxRate: 25, daPct: 20, capexPct: 25, nwcPct: 10, sweepPct: 100 },
   prefill: (c) => {
     const eb = c.ltm.adjEbitda ?? c.ltm.ebitda ?? 0;
-    const ev = (c.price?.marketCap ?? 0) + (c.balance.debt ?? 0) - (c.balance.cash ?? 0);
-    const mult = eb > 0 && ev > 0 ? Math.round((ev / eb) * 10) / 10 : 10;
+    // No market cap (several share classes and no feed figure) means no EV: the default multiple, not debt alone.
+    const ev = c.price?.marketCap != null ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null;
+    const mult = eb > 0 && ev !== null && ev > 0 ? Math.round((ev / eb) * 10) / 10 : 10;
     return { entryEbitda: Math.round(eb), entryMultiple: mult, exitMultiple: mult, debtTurns: 5, years: 5 };
   },
   compute: (i: Inputs): WorkflowOutput => {

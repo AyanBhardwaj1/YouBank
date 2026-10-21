@@ -19,6 +19,8 @@ import { dividends as fmpDividends, earnings as fmpEarnings, estimates, grades, 
 import { backupEnabled, nasdaqDividends, nasdaqEarningsDate, nasdaqEarningsSurprise, nasdaqEpsForecast, nasdaqRatings, nasdaqTargets } from "@/lib/market/nasdaq";
 import { noteSource } from "@/lib/market/provenance";
 import { isSourceFailure } from "@/lib/market/source-error";
+import { epsSurprise, trailingEps } from "@/lib/market/units";
+import { marketDate, marketYear } from "@/lib/market/calendar";
 import { factNum, factStr, research, type Field, type Researched } from "@/lib/market/research";
 
 /** FMP's answer, or null when FMP is out (a plan limit, a timeout, a network failure, an open breaker, an unreadable answer), so the caller can fall back. Other errors still throw. */
@@ -26,6 +28,8 @@ const orNull = <T>(p: Promise<T>) => p.catch((e) => { if (e instanceof MarketDat
 const subjectOf = async (ticker: string) => { const c = await getCompanyData(ticker).catch(() => null); return { company: c, subject: c ? `${c.name} (${c.exchange ? `${c.exchange}: ` : ""}${c.ticker})` : ticker.toUpperCase() }; };
 
 /* ---------------- Earnings ---------------- */
+
+const mmOrNull = (v: number | null) => (v === null ? null : v / 1e6);
 
 type Quarter = { date: string; epsActual: number; epsEstimated: number | null; epsSurprise: number | null; revenueActual: number | null; revenueEstimated: number | null; revenueSurprise: number | null; move: number | null };
 
@@ -60,23 +64,23 @@ function summarizeQuarters(quarters: Quarter[]) {
 export async function earningsView(ticker: string): Promise<EarningsView> {
   const t = ticker.toUpperCase();
   const [rows, bars, est] = await Promise.all([orNull(fmpEarnings(t)), history(t).catch(() => [] as Bar[]), estimates(t, "annual").catch(() => [])]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = marketDate();
   if (rows?.length) {
     noteSource("FMP");
     const upcoming = rows.filter((r) => r.date >= today && r.epsActual === null).sort((a, b) => (a.date < b.date ? -1 : 1))[0] ?? null;
     const past = rows.filter((r) => r.epsActual !== null && r.date < today).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 16);
     const quarters = past.map((r) => ({
       date: r.date, epsActual: r.epsActual as number, epsEstimated: r.epsEstimated,
-      epsSurprise: r.epsEstimated ? (r.epsActual as number) / r.epsEstimated - 1 : null,
+      epsSurprise: epsSurprise(r.epsActual as number, r.epsEstimated),
       revenueActual: r.revenueActual, revenueEstimated: r.revenueEstimated,
-      revenueSurprise: r.revenueActual && r.revenueEstimated ? r.revenueActual / r.revenueEstimated - 1 : null,
+      revenueSurprise: r.revenueActual !== null ? epsSurprise(r.revenueActual, r.revenueEstimated) : null,
       move: reaction(bars, r.date),
     }));
-    const year = new Date().getUTCFullYear();
+    const year = marketYear();
     return {
       ticker: t, next: upcoming ? { date: upcoming.date, epsEstimated: upcoming.epsEstimated, revenueEstimated: upcoming.revenueEstimated } : null,
       quarters, ...summarizeQuarters(quarters),
-      annual: est.filter((e) => Number(e.date.slice(0, 4)) >= year - 1).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5).map((e) => ({ year: e.date.slice(0, 4), revenueAvg: e.revenueAvg / 1e6, revenueLow: e.revenueLow / 1e6, revenueHigh: e.revenueHigh / 1e6, epsAvg: e.epsAvg, analysts: e.numAnalystsEps })),
+      annual: est.filter((e) => Number(e.date.slice(0, 4)) >= year - 1).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5).map((e) => ({ year: e.date.slice(0, 4), revenueAvg: mmOrNull(e.revenueAvg), revenueLow: mmOrNull(e.revenueLow), revenueHigh: mmOrNull(e.revenueHigh), epsAvg: e.epsAvg, analysts: e.numAnalystsEps })),
     };
   }
   // Backup 1: Nasdaq's earnings surprises, next date and EPS forecasts.
@@ -86,7 +90,7 @@ export async function earningsView(ticker: string): Promise<EarningsView> {
       noteSource("Nasdaq");
       const quarters: Quarter[] = surprise.filter((s) => s.eps !== null && s.reported).map((s) => ({
         date: s.reported as string, epsActual: s.eps as number, epsEstimated: s.consensus,
-        epsSurprise: s.consensus ? (s.eps as number) / s.consensus - 1 : null, revenueActual: null, revenueEstimated: null, revenueSurprise: null,
+        epsSurprise: epsSurprise(s.eps as number, s.consensus), revenueActual: null, revenueEstimated: null, revenueSurprise: null,
         move: reaction(bars, s.reported as string),
       })).sort((a, b) => (a.date < b.date ? 1 : -1));
       // Nasdaq's EPS consensus is on the same basis (GAAP or adjusted) as the history beside it, so it
@@ -116,7 +120,7 @@ export async function earningsView(ticker: string): Promise<EarningsView> {
   if (!r) throw new MarketDataError("Earnings data is unavailable: FMP is out and the backups did not answer");
   noteSource("AI research");
   const lastDate = factStr(r, "lastReportDate"), lastEps = factNum(r, "lastEps"), lastEst = factNum(r, "lastEpsEstimate");
-  const quarters: Quarter[] = lastDate && lastEps !== null ? [{ date: lastDate, epsActual: lastEps, epsEstimated: lastEst, epsSurprise: lastEst ? lastEps / lastEst - 1 : null, revenueActual: null, revenueEstimated: null, revenueSurprise: null, move: reaction(bars, lastDate) }] : [];
+  const quarters: Quarter[] = lastDate && lastEps !== null ? [{ date: lastDate, epsActual: lastEps, epsEstimated: lastEst, epsSurprise: epsSurprise(lastEps, lastEst), revenueActual: null, revenueEstimated: null, revenueSurprise: null, move: reaction(bars, lastDate) }] : [];
   const nextDate = factStr(r, "nextEarningsDate");
   return {
     ticker: t, next: nextDate ? { date: nextDate, epsEstimated: factNum(r, "epsEstimate"), revenueEstimated: factNum(r, "revenueEstimate") } : null,
@@ -133,7 +137,8 @@ export const gradeBucket = (g: string): "buy" | "hold" | "sell" => (SELL.test(g)
 export type AnalystView = {
   ticker: string; last: number | null;
   target: { high: number; low: number; consensus: number; median: number; upside: number | null; dispersion: number | null } | null;
-  counts: { buy: number; hold: number; sell: number };
+  /** Null when no source reported the counts (not zero ratings); a count a source left out is null too. */
+  counts: { buy: number | null; hold: number | null; sell: number | null } | null;
   firms: { firm: string; grade: string; bucket: "buy" | "hold" | "sell"; date: string; action: string }[];
   drift: { upgrades90: number; downgrades90: number; net: number; label: string };
   snapshot: Awaited<ReturnType<typeof ratingSnapshot>>;
@@ -175,7 +180,7 @@ export async function analystView(ticker: string): Promise<AnalystView> {
       const firms = (nr?.actions ?? []).filter((a) => a.date).map((a) => ({ firm: a.firm, grade: a.to || a.action, bucket: gradeBucket(a.to || a.action), date: a.date as string, action: a.action }));
       return {
         ticker: t, last, target: nt ? targetOf(nt.high, nt.low, nt.mean, last) : null,
-        counts: nt ? { buy: nt.buy, hold: nt.hold, sell: nt.sell } : { buy: 0, hold: 0, sell: 0 },
+        counts: nt ? { buy: nt.buy, hold: nt.hold, sell: nt.sell } : null,
         firms, drift: driftOf(firms), snapshot: null, consensusRating: nr?.mean || undefined,
       };
     }
@@ -187,7 +192,7 @@ export async function analystView(ticker: string): Promise<AnalystView> {
   noteSource("AI research");
   return {
     ticker: t, last, target: targetOf(factNum(r, "targetHigh"), factNum(r, "targetLow"), factNum(r, "targetMean"), last),
-    counts: { buy: factNum(r, "buy") ?? 0, hold: factNum(r, "hold") ?? 0, sell: factNum(r, "sell") ?? 0 },
+    counts: { buy: factNum(r, "buy"), hold: factNum(r, "hold"), sell: factNum(r, "sell") },
     firms: [], drift: driftOf([]), snapshot: null, consensusRating: factStr(r, "rating") ?? undefined, research: r,
   };
 }
@@ -196,7 +201,7 @@ export async function analystView(ticker: string): Promise<AnalystView> {
 
 export type DividendView = {
   ticker: string; payments: { date: string; amount: number; payDate: string }[];
-  ttm: number; yield: number | null; frequency: string; growth: { y1: number | null; y3: number | null; y5: number | null };
+  ttm: number | null; yield: number | null; frequency: string; growth: { y1: number | null; y3: number | null; y5: number | null };
   payout: number | null; streakYears: number; safety: { score: number; label: "safe" | "watch" | "at risk"; reasons: string[] };
   /** "fiscal quarter" when payments are per-share dividends by fiscal quarter from filings, not by ex-date. */
   basis?: "ex-date" | "fiscal quarter";
@@ -218,7 +223,7 @@ const fiscalYear = (end: string) => Number(addDays(end, -45).slice(0, 4));
 async function secDividends(cik: string): Promise<{ quarters: { date: string; amount: number }[]; annual: { year: number; amount: number }[]; ttm: number | null } | null> {
   const cf = await getCompanyFacts(cik.padStart(10, "0")).catch(() => null);
   if (!cf) return null;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = marketDate();
   const dps = pickConcept(cf, DPS, "USD/shares");
   const latest = dps ? latestEnd(dps.rows) : null;
   if (!dps || !latest || latest < addMonths(today, -18)) {
@@ -242,11 +247,11 @@ async function secDividends(cik: string): Promise<{ quarters: { date: string; am
   return { quarters, annual: years.map((r) => ({ year: fiscalYear(r.date), amount: r.amount })), ttm };
 }
 
-function safetyOf(payout: number | null, epsTtm: number | null, ttm: number, cagr3: number | null, streak: number, leverage: number | null) {
+function safetyOf(payout: number | null, epsTtm: number | null, ttm: number | null, cagr3: number | null, streak: number, leverage: number | null) {
   const reasons: string[] = [];
   let score = 100;
   if (payout !== null && payout > 0.9) { score -= 35; reasons.push(`Pays out ${(payout * 100).toFixed(0)}% of earnings.`); } else if (payout !== null && payout > 0.7) { score -= 15; reasons.push(`Payout ratio ${(payout * 100).toFixed(0)}% leaves little room.`); }
-  if (epsTtm !== null && epsTtm <= 0 && ttm > 0) { score -= 40; reasons.push("Earnings over the last four quarters do not cover the dividend."); }
+  if (epsTtm !== null && epsTtm <= 0 && ttm !== null && ttm > 0) { score -= 40; reasons.push("Earnings over the last four quarters do not cover the dividend."); }
   if ((cagr3 ?? 0) < 0) { score -= 15; reasons.push("The dividend has fallen over three years."); }
   if (streak >= 10) reasons.push(`${streak} straight years without a cut.`);
   if (leverage !== null && leverage > 4) { score -= 15; reasons.push(`Debt is ${leverage.toFixed(1)}x EBITDA.`); }
@@ -265,7 +270,7 @@ function fromPayments(ticker: string, payments: { date: string; amount: number; 
   const byYear = new Map<number, number>();
   if (opts.annual?.length) for (const a of opts.annual) byYear.set(a.year, a.amount);
   else for (const p of sorted) { const y = Number(p.date.slice(0, 4)); byYear.set(y, (byYear.get(y) ?? 0) + p.amount); }
-  const base = opts.annual?.length ? Math.max(...byYear.keys()) : new Date().getUTCFullYear() - 1;
+  const base = opts.annual?.length ? Math.max(...byYear.keys()) : marketYear() - 1;
   const full = (y: number) => byYear.get(y) ?? null;
   const cagr = (n: number) => { const a = full(base), b = full(base - n); return a && b ? Math.pow(a / b, 1 / n) - 1 : null; };
   let streak = 0;
@@ -287,19 +292,20 @@ export async function dividendView(ticker: string): Promise<DividendView> {
   if (rows) {
     noteSource("FMP");
     const earn = await orNull(fmpEarnings(t)).catch(() => null);
-    const eps = (earn ?? []).filter((e) => e.epsActual !== null).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 4).reduce((a, e) => a + (e.epsActual as number), 0);
-    return fromPayments(t, rows.map((r) => ({ date: r.date, amount: r.adjDividend || r.dividend, payDate: r.paymentDate })), last, earn?.length ? eps : null, lev, rows[0]?.frequency ?? "");
+    const eps = trailingEps((earn ?? []).filter((e) => e.epsActual !== null).sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => e.epsActual));
+    const paid = rows.flatMap((r) => { const amount = r.adjDividend || r.dividend; return amount ? [{ date: r.date, amount, payDate: r.paymentDate }] : []; });
+    return fromPayments(t, paid, last, eps, lev, rows[0]?.frequency ?? "");
   }
   // Backup 1: Nasdaq's dividend history and payout ratio (Nasdaq-listed stocks only).
   if (backupEnabled()) {
     const [nd, surprise] = await Promise.all([nasdaqDividends(t).catch(() => null), nasdaqEarningsSurprise(t).catch(() => [])]);
     if (nd && (nd.payments.length || nd.annualized !== null)) {
       noteSource("Nasdaq");
-      const eps = surprise.slice(0, 4).reduce((a, s) => a + (s.eps ?? 0), 0);
+      const eps = trailingEps(surprise.slice(0, 4).map((s) => s.eps));
       // Nasdaq lists dividends as paid; restate them for the splits the filings show.
       const cf = company?.cik ? await getCompanyFacts(company.cik.padStart(10, "0")).catch(() => null) : null;
       const paid = nd.payments.map((p) => ({ date: p.exDate, amount: p.amount, payDate: p.payDate ?? "" })).sort((a, b) => (a.date < b.date ? -1 : 1));
-      return fromPayments(t, restate(paid, cf ? splitsOf(cf) : [], "paid"), last, surprise.length >= 4 ? eps : null, lev, "", { payout: nd.payoutRatio });
+      return fromPayments(t, restate(paid, cf ? splitsOf(cf) : [], "paid"), last, eps, lev, "", { payout: nd.payoutRatio });
     }
   }
   // Backup 2: dividends per share from the company's own filings. Nasdaq has dividend history only for
@@ -315,7 +321,8 @@ export async function dividendView(ticker: string): Promise<DividendView> {
   const r = await research(subject, ["annualDividend", "dividendYield", "exDividendDate", "payoutRatio"]).catch(() => null);
   if (!r) throw new MarketDataError("Dividend data is unavailable: FMP is out and the backups did not answer");
   noteSource("AI research");
-  const annual = factNum(r, "annualDividend") ?? 0, payout = factNum(r, "payoutRatio");
+  // A dividend the lookup could not confirm is unknown (null), not "no dividend".
+  const annual = factNum(r, "annualDividend"), payout = factNum(r, "payoutRatio");
   return {
     ticker: t, payments: [], ttm: annual, yield: factNum(r, "dividendYield") ?? (last && annual ? annual / last : null), frequency: "",
     growth: { y1: null, y3: null, y5: null }, payout, streakYears: 0, safety: safetyOf(payout, null, annual, null, 0, lev), research: r,

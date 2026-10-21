@@ -14,11 +14,11 @@ export type Provider = "FMP" | "Nasdaq" | "ECB" | "CoinGecko" | "SEC EDGAR" | "A
 /** Sources that are backups for FMP (a screen shows a badge when it used any of them). */
 export const BACKUP_PROVIDERS: Provider[] = ["Nasdaq", "ECB", "CoinGecko", "SEC EDGAR", "AI research"];
 
-/** What a source says about one answer: when the value is true for, when we fetched it, and how to label it. */
+/** When a source's value is true for and how it reached us: the oldest as-of wins; any stale or delayed value marks the answer. */
 export type SourceMeta = { asOf?: string; fetchedAt?: string; stale?: boolean; delayed?: boolean };
 
-/** A registry adapter that answered (registry.ts): its id and its name for people. */
-export type AnsweredBy = { id: string; label: string };
+/** A registry adapter that answered (registry.ts): its id and its name for people (and the provider it reports as, so a badge can name it). */
+export type AnsweredBy = { id: string; label: string; provider?: Provider };
 
 /** One upstream call's time, for Server-Timing. */
 export type Timing = { source: string; ms: number; ok: boolean; hedge?: boolean };
@@ -41,7 +41,7 @@ function fold(c: Collector, meta?: SourceMeta) {
 }
 
 /** Record that `provider` supplied data for the current request, with an optional note ("S&P 500 via SPY") and its freshness. */
-export function noteSource(provider: Provider, note?: string, meta?: { asOf?: string; fetchedAt?: string; stale?: boolean; delayed?: boolean }) {
+export function noteSource(provider: Provider, note?: string, meta?: SourceMeta) {
   const c = store.getStore();
   if (!c) return;
   c.providers.add(provider);
@@ -58,7 +58,7 @@ export function noteFreshness(meta: SourceMeta) {
 /** The registry adapter that answered (its id and label). */
 export function noteAdapter(a: AnsweredBy) {
   const c = store.getStore();
-  if (c && !c.adapters.has(a.id)) c.adapters.set(a.id, { id: a.id, label: a.label });
+  if (c && !c.adapters.has(a.id)) c.adapters.set(a.id, { id: a.id, label: a.label, ...(a.provider ? { provider: a.provider } : {}) });
 }
 
 /** One upstream call's time (stats.ts calls this for every call it records). */
@@ -80,15 +80,18 @@ export type ProvenanceRun<T> = {
   /** The oldest "true as of" time among the answers that reported one. */
   asOf?: string;
   timings: Timing[];
+  /** The same freshness summary as one value (oldest as-of and fetch time, stale, delayed), for callers that pass it along. */
+  meta: SourceMeta;
 };
 
 /** Run `fn` and report every source it used. */
 export async function withProvenance<T>(fn: () => Promise<T>): Promise<ProvenanceRun<T>> {
   const c: Collector = { providers: new Set(), notes: new Set(), adapters: new Map(), timings: [], stale: false, delayed: false };
   const value = await store.run(c, fn);
+  const meta: SourceMeta = { ...(c.asOf ? { asOf: c.asOf } : {}), ...(c.oldestFetchedAt ? { fetchedAt: c.oldestFetchedAt } : {}), ...(c.stale ? { stale: true } : {}), ...(c.delayed ? { delayed: true } : {}) };
   return {
     value, providers: [...c.providers], notes: [...c.notes], sources: [...c.adapters.values()], stale: c.stale, delayed: c.delayed,
-    ...(c.oldestFetchedAt ? { oldestFetchedAt: c.oldestFetchedAt } : {}), ...(c.asOf ? { asOf: c.asOf } : {}), timings: c.timings,
+    ...(c.oldestFetchedAt ? { oldestFetchedAt: c.oldestFetchedAt } : {}), ...(c.asOf ? { asOf: c.asOf } : {}), timings: c.timings, meta,
   };
 }
 
@@ -97,23 +100,7 @@ export function currentProviders(): Provider[] {
   return [...(store.getStore()?.providers ?? [])];
 }
 
-/* ---------------- Response headers ---------------- */
-
-/**
- * `x-data-sources`: JSON with the providers, notes, the adapters that answered and the freshness summary
- * (stale, delayed, oldestFetchedAt, asOf). Sent only when some source was used.
- */
-export function sourcesHeader(run: Pick<ProvenanceRun<unknown>, "providers" | "notes"> & Partial<ProvenanceRun<unknown>>): Record<string, string> {
-  if (!run.providers.length) return {};
-  return {
-    "x-data-sources": JSON.stringify({
-      providers: [...new Set(run.providers)], notes: [...new Set(run.notes)].slice(0, 8),
-      ...(run.sources?.length ? { sources: run.sources } : {}),
-      stale: !!run.stale, delayed: !!run.delayed,
-      ...(run.oldestFetchedAt ? { oldestFetchedAt: run.oldestFetchedAt } : {}), ...(run.asOf ? { asOf: run.asOf } : {}),
-    }),
-  };
-}
+/* ---------------- Server-Timing ---------------- */
 
 const token = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32) || "source";
 
@@ -161,10 +148,4 @@ export function parseServerTiming(header: string | null | undefined): { name: st
     }
     return { name, dur: dur !== null && Number.isFinite(dur) ? dur : null, desc };
   });
-}
-
-/** Both headers for a route's answer. */
-export function provenanceHeaders(run: ProvenanceRun<unknown>, totalMs?: number): Record<string, string> {
-  const timing = serverTiming(run.timings, totalMs, run.stale);
-  return { ...sourcesHeader(run), ...(timing ? { "Server-Timing": timing } : {}) };
 }

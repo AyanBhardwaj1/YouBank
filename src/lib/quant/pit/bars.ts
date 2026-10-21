@@ -13,6 +13,7 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { getBytes, putObject, r2Ready } from "@/lib/edge/infra/r2";
 import { historyFrom } from "@/lib/market/data";
+import { canonical } from "@/lib/market/symbols";
 import type { Provider } from "@/lib/market/provenance";
 
 export type Bars = { symbol: string; d: string[]; o: number[]; h: number[]; l: number[]; c: number[]; v: number[]; div?: Record<string, number>; source: string; updatedAt: string };
@@ -88,13 +89,11 @@ export async function putBars(b: Bars): Promise<void> {
 export async function loadBars(symbol: string, from: string): Promise<Loaded | null> {
   const s = await storedBars(symbol);
   if (s && s.d.length && s.d[0] <= from) return { bars: sliceBars(s, from), from: "store", provider: s.source };
-  const variants = [...new Set([symbol, symbol.replace(/-/g, "."), symbol.replace(/-/g, "/")])];
-  for (const v of variants) {
-    try {
-      const r = await historyFrom(v, from);
-      if (r.data.length) return { bars: mergeBars(null, r.data, symbol, r.source), from: "live", provider: r.source };
-    } catch { /* next spelling */ }
-  }
+  // One request: each feed spells the symbol its own way at its boundary (market/symbols).
+  try {
+    const r = await historyFrom(canonical(symbol), from);
+    if (r.data.length) return { bars: mergeBars(null, r.data, symbol, r.source), from: "live", provider: r.source };
+  } catch { /* no source has it */ }
   return s ? { bars: sliceBars(s, from), from: "store", provider: s.source } : null;
 }
 
@@ -105,14 +104,13 @@ export async function loadBars(symbol: string, from: string): Promise<Loaded | n
 export async function refreshBars(symbol: string, backfillFrom: string): Promise<number | null> {
   const old = await storedBars(symbol);
   const from = old?.d.length ? new Date(Date.parse(`${old.d[old.d.length - 1]}T00:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10) : backfillFrom;
-  for (const v of [...new Set([symbol, symbol.replace(/-/g, ".")])]) {
-    try {
-      const r = await historyFrom(v, from);
-      if (!r.data.length) continue;
+  try {
+    const r = await historyFrom(canonical(symbol), from);
+    if (r.data.length) {
       const merged = mergeBars(rebaseBars(old, r.data), r.data, symbol, r.source);
       await putBars(merged);
       return merged.d.length;
-    } catch { /* next spelling */ }
-  }
+    }
+  } catch { /* no source has it */ }
   return old ? old.d.length : null;
 }
