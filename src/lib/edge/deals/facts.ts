@@ -4,7 +4,7 @@
  * net debt and shares outstanding. They give the deal's multiples and the cross-field checks (deals/checks).
  * The figure's own filing is kept as its source.
  */
-import { getCompanyFacts, ltmAt, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, ltmAt, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
 
 export type TargetFacts = { revenueMm: number | null; ebitdaMm: number | null; netDebtMm: number | null; sharesMm: number | null; asOf: string; periodEnd: string | null; source: string };
 
@@ -51,6 +51,6 @@ export function factsAsOf(cf: CompanyFacts, date: string): TargetFacts {
 
 export async function targetFacts(cik: string, date: string): Promise<TargetFacts | null> {
   if (!cik) return null;
-  const cf = await getCompanyFacts(cik.padStart(10, "0")).catch(() => null);
+  const cf = await getCompanyFactsFull(cik.padStart(10, "0")).catch(() => null);
   return cf ? factsAsOf(cf, date) : null;
 }

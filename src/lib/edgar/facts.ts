@@ -1,4 +1,8 @@
+import { cacheEntry } from "@/lib/cache";
+import { SEC_STALE_IF_ERROR_MS } from "@/lib/market/budgets";
+import { noteFreshness } from "@/lib/market/provenance";
 import { HOUR, edgarJson } from "./client";
+import { compactFacts } from "./compact";
 
 /**
  * XBRL "company facts" parsing. Every reported value arrives as a (start, end, value) triple.
@@ -15,7 +19,19 @@ export function factsUrl(cik: string) {
   return `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`;
 }
 
-export function getCompanyFacts(cik: string): Promise<CompanyFacts> {
+/**
+ * A company's facts in compact form (compact.ts: the concepts the app reads), through the shared cache:
+ * one SEC download per company per 12 hours across all instances, served while a refresh runs after that,
+ * and for a week when SEC fails (flagged stale).
+ */
+export async function getCompanyFacts(cik: string): Promise<CompanyFacts> {
+  const e = await cacheEntry<CompanyFacts>(`edgar:facts:compact:v1:${cik}`, 12 * HOUR, async () => compactFacts(await getCompanyFactsFull(cik)), { shared: true, staleMs: 12 * HOUR, staleIfErrorMs: SEC_STALE_IF_ERROR_MS });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  return e.value;
+}
+
+/** Every concept a company reports (the XBRL screen's browser, background jobs): this instance's cache only. */
+export function getCompanyFactsFull(cik: string): Promise<CompanyFacts> {
   return edgarJson<CompanyFacts>(factsUrl(cik), `facts-${cik}.json`, 12 * HOUR);
 }
 

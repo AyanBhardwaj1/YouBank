@@ -9,6 +9,11 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { describeFailure } from "@/lib/errors";
 import { forgetMemo, memo } from "@/lib/memo";
+import { inBackground } from "@/lib/cache";
+import { lease } from "@/lib/locks";
+import { SEC_STALE_IF_ERROR_MS } from "@/lib/market/budgets";
+import { noteFreshness } from "@/lib/market/provenance";
+import { sharedMap } from "@/lib/shared";
 
 const MM = 1e6;
 const mm = (v: number | null | undefined) => (v === null || v === undefined ? null : Math.round((v / MM) * 10) / 10);
@@ -101,6 +106,29 @@ function sharesOutstanding(cf: CompanyFacts, concepts: Record<string, string>): 
 }
 
 const COMPANY_TTL_MS = 6 * 3_600_000;
+/** Past six hours a record still answers at once (flagged stale) while one rebuild runs; past a week it does not. */
+const COMPANY_STALE_MS = SEC_STALE_IF_ERROR_MS;
+
+/** Rebuild a stale record in the background: once per ticker per instance, and one instance at a time (a lease). */
+function refreshRecord(ticker: string) {
+  if (refreshing.has(ticker)) return;
+  const run = (async () => {
+    const release = db ? await lease(`company-refresh:${ticker}`, 120_000) : async () => undefined;
+    if (!release) return;
+    try {
+      const fresh = await assembleCompany(ticker);
+      if (fresh && db) {
+        await db.insert(schema.companyCache).values({ ticker, data: fresh, fetchedAt: new Date() }).onConflictDoUpdate({ target: schema.companyCache.ticker, set: { data: fresh, fetchedAt: new Date() } });
+        forgetMemo(`company:${ticker}`);
+      }
+    } finally {
+      await release();
+    }
+  })().finally(() => refreshing.delete(ticker));
+  refreshing.set(ticker, run);
+  inBackground(run);
+}
+const refreshing = sharedMap<string, Promise<unknown>>("company:refreshing");
 
 /**
  * The stored record for a ticker (a large JSON document), read at most once a minute per instance and
@@ -129,8 +157,13 @@ async function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   if (db) {
     try {
       const row = await cachedRecord(ticker);
-      if (row && Date.now() - row.fetchedAt.getTime() < COMPANY_TTL_MS) {
+      const age = row ? Date.now() - row.fetchedAt.getTime() : Infinity;
+      if (row && age < COMPANY_STALE_MS) {
         base = structuredClone(row.data as CompanyData);
+        if (age >= COMPANY_TTL_MS) {
+          noteFreshness({ stale: true, fetchedAt: row.fetchedAt.toISOString() });
+          refreshRecord(ticker);
+        }
         // Refresh the price part more often than the fundamentals.
         // A cached record without a price (every feed was out when it was built) gets one when a feed is back.
         const p = await quoteProfile(ticker).catch(() => null);

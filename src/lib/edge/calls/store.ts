@@ -20,7 +20,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle
 import { requireDb, schema } from "@/db";
 import type { ForecastRule } from "@/db/schema";
 import { premiumOn } from "@/lib/billing/use";
-import { getCompanyFacts, rowsFor } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, rowsFor } from "@/lib/edgar/facts";
 import { getSubmissions } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
@@ -118,7 +118,7 @@ async function companyRef(ticker: string): Promise<CompanyRef | null> {
 export async function logCommitments(c: CompanyRef, list: Commitment[], docId: number, said: string, ownerId: string | null): Promise<CommitmentView[]> {
   const out: CommitmentView[] = [];
   if (!list.length) return out;
-  const cf = await getCompanyFacts(c.cik.padStart(10, "0")).catch(() => null);
+  const cf = await getCompanyFactsFull(c.cik.padStart(10, "0")).catch(() => null);
   const record = await guidanceRecord(c.cik);
   const prob = hitProbability(record.hits, record.misses);
   for (let i = 0; i < list.length; i++) {

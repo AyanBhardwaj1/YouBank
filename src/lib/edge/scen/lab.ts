@@ -7,7 +7,7 @@
  * `refineLab` runs 20,000 paths (on the ML service when it is configured, else here in the background job).
  * Saved as `edge_scenarios` kind `lbo`, synthetic everywhere.
  */
-import { getCompanyFacts, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
 import { getSubmissions } from "@/lib/edgar/submissions";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
@@ -107,7 +107,7 @@ export function operatingFrom(c: LabInputs, marketByQuarter: Map<string, number>
 async function companyInputs(ticker: string): Promise<LabInputs & { quarterEnds: string[] }> {
   const t = await resolveTicker(ticker);
   if (!t) throw Object.assign(new Error(`No SEC filer has the ticker ${ticker}.`), { status: 404 });
-  const cf: CompanyFacts = await getCompanyFacts(t.cik);
+  const cf: CompanyFacts = await getCompanyFactsFull(t.cik);
   const subs = await getSubmissions(String(t.cik)).catch(() => null);
   const rev = annual(cf, ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenuesNetOfInterestExpense"]);
   const oi = annual(cf, ["OperatingIncomeLoss"]);
