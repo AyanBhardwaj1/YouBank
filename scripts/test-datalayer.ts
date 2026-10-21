@@ -522,6 +522,38 @@ async function testHealthRoute() {
   }
 }
 
+
+/* ---------------- A10: the latency script ---------------- */
+
+async function testLatencyScript() {
+  const { createServer } = await import("node:http");
+  const { execFile } = await import("node:child_process");
+  const { mkdtempSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  let n = 0;
+  const server = createServer((req, res) => {
+    n++;
+    const fmp = 300 + (n % 5) * 10;
+    res.setHeader("server-timing", `fmp;dur=${fmp};desc="1 call", nasdaq;dur=90.5;desc="1 call, 1 hedged", total;dur=${fmp + 20}`);
+    res.setHeader("x-data-sources", JSON.stringify({ providers: ["FMP"], notes: [], stale: req.url?.includes("indices") ?? false }));
+    res.setHeader("content-type", "application/json");
+    res.end(req.headers.cookie === "session=abc" ? "{}" : JSON.stringify({ error: "sign in" }));
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  const port = (server.address() as { port: number }).port;
+  const out = join(mkdtempSync(join(tmpdir(), "latency-")), "out.json");
+  const run = await new Promise<{ code: number; stdout: string }>((resolve) => {
+    execFile("pnpm", ["exec", "tsx", "scripts/data-latency.mts", "--base", `http://127.0.0.1:${port}`, "--cookie", "session=abc", "--runs", "3", "--tickers", "AAPL", "--fns", "price,indices,companies", "--json", out], { timeout: 60_000 }, (err, stdout) => resolve({ code: err ? 1 : 0, stdout }));
+  });
+  server.close();
+  let report: { commands?: Record<string, { n: number; p50: number }>; sources?: Record<string, { n: number; p50: number; p95: number }>; samples?: { stale: boolean }[] } = {};
+  try { report = JSON.parse(readFileSync(out, "utf8")); } catch { /* missing */ }
+  check("A10 data-latency.mts measures every command it was asked for", run.code === 0 && report.commands?.price?.n === 3 && report.commands?.indices?.n === 3 && report.commands?.companies?.n === 3, { code: run.code, commands: report.commands, tail: run.stdout.slice(-300) });
+  check("A10 per-source p50/p95 come from the server's Server-Timing (not this machine's clock)", report.sources?.fmp?.n === 9 && report.sources.fmp.p50 >= 300 && report.sources.fmp.p95 <= 340 && report.sources?.nasdaq?.p50 === 90.5 && !("total" in (report.sources ?? {})), report.sources);
+  check("A10 it counts stale answers from x-data-sources", (report.samples ?? []).filter((x) => x.stale).length === 3);
+}
+
 /* ---------------- Main ---------------- */
 
 async function main() {
@@ -548,6 +580,7 @@ async function main() {
   await section("A8 telemetry: rollups and Server-Timing", testStats);
   if (localDb()) await section("A8 telemetry: per-minute rollups in Postgres", testStatsDb);
   await section("A8 health route", testHealthRoute);
+  await section("A10 the latency script", testLatencyScript);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");

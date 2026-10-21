@@ -153,7 +153,9 @@ export async function barsEntry(symbol: string, from?: string): Promise<{ bars: 
     try {
       rows = (await fetchFmp<FullRow[]>("historical-price-eod/full", qs, "historical-price-eod/full")).map((r) => ({ date: r.date, open: r.open, high: r.high, low: r.low, close: r.close, volume: r.volume }));
     } catch (err) {
-      if (!(err instanceof MarketDataError) || err.message === LIMIT_MESSAGE || err.message === FMP_BUSY) throw err;
+      // Only "the plan has nothing here" tries the closes-only endpoint; an outage, the limit or a busy budget is thrown.
+      const status = (err as { upstreamStatus?: number }).upstreamStatus;
+      if (!(err instanceof MarketDataError) || err.message === LIMIT_MESSAGE || err.message === FMP_BUSY || (status !== undefined && status >= 500)) throw err;
     }
     if (!rows.length) rows = (await fetchFmp<{ date: string; price: number }[]>("historical-price-eod/light", qs, "historical-price-eod/light")).map((r) => ({ date: r.date, open: r.price, high: r.price, low: r.price, close: r.price, volume: 0 }));
     return rows.filter((r) => r.close > 0).sort((a, b) => (a.date < b.date ? -1 : 1));
