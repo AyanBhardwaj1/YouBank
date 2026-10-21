@@ -77,7 +77,7 @@ export function TickerTape({ rows }: { rows: WatchRow[] }) {
   const item = (r: WatchRow, k: string) => (
     <span key={k} className="num inline-flex items-center gap-1.5 px-4 text-[11.5px]">
       <span className="text-muted">{r.label}</span><span className="text-fg">{r.last === null ? "—" : fmtLast(r.last)}</span>
-      <span className={(r.change ?? 0) >= 0 ? "text-pos" : "text-neg"}>{(r.change ?? 0) >= 0 ? "▲" : "▼"} {fmtPct(r.change, 2).replace(/^[+-]/, "")}</span>
+      {r.change == null ? null : <span className={r.change >= 0 ? "text-pos" : "text-neg"}>{r.change >= 0 ? "▲" : "▼"} {fmtPct(r.change, 2).replace(/^[+-]/, "")}</span>}
     </span>
   );
   return (

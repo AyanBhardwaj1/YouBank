@@ -16,6 +16,7 @@ import { recordSkill, SKILLS, skillsView, type Evidence } from "@/lib/terminal/s
 import { analystView, dividendView, earningsView } from "@/lib/terminal/street";
 import { waccView } from "@/lib/terminal/wacc";
 import { describeFailure } from "@/lib/errors";
+import { sourceDownResponse } from "@/lib/net";
 // Crypto screens (CRYP, TOKEN, DEFI…) are served here too, so they share caching, errors and the AI read.
 import { CRYPTO_EXPLAIN, CRYPTO_TTL, cryptoCompute, isCryptoFn } from "@/lib/crypto/views";
 
@@ -82,6 +83,9 @@ function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers:
 /** The sources an answer used, for the screen's badge: providers and notes such as "S&P 500 tracked by the SPY ETF". */
 const sourceHeaders = (providers: string[], notes: string[]): Record<string, string> => (providers.length ? { "x-data-sources": JSON.stringify({ providers: [...new Set(providers)], notes: [...new Set(notes)].slice(0, 8) }) } : {});
 
+/** The source a function cannot work without, named when it is down (a 503, not "our side"). */
+const SOURCE: Record<string, string> = { deals: "SEC EDGAR", curve: "The US Treasury's rate feed" };
+
 /** Functions whose screens need daily prices: when no feed has them, a researched snapshot stands in. */
 const PRICE_FNS = new Set(["price"]);
 
@@ -100,7 +104,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
       const snap = await withProvenance(() => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null));
       if (snap.value) return errorResponse(e, { snapshot: snap.value }, sourceHeaders([...run.providers, ...snap.providers], [...run.notes, ...snap.notes]));
     }
-    return errorResponse(e, {}, headers);
+    return (SOURCE[fn] ? sourceDownResponse(e, SOURCE[fn], `terminal-${fn}`) : null) ?? errorResponse(e, {}, headers);
   });
 }
 

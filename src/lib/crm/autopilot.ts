@@ -171,10 +171,10 @@ export async function afterTriage(userId: string, threadId: number): Promise<{ d
 export async function answerQuestion(userId: string, questionId: number, answer: string, remember: boolean) {
   const db = requireDb();
   const text = answer.trim();
-  if (!text) throw new Error("Write an answer first");
+  if (!text) throw Object.assign(new Error("Write an answer first"), { status: 400 });
   const [q] = await db.update(schema.crmQuestions).set({ answer: text.slice(0, 4000), status: "answered", remember, answeredAt: new Date() })
     .where(and(eq(schema.crmQuestions.id, questionId), eq(schema.crmQuestions.userId, userId), eq(schema.crmQuestions.status, "open"))).returning();
-  if (!q) throw new Error("That question was already answered or closed");
+  if (!q) throw Object.assign(new Error("That question was already answered or closed"), { status: 409 });
   if (remember) await addPlaybookEntry(userId, { ...(await generalizeAnswer(userId, q.question, text)), source: "answered" });
 
   if (!q.draftId) return { question: q, draft: null, scheduled: false, remaining: 0 };

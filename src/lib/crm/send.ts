@@ -39,7 +39,7 @@ export async function sendDraft(userId: string, draftId: number, origin: string,
   if (!draft) {
     const [existing] = await db.select({ status: schema.crmDrafts.status }).from(schema.crmDrafts)
       .where(and(eq(schema.crmDrafts.id, draftId), eq(schema.crmDrafts.userId, userId)));
-    throw new Error(existing ? `This draft was already ${existing.status}` : "Draft not found");
+    throw Object.assign(new Error(existing ? `This draft was already ${existing.status}` : "Draft not found"), { status: existing ? 409 : 404 });
   }
 
   try {
@@ -55,21 +55,21 @@ export async function sendDraft(userId: string, draftId: number, origin: string,
 async function deliver(userId: string, draft: DraftRow, origin: string, edits: { subject?: string; body?: string } | undefined, by: SentBy) {
   const db = requireDb();
   const to = draft.toAddresses.filter((a) => a.address);
-  if (to.length === 0) throw new Error("This draft has no recipient");
+  if (to.length === 0) throw Object.assign(new Error("This draft has no recipient"), { status: 400 });
   const subject = edits?.subject?.trim() || draft.subject;
   const text = edits?.body ?? draft.body;
-  if (!text.trim()) throw new Error("This draft is empty");
+  if (!text.trim()) throw Object.assign(new Error("This draft is empty"), { status: 400 });
 
   if (draft.contactId && draft.kind !== "reply") {
     const [c] = await db.select({ optedOutAt: schema.crmContacts.optedOutAt }).from(schema.crmContacts).where(eq(schema.crmContacts.id, draft.contactId));
-    if (c?.optedOutAt) throw new Error("This person asked not to be contacted. Allow contact again on their Contacts card first.");
+    if (c?.optedOutAt) throw Object.assign(new Error("This person asked not to be contacted. Allow contact again on their Contacts card first."), { status: 403 });
   }
 
   // Reply from the mailbox the thread arrived in, falling back to the first connected one.
   const [thread] = draft.threadId ? await db.select().from(schema.crmThreads).where(eq(schema.crmThreads.id, draft.threadId)) : [];
   const account = (thread?.accountId ? await getAccount(userId, thread.accountId) : null) ?? (await listAccounts(userId))[0];
-  if (!account) throw new Error("No mailbox is connected, so this cannot be sent from YouBank. Copy the draft into your mail client instead.");
-  if (account.status === "needs_reauth") throw new Error(`${account.address} needs reconnecting before YouBank can send from it.`);
+  if (!account) throw Object.assign(new Error("No mailbox is connected, so this cannot be sent from YouBank. Copy the draft into your mail client instead."), { status: 409 });
+  if (account.status === "needs_reauth") throw Object.assign(new Error(`${account.address} needs reconnecting before YouBank can send from it.`), { status: 409 });
 
   const settings = await getSettings(userId);
   const body = withSignature(text, settings.signature);

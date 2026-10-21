@@ -16,6 +16,16 @@ import { incompleteMessage } from "@/lib/ai/agent";
 import { parseStrategy } from "@/lib/algo/strategy";
 import { ApiError, apiError, errorMessage, messageFor, OFFLINE, safeText, statusMessage } from "@/lib/client/errors";
 import { isStaleBuild } from "@/components/ui/ErrorScreen";
+import { buildDcf, ILLUSTRATIVE, workbookOf } from "@/lib/studio/templates";
+import { deleteSheet, fillRange, formatRange, requireSheet, writeRange } from "@/lib/studio/ops";
+import { buildTemplate } from "@/lib/studio/create";
+import { Engine } from "@/lib/studio/engine";
+import { emptyDeck, type StudioDocData } from "@/lib/studio/types";
+import { renameTeam } from "@/lib/teams/db";
+import { savePrefs } from "@/lib/calendar/prefs";
+import { assertPublicUrl, resolvePublicHost } from "@/lib/calendar/net";
+import { addPlaybookEntry } from "@/lib/crm/knowledge";
+import { isSourceDown, sourceDownResponse } from "@/lib/net";
 
 let pass = 0, fail = 0;
 const check = (label: string, cond: boolean, detail?: unknown) => {
@@ -232,6 +242,44 @@ async function main() {
   check("a calc script's mistake reaches the model as written", (() => { try { evaluateScript("1 + )"); return false; } catch (e) { return toolError(e) === (e as Error).message; } })());
   check("a tool's plain refusal reaches the model as written", toolError(new Error("Unknown ticker ZZZZ")) === "Unknown ticker ZZZZ");
   check("an answer cut short says why in words", !/max_|tokens|incomplete/i.test(incompleteMessage("max_output_tokens")) && !/content_filter/.test(incompleteMessage("content_filter")) && incompleteMessage(undefined).length > 10);
+
+  console.log("refusals written for people keep their status and words");
+  /** What a person gets for what `fn` throws (sync or async): the status and message describeFailure gives. */
+  const outcome = async (fn: () => unknown) => { try { await fn(); return null; } catch (e) { return { ...describeFailure(e), raw: e }; } };
+  const refused = async (label: string, fn: () => unknown, status: number, words: RegExp) => {
+    const o = await outcome(fn);
+    check(`${label}: ${status}`, !!o && o.status === status && words.test(o.message) && !o.ref, o && { status: o.status, message: o.message });
+  };
+  const doc: StudioDocData = { title: "t", workbook: workbookOf(buildDcf(ILLUSTRATIVE).sheets), deck: emptyDeck(), comments: [] };
+  const one: StudioDocData = { ...doc, workbook: workbookOf(buildDcf(ILLUSTRATIVE).sheets.slice(0, 1)) };
+  const sheet = doc.workbook.sheets[doc.workbook.order[0]].name;
+  await refused("studio: a sheet that is not there", () => requireSheet(doc, "Nope"), 404, /no sheet named "Nope"/);
+  await refused("studio: not a cell", () => writeRange(doc, sheet, "B", [[1]]), 400, /is not a cell like B5/);
+  await refused("studio: an empty source cell", () => fillRange(doc, sheet, "ZZ900", "ZZ901:ZZ905"), 400, /ZZ900 is empty/);
+  await refused("studio: a range too large to edit", () => formatRange(doc, sheet, "A1:ZZ1000", { b: true }), 400, /too large to edit/);
+  await refused("studio: deleting the only sheet", () => deleteSheet(one, one.workbook.sheets[one.workbook.order[0]].name), 409, /at least one sheet/);
+  await refused("studio: not a range", () => new Engine(doc.workbook).read(doc.workbook.order[0], "nonsense"), 400, /Not a range/);
+  await refused("studio: trading comps without a ticker", () => buildTemplate("comps", {}), 400, /need a ticker/);
+  await refused("teams: a blank name", () => renameTeam(1, "   "), 400, /needs a name/);
+  await refused("calendar: an unknown time zone", () => savePrefs("u", "u@example.com", { timezone: "Mars/Olympus_Mons" }), 400, /time zone/);
+  await refused("calendar: a meeting link that is not https (and the message is not withheld for naming the scheme)", () => savePrefs("u", "u@example.com", { videoUrl: "javascript:alert(1)" }), 400, /starts with https/);
+  await refused("calendar: not a web address", () => assertPublicUrl("not a url"), 400, /not a web address/);
+  await refused("calendar: another scheme", () => assertPublicUrl("ftp://example.com/cal.ics"), 400, /Only http and https/);
+  await refused("calendar: a private host", () => resolvePublicHost("printer.local"), 400, /private network/);
+  await refused("relationships: a half-written playbook entry", () => addPlaybookEntry("u", { question: "Pricing?", answer: " " }), 400, /both a question and an answer/);
+  // A server fault stays one: an engine edit on a sheet id that does not exist is our bug, not their input.
+  const fault = await outcome(() => new Engine(doc.workbook).setCell("no-such-id", "A1", { v: 1 }));
+  check("an internal failure is not relabelled: still a 500 with a reference", !!fault && fault.status === 500 && !!fault.ref && (fault.raw as { status?: number }).status === undefined, fault && { status: fault.status });
+
+  console.log("a data source that is down");
+  const offline = Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("getaddrinfo ENOTFOUND efts.sec.gov"), { code: "ENOTFOUND" }) });
+  check("a network failure is a source down", isSourceDown(offline));
+  check("an upstream's own 5xx is a source down", isSourceDown(new Error("EDGAR 503 for https://www.sec.gov/files/company_tickers.json")) && isSourceDown(new Error("Treasury 502")));
+  check("a refusal or a bug is not", !isSourceDown(new Error("Unknown ticker")) && !isSourceDown(new Error("Only 500 rows can be pasted at once")) && !isSourceDown(new TypeError("Cannot read properties of undefined (reading 'map')")) && !isSourceDown(new Error("EDGAR 404 for https://www.sec.gov/x")));
+  const down = sourceDownResponse(offline, "SEC EDGAR", "test");
+  const downBody = down ? ((await down.json()) as { error: string; ref?: string }) : null;
+  check("…answered as a 503 that names it, with a reference", down?.status === 503 && downBody?.error === "SEC EDGAR is not answering right now. Try again shortly." && !!downBody?.ref && !looksInternal(downBody.error), downBody);
+  check("anything else is left to describeFailure", sourceDownResponse(new Error("Unknown ticker"), "SEC EDGAR", "test") === null);
 
   console.log("the browser: by status");
   check("401 asks to sign in", /sign in/i.test(statusMessage(401)));

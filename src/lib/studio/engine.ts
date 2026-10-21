@@ -603,16 +603,16 @@ export class Engine {
     const m = /^(?:'((?:[^']|'')+)'|([^!]+))!(.+)$/.exec(ref.trim());
     const sheetName = m ? (m[1] ?? m[2]).replace(/''/g, "'") : null;
     const sheet = sheetName ? this.sheetId(sheetName) : own;
-    if (!sheet) throw new Error(`No sheet named ${sheetName}`);
+    if (!sheet) throw Object.assign(new Error(`No sheet named ${sheetName}`), { status: 404 });
     const a = (m ? m[3] : ref).replace(/\$/g, "").toUpperCase();
-    if (!parseAddr(a)) throw new Error(`Not a cell: ${ref}`);
+    if (!parseAddr(a)) throw Object.assign(new Error(`Not a cell: ${ref}`), { status: 400 });
     return { sheet, a };
   }
 
   /** Values of a rectangle, for the agent and for linked slide elements. */
   read(sheet: string, range: string): Prim[][] {
     const rect = parseRange(range);
-    if (!rect) throw new Error(`Not a range: ${range}`);
+    if (!rect) throw Object.assign(new Error(`Not a range: ${range}`), { status: 400 });
     const u = this.usedRange(sheet);
     const r2 = rect.r2 === MAX_ROW ? u.rows : rect.r2, c2 = rect.c2 === MAX_COL ? u.cols : rect.c2;
     const out: Prim[][] = [];

@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { cursorParam } from "@/lib/cursor";
-import { crmCounts, listContacts, listDeals } from "@/lib/crm/db";
+import { createDeal, crmCounts, listContacts, listDeals } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
 
@@ -23,5 +23,22 @@ export async function GET(req: Request) {
     const latest = new Map<number, (typeof edge)[number]>();
     for (const e of edge) if (e.dealId !== null && !latest.has(e.dealId)) latest.set(e.dealId, e);
     return NextResponse.json({ deals: deals.map((d) => ({ ...d, edge: latest.get(d.id) ?? null })), contacts, counts, next });
+  });
+}
+
+/** A deal added by hand: { name, stage?, contactId?, amountUsd?, nextStep? }. */
+export async function POST(req: Request) {
+  return guarded(async (user) => {
+    const body = (await req.json().catch(() => null)) as { name?: unknown; stage?: unknown; contactId?: unknown; amountUsd?: unknown; nextStep?: unknown } | null;
+    if (typeof body?.name !== "string" || !body.name.trim()) return NextResponse.json({ error: "Give the deal a name" }, { status: 400 });
+    // An id the database could not take (1.5, 1e20) is a 400 here, not a failed query.
+    if (body.contactId != null && !(Number.isSafeInteger(body.contactId) && (body.contactId as number) > 0)) return NextResponse.json({ error: "That contact was not found" }, { status: 400 });
+    const deal = await createDeal(user.id, {
+      name: body.name, stage: typeof body.stage === "string" ? body.stage : undefined,
+      contactId: typeof body.contactId === "number" ? body.contactId : null,
+      amountUsd: typeof body.amountUsd === "number" ? body.amountUsd : null,
+      nextStep: typeof body.nextStep === "string" ? body.nextStep : "",
+    });
+    return NextResponse.json({ deal }, { status: 201 });
   });
 }

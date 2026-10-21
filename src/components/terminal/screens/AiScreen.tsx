@@ -143,7 +143,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
 
       <form className="border-t border-line p-2 max-md:pb-2.5" onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
         <div className="flex items-end gap-2 rounded-md border border-line bg-bg px-2.5 py-1.5 focus-within:border-accent/60">
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder={online ? `Ask about ${subject || ticker}…` : "Add OPENAI_API_KEY or ANTHROPIC_API_KEY to .env.local to enable"}
+          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder={online ? `Ask about ${subject || ticker}…` : "The assistant is not set up yet. Your administrator can switch it on."}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(draft); } }}
             className="flex-1 resize-none bg-transparent text-[12px] text-fg placeholder:text-faint focus:outline-none" />
           <button type="submit" disabled={!online || busy || !draft.trim()}

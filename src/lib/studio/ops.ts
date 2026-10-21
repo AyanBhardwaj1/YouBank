@@ -99,7 +99,7 @@ export function sheetByName(doc: StudioDocData, name: string): SheetData | null 
 
 export function requireSheet(doc: StudioDocData, name: string): SheetData {
   const s = sheetByName(doc, name);
-  if (!s) throw new Error(`There is no sheet named "${name}". Sheets: ${doc.workbook.order.map((x) => doc.workbook.sheets[x].name).join(", ")}`);
+  if (!s) throw Object.assign(new Error(`There is no sheet named "${name}". Sheets: ${doc.workbook.order.map((x) => doc.workbook.sheets[x].name).join(", ")}`), { status: 404 });
   return s;
 }
 
@@ -112,7 +112,7 @@ export function uniqueSheetName(doc: StudioDocData, base: string): string {
 
 function boundedRect(range: string, sheet: SheetData): Rect {
   const r = parseRange(range);
-  if (!r) throw new Error(`"${range}" is not a range like B4:G20`);
+  if (!r) throw Object.assign(new Error(`"${range}" is not a range like B4:G20`), { status: 400 });
   let { r2, c2 } = r;
   if (r2 === MAX_ROW || c2 === MAX_COL) {
     let mr = 0, mc = 0;
@@ -120,7 +120,7 @@ function boundedRect(range: string, sheet: SheetData): Rect {
     if (r2 === MAX_ROW) r2 = Math.max(r.r1, mr);
     if (c2 === MAX_COL) c2 = Math.max(r.c1, mc);
   }
-  if ((r2 - r.r1 + 1) * (c2 - r.c1 + 1) > 50_000) throw new Error("That range is too large to edit at once (50,000 cells).");
+  if ((r2 - r.r1 + 1) * (c2 - r.c1 + 1) > 50_000) throw Object.assign(new Error("That range is too large to edit at once (50,000 cells)."), { status: 400 });
   return { ...r, r2, c2 };
 }
 
@@ -138,7 +138,7 @@ export function cellFromInput(input: Scalar, prev?: CellData): CellData | null {
 export function writeRange(doc: StudioDocData, sheetName: string, start: string, values: Scalar[][], style?: CellStyle): Patch {
   const sheet = requireSheet(doc, sheetName);
   const p = parseAddr(start.replace(/\$/g, ""));
-  if (!p) throw new Error(`"${start}" is not a cell like B5`);
+  if (!p) throw Object.assign(new Error(`"${start}" is not a cell like B5`), { status: 400 });
   const cells: Record<string, CellData | null> = {};
   values.forEach((row, i) => (Array.isArray(row) ? row : [row]).forEach((v, j) => {
     const a = A1(p.r + i, p.c + j);
@@ -179,9 +179,9 @@ export function clearRange(doc: StudioDocData, sheetName: string, range: string,
 export function fillRange(doc: StudioDocData, sheetName: string, from: string, to: string): Patch {
   const sheet = requireSheet(doc, sheetName);
   const src = parseAddr(from.replace(/\$/g, ""));
-  if (!src) throw new Error(`"${from}" is not a cell`);
+  if (!src) throw Object.assign(new Error(`"${from}" is not a cell`), { status: 400 });
   const cell = sheet.cells[A1(src.r, src.c)];
-  if (!cell) throw new Error(`${from} is empty`);
+  if (!cell) throw Object.assign(new Error(`${from} is empty`), { status: 400 });
   const rect = boundedRect(to, sheet);
   const cells: Record<string, CellData | null> = {};
   for (let r = rect.r1; r <= rect.r2; r++) for (let c = rect.c1; c <= rect.c2; c++) {
@@ -252,7 +252,7 @@ export function renameSheet(doc: StudioDocData, from: string, to: string): Patch
 
 export function deleteSheet(doc: StudioDocData, name: string): Patch[] {
   const sheet = requireSheet(doc, name);
-  if (doc.workbook.order.length <= 1) throw new Error("A workbook needs at least one sheet.");
+  if (doc.workbook.order.length <= 1) throw Object.assign(new Error("A workbook needs at least one sheet."), { status: 409 });
   const patches: Patch[] = [{ op: "sheet_delete", sheet: sheet.id }];
   for (const id of doc.workbook.order) {
     if (id === sheet.id) continue;

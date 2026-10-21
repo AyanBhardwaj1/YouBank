@@ -6,13 +6,15 @@ import { OnboardingWizard } from "@/components/workspace/OnboardingWizard";
 import type { Profile, RoleId } from "@/lib/roles";
 import { SetupScreen } from "@/components/ui/SetupScreen";
 import { setupState } from "@/lib/setup";
+import { safeNext } from "@/lib/safe-next";
 
 export const dynamic = "force-dynamic";
 
-export default async function Onboarding() {
+export default async function Onboarding({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (!(await setupState()).ready) return <SetupScreen />;
   const user = await currentUser();
-  if (!user) redirect("/sign-in");
+  const next = safeNext((await searchParams).next);
+  if (!user) redirect(next === "/app" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`);
   let initial: Partial<Profile> | null = null;
   if (db) {
     const [p] = await db.select().from(schema.profiles).where(eq(schema.profiles.userId, user.id));
@@ -20,7 +22,7 @@ export default async function Onboarding() {
   }
   return (
     <main className="flex min-h-dvh items-start justify-center px-6 py-12 text-fg">
-      <OnboardingWizard initial={initial} userName={user.name} />
+      <OnboardingWizard initial={initial} userName={user.name} next={next} />
     </main>
   );
 }

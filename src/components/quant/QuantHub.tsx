@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import type { QuantSignal } from "@/lib/quant/contracts";
 import { DISCLOSURES } from "@/lib/quant/words";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { CostsTab } from "./CostsTab";
 import { DrillsTab } from "./DrillsTab";
 import { InsidersTab } from "./InsidersTab";
@@ -17,6 +17,7 @@ import { IntegrityTab } from "./IntegrityTab";
 import { FactorsTab, RiskTab } from "./PortfolioTabs";
 import { SizingTab } from "./SizingTab";
 import { Button, Card, Disclosures, ErrorNote, Field, inputCls, num, pct, QuantConsent, Stat, useQuantCall, useRun } from "./ui";
+import { useTabInView } from "@/components/ui/useTabInView";
 
 export type QuantTab = "overview" | "integrity" | "factors" | "risk" | "sizing" | "costs" | "insiders" | "drills" | "signals";
 export const QUANT_TABS: { id: QuantTab; label: string; icon: string; code?: string }[] = [
@@ -37,16 +38,20 @@ export function QuantHub({ initialTab }: { initialTab?: string }) {
 
 function HubInner({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<QuantTab>(QUANT_TABS.find((t) => t.id === initialTab)?.id ?? "overview");
+  const tabRow = useTabInView<HTMLElement>(tab);
   useSubNav("/app/quant", (v) => { if (QUANT_TABS.some((t) => t.id === v)) setTab(v as QuantTab); });
+  useViewInUrl("/app/quant", "tab", tab, "overview");
   return (
+    // The page scrolls inside itself, as every workspace does: the frame around it never scrolls.
+    <div className="h-full overflow-auto">
     <div className="mx-auto max-w-6xl p-3 sm:p-4">
       <div className="mb-3">
         <h1 className="display text-[26px] leading-tight text-fg sm:text-[30px]">Quant</h1>
         <p className="mt-1 max-w-3xl text-[12.5px] text-muted">The methods a quant desk uses, on your own portfolio and ideas: what drives returns, where the risk is, whether a backtest is luck, how much to size, what trading costs and what insiders are doing. Every number comes with its interval and its source.</p>
       </div>
-      <nav className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Quant">
+      <nav ref={tabRow} className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Quant">
         {QUANT_TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}</button>
+          <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}</button>
         ))}
       </nav>
       {tab === "overview" && <Overview go={setTab} />}
@@ -59,6 +64,7 @@ function HubInner({ initialTab }: { initialTab?: string }) {
       {tab === "drills" && <DrillsTab />}
       {tab === "signals" && <SignalsTab />}
       <p className="mt-4 text-[11px] text-muted">{DISCLOSURES.not_advice}</p>
+    </div>
     </div>
   );
 }

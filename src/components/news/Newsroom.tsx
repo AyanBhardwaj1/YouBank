@@ -25,7 +25,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { GlobePoint } from "@/lib/news/geo";
 import { StoryCard } from "./StoryCard";
 import { StoryPeek } from "./StoryReader";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { Select } from "@/components/ui/Select";
 
 const NewsGlobe = dynamic(() => import("./NewsGlobe"), { ssr: false, loading: () => <div className="shimmer h-[520px] rounded-[var(--nr-radius)]" /> });
@@ -46,6 +46,7 @@ export function Newsroom({ initialView = "today", initialStory = null, initialOv
   const now = useNow();
   const [view, setView] = useState<View>(initialView);
   useSubNav("/app/news", (v) => { if ((VIEWS as string[]).includes(v)) setView(v as View); });
+  useViewInUrl("/app/news", "view", view, "today");
   const [overlay, setOverlay] = useState<Overlay>(initialOverlay);
   const [globeTags, setGlobeTags] = useState<"desk" | "all" | string>("desk");
   const [category, setCategory] = useState("");

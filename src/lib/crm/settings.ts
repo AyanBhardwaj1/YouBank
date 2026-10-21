@@ -135,7 +135,7 @@ export async function learnVoice(userId: string): Promise<{ voice: string; sampl
     .limit(25);
   const usable = sent.filter((m) => m.body.trim().length > 40);
   if (usable.length < 3) {
-    throw new Error("Not enough sent mail to learn from yet. Sync a mailbox you have written from, or describe your style by hand.");
+    throw Object.assign(new Error("Not enough sent mail to learn from yet. Sync a mailbox you have written from, or describe your style by hand."), { status: 409 });
   }
   const ctx = await loadUserContext(userId);
   const { data } = await structured(VoiceResult, "writing_voice",

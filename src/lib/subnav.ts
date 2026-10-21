@@ -26,3 +26,22 @@ export function useSubNav(path: string, onValue: (value: string) => void) {
     return () => window.removeEventListener(SUBNAV_EVENT, on);
   }, [path]);
 }
+
+/**
+ * Keep a page's current view in its address (?tab=pipeline), so a refresh stays on it and a copied
+ * link opens it. Replaces the history entry rather than adding one (as Edge does), and keeps every
+ * other parameter. `value` null leaves the address alone; the default view drops the parameter.
+ */
+export function useViewInUrl(path: string, param: string, value: string | null, defaultValue?: string) {
+  useEffect(() => {
+    if (value === null || typeof window === "undefined" || window.location.pathname !== path) return;
+    try {
+      const url = new URL(window.location.href);
+      if (value === defaultValue) url.searchParams.delete(param); else url.searchParams.set(param, value);
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      // null state, so Next's router takes the new address as its own (it copies its own state over);
+      // passing its state back would skip that, and its next render would put the old address back.
+      if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) window.history.replaceState(null, "", next);
+    } catch { /* the view still changes */ }
+  }, [path, param, value, defaultValue]);
+}
