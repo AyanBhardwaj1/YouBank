@@ -35,7 +35,9 @@ export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetche
       const b = budget();
       // One retry on a network failure or a 5xx in background jobs, none on interactive paths; never on 429.
       const res = await fetchRetry(`${BASE}/profile?symbol=${encodeURIComponent(symbol)}&apikey=${key}`, { cache: "no-store", timeoutMs: b.fmpTimeoutMs, retries: b.fmpRetries, retryOn: retryServerErrors });
-      if (!res.ok) throw Object.assign(new Error(`FMP ${res.status} for profile`), { status: res.status });
+      // A 5xx or 429 is a failure (the next source answers); another 4xx means "not on this plan": nothing, kept 15 minutes as before.
+      if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`FMP ${res.status} for profile`), { status: res.status });
+      if (!res.ok) return null;
       const data = (await res.json()) as unknown;
       if (data && typeof data === "object" && /Limit Reach/i.test(String((data as { "Error Message"?: string })["Error Message"] ?? ""))) {
         await cacheSet("fmp:daily-limit", "1", 30 * 60_000);

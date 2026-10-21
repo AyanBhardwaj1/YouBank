@@ -20,7 +20,8 @@ async function getJson<T>(url: string, key: string, ttlMs: number, source: "ecb"
   try {
     const e = await cacheEntry<T | null>(key, ttlMs, () => callSource(source, source === "ecb" ? "rates" : "market_chart", async () => {
       const res = await fetchRetry(url, { headers: { Accept: "application/json", "User-Agent": "YouBank research terminal" }, cache: "no-store", timeoutMs: budget().freeTimeoutMs });
-      if (!res.ok) throw Object.assign(new Error(`${source} ${res.status}`), { status: res.status });
+      if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`${source} ${res.status}`), { status: res.status });
+      if (!res.ok) return null; // a refusal or "not found": nothing, kept five minutes as before
       return (await res.json()) as T;
     }, { label: source === "ecb" ? "The ECB's rates" : "CoinGecko" }), { staleMs: ttlMs, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS, ttlFor: (v) => (v === null ? 5 * MIN : undefined) });
     if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });

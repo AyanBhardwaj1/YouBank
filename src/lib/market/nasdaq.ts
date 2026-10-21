@@ -43,7 +43,8 @@ async function get<T>(path: string, ttlMs: number): Promise<T | null> {
       const b = budget();
       // A 429 here is Nasdaq throttling us: not repeated. A network failure or a 5xx gets one more try in background jobs.
       const res = await fetchRetry(`${BASE}${path}`, { headers: HEADERS, cache: "no-store", timeoutMs: b.nasdaqTimeoutMs, retries: b.nasdaqRetries, retryOn: retryServerErrors });
-      if (!res.ok) throw Object.assign(new Error(`Nasdaq ${res.status}`), { status: res.status });
+      if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`Nasdaq ${res.status}`), { status: res.status });
+      if (!res.ok) return null; // a refusal or "not found": nothing, kept five minutes as before
       return ((await res.json()) as { data?: T | null })?.data ?? null;
     }, { label: "Nasdaq" }), { staleMs: ttlMs, staleIfErrorMs: MARKET_STALE_IF_ERROR_MS, ttlFor: (v) => (v === null ? 5 * MIN : undefined) });
     if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
