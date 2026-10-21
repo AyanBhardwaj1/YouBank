@@ -5,6 +5,7 @@
  * to the stories themselves rather than guessed.
  */
 import { historyFrom } from "@/lib/market/data";
+import { publicOnly } from "@/lib/market/user-context";
 import { backupEnabled, nasdaqEarningsDate } from "@/lib/market/nasdaq";
 import type { Desk } from "./desks";
 
@@ -60,7 +61,7 @@ export async function calendarFor(desk: Desk, watch: string[], now = new Date())
 export async function marketWatch(items: { symbol: string; label: string }[]): Promise<WatchRow[]> {
   const from = new Date(Date.now() - 50 * 86_400_000).toISOString().slice(0, 10);
   return Promise.all(items.map(async ({ symbol, label }) => {
-    const h = await historyFrom(symbol, from, true).catch(() => null);
+    const h = await publicOnly(() => historyFrom(symbol, from, true)).catch(() => null);
     const c = (h?.data ?? []).map((b) => b.close);
     const last = c[c.length - 1] ?? null, prev = c[c.length - 2] ?? null;
     return { symbol, label, last, change: last && prev ? last / prev - 1 : null, spark: c.slice(-30), ...(h?.via ? { via: h.via } : {}) };

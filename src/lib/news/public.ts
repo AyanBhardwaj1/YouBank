@@ -14,6 +14,7 @@ import { and, desc, eq, getTableColumns, gte, inArray, sql } from "drizzle-orm";
 import { db as maybeDb, requireDb, schema } from "@/db";
 import type { NewsSummary } from "@/db/schema";
 import { historyFrom } from "@/lib/market/data";
+import { publicOnly } from "@/lib/market/user-context";
 import { memo } from "@/lib/memo";
 import { CATEGORY_LABEL, type Category } from "./classify";
 import { slugFor } from "./slug";
@@ -45,7 +46,7 @@ export async function publicSpark(ticker: string): Promise<PublicSpark | null> {
   if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker)) return null;
   return memo(`news:public-spark:${ticker}`, 30 * 60_000, async () => {
     const from = new Date(Date.now() - 50 * 86_400_000).toISOString().slice(0, 10);
-    const h = await historyFrom(ticker, from, true).catch(() => null);
+    const h = await publicOnly(() => historyFrom(ticker, from, true)).catch(() => null);
     const c = (h?.data ?? []).map((b) => b.close).filter((x) => Number.isFinite(x)).slice(-30);
     return c.length > 1 ? { ticker, closes: c, change: c[c.length - 1] / c[c.length - 2] - 1, month: c[c.length - 1] / c[0] - 1 } : null;
   }).catch(() => null);

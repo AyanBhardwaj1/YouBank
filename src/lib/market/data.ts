@@ -15,7 +15,7 @@ import { BOARD_QUOTE_CONCURRENCY } from "./budgets";
 import { mapLimit } from "./chain";
 import { MarketDataError, type Bar } from "./fmp";
 import { isCrypto } from "./free";
-import { isFxPair, nyseSession, PROXIES } from "./kinds";
+import { isCommodity, isFxPair, nyseSession, PROXIES } from "./kinds";
 import type { AnsweredBy, Provider } from "./provenance";
 import { fromChain, isEmptyAnswer, NoSourceError, standInLabel, type ChainOptions, type DatasetId, type LiveQuote, type Profile } from "./registry";
 
@@ -28,8 +28,8 @@ const asBars = (xs: { date: string; close: number }[]): Bar[] => xs.map((x) => (
 /** `via` is the ETF or fixing that stood in; `label` says so in words ("S&P 500 via SPY"); `by` is the registry adapter that answered. */
 export type Sourced<T> = { data: T; source: Provider; via?: string; label?: string; by?: AnsweredBy };
 
-/** The daily-bars dataset for a symbol: currencies and crypto have their own backups. */
-const barsDataset = (symbol: string): DatasetId => (isFxPair(symbol.toUpperCase()) ? "fx" : isCrypto(symbol) ? "crypto" : "daily-bars");
+/** The daily-bars dataset for a symbol: currencies, crypto and commodities have their own sources. */
+export const barsDataset = (symbol: string): DatasetId => (isFxPair(symbol.toUpperCase()) ? "fx" : isCrypto(symbol) ? "crypto" : isCommodity(symbol) ? "commodity" : "daily-bars");
 
 /** Daily bars with where they came from: FMP, then the backups. Throws MarketDataError when no source has the symbol. */
 export async function historyFrom(symbol: string, from?: string, closesOnly = false, opts: ChainOptions = {}): Promise<Sourced<Bar[]>> {
@@ -70,6 +70,11 @@ export async function quotes(symbols: string[], ttlMs?: number, opts: ChainOptio
  * summary. Nasdaq has no description or website; those stay empty (the terminal can research them).
  * Missing figures stay null (never 0), and the price keeps the provider's own as-of.
  */
-export async function quoteProfile(symbol: string, opts: ChainOptions = {}): Promise<Profile | null> {
-  return (await fromChain("profile", { symbol }, opts).catch(() => null))?.data ?? null;
+export async function quoteProfile(symbol: string, opts: ChainOptions = {}): Promise<PricedProfile | null> {
+  const p = (await fromChain("profile", { symbol }, opts).catch(() => null))?.data ?? null;
+  // A profile without a price (only SEC answered) is not a quote: the company record keeps its last price.
+  return p && p.price !== null ? (p as PricedProfile) : null;
 }
+
+/** A profile that carries a price. */
+export type PricedProfile = Profile & { price: number };

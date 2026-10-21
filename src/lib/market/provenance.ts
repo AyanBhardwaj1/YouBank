@@ -8,8 +8,12 @@
  * The same collector gathers per-source timings for the Server-Timing header (stats.ts records them).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { FieldProvenance } from "./fields";
+import type { Licence } from "./sources-meta";
 
-export type Provider = "FMP" | "Nasdaq" | "ECB" | "CoinGecko" | "SEC EDGAR" | "AI research" | "US Treasury" | "FRED" | "BLS" | "DefiLlama";
+export type Provider =
+  | "FMP" | "Nasdaq" | "ECB" | "CoinGecko" | "SEC EDGAR" | "AI research" | "US Treasury" | "FRED" | "BLS" | "DefiLlama"
+  | "BEA" | "EIA" | "World Bank" | "CFTC" | "Federal Register" | "GDELT" | "Tiingo" | "Twelve Data" | "Alpha Vantage" | "Finnhub" | "FMP (your key)";
 
 /** Sources that are backups for FMP (a screen shows a badge when it used any of them). */
 export const BACKUP_PROVIDERS: Provider[] = ["Nasdaq", "ECB", "CoinGecko", "SEC EDGAR", "AI research"];
@@ -17,8 +21,15 @@ export const BACKUP_PROVIDERS: Provider[] = ["Nasdaq", "ECB", "CoinGecko", "SEC 
 /** When a source's value is true for and how it reached us: the oldest as-of wins; any stale or delayed value marks the answer. */
 export type SourceMeta = { asOf?: string; fetchedAt?: string; stale?: boolean; delayed?: boolean };
 
-/** A registry adapter that answered (registry.ts): its id and its name for people (and the provider it reports as, so a badge can name it). */
-export type AnsweredBy = { id: string; label: string; provider?: Provider };
+/**
+ * A registry adapter that answered (registry.ts): its id and its name for people (and the provider it
+ * reports as, so a badge can name it), its licence and the credit it requires, and `yourKey` when the
+ * person's own key fetched it.
+ */
+export type AnsweredBy = { id: string; label: string; provider?: Provider; licence?: Licence; attribution?: string; yourKey?: boolean };
+
+/** A source the person's order (or this view's choice) named that could not answer here, and why. */
+export type Skipped = { dataset: string; id: string; label: string; reason: string };
 
 /** One upstream call's time, for Server-Timing. */
 export type Timing = { source: string; ms: number; ok: boolean; hedge?: boolean };
@@ -26,7 +37,12 @@ export type Timing = { source: string; ms: number; ok: boolean; hedge?: boolean 
 type Collector = {
   providers: Set<Provider>; notes: Set<string>; adapters: Map<string, AnsweredBy>; timings: Timing[];
   stale: boolean; delayed: boolean; oldestFetchedAt?: string; asOf?: string;
+  skipped: Map<string, Skipped>; fields: Map<string, FieldProvenance>;
+  /** Answers kept for this request only (FRED: its terms bar storing or caching its content). */
+  memo: Map<string, Promise<unknown>>;
 };
+const MAX_SKIPPED = 20;
+const MAX_FIELDS = 40;
 const store = new AsyncLocalStorage<Collector>();
 
 const older = (a: string | undefined, b: string | undefined) => (!a ? b : !b ? a : Date.parse(b) < Date.parse(a) ? b : a);
@@ -55,10 +71,26 @@ export function noteFreshness(meta: SourceMeta) {
   if (c) fold(c, meta);
 }
 
-/** The registry adapter that answered (its id and label). */
+/** The registry adapter that answered (its id, label, licence, credit and whether it was the person's key). */
 export function noteAdapter(a: AnsweredBy) {
   const c = store.getStore();
-  if (c && !c.adapters.has(a.id)) c.adapters.set(a.id, { id: a.id, label: a.label, ...(a.provider ? { provider: a.provider } : {}) });
+  if (c && !c.adapters.has(a.id)) {
+    c.adapters.set(a.id, { id: a.id, label: a.label, ...(a.provider ? { provider: a.provider } : {}), ...(a.licence ? { licence: a.licence } : {}), ...(a.attribution ? { attribution: a.attribution } : {}), ...(a.yourKey ? { yourKey: true } : {}) });
+  }
+}
+
+/** A source that was asked for but could not answer (no key, switched off, not for this data), once per dataset and id. */
+export function noteSkipped(s: Skipped) {
+  const c = store.getStore();
+  const k = `${s.dataset}:${s.id}`;
+  if (c && !c.skipped.has(k) && c.skipped.size < MAX_SKIPPED) c.skipped.set(k, s);
+}
+
+/** Per-field provenance for a dataset's answer: fields filled from another source, and empty fields with their reason. */
+export function noteFields(dataset: string, fields: Record<string, FieldProvenance>) {
+  const c = store.getStore();
+  if (!c) return;
+  for (const [f, p] of Object.entries(fields)) if (c.fields.size < MAX_FIELDS) c.fields.set(`${dataset}.${f}`, p);
 }
 
 /** One upstream call's time (stats.ts calls this for every call it records). */
@@ -82,17 +114,38 @@ export type ProvenanceRun<T> = {
   timings: Timing[];
   /** The same freshness summary as one value (oldest as-of and fetch time, stale, delayed), for callers that pass it along. */
   meta: SourceMeta;
+  /** Sources asked for that could not answer, with the reason. */
+  skipped: Skipped[];
+  /** Per field ("profile.price"): the source that filled it, or why it is empty. */
+  fields: Record<string, FieldProvenance>;
 };
 
 /** Run `fn` and report every source it used. */
 export async function withProvenance<T>(fn: () => Promise<T>): Promise<ProvenanceRun<T>> {
-  const c: Collector = { providers: new Set(), notes: new Set(), adapters: new Map(), timings: [], stale: false, delayed: false };
+  const c: Collector = { providers: new Set(), notes: new Set(), adapters: new Map(), timings: [], stale: false, delayed: false, skipped: new Map(), fields: new Map(), memo: new Map() };
   const value = await store.run(c, fn);
   const meta: SourceMeta = { ...(c.asOf ? { asOf: c.asOf } : {}), ...(c.oldestFetchedAt ? { fetchedAt: c.oldestFetchedAt } : {}), ...(c.stale ? { stale: true } : {}), ...(c.delayed ? { delayed: true } : {}) };
   return {
     value, providers: [...c.providers], notes: [...c.notes], sources: [...c.adapters.values()], stale: c.stale, delayed: c.delayed,
     ...(c.oldestFetchedAt ? { oldestFetchedAt: c.oldestFetchedAt } : {}), ...(c.asOf ? { asOf: c.asOf } : {}), timings: c.timings, meta,
+    skipped: [...c.skipped.values()], fields: Object.fromEntries(c.fields),
   };
+}
+
+/**
+ * `load()` once per request: the same key asked twice while one request is answered (twelve FRED series
+ * of one curve, the same series for two screens' parts) is fetched once, and forgotten when the request
+ * ends. Outside a request (jobs, scripts) every call loads. Nothing is written anywhere.
+ */
+export function requestMemo<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const c = store.getStore();
+  if (!c) return load();
+  const hit = c.memo.get(key) as Promise<T> | undefined;
+  if (hit) return hit;
+  const p = load();
+  c.memo.set(key, p);
+  p.catch(() => c.memo.delete(key));
+  return p;
 }
 
 /** For a failure path: the sources tried so far, when the caller wants to report them with the error. */

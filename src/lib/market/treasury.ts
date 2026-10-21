@@ -60,3 +60,23 @@ export async function treasuryCurves(): Promise<CurveRow[]> {
   if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
   return e.value;
 }
+
+/** A past year's curve never changes; this year's does daily. */
+const PAST_YEAR_TTL_MS = 7 * 24 * 3_600_000;
+const THIS_YEAR_TTL_MS = 2 * 3_600_000;
+
+/** One year's curves, cached per year (past years for a week, this year for two hours), stale when the Treasury fails. */
+async function cachedYear(y: number, thisYear: number): Promise<CurveRow[]> {
+  const ttl = y < thisYear ? PAST_YEAR_TTL_MS : THIS_YEAR_TTL_MS;
+  const e = await cacheEntry<CurveRow[]>(`treasury:year:${y}`, ttl, () => year(y), { staleMs: ttl, staleIfErrorMs: MACRO_STALE_IF_ERROR_MS });
+  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
+  return e.value;
+}
+
+/** Daily curves from `startYear` to now, newest first (the economy screen's ten-year rates come from here, not FRED). */
+export async function treasuryHistory(startYear: number): Promise<CurveRow[]> {
+  const thisYear = marketYear();
+  const years = Array.from({ length: Math.max(1, thisYear - startYear + 1) }, (_, i) => thisYear - i);
+  const got = await Promise.all(years.map((y) => cachedYear(y, thisYear).catch(() => [] as CurveRow[])));
+  return got.flat().sort((p, q) => (p.date < q.date ? 1 : -1));
+}

@@ -4,28 +4,37 @@
  * is not read as certainty), how far the stock usually moves on the report, where the analyst herd is
  * drifting, and how safe the dividend is.
  *
- * FMP first. When it is out, Nasdaq's earnings, analyst and dividend data stand in (dividends per share
- * from the company's own filings where Nasdaq has no history), and when that fails too, AI research looks
- * up the headline figures (each checked against its source; see research.ts).
+ * Each view asks its dataset's chain (market/registry.ts): FMP first; when it is out, Nasdaq's earnings,
+ * analyst and dividend data stand in, then the company's own SEC filings (reported EPS and revenue with
+ * their results 8-K dates; dividends per share by fiscal quarter), and when those fail too, AI research
+ * looks up the headline figures (each checked against its source; see research.ts). A person's order and
+ * own keys (FMP, Finnhub, Alpha Vantage) apply. The per-source adapters are below; the registry lists them.
  */
 import { getCompanyData } from "@/lib/company";
-import { addDays, addMonths, getCompanyFacts, latestEnd, pickConcept, quarterAt, quarterEnds, rowsFor } from "@/lib/edgar/facts";
+import { getCompanyFacts } from "@/lib/edgar/facts";
 import { restate, splitsOf } from "@/lib/edgar/splits";
 import { betaRate } from "@/lib/inference/learn";
 import { median, quantile } from "@/lib/inference/stats";
 import { conformalQuantile } from "@/lib/inference/forecast";
 import { history } from "@/lib/market/data";
 import { dividends as fmpDividends, earnings as fmpEarnings, estimates, grades, MarketDataError, priceTarget, ratingSnapshot, type Bar } from "@/lib/market/fmp";
-import { backupEnabled, nasdaqDividends, nasdaqEarningsDate, nasdaqEarningsSurprise, nasdaqEpsForecast, nasdaqRatings, nasdaqTargets } from "@/lib/market/nasdaq";
+import { nasdaqDividends, nasdaqEarningsDate, nasdaqEarningsSurprise, nasdaqEpsForecast, nasdaqRatings, nasdaqTargets } from "@/lib/market/nasdaq";
 import { noteSource } from "@/lib/market/provenance";
-import { isSourceFailure } from "@/lib/market/source-error";
+import { fromChain, isEmptyAnswer, NoSourceError, type Answer, type FetchContext } from "@/lib/market/registry";
+import type { AnalystData, DividendData, EarningsData, EarningsQuarter, NextReport } from "@/lib/market/street-types";
 import { epsSurprise, trailingEps } from "@/lib/market/units";
 import { marketDate, marketYear } from "@/lib/market/calendar";
 import { factNum, factStr, research, type Field, type Researched } from "@/lib/market/research";
 
-/** FMP's answer, or null when FMP is out (a plan limit, a timeout, a network failure, an open breaker, an unreadable answer), so the caller can fall back. Other errors still throw. */
-const orNull = <T>(p: Promise<T>) => p.catch((e) => { if (e instanceof MarketDataError || isSourceFailure(e) || e instanceof SyntaxError) return null; throw e; });
 const subjectOf = async (ticker: string) => { const c = await getCompanyData(ticker).catch(() => null); return { company: c, subject: c ? `${c.name} (${c.exchange ? `${c.exchange}: ` : ""}${c.ticker})` : ticker.toUpperCase() }; };
+
+/** A chain that found nothing anywhere (every source empty, or none may answer) reads as this view being unavailable; other failures keep their own words. */
+async function chainOrUnavailable<T>(p: Promise<T>, what: string): Promise<T> {
+  try { return await p; } catch (e) {
+    if (isEmptyAnswer(e) || e instanceof NoSourceError) throw new MarketDataError(`${what} is unavailable: FMP is out and the backups did not answer`);
+    throw e;
+  }
+}
 
 /* ---------------- Earnings ---------------- */
 
@@ -61,70 +70,75 @@ function summarizeQuarters(quarters: Quarter[]) {
   };
 }
 
+/** A reported quarter with its surprises, and the price reaction when it is dated by the report (not the period's end). */
+const quarterView = (q: EarningsQuarter, bars: Bar[]): Quarter => ({
+  date: q.date, epsActual: q.epsActual, epsEstimated: q.epsEstimated, epsSurprise: epsSurprise(q.epsActual, q.epsEstimated),
+  revenueActual: q.revenueActual, revenueEstimated: q.revenueEstimated, revenueSurprise: q.revenueActual !== null ? epsSurprise(q.revenueActual, q.revenueEstimated) : null,
+  move: q.datedBy === "period" ? null : reaction(bars, q.date),
+});
+
+/** FMP: every report on record and the annual consensus (estimates in dollars). */
+export async function fmpEarningsData(t: string): Promise<Answer<EarningsData> | null> {
+  const [rows, est] = await Promise.all([fmpEarnings(t), estimates(t, "annual").catch(() => [])]);
+  if (!rows.length) return null;
+  const today = marketDate(), year = marketYear();
+  const upcoming = rows.filter((r) => r.date >= today && r.epsActual === null).sort((a, b) => (a.date < b.date ? -1 : 1))[0] ?? null;
+  const past = rows.filter((r) => r.epsActual !== null && r.date < today).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 16);
+  return {
+    data: {
+      quarters: past.map((r) => ({ date: r.date, epsActual: r.epsActual as number, epsEstimated: r.epsEstimated, revenueActual: r.revenueActual, revenueEstimated: r.revenueEstimated })),
+      next: upcoming ? { date: upcoming.date, epsEstimated: upcoming.epsEstimated, revenueEstimated: upcoming.revenueEstimated } : null,
+      annual: est.filter((e) => Number(e.date.slice(0, 4)) >= year - 1).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5).map((e) => ({ year: e.date.slice(0, 4), revenueAvg: e.revenueAvg, revenueLow: e.revenueLow, revenueHigh: e.revenueHigh, epsAvg: e.epsAvg, analysts: e.numAnalystsEps })),
+    },
+  };
+}
+
+/** Nasdaq: earnings surprises, the next date and EPS forecasts; AI research for what Nasdaq lacks, unless only asked to fill fields. */
+export async function nasdaqEarningsData(t: string, ctx: FetchContext = {}): Promise<Answer<EarningsData> | null> {
+  const [surprise, date, fc] = await Promise.all([nasdaqEarningsSurprise(t).catch(() => []), nasdaqEarningsDate(t).catch(() => null), nasdaqEpsForecast(t).catch(() => ({ quarterly: [], yearly: [] }))]);
+  if (!surprise.length && !date?.date) return null;
+  const quarters: EarningsQuarter[] = surprise.filter((s) => s.eps !== null && s.reported).map((s) => ({ date: s.reported as string, epsActual: s.eps as number, epsEstimated: s.consensus, revenueActual: null, revenueEstimated: null }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Nasdaq's EPS consensus is on the same basis (GAAP or adjusted) as the history beside it, so it
+  // wins over a researched one, which may be on the other basis.
+  const eps = date?.epsConsensus ?? fc.quarterly[0]?.consensus ?? null;
+  let next: NextReport | null = date?.date ? { date: date.date, epsEstimated: eps, revenueEstimated: null, estimatedDate: date.estimated } : null;
+  const annual = fc.yearly.map((y) => ({ year: y.period, revenueAvg: null, revenueLow: null, revenueHigh: null, epsAvg: y.consensus, analysts: y.estimates }));
+  if (ctx.fill) return { data: { quarters, next, annual } };
+  // Nasdaq has no revenue estimates, and its vendor may not have dated the next report yet: one
+  // lookup for what is missing (each figure checked against its source).
+  const want: Field[] = next ? ["revenueEstimate"] : eps !== null ? ["nextEarningsDate", "revenueEstimate"] : ["nextEarningsDate", "epsEstimate", "revenueEstimate"];
+  const r = await research((await subjectOf(t)).subject, want).catch(() => null);
+  const researchedDate = next ? null : factStr(r, "nextEarningsDate");
+  if (researchedDate) next = { date: researchedDate, epsEstimated: eps ?? factNum(r, "epsEstimate"), revenueEstimated: null };
+  const revenue = factNum(r, "revenueEstimate");
+  if (next && revenue !== null) next = { ...next, revenueEstimated: revenue };
+  const used = !!researchedDate || (!!next && revenue !== null);
+  if (used) noteSource("AI research");
+  return { data: { quarters, next, annual, research: used ? r : null } };
+}
+
+/** AI research for the headline figures: the next date and estimates, and the last report. */
+export async function researchEarningsData(t: string): Promise<Answer<EarningsData> | null> {
+  const r = await research((await subjectOf(t)).subject, ["nextEarningsDate", "epsEstimate", "revenueEstimate", "lastReportDate", "lastEps", "lastEpsEstimate"]).catch(() => null);
+  if (!r) return null;
+  const lastDate = factStr(r, "lastReportDate"), lastEps = factNum(r, "lastEps"), nextDate = factStr(r, "nextEarningsDate");
+  return {
+    data: {
+      quarters: lastDate && lastEps !== null ? [{ date: lastDate, epsActual: lastEps, epsEstimated: factNum(r, "lastEpsEstimate"), revenueActual: null, revenueEstimated: null }] : [],
+      next: nextDate ? { date: nextDate, epsEstimated: factNum(r, "epsEstimate"), revenueEstimated: factNum(r, "revenueEstimate") } : null, annual: [], research: r,
+    },
+  };
+}
+
 export async function earningsView(ticker: string): Promise<EarningsView> {
   const t = ticker.toUpperCase();
-  const [rows, bars, est] = await Promise.all([orNull(fmpEarnings(t)), history(t).catch(() => [] as Bar[]), estimates(t, "annual").catch(() => [])]);
-  const today = marketDate();
-  if (rows?.length) {
-    noteSource("FMP");
-    const upcoming = rows.filter((r) => r.date >= today && r.epsActual === null).sort((a, b) => (a.date < b.date ? -1 : 1))[0] ?? null;
-    const past = rows.filter((r) => r.epsActual !== null && r.date < today).sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 16);
-    const quarters = past.map((r) => ({
-      date: r.date, epsActual: r.epsActual as number, epsEstimated: r.epsEstimated,
-      epsSurprise: epsSurprise(r.epsActual as number, r.epsEstimated),
-      revenueActual: r.revenueActual, revenueEstimated: r.revenueEstimated,
-      revenueSurprise: r.revenueActual !== null ? epsSurprise(r.revenueActual, r.revenueEstimated) : null,
-      move: reaction(bars, r.date),
-    }));
-    const year = marketYear();
-    return {
-      ticker: t, next: upcoming ? { date: upcoming.date, epsEstimated: upcoming.epsEstimated, revenueEstimated: upcoming.revenueEstimated } : null,
-      quarters, ...summarizeQuarters(quarters),
-      annual: est.filter((e) => Number(e.date.slice(0, 4)) >= year - 1).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 5).map((e) => ({ year: e.date.slice(0, 4), revenueAvg: mmOrNull(e.revenueAvg), revenueLow: mmOrNull(e.revenueLow), revenueHigh: mmOrNull(e.revenueHigh), epsAvg: e.epsAvg, analysts: e.numAnalystsEps })),
-    };
-  }
-  // Backup 1: Nasdaq's earnings surprises, next date and EPS forecasts.
-  if (backupEnabled()) {
-    const [surprise, date, fc] = await Promise.all([nasdaqEarningsSurprise(t).catch(() => []), nasdaqEarningsDate(t).catch(() => null), nasdaqEpsForecast(t).catch(() => ({ quarterly: [], yearly: [] }))]);
-    if (surprise.length || date?.date) {
-      noteSource("Nasdaq");
-      const quarters: Quarter[] = surprise.filter((s) => s.eps !== null && s.reported).map((s) => ({
-        date: s.reported as string, epsActual: s.eps as number, epsEstimated: s.consensus,
-        epsSurprise: epsSurprise(s.eps as number, s.consensus), revenueActual: null, revenueEstimated: null, revenueSurprise: null,
-        move: reaction(bars, s.reported as string),
-      })).sort((a, b) => (a.date < b.date ? 1 : -1));
-      // Nasdaq's EPS consensus is on the same basis (GAAP or adjusted) as the history beside it, so it
-      // wins over a researched one, which may be on the other basis.
-      const eps = date?.epsConsensus ?? fc.quarterly[0]?.consensus ?? null;
-      let next: EarningsView["next"] = date?.date ? { date: date.date, epsEstimated: eps, revenueEstimated: null, estimatedDate: date.estimated } : null;
-      // Nasdaq has no revenue estimates, and its vendor may not have dated the next report yet: one
-      // lookup for what is missing (each figure checked against its source).
-      const want: Field[] = next ? ["revenueEstimate"] : eps !== null ? ["nextEarningsDate", "revenueEstimate"] : ["nextEarningsDate", "epsEstimate", "revenueEstimate"];
-      const r = await research((await subjectOf(t)).subject, want).catch(() => null);
-      const researchedDate = next ? null : factStr(r, "nextEarningsDate");
-      if (researchedDate) next = { date: researchedDate, epsEstimated: eps ?? factNum(r, "epsEstimate"), revenueEstimated: null };
-      const revenue = factNum(r, "revenueEstimate");
-      if (next && revenue !== null) next = { ...next, revenueEstimated: revenue };
-      const used = !!researchedDate || (!!next && revenue !== null);
-      if (used) noteSource("AI research");
-      return {
-        ticker: t, next, quarters, ...summarizeQuarters(quarters),
-        annual: fc.yearly.map((y) => ({ year: y.period, revenueAvg: null, revenueLow: null, revenueHigh: null, epsAvg: y.consensus, analysts: y.estimates })),
-        research: used ? r : null,
-      };
-    }
-  }
-  // Backup 2: AI research for the headline figures.
-  const { subject } = await subjectOf(t);
-  const r = await research(subject, ["nextEarningsDate", "epsEstimate", "revenueEstimate", "lastReportDate", "lastEps", "lastEpsEstimate"]).catch(() => null);
-  if (!r) throw new MarketDataError("Earnings data is unavailable: FMP is out and the backups did not answer");
-  noteSource("AI research");
-  const lastDate = factStr(r, "lastReportDate"), lastEps = factNum(r, "lastEps"), lastEst = factNum(r, "lastEpsEstimate");
-  const quarters: Quarter[] = lastDate && lastEps !== null ? [{ date: lastDate, epsActual: lastEps, epsEstimated: lastEst, epsSurprise: epsSurprise(lastEps, lastEst), revenueActual: null, revenueEstimated: null, revenueSurprise: null, move: reaction(bars, lastDate) }] : [];
-  const nextDate = factStr(r, "nextEarningsDate");
+  const [a, bars] = await Promise.all([chainOrUnavailable(fromChain("earnings", { symbol: t }), "Earnings data"), history(t).catch(() => [] as Bar[])]);
+  const quarters = a.data.quarters.map((q) => quarterView(q, bars));
   return {
-    ticker: t, next: nextDate ? { date: nextDate, epsEstimated: factNum(r, "epsEstimate"), revenueEstimated: factNum(r, "revenueEstimate") } : null,
-    quarters, ...summarizeQuarters(quarters), annual: [], research: r,
+    ticker: t, next: a.data.next, quarters, ...summarizeQuarters(quarters),
+    annual: a.data.annual.map((y) => ({ ...y, revenueAvg: mmOrNull(y.revenueAvg), revenueLow: mmOrNull(y.revenueLow), revenueHigh: mmOrNull(y.revenueHigh) })),
+    ...(a.data.research !== undefined ? { research: a.data.research } : {}),
   };
 }
 
@@ -141,7 +155,7 @@ export type AnalystView = {
   counts: { buy: number | null; hold: number | null; sell: number | null } | null;
   firms: { firm: string; grade: string; bucket: "buy" | "hold" | "sell"; date: string; action: string }[];
   drift: { upgrades90: number; downgrades90: number; net: number; label: string };
-  snapshot: Awaited<ReturnType<typeof ratingSnapshot>>;
+  snapshot: AnalystData["snapshot"];
   /** The consensus rating in words, when a backup reports it. */
   consensusRating?: string;
   research?: Researched | null;
@@ -155,52 +169,61 @@ const driftOf = (actions: { date: string; action: string }[]) => {
 };
 const targetOf = (hi: number | null, lo: number | null, mean: number | null, last: number | null, med?: number | null) =>
   mean !== null ? { high: hi ?? mean, low: lo ?? mean, consensus: mean, median: med ?? mean, upside: last ? mean / last - 1 : null, dispersion: hi !== null && lo !== null && mean ? (hi - lo) / mean : null } : null;
+const bucketCounts = (firms: { grade: string }[]) => ({ buy: firms.filter((f) => gradeBucket(f.grade) === "buy").length, hold: firms.filter((f) => gradeBucket(f.grade) === "hold").length, sell: firms.filter((f) => gradeBucket(f.grade) === "sell").length });
+
+/** FMP: grades (the latest per firm within a year), the target consensus and its rating snapshot. */
+export async function fmpAnalystData(t: string): Promise<Answer<AnalystData> | null> {
+  const [g, tg, snap] = await Promise.all([grades(t), priceTarget(t), ratingSnapshot(t)]);
+  if (!g.length && !tg) return null;
+  const yearAgo = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
+  const latestByFirm = new Map<string, (typeof g)[number]>();
+  for (const x of [...g].sort((a, b) => (a.date < b.date ? 1 : -1))) if (x.date >= yearAgo && !latestByFirm.has(x.gradingCompany)) latestByFirm.set(x.gradingCompany, x);
+  const firms = [...latestByFirm.values()].map((x) => ({ firm: x.gradingCompany, grade: x.newGrade, date: x.date, action: x.action }));
+  return { data: { target: tg ? { high: tg.targetHigh, low: tg.targetLow, mean: tg.targetConsensus, median: tg.targetMedian } : null, counts: bucketCounts(firms), firms, actions: g, snapshot: snap } };
+}
+
+/** Nasdaq: consensus targets and rating changes. */
+export async function nasdaqAnalystData(t: string): Promise<Answer<AnalystData> | null> {
+  const [nt, nr] = await Promise.all([nasdaqTargets(t).catch(() => null), nasdaqRatings(t).catch(() => null)]);
+  if (!nt && !nr?.actions.length) return null;
+  const firms = (nr?.actions ?? []).filter((a) => a.date).map((a) => ({ firm: a.firm, grade: a.to || a.action, date: a.date as string, action: a.action }));
+  return {
+    data: {
+      target: nt && nt.mean !== null ? { high: nt.high, low: nt.low, mean: nt.mean, median: null } : null,
+      counts: nt ? { buy: nt.buy, hold: nt.hold, sell: nt.sell } : null,
+      firms, actions: firms, snapshot: null, consensusRating: nr?.mean || undefined,
+    },
+  };
+}
+
+/** AI research for the consensus. A count it could not confirm stays null, never 0. */
+export async function researchAnalystData(t: string): Promise<Answer<AnalystData> | null> {
+  const r = await research((await subjectOf(t)).subject, ["rating", "analysts", "buy", "hold", "sell", "targetMean", "targetHigh", "targetLow"]).catch(() => null);
+  if (!r) return null;
+  const mean = factNum(r, "targetMean");
+  return {
+    data: {
+      target: mean !== null ? { high: factNum(r, "targetHigh"), low: factNum(r, "targetLow"), mean, median: null } : null,
+      counts: { buy: factNum(r, "buy"), hold: factNum(r, "hold"), sell: factNum(r, "sell") }, firms: [], actions: [], snapshot: null, consensusRating: factStr(r, "rating") ?? undefined, research: r,
+    },
+  };
+}
 
 export async function analystView(ticker: string): Promise<AnalystView> {
   const t = ticker.toUpperCase();
-  const [g, tg, snap, company] = await Promise.all([orNull(grades(t)), priceTarget(t), ratingSnapshot(t), getCompanyData(t).catch(() => null)]);
-  const last = company?.price?.last ?? null;
-  if (g?.length || tg) {
-    noteSource("FMP");
-    const yearAgo = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
-    const latestByFirm = new Map<string, NonNullable<typeof g>[number]>();
-    for (const x of [...(g ?? [])].sort((a, b) => (a.date < b.date ? 1 : -1))) if (x.date >= yearAgo && !latestByFirm.has(x.gradingCompany)) latestByFirm.set(x.gradingCompany, x);
-    const firms = [...latestByFirm.values()].map((x) => ({ firm: x.gradingCompany, grade: x.newGrade, bucket: gradeBucket(x.newGrade), date: x.date, action: x.action }));
-    return {
-      ticker: t, last, target: tg ? targetOf(tg.targetHigh, tg.targetLow, tg.targetConsensus, last, tg.targetMedian) : null,
-      counts: { buy: firms.filter((f) => f.bucket === "buy").length, hold: firms.filter((f) => f.bucket === "hold").length, sell: firms.filter((f) => f.bucket === "sell").length },
-      firms, drift: driftOf(g ?? []), snapshot: snap,
-    };
-  }
-  // Backup 1: Nasdaq's consensus targets and rating changes.
-  if (backupEnabled()) {
-    const [nt, nr] = await Promise.all([nasdaqTargets(t).catch(() => null), nasdaqRatings(t).catch(() => null)]);
-    if (nt || nr?.actions.length) {
-      noteSource("Nasdaq");
-      const firms = (nr?.actions ?? []).filter((a) => a.date).map((a) => ({ firm: a.firm, grade: a.to || a.action, bucket: gradeBucket(a.to || a.action), date: a.date as string, action: a.action }));
-      return {
-        ticker: t, last, target: nt ? targetOf(nt.high, nt.low, nt.mean, last) : null,
-        counts: nt ? { buy: nt.buy, hold: nt.hold, sell: nt.sell } : null,
-        firms, drift: driftOf(firms), snapshot: null, consensusRating: nr?.mean || undefined,
-      };
-    }
-  }
-  // Backup 2: AI research for the consensus.
-  const { subject } = await subjectOf(t);
-  const r = await research(subject, ["rating", "analysts", "buy", "hold", "sell", "targetMean", "targetHigh", "targetLow"]).catch(() => null);
-  if (!r) throw new MarketDataError("Analyst data is unavailable: FMP is out and the backups did not answer");
-  noteSource("AI research");
+  const [a, company] = await Promise.all([chainOrUnavailable(fromChain("analysts", { symbol: t }), "Analyst data"), getCompanyData(t).catch(() => null)]);
+  const last = company?.price?.last ?? null, d = a.data;
   return {
-    ticker: t, last, target: targetOf(factNum(r, "targetHigh"), factNum(r, "targetLow"), factNum(r, "targetMean"), last),
-    counts: { buy: factNum(r, "buy"), hold: factNum(r, "hold"), sell: factNum(r, "sell") },
-    firms: [], drift: driftOf([]), snapshot: null, consensusRating: factStr(r, "rating") ?? undefined, research: r,
+    ticker: t, last, target: d.target ? targetOf(d.target.high, d.target.low, d.target.mean, last, d.target.median) : null, counts: d.counts,
+    firms: d.firms.map((f) => ({ ...f, bucket: gradeBucket(f.grade) })), drift: driftOf(d.actions), snapshot: d.snapshot,
+    ...(d.consensusRating ? { consensusRating: d.consensusRating } : {}), ...(d.research !== undefined ? { research: d.research } : {}),
   };
 }
 
 /* ---------------- Dividends ---------------- */
 
 export type DividendView = {
-  ticker: string; payments: { date: string; amount: number; payDate: string }[];
+  ticker: string; payments: { date: string; amount: number; payDate: string | null }[];
   ttm: number | null; yield: number | null; frequency: string; growth: { y1: number | null; y3: number | null; y5: number | null };
   payout: number | null; streakYears: number; safety: { score: number; label: "safe" | "watch" | "at risk"; reasons: string[] };
   /** "fiscal quarter" when payments are per-share dividends by fiscal quarter from filings, not by ex-date. */
@@ -209,43 +232,6 @@ export type DividendView = {
   annual?: { year: number; amount: number }[];
   research?: Researched | null;
 };
-
-const DPS = ["CommonStockDividendsPerShareDeclared", "CommonStockDividendsPerShareCashPaid"];
-/** The fiscal year a period ending on `end` belongs to (a 52-week year ending 2023-01-01 is fiscal 2022). */
-const fiscalYear = (end: string) => Number(addDays(end, -45).slice(0, 4));
-
-/**
- * Dividends per share from the company's 10-K and 10-Q filings, restated for splits: by fiscal quarter
- * (oldest first), by fiscal year, and the latest twelve months. Empty when the filings show no dividend;
- * null when they cannot tell (no filings, dividends paid with no per-share figure tagged, or too little
- * history for a year's worth).
- */
-async function secDividends(cik: string): Promise<{ quarters: { date: string; amount: number }[]; annual: { year: number; amount: number }[]; ttm: number | null } | null> {
-  const cf = await getCompanyFacts(cik.padStart(10, "0")).catch(() => null);
-  if (!cf) return null;
-  const today = marketDate();
-  const dps = pickConcept(cf, DPS, "USD/shares");
-  const latest = dps ? latestEnd(dps.rows) : null;
-  if (!dps || !latest || latest < addMonths(today, -18)) {
-    const paid = pickConcept(cf, ["PaymentsOfDividendsCommonStock", "PaymentsOfDividends"]);
-    return paid?.rows.some((r) => r.end >= addMonths(today, -24) && r.val > 0) ? null : { quarters: [], annual: [], ttm: null };
-  }
-  // A company that switched tags (declared to paid, or back) keeps its older history under the other
-  // one. Only history that joins up is used: stray old rows are often mis-tagged.
-  const earliest = dps.rows[0].end;
-  const older = DPS.filter((c) => c !== dps.concept).flatMap((c) => rowsFor(cf, "us-gaap", c, "USD/shares")).filter((r) => r.end < earliest);
-  const joins = older.some((r) => r.end >= addMonths(earliest, -15));
-  const rows = [...(joins ? older : []), ...dps.rows];
-  const splits = splitsOf(cf);
-  const quarters = restate(quarterEnds(rows, latest, 64).map((date) => ({ date, amount: quarterAt(rows, date) ?? 0 })).filter((q) => q.amount > 0), splits, "filed");
-  const years = restate(rows.filter((r) => r.start && r.days >= 350 && r.days <= 380).map((r) => ({ date: r.end, amount: r.val })), splits, "filed");
-  // The latest twelve months: four straight quarters, else a fiscal year ended in the last six months.
-  // A new registrant (after a reorganization, say) may have neither yet; then the filings cannot tell.
-  const last4 = quarters.slice(-4), lastYear = years.at(-1);
-  const ttm = last4.length === 4 && last4[0].date >= addDays(latest, -320) ? last4.reduce((a, q) => a + q.amount, 0) : lastYear && lastYear.date >= addMonths(latest, -6) ? lastYear.amount : null;
-  if (ttm === null) return null;
-  return { quarters, annual: years.map((r) => ({ year: fiscalYear(r.date), amount: r.amount })), ttm };
-}
 
 function safetyOf(payout: number | null, epsTtm: number | null, ttm: number | null, cagr3: number | null, streak: number, leverage: number | null) {
   const reasons: string[] = [];
@@ -262,7 +248,7 @@ function safetyOf(payout: number | null, epsTtm: number | null, ttm: number | nu
 /** Overrides for a source that knows better: its payout ratio, its latest twelve months, its fiscal years. */
 type PaymentOpts = { payout?: number | null; ttm?: number | null; annual?: { year: number; amount: number }[] };
 
-function fromPayments(ticker: string, payments: { date: string; amount: number; payDate: string }[], last: number | null, epsTtm: number | null, leverage: number | null, frequency: string, opts: PaymentOpts = {}): DividendView {
+function fromPayments(ticker: string, payments: DividendView["payments"], last: number | null, epsTtm: number | null, leverage: number | null, frequency: string, opts: PaymentOpts = {}): DividendView {
   const sorted = [...payments].sort((a, b) => (a.date < b.date ? 1 : -1));
   const yearAgo = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
   const ttm = opts.ttm ?? sorted.filter((p) => p.date > yearAgo).reduce((a, p) => a + p.amount, 0);
@@ -284,47 +270,52 @@ function fromPayments(ticker: string, payments: { date: string; amount: number; 
   };
 }
 
-export async function dividendView(ticker: string): Promise<DividendView> {
-  const t = ticker.toUpperCase();
-  const [rows, company] = await Promise.all([orNull(fmpDividends(t)), getCompanyData(t).catch(() => null)]);
+/** FMP: every dividend on record (empty means none), with trailing EPS from its earnings for the payout ratio. */
+export async function fmpDividendData(t: string): Promise<Answer<DividendData> | null> {
+  const rows = await fmpDividends(t);
+  const earn = await fmpEarnings(t).catch(() => null);
+  const epsTtm = trailingEps((earn ?? []).filter((e) => e.epsActual !== null).sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => e.epsActual));
+  const payments = rows.flatMap((r) => { const amount = r.adjDividend || r.dividend; return amount ? [{ date: r.date, amount, payDate: r.paymentDate || null }] : []; });
+  return { data: { payments, frequency: rows[0]?.frequency ?? "", basis: "ex-date", epsTtm } };
+}
+
+/** Nasdaq: dividend history and payout ratio (Nasdaq-listed stocks only), as paid (restated for splits by the view). */
+export async function nasdaqDividendData(t: string): Promise<Answer<DividendData> | null> {
+  const [nd, surprise] = await Promise.all([nasdaqDividends(t).catch(() => null), nasdaqEarningsSurprise(t).catch(() => [])]);
+  if (!nd || (!nd.payments.length && nd.annualized === null)) return null;
+  const payments = nd.payments.map((p) => ({ date: p.exDate, amount: p.amount, payDate: p.payDate ?? null })).sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { data: { payments, frequency: "", basis: "ex-date", payout: nd.payoutRatio, epsTtm: trailingEps(surprise.slice(0, 4).map((s) => s.eps)), restate: "paid" } };
+}
+
+/** AI research for the current dividend. A dividend the lookup could not confirm is unknown (null), not "no dividend". */
+export async function researchDividendData(t: string): Promise<Answer<DividendData> | null> {
+  const r = await research((await subjectOf(t)).subject, ["annualDividend", "dividendYield", "exDividendDate", "payoutRatio"]).catch(() => null);
+  if (!r) return null;
+  return { data: { payments: [], frequency: "", basis: "ex-date", ttm: factNum(r, "annualDividend"), payout: factNum(r, "payoutRatio"), yield: factNum(r, "dividendYield"), research: r } };
+}
+
+/** The view from a source's dividends: computed growth, payout and safety, with the company's price and leverage. */
+async function dividendFrom(t: string, d: DividendData, company: Awaited<ReturnType<typeof getCompanyData>>): Promise<DividendView> {
   const last = company?.price?.last ?? null;
   const lev = company && company.ltm.ebitda && company.balance.debt ? company.balance.debt / company.ltm.ebitda : null;
-  if (rows) {
-    noteSource("FMP");
-    const earn = await orNull(fmpEarnings(t)).catch(() => null);
-    const eps = trailingEps((earn ?? []).filter((e) => e.epsActual !== null).sort((a, b) => (a.date < b.date ? 1 : -1)).map((e) => e.epsActual));
-    const paid = rows.flatMap((r) => { const amount = r.adjDividend || r.dividend; return amount ? [{ date: r.date, amount, payDate: r.paymentDate }] : []; });
-    return fromPayments(t, paid, last, eps, lev, rows[0]?.frequency ?? "");
+  if (d.research && !d.payments.length) {
+    const annual = d.ttm ?? null, payout = d.payout ?? null;
+    return { ticker: t, payments: [], ttm: annual, yield: d.yield ?? (last && annual ? annual / last : null), frequency: "", growth: { y1: null, y3: null, y5: null }, payout, streakYears: 0, safety: safetyOf(payout, null, annual, null, 0, lev), research: d.research };
   }
-  // Backup 1: Nasdaq's dividend history and payout ratio (Nasdaq-listed stocks only).
-  if (backupEnabled()) {
-    const [nd, surprise] = await Promise.all([nasdaqDividends(t).catch(() => null), nasdaqEarningsSurprise(t).catch(() => [])]);
-    if (nd && (nd.payments.length || nd.annualized !== null)) {
-      noteSource("Nasdaq");
-      const eps = trailingEps(surprise.slice(0, 4).map((s) => s.eps));
-      // Nasdaq lists dividends as paid; restate them for the splits the filings show.
-      const cf = company?.cik ? await getCompanyFacts(company.cik.padStart(10, "0")).catch(() => null) : null;
-      const paid = nd.payments.map((p) => ({ date: p.exDate, amount: p.amount, payDate: p.payDate ?? "" })).sort((a, b) => (a.date < b.date ? -1 : 1));
-      return fromPayments(t, restate(paid, cf ? splitsOf(cf) : [], "paid"), last, eps, lev, "", { payout: nd.payoutRatio });
-    }
+  let payments = d.payments;
+  if (d.restate === "paid") {
+    // Nasdaq lists dividends as paid; restate them for the splits the filings show.
+    const cf = company?.cik ? await getCompanyFacts(company.cik.padStart(10, "0")).catch(() => null) : null;
+    payments = restate(payments, cf ? splitsOf(cf) : [], "paid");
   }
-  // Backup 2: dividends per share from the company's own filings. Nasdaq has dividend history only for
-  // Nasdaq-listed stocks; the filings cover every US filer, by fiscal quarter rather than ex-date.
-  const sec = company?.cik ? await secDividends(company.cik) : null;
-  if (sec) {
-    noteSource("SEC EDGAR", "Dividends per share from 10-K and 10-Q filings, by fiscal quarter");
-    const eps = company && company.ltm.netIncome !== null && company.balance.sharesOut ? company.ltm.netIncome / company.balance.sharesOut : null;
-    return { ...fromPayments(t, sec.quarters.map((q) => ({ ...q, payDate: "" })), last, eps, lev, sec.quarters.length ? "from 10-K and 10-Q filings" : "", { ttm: sec.ttm, annual: sec.annual }), basis: "fiscal quarter" };
-  }
-  // Backup 3: AI research for the current dividend.
-  const { subject } = await subjectOf(t);
-  const r = await research(subject, ["annualDividend", "dividendYield", "exDividendDate", "payoutRatio"]).catch(() => null);
-  if (!r) throw new MarketDataError("Dividend data is unavailable: FMP is out and the backups did not answer");
-  noteSource("AI research");
-  // A dividend the lookup could not confirm is unknown (null), not "no dividend".
-  const annual = factNum(r, "annualDividend"), payout = factNum(r, "payoutRatio");
-  return {
-    ticker: t, payments: [], ttm: annual, yield: factNum(r, "dividendYield") ?? (last && annual ? annual / last : null), frequency: "",
-    growth: { y1: null, y3: null, y5: null }, payout, streakYears: 0, safety: safetyOf(payout, null, annual, null, 0, lev), research: r,
-  };
+  const companyEps = company && company.ltm.netIncome !== null && company.balance.sharesOut ? company.ltm.netIncome / company.balance.sharesOut : null;
+  const eps = d.epsTtm !== undefined ? d.epsTtm : companyEps;
+  const view = fromPayments(t, payments, last, eps, lev, d.frequency, { ...(d.payout !== undefined ? { payout: d.payout } : {}), ...(d.ttm !== undefined ? { ttm: d.ttm } : {}), ...(d.annual ? { annual: d.annual } : {}) });
+  return d.basis === "fiscal quarter" ? { ...view, basis: "fiscal quarter" } : view;
+}
+
+export async function dividendView(ticker: string): Promise<DividendView> {
+  const t = ticker.toUpperCase();
+  const [a, company] = await Promise.all([chainOrUnavailable(fromChain("dividends", { symbol: t }), "Dividend data"), getCompanyData(t).catch(() => null)]);
+  return dividendFrom(t, a.data, company);
 }
