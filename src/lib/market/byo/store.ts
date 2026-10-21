@@ -64,9 +64,15 @@ async function upsert(userId: string, set: Partial<typeof schema.userDataSources
   memo.delete(userId);
 }
 
-/** Save the person's order per dataset (already validated by the route). */
+/**
+ * Save the person's order for the datasets given (already validated by the route); other datasets keep
+ * theirs, and an empty list goes back to the default order.
+ */
 export async function saveOrder(userId: string, order: Settings["order"]): Promise<void> {
-  await upsert(userId, { prefs: { order } });
+  memo.delete(userId);
+  const merged: Settings["order"] = { ...(await loadSettings(userId)).order, ...order };
+  for (const [d, ids] of Object.entries(merged)) if (!ids?.length) delete merged[d as DatasetName];
+  await upsert(userId, { prefs: { order: merged } });
 }
 
 /** Save (or replace) a key: encrypted with the others, its last four and plan shown. Purges data cached with the old one. */

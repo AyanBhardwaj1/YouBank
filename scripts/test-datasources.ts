@@ -637,7 +637,11 @@ async function testRouteDb() {
   };
   const bad1 = await call("PUT", "{not json"), bad2 = await call("PUT", { order: { "daily-bars": ["nope"] } }), bad3 = await call("PUT", { order: { curve: ["tiingo"] } });
   check("C4(route) a malformed PUT returns 400 with words", bad1.status === 400 && bad2.status === 400 && bad3.status === 400 && /not a source/.test(String(bad2.body?.error)), [bad1.status, bad2.status, bad3.status, bad2.body?.error]);
+  await call("PUT", { order: { quote: ["nasdaq", "fmp"] } });
   const ok = await call("PUT", { order: { "daily-bars": ["nasdaq", "fmp"] } });
+  check("C4(route) a PUT for one dataset keeps the others' order (the page saves one at a time); an empty list resets it",
+    (ok.body?.datasets as { id: string; customized: boolean }[]).find((d) => d.id === "quote")?.customized === true
+    && (await call("PUT", { order: { quote: [] } })).body?.datasets !== undefined && !((await call("GET")).body?.datasets as { id: string; customized: boolean }[]).find((d) => d.id === "quote")?.customized, ok.status);
   check("C4(route) PUT saves the order and answers with the view (no-store)", ok.status === 200 && (ok.body?.datasets as { id: string; sources: { id: string }[] }[]).find((d) => d.id === "daily-bars")?.sources[0].id === "nasdaq" && ok.cache === "no-store", ok.status);
   const save = await call("POST", { action: "save-key", provider: "tiingo", key: KEYS.tiingoA, plan: "business" });
   check("C4(route) save-key tests the key, saves it and never sends it back", save.status === 200 && !JSON.stringify(save.body).includes(KEYS.tiingoA) && JSON.stringify(save.body).includes(KEYS.tiingoA.slice(-4)), save.status);
