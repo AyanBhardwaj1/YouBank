@@ -7,6 +7,7 @@ import { ROLE_BLURB, ROLE_LABEL, assignableBy, can, outranks, type TeamRole } fr
 import { Select } from "@/components/ui/Select";
 import { confirmDialog, promptDialog } from "@/components/ui/Dialog";
 import { errorMessage, messageFor } from "@/lib/client/errors";
+import { SetupNotice } from "@/components/ui/SetupScreen";
 
 type Me = { id: string; email: string; name: string };
 type Team = { id: number; name: string; slug: string; role: TeamRole; memberCount: number; createdAt: string };
@@ -144,14 +145,7 @@ export function TeamClient({ me, teams: initialTeams, activeTeamId, needsMigrati
   if (needsMigration) {
     return (
       <Shell>
-        <div className="mt-6 ctl border border-warn/40 bg-warn/5 p-4">
-          <h2 className="flex items-center gap-2 text-[14px] font-semibold"><Icon name="AlertTriangle" className="h-4 w-4" /> Teams are not set up yet</h2>
-          <p className="mt-2 max-w-[70ch] text-[12px] text-muted">
-            The team tables have not been created in the database. Apply the migration and reload this page:
-          </p>
-          <pre className="num mt-3 overflow-auto ctl border border-line bg-elevated/60 p-3 text-[11.5px]">pnpm exec drizzle-kit push</pre>
-          <p className="mt-2 text-[11.5px] text-muted">The exact statements are in <span className="num">drizzle/0001_teams.sql</span>. They only add tables and nullable columns.</p>
-        </div>
+        <SetupNotice what="Teams" />
       </Shell>
     );
   }

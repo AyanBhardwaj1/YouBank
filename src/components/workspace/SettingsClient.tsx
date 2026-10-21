@@ -10,7 +10,7 @@ import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { BetaToggle } from "@/components/edge/BetaToggle";
 
 // Each tab's panel loads when the tab is opened; the page itself carries only the default (style) tab.
@@ -38,6 +38,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
   useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
+  useViewInUrl("/app/settings", "tab", tab, "style");
   const [routing, setRouting] = useState(prefs.routing !== false);
   const { profile, config, tools } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
@@ -86,6 +87,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
               <div className="mt-3 ctl border border-line bg-elevated/60 px-3 py-2 text-[11.5px]">
                 <span className={status.configured ? "text-pos" : "text-neg"}>{status.configured ? "Connected" : "Not configured"}</span>
                 {status.configured && <span className="num text-muted"> · {status.provider} · {status.model} · {status.effort} reasoning</span>}
+                {!status.configured && <span className="text-muted"> · {status.reason ?? "AI is not set up yet."} Your choices below are kept and apply once it is.</span>}
                 {catalog?.providers?.length ? <span className="text-muted"> · providers available: {catalog.providers.join(", ")}</span> : null}
               </div>
             )}

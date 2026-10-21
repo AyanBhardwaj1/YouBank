@@ -11,7 +11,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { AgentChat } from "./AgentChat";
 import { AlgoConsentProvider, useAlgoConsent } from "./AlgoConsent";
 import { Brokers } from "./Brokers";
@@ -20,6 +20,7 @@ import { StrategyDetail } from "./StrategyDetail";
 
 // The builder (and the strategy schema it validates with, zod included) loads when a strategy is created or edited.
 const StrategyEditor = lazyPanel(() => import("./StrategyEditor").then((m) => m.StrategyEditor), () => <div className="shimmer h-72 rounded-md" />);
+import { useTabInView } from "@/components/ui/useTabInView";
 
 type Tab = "strategies" | "brokers" | "agent" | "activity";
 const TABS: { id: Tab; label: string; icon: string }[] = [
@@ -37,11 +38,13 @@ function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?
   const ask = useAlgoConsent();
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "strategies");
   useIdlePreload([StrategyEditor]);
+  const tabRow = useTabInView<HTMLElement>(tab);
   const [hub, setHub] = useState<Hub | null>(null);
   const [selected, setSelected] = useState<number | null>(initialStrategy ?? null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useSubNav("/app/algo", (v) => { if (TABS.some((t) => t.id === v)) { setTab(v as Tab); setSelected(null); } });
+  useViewInUrl("/app/algo", "tab", tab, "strategies");
   const load = useCallback(() => fetchJson<Hub>("/api/algo/strategies").then(setHub).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { void load(); }, [load]);
   const toggleKill = async () => {
@@ -51,6 +54,8 @@ function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?
     try { await call("/api/algo/kill", json("POST", { on }), ask); await load(); } catch (e) { setError(errorMessage(e)); }
   };
   return (
+    // The page scrolls inside itself, as every workspace does: the frame around it never scrolls.
+    <div className="h-full overflow-auto">
     <div className="mx-auto max-w-6xl p-3 sm:p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
@@ -65,9 +70,9 @@ function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?
       </div>
       {hub?.kill.global && <p className="mb-3 rounded-md border border-neg/50 bg-neg/10 p-2.5 text-[12px] text-neg">Trading is paused for everyone by YouBank&apos;s administrators.{hub.kill.globalReason ? ` ${hub.kill.globalReason}` : ""}</p>}
       {hub && !hub.server.liveEnabled && <p className="mb-3 flex gap-2 rounded-md border border-line bg-elevated p-2.5 text-[11.5px] text-muted"><Icon name="Info" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />Real trading is switched off on this server. Backtests and paper trading work; live modes wait until it is turned on.</p>}
-      <nav className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Algo trading">
+      <nav ref={tabRow} className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Algo trading">
         {TABS.map((t) => (
-          <button key={t.id} onClick={() => { setTab(t.id); setSelected(null); setCreating(false); }} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}{t.id === "agent" && <PremiumBadge feature="algo.agent" />}</button>
+          <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => { setTab(t.id); setSelected(null); setCreating(false); }} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}{t.id === "agent" && <PremiumBadge feature="algo.agent" />}</button>
         ))}
       </nav>
       {error && <p className="mb-3 rounded-md border border-neg/40 bg-neg/10 p-2.5 text-[12px] text-neg">{error}</p>}
@@ -82,6 +87,7 @@ function Inner({ initialTab, initialStrategy, connected, reason }: { initialTab?
       {tab === "agent" && <AgentChat onChanged={load} />}
       {tab === "activity" && <Activity />}
       <p className="mt-4 text-[11px] text-muted">{hub?.notAdvice ?? ""}</p>
+    </div>
     </div>
   );
 }

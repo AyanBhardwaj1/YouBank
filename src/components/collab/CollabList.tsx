@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Select } from "@/components/ui/Select";
 import { errorMessage, messageFor } from "@/lib/client/errors";
+import { SetupNotice } from "@/components/ui/SetupScreen";
 
 type Session = { id: number; title: string; kind: string; refId: string; teamId: number | null; status: string; ownerId: string; updatedAt: string };
 type Team = { id: number; name: string };
@@ -48,12 +49,7 @@ export function CollabList({ needsMigration, me, sessions, teams, tools }: {
         </div>
 
         {needsMigration ? (
-          <div className="mt-6 ctl border border-warn/40 bg-warn/5 p-4">
-            <h2 className="flex items-center gap-2 text-[14px] font-semibold"><Icon name="AlertTriangle" className="h-4 w-4" /> Not set up yet</h2>
-            <p className="mt-2 max-w-[70ch] text-[12px] text-muted">The collaboration tables have not been created. Apply the migration and reload:</p>
-            <pre className="num mt-3 overflow-auto ctl border border-line bg-elevated/60 p-3 text-[11.5px]">( set -a; . ./.env.local; set +a; pnpm exec drizzle-kit push )</pre>
-            <p className="mt-2 text-[11.5px] text-muted">The statements are in <span className="num">drizzle/0003_collab.sql</span> — three new tables.</p>
-          </div>
+          <SetupNotice what="Shared sessions" />
         ) : (
           <>
             {error && <div className="mt-4 ctl border border-neg/40 bg-neg/5 px-3 py-2 text-[12px] text-neg">{error}</div>}

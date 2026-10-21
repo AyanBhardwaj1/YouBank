@@ -7,7 +7,7 @@ import type { AiStatus } from "@/components/terminal/Terminal";
 import type { FormDFiling } from "@/lib/vc/formd";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { Select } from "@/components/ui/Select";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { errorMessage, fetchJson, isAbort } from "@/lib/client/errors";
 import { StartupPulse } from "@/components/edge/next/StartupPulse";
 
@@ -25,6 +25,7 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
   const { profile } = useWorkspace();
   const [tab, setTab] = useState<"directory" | "formd">(initialTab === "formd" ? "formd" : "directory");
   useSubNav("/app/vc", (v) => { if (v === "directory" || v === "formd") setTab(v); });
+  useViewInUrl("/app/vc", "tab", tab, "directory");
   const [facets, setFacets] = useState<Facets | null>(null);
   const [q, setQ] = useState(""); const [source, setSource] = useState(""); const [country, setCountry] = useState(""); const [program, setProgram] = useState(""); const [industry, setIndustry] = useState(""); const [hiring, setHiring] = useState(false);
   const [page, setPage] = useState(1);

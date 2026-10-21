@@ -8,7 +8,7 @@ export type AiSettings = { model?: string; effort?: Effort };
 type Catalog = { providers: string[]; models: (ModelDef & { available: boolean })[] };
 
 let catalogCache: Catalog | null = null;
-let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string } | null = null;
+let statusCache: { model: string; effort: Effort; configured: boolean; provider: string; label?: string; reason?: string } | null = null;
 // One request each, however many pickers mount together (the terminal and its panels do at once).
 let statusLoading = false;
 let catalogLoading = false;

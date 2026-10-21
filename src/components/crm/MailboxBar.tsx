@@ -90,7 +90,7 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
           {info?.oauth && <a href="/api/crm/gmail/connect" className={btn.ghost}>Sign in with Google</a>}
           {info?.configurable
             ? <span className="flex items-center gap-1.5"><button type="button" onClick={() => setConnecting(connecting ? null : BLANK)} className={accounts.length ? btn.ghost : btn.primary}>{accounts.length ? "Add a mailbox" : "Connect a mailbox"}</button>{accounts.length > 0 && <PremiumBadge feature="relationships.extra-mailboxes" />}</span>
-            : <span className="text-[11px] text-muted">Connecting a mailbox needs EMAIL_TOKEN_SECRET on the server.</span>}
+            : <span className="text-[11px] text-muted">Connecting a mailbox is not switched on yet. You can still paste in any email for the agent to read.</span>}
         </span>
       </div>
 

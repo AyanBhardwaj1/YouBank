@@ -14,10 +14,11 @@ import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { NOT_ADVICE_SHORT, TIMING } from "@/lib/copytrade/disclosures";
 import type { CuratedFund } from "@/lib/copytrade/funds";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { call, json, shortCik, usd } from "./client";
 import { ConsentProvider, useConsent } from "./Consent";
 import type { Account, CopyDraft, Plan } from "./CopyEditor";
+import { useTabInView } from "@/components/ui/useTabInView";
 
 // A copy's dashboard (its editor and charts with it) loads when a copy is opened, not with the list.
 const CopyDetail = lazyPanel(() => import("./CopyDetail").then((m) => m.CopyDetail), () => <div className="shimmer h-64 rounded-md" />);
@@ -41,23 +42,27 @@ export function CopyHub(props: { initialTab?: string; initialCopy?: number | nul
 function HubInner({ initialTab, initialCopy, review, connected }: { initialTab?: string; initialCopy?: number | null; review?: boolean; connected?: boolean }) {
   useIdlePreload([CopyDetail]);
   const [tab, setTab] = useState<Tab>(initialCopy ? "copies" : (TABS.find((t) => t.id === initialTab)?.id ?? "discover"));
+  const tabRow = useTabInView<HTMLElement>(tab);
   const [hub, setHub] = useState<Hub | null>(null);
   const [selected, setSelected] = useState<number | null>(initialCopy ?? null);
   const [error, setError] = useState<string | null>(null);
   useSubNav("/app/copy", (v) => { if (TABS.some((t) => t.id === v)) setTab(v as Tab); });
+  useViewInUrl("/app/copy", "tab", tab, "discover");
   const load = useCallback(() => fetchJson<Hub>("/api/copy/copies").then(setHub).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { void load(); }, [load]);
 
   return (
+    // The page scrolls inside itself, as every workspace does: the frame around it never scrolls.
+    <div className="h-full overflow-auto">
     <div className="mx-auto max-w-6xl p-3 sm:p-4">
       <div className="mb-3">
         <h1 className="display text-[26px] leading-tight text-fg sm:text-[30px]">Fund copies</h1>
         <p className="mt-1 max-w-3xl text-[12.5px] text-muted">See what well-known funds disclose in their 13F filings, test how copying them would have gone, follow them on paper for free, and with Pro place the matching orders in your own brokerage account, approving each batch yourself.</p>
       </div>
       <p className="mb-3 flex gap-2 rounded-md border border-line bg-elevated p-2.5 text-[11.5px] leading-relaxed text-muted"><Icon name="Hourglass" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />{TIMING}</p>
-      <nav className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Fund copies">
+      <nav ref={tabRow} className="-mx-3 mb-3 flex gap-1 overflow-x-auto px-3 sm:mx-0 sm:px-0" aria-label="Fund copies">
         {TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}{t.id === "copies" && hub ? ` (${hub.copies.length})` : ""}</button>
+          <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)} className={`ctl flex shrink-0 items-center gap-1.5 px-3 py-2 text-[12.5px] ${tab === t.id ? "bg-accent-soft font-semibold text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}><Icon name={t.icon} className="h-3.5 w-3.5" />{t.label}{t.id === "copies" && hub ? ` (${hub.copies.length})` : ""}</button>
         ))}
       </nav>
       {error && <p className="mb-3 rounded-md border border-neg/40 bg-neg/10 p-2.5 text-[12px] text-neg">{error}</p>}
@@ -67,6 +72,7 @@ function HubInner({ initialTab, initialCopy, review, connected }: { initialTab?:
       {tab === "broker" && <Broker hub={hub} connected={connected} reload={load} />}
       {tab === "activity" && <Activity />}
       <p className="mt-4 text-[11px] text-muted">{NOT_ADVICE_SHORT}</p>
+    </div>
     </div>
   );
 }

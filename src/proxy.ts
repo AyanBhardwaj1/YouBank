@@ -12,7 +12,13 @@ export default function proxy(req: NextRequest) {
   // Development-only bypass, mirrored in currentUser(); never active in production builds.
   if (process.env.NODE_ENV !== "production" && process.env.YOUBANK_DEV_USER) return NextResponse.next();
   if (getSessionCookie(req)) return NextResponse.next();
-  return NextResponse.redirect(new URL("/sign-in", req.url));
+  // Keep the page they asked for, so a shared or bookmarked link lands there after signing in
+  // (the sign-in page accepts only paths inside /app). Onboarding passes on the `next` it was given.
+  const to = new URL("/sign-in", req.url);
+  const { pathname, search, searchParams } = req.nextUrl;
+  const next = pathname.startsWith("/app") ? pathname + search : searchParams.get("next");
+  if (next) to.searchParams.set("next", next);
+  return NextResponse.redirect(to);
 }
 
 export const config = {

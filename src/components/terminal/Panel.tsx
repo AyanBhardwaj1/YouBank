@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import type { AiStatus, OpenPanel } from "./Terminal";
 import { FUNCTIONS, needsTicker, type Command } from "@/lib/functions";
-import { useCompany } from "@/lib/client/companies";
+import { refreshCompany, useCompany } from "@/lib/client/companies";
 import { DesScreen } from "./screens/DesScreen";
 import { FaScreen } from "./screens/FaScreen";
 
@@ -217,6 +217,7 @@ function ErrorState({ ticker, error }: { ticker: string; error: string }) {
     <div className="flex h-full flex-col items-center justify-center gap-1 p-4 text-center">
       <div className="text-[13px] text-neg">Could not load {ticker}</div>
       <div className="max-w-[420px] text-[11px] text-muted">{error}</div>
+      <button type="button" onClick={() => refreshCompany(ticker)} className="ctl mt-2 border border-line px-2 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-fg">Try again</button>
       <div className="mt-2 text-[10.5px] text-faint">Only SEC registrants with XBRL filings are supported (US-listed companies).</div>
     </div>
   );

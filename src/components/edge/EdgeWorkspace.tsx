@@ -17,6 +17,7 @@ import type { DocsOpen } from "./docs/DocumentsView";
 import { FeedView } from "./FeedView";
 import { MODULES, useEdgeState, type EdgeCard, type EdgeState, type FeedData, type FilingVisual, type ProformaVisual } from "./client";
 import { WatchPanel } from "./WatchPanel";
+import { useTabInView } from "@/components/ui/useTabInView";
 
 // Only the feed ships with the page; each other view loads the first time it is opened.
 const ViewLoading = () => <div className="panel h-[520px] p-4" aria-busy="true"><div className="shimmer h-4 w-48 rounded" /><div className="shimmer mt-3 h-[440px] rounded-lg" /></div>;
@@ -39,6 +40,7 @@ const VIEWS: { id: EdgeView; label: string }[] = [{ id: "feed", label: "Feed" },
 
 export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initialCompany = null, initialDeal = null, initialTicker = null, initialTab = null, initialThesis = null, initialState, initialFeed, seededAt }: { initialView?: EdgeView; initialDocs?: DocsOpen | null; initialCompany?: string | null; initialDeal?: { parties: string[]; place: string } | null; initialTicker?: string | null; initialTab?: string | null; initialThesis?: number | null; initialState?: EdgeState; initialFeed?: FeedData; seededAt?: string }) {
   const [view, setViewState] = useState<EdgeView>(initialView);
+  const tabRow = useTabInView<HTMLElement>(view);
   // The feed page that came with the page is used once; coming back to the feed later fetches it fresh.
   const [feedSeed, setFeedSeed] = useState(initialFeed);
   // The view rides in the address, so a refresh or a shared link opens the same one.
@@ -83,7 +85,7 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
             <p className="mt-1 max-w-[70ch] text-[12.5px] text-muted">What satellites, networks and documents show before the news does, on the things you watch.</p>
           </div>
           {/* On a phone the seven views scroll sideways rather than push the page wider, fading at the edge to say there is more. */}
-          <nav className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]" aria-label="Edge views">
+          <nav ref={tabRow} className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-line p-0.5 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]" aria-label="Edge views">
             {VIEWS.map((v) => (
               <button key={v.id} type="button" onClick={() => setView(v.id)} aria-current={view === v.id ? "page" : undefined} className={`relative shrink-0 whitespace-nowrap rounded-md px-3 py-1 text-[12.5px] transition max-md:min-h-9 ${view === v.id ? "text-fg" : "text-muted hover:text-fg"}`}>
                 {view === v.id && <motion.span layoutId="edge-view" className="absolute inset-0 rounded-md bg-elevated" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}

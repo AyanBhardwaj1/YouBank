@@ -3,22 +3,37 @@ import path from "node:path";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { withinRate } from "@/lib/locks";
 import { fetchRetry, retryServerErrors, type RetryInit } from "@/lib/net";
+import { shared, sharedMap } from "@/lib/shared";
 
 /**
  * SEC EDGAR fetch with a descriptive User-Agent (required by SEC), a rate limit, and a JSON disk cache
  * under .cache/edgar. Cache entries carry a TTL. SEC's fair-access limit (10 requests a second) counts
  * every request from our servers together, so besides pacing each instance, requests take a slot in a
  * shared per-second budget; and when SEC answers 429 or 403, every instance backs off for a minute
- * rather than getting our addresses blocked.
+ * rather than getting our addresses blocked. A request that finds no slot in the shared budget within a
+ * few seconds fails as busy instead of going over. Concurrent requests for the same document share one
+ * fetch (per process), so a filing everyone opens at once costs SEC one request per instance.
  */
 const UA = process.env.EDGAR_USER_AGENT ?? "YouBank dev (set-your-email@example.com)";
 const CACHE_DIR = path.join(process.cwd(), ".cache", "edgar");
 const MIN_GAP_MS = 125; // 8 requests per second, under SEC's 10/s limit
 const DISK_OK = !process.env.VERCEL;
-const mem = new Map<string, { fetchedAt: number; data: unknown }>();
+const mem = sharedMap<string, { fetchedAt: number; data: unknown }>("edgar:mem");
+/** Requests in flight by cache key, so concurrent asks for one document share its fetch. */
+const inflight = sharedMap<string, Promise<unknown>>("edgar:inflight");
+/** The per-process pacing (one queue for every copy of this module, src/lib/shared). */
+const pace = shared("edgar:pace", () => ({ lastRequest: 0, chain: Promise.resolve() as Promise<unknown> }));
 
-let lastRequest = 0;
-let chain: Promise<unknown> = Promise.resolve();
+/** Share one load per key among concurrent callers in this process. */
+function once<T>(key: string, load: () => Promise<T>): Promise<T> {
+  const pending = inflight.get(key);
+  if (pending) return pending as Promise<T>;
+  const p = load().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+export const SEC_BUSY = "SEC EDGAR is busy right now. Try again in a minute.";
 
 const SHARED_PER_SECOND = 8;
 const BACKOFF_KEY = "edgar:backoff";
@@ -37,7 +52,11 @@ async function inBackoff(): Promise<boolean> {
 /** One request to sec.gov: within the shared budget, never during a back-off, and starting one on 429 or 403. */
 async function secRequest(url: string, init: RetryInit): Promise<Response> {
   if (await inBackoff()) throw Object.assign(new Error("SEC EDGAR asked us to slow down. Try again in a minute."), { status: 503 });
-  for (let i = 0; i < 12 && !(await withinRate("edgar", SHARED_PER_SECOND, 1_000)); i++) await sleep(250 + Math.random() * 250);
+  let slot = false;
+  for (let i = 0; i < 12 && !(slot = await withinRate("edgar", SHARED_PER_SECOND, 1_000)); i++) await sleep(250 + Math.random() * 250);
+  // Every instance's budget was spent for three seconds running: wait for a quieter moment rather than
+  // go over SEC's limit (which blocks our addresses for ten minutes).
+  if (!slot) throw Object.assign(new Error(SEC_BUSY), { status: 503 });
   // One retry on a network failure or a 5xx. Never on 429 or 403: those start the shared back-off below.
   const res = await fetchRetry(url, { ...init, retryOn: retryServerErrors });
   if (res.status === 429 || res.status === 403) {
@@ -49,13 +68,13 @@ async function secRequest(url: string, init: RetryInit): Promise<Response> {
 
 function throttle<T>(fn: () => Promise<T>): Promise<T> {
   const run = async () => {
-    const wait = Math.max(0, lastRequest + MIN_GAP_MS - Date.now());
+    const wait = Math.max(0, pace.lastRequest + MIN_GAP_MS - Date.now());
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastRequest = Date.now();
+    pace.lastRequest = Date.now();
     return fn();
   };
-  const next = chain.then(run, run);
-  chain = next.catch(() => undefined);
+  const next = pace.chain.then(run, run);
+  pace.chain = next.catch(() => undefined);
   return next;
 }
 
@@ -85,11 +104,13 @@ async function writeCache(key: string, data: unknown) {
 export async function edgarJson<T>(url: string, cacheKey: string, ttlMs: number): Promise<T> {
   const cached = await readCache<T>(cacheKey, ttlMs);
   if (cached) return cached;
-  const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs: 25_000 }));
-  if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
-  const data = (await res.json()) as T;
-  await writeCache(cacheKey, data);
-  return data;
+  return once(`json:${cacheKey}`, async () => {
+    const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA, "Accept-Encoding": "gzip, deflate" }, cache: "no-store", timeoutMs: 25_000 }));
+    if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
+    const data = (await res.json()) as T;
+    await writeCache(cacheKey, data);
+    return data;
+  });
 }
 
 export const HOUR = 3_600_000;
@@ -104,9 +125,11 @@ export function edgarFetch(url: string, timeoutMs = 25_000): Promise<Response> {
 export async function edgarText(url: string, cacheKey: string, ttlMs: number): Promise<string> {
   const cached = await cacheGet(`edgar:${cacheKey}`);
   if (cached) return cached;
-  const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA }, cache: "no-store", timeoutMs: 25_000 }));
-  if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
-  const text = await res.text();
-  await cacheSet(`edgar:${cacheKey}`, text, ttlMs);
-  return text;
+  return once(`text:${cacheKey}`, async () => {
+    const res = await throttle(() => secRequest(url, { headers: { "User-Agent": UA }, cache: "no-store", timeoutMs: 25_000 }));
+    if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
+    const text = await res.text();
+    await cacheSet(`edgar:${cacheKey}`, text, ttlMs);
+    return text;
+  });
 }

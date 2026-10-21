@@ -21,7 +21,7 @@ const EMAIL = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[a-z]{2,}$/i;
 
 async function own(userId: string, id: number): Promise<CampaignRow> {
   const [c] = await requireDb().select().from(schema.crmCampaigns).where(and(eq(schema.crmCampaigns.id, id), eq(schema.crmCampaigns.userId, userId)));
-  if (!c) throw new Error("Campaign not found");
+  if (!c) throw Object.assign(new Error("Campaign not found"), { status: 404 });
   return c;
 }
 
@@ -171,14 +171,14 @@ export function parseLeadList(text: string): LeadInput[] {
 export async function updateLead(userId: string, leadId: number, fields: { email?: string; status?: string; notes?: string; name?: string }): Promise<LeadRow> {
   const db = requireDb();
   const [lead] = await db.select().from(schema.crmCampaignLeads).where(and(eq(schema.crmCampaignLeads.id, leadId), eq(schema.crmCampaignLeads.userId, userId)));
-  if (!lead) throw new Error("Lead not found");
+  if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
   const set: Partial<LeadRow> = {};
   if (fields.name !== undefined) set.name = fields.name.trim().slice(0, 200);
   if (fields.notes !== undefined) set.notes = fields.notes.slice(0, 1000);
   if (fields.email !== undefined) {
     const email = fields.email.trim().toLowerCase();
-    if (email && !EMAIL.test(email)) throw new Error("That is not an email address");
-    if (lead.lastSentAt && email !== lead.email) throw new Error("This lead has already been written to, so the address cannot change");
+    if (email && !EMAIL.test(email)) throw Object.assign(new Error("That is not an email address"), { status: 400 });
+    if (lead.lastSentAt && email !== lead.email) throw Object.assign(new Error("This lead has already been written to, so the address cannot change"), { status: 409 });
     set.email = email;
     if (email) {
       const c = await upsertContact(userId, { email, name: set.name ?? lead.name, company: lead.company, startupId: lead.startupId });
@@ -188,8 +188,8 @@ export async function updateLead(userId: string, leadId: number, fields: { email
   }
   if (fields.status !== undefined && set.status !== "opted_out") {
     const allowed: LeadStatus[] = ["qualified", "disqualified", "review", "sourced"];
-    if (!isLeadStatus(fields.status) || !allowed.includes(fields.status)) throw new Error("That status is set by the agent, not by hand");
-    if (lead.lastSentAt) throw new Error("This lead is already in the sequence");
+    if (!isLeadStatus(fields.status) || !allowed.includes(fields.status)) throw Object.assign(new Error("That status is set by the agent, not by hand"), { status: 400 });
+    if (lead.lastSentAt) throw Object.assign(new Error("This lead is already in the sequence"), { status: 409 });
     set.status = fields.status;
     if (fields.status === "qualified" || fields.status === "disqualified") set.fitReason = `${lead.fitReason ? `${lead.fitReason} ` : ""}(Set by you.)`.trim();
   }

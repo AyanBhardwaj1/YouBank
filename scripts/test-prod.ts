@@ -13,12 +13,16 @@ import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
 import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
 import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.config";
 import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from "@/lib/client/net";
+import { safeNext } from "@/lib/safe-next";
+import proxy, { config as proxyConfig } from "../src/proxy";
+import { NextRequest } from "next/server";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { StreamDropped, readSse } from "@/lib/client/sse";
 import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetworkError, isRetryableStatus, parseRetryAfter, retryServerErrors, safePublicFetch, withTimeout } from "@/lib/net";
 import { requestVia, resolvePublicHost } from "@/lib/calendar/net";
 import { imapClient, mailEndpoint, MAIL_PORTS } from "@/lib/crm/imap";
 import { lookup as dnsLookup } from "node:dns";
+import { readdirSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -211,8 +215,9 @@ function testDb() {
   check("a read is retried after a dropped connection", mayRetry("select 1", pg("ECONNRESET")));
 
   console.log("database: migrations");
-  check("migrations 0015 to 0026 are all checked", ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"].every((n) => MIGRATIONS.some(([m]) => m.startsWith(n))));
-  check("every migration file is listed", MIGRATIONS.length === 26, MIGRATIONS.length);
+  check("migrations 0015 to 0027 are all checked", ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"].every((n) => MIGRATIONS.some(([m]) => m.startsWith(n))));
+  const files = readdirSync("drizzle").filter((n) => /^\d{4}_.*\.sql$/.test(n)).map((n) => n.replace(/\.sql$/, "")).sort();
+  check("every migration file is listed", files.length === MIGRATIONS.length && files.every((f, i) => MIGRATIONS[i][0] === f), { files: files.length, listed: MIGRATIONS.length });
   check("no relation is checked twice", new Set(expectedRelations()).size === expectedRelations().length);
   const s1 = summarize(["algo_orders", "quant_events_issuer_idx"], ["crm_messages.topics"]);
   check("missing objects are grouped by migration", s1.migrations.map((m) => m.name).join() === "0010_contact_knowledge,0025_algo,0026_quant", s1);
@@ -312,6 +317,23 @@ async function testClient() {
   check("sign-in brings the person back to the page", signInHref("/app/news?x=1") === "/sign-in?next=%2Fapp%2Fnews%3Fx%3D1");
   check("sign-in never sends anyone off the app", signInHref("https://evil.example/") === "/sign-in?next=%2Fapp");
   check("sign-in's own 401 (a wrong password) is not a lost session", !watchesSession("/api/auth/sign-in/email") && watchesSession("/api/news/feed"));
+
+  console.log("where sign-in lands (next)");
+  check("a page inside the app, with its query, is kept", safeNext("/app/news?tab=x&y=1") === "/app/news?tab=x&y=1" && safeNext("/app") === "/app");
+  const offsite = ["https://evil.example/app", "//evil.example", "/\\evil.example", "/app/\\evil.example", "javascript:alert(1)", "JaVaScRiPt:alert(1)", "%2F%2Fevil.example", "/%2F%2Fevil.example", "\t//evil.example", "/apple", "/api/auth/sign-out", "/sign-in?next=/app", "", 42, null, ["/app/news"]];
+  check("anything off the app or outside /app is the app's home", offsite.every((v) => safeNext(v) === "/app"), offsite.filter((v) => safeNext(v) !== "/app"));
+  const climbs = ["/app/../api/auth/sign-out", "/app/%2e%2e/sign-in", "/app/%2E%2E/api/crm/deals", "/app/.%2e/api", "/app%2f..%2f..%2fapi", "/app/%0d%0aSet-Cookie:x=1"];
+  check("dot segments, plain or encoded, cannot climb out to /api, auth or sign-in (no loop)", climbs.every((v) => safeNext(v) === "/app"), climbs.map((v) => [v, safeNext(v)]));
+  check("a path inside the app is returned resolved", safeNext("/app/a/../news") === "/app/news" && safeNext("/app//evil.example").startsWith("/app/"));
+
+  console.log("the proxy");
+  const at = (path: string, cookie?: string) => proxy(new NextRequest(`http://localhost:3000${path}`, cookie ? { headers: { cookie } } : undefined));
+  const loc = (path: string) => at(path).headers.get("location");
+  check("a signed-out deep link goes to sign-in carrying the page", loc("/app/news?tab=deals") === "http://localhost:3000/sign-in?next=%2Fapp%2Fnews%3Ftab%3Ddeals", loc("/app/news?tab=deals"));
+  check("onboarding passes on the next it was given", loc("/onboarding?next=%2Fapp%2Fteam%2Fjoin%3Ftoken%3Dabc") === "http://localhost:3000/sign-in?next=%2Fapp%2Fteam%2Fjoin%3Ftoken%3Dabc", loc("/onboarding?next=%2Fapp%2Fteam%2Fjoin%3Ftoken%3Dabc"));
+  check("the app's home goes to sign-in with next=/app (which sign-in reads as home)", safeNext(new URL(loc("/app") ?? "", "http://x").searchParams.get("next")) === "/app");
+  check("a session cookie passes through", at("/app/news", "better-auth.session_token=abc.def").headers.get("x-middleware-next") === "1" && !at("/app/news", "better-auth.session_token=abc.def").headers.get("location"));
+  check("the matcher covers the app and onboarding only (no API, health, static or Office pages)", JSON.stringify(proxyConfig.matcher) === JSON.stringify(["/app/:path*", "/onboarding/:path*"]));
 
   const scripted = (steps: (number | Error)[]) => {
     let n = 0;

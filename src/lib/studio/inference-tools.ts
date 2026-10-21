@@ -48,7 +48,7 @@ const InputSpec = z.object({
 type InputSpec = z.infer<typeof InputSpec>;
 
 function toDist(i: InputSpec): Dist {
-  const need = (...keys: (keyof InputSpec)[]) => { for (const k of keys) if (typeof i[k] !== "number") throw new Error(`${i.cell}: a ${i.dist} input needs ${keys.join(", ")}`); };
+  const need = (...keys: (keyof InputSpec)[]) => { for (const k of keys) if (typeof i[k] !== "number") throw Object.assign(new Error(`${i.cell}: a ${i.dist} input needs ${keys.join(", ")}`), { status: 400 }); };
   switch (i.dist) {
     case "normal": need("mean", "sd"); return { kind: "normal", mean: i.mean!, sd: Math.abs(i.sd!), min: i.min, max: i.max };
     case "lognormal": need("median", "sigma"); return { kind: "lognormal", median: i.median!, sigma: Math.abs(i.sigma!) };
@@ -90,7 +90,7 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
           corr = keys.map((_, a) => keys.map((__, b) => (a === b ? 1 : 0)));
           for (const c of i.correlations) {
             const a = keys.indexOf(keyOf(c.a)), b = keys.indexOf(keyOf(c.b));
-            if (a < 0 || b < 0) throw new Error(`Correlation ${c.a}/${c.b}: both must be inputs`);
+            if (a < 0 || b < 0) throw Object.assign(new Error(`Correlation ${c.a}/${c.b}: both must be inputs`), { status: 400 });
             corr[a][b] = corr[b][a] = c.rho;
           }
         }
@@ -102,7 +102,7 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
           const r = s.engine.whatIf(home.id, i.outputs, i.inputs.map((x, j) => ({ ref: x.cell, value: d[j] })));
           if (r.every((v) => typeof v === "number" && Number.isFinite(v))) { r.forEach((v, k) => outs[k].push(v as number)); kept.push(d); } else invalid++;
         }
-        if (!outs[0].length) throw new Error("Every draw produced an error in the outputs: check the input ranges");
+        if (!outs[0].length) throw Object.assign(new Error("Every draw produced an error in the outputs: check the input ranges"), { status: 400 });
         const sums = outs.map((o) => summarize(o));
         const sdErr = (o: number[]) => { const m = o.reduce((a, b) => a + b, 0) / o.length; return Math.sqrt(o.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, o.length - 1) / o.length); };
         // Tornado: each input at its 10th and 90th percentile, the others at their medians.
@@ -159,7 +159,7 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
       run: (i) => s.guard(async () => {
         const sh = requireSheet(s.doc, i.sheet);
         const y = s.engine.read(sh.id, i.range).flat().filter((v): v is number => typeof v === "number" && Number.isFinite(v));
-        if (y.length < 6) throw new Error(`Only ${y.length} numbers in ${i.range}; a forecast needs at least 6`);
+        if (y.length < 6) throw Object.assign(new Error(`Only ${y.length} numbers in ${i.range}; a forecast needs at least 6`), { status: 400 });
         const f = forecast(y, i.horizon, { period: i.period ?? 1 });
         if (i.write_to) {
           const rows: Scalar[][] = [["Forecast", ...f.point.map(cellNum)], ["Low (80%)", ...f.lower80.map(cellNum)], ["High (80%)", ...f.upper80.map(cellNum)]];
@@ -228,7 +228,7 @@ export function inferenceTools(s: StudioCtx): ToolDef[] {
         const v = (a: string) => { const x = s.engine.get(home.id, a); return typeof x === "number" && Number.isFinite(x) ? x : NaN; };
         const ebitda = v("C5"), entry = v("C6"), txn = v("C8"), senior = v("C9"), sub = v("C10"), seniorRate = v("C11"), subRate = v("C12"), amort = v("C13"), sweep = v("C14"), exit = v("C15"), tax = v("C16");
         const revenue = v("C29"), growth = v("D30"), daRev = v("D34"), capexRev = v("D42");
-        if (![ebitda, entry, senior, sub, seniorRate, revenue].every(Number.isFinite) || ebitda <= 0) throw new Error(`The '${home.name}' sheet does not look like the LBO template (entry EBITDA in C5, multiple in C6, debt in C9:C10, rates in C11:C12, revenue in C29). Build it with build_model template lbo first.`);
+        if (![ebitda, entry, senior, sub, seniorRate, revenue].every(Number.isFinite) || ebitda <= 0) throw Object.assign(new Error(`The '${home.name}' sheet does not look like the LBO template (entry EBITDA in C5, multiple in C6, debt in C9:C10, rates in C11:C12, revenue in C29). Build it with build_model template lbo first.`), { status: 400 });
         // The model is in USD millions; the lab works in dollars. D&A and capex are a share of revenue there, of EBITDA here.
         const rm = await rateModel();
         const sofr = rm.start + rm.basis;

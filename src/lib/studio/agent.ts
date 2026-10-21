@@ -151,10 +151,10 @@ function linkOf(s: Session, ref: string): RangeLink {
   const named = s.doc.workbook.names?.[ref];
   const text = named ?? ref;
   const m = /^(?:'((?:[^']|'')+)'|([^!]+))!(.+)$/.exec(text.trim());
-  if (!m) throw new Error(`"${ref}" needs a sheet, like DCF!A4:G20`);
+  if (!m) throw Object.assign(new Error(`"${ref}" needs a sheet, like DCF!A4:G20`), { status: 400 });
   const sheet = requireSheet(s.doc, (m[1] ?? m[2]).replace(/''/g, "'"));
   const range = m[3].replace(/\$/g, "").toUpperCase();
-  if (!parseRange(range)) throw new Error(`"${m[3]}" is not a range`);
+  if (!parseRange(range)) throw Object.assign(new Error(`"${m[3]}" is not a range`), { status: 400 });
   return { sheet: sheet.id, range };
 }
 
@@ -261,17 +261,17 @@ function elementsFrom(s: Session, items: ElementInput[]): SlideEl[] {
     const p = pos[i];
     switch (x.type) {
       case "text":
-        if (!x.text) throw new Error("A text element needs text");
+        if (!x.text) throw Object.assign(new Error("A text element needs text"), { status: 400 });
         return el({ type: "text", ...p, text: x.text, size: x.size, bullets: /^\s*-\s/m.test(x.text) });
       case "table":
-        if (!x.range) throw new Error("A table needs a range like DCF!A4:G20");
+        if (!x.range) throw Object.assign(new Error("A table needs a range like DCF!A4:G20"), { status: 400 });
         return el({ type: "table", ...p, link: linkOf(s, x.range), header: true, size: x.size });
       case "metric":
-        if (!x.range) throw new Error("A metric needs a cell like DCF!C53");
+        if (!x.range) throw Object.assign(new Error("A metric needs a cell like DCF!C53"), { status: 400 });
         return el({ type: "metric", ...p, label: x.label ?? "", link: linkOf(s, x.range), nf: x.number_format });
       case "chart": {
         const kind = (x.chart ?? "column") as ChartKind;
-        if (!x.range && !x.series?.length) throw new Error("A chart needs a range or series");
+        if (!x.range && !x.series?.length) throw Object.assign(new Error("A chart needs a range or series"), { status: 400 });
         return el({
           type: "chart", ...p, kind, title: x.title, nf: x.number_format,
           ...(x.series?.length ? { series: x.series.map((q) => ({ name: q.name, link: linkOf(s, q.range) })), labels: x.labels_range ? linkOf(s, x.labels_range) : undefined } : { link: linkOf(s, x.range!) }),
@@ -288,7 +288,7 @@ function slideRef(s: Session, ref: string | number): string {
   if (d.slides[String(ref)]) return String(ref);
   const byTitle = d.order.find((id) => d.slides[id].title.toLowerCase() === String(ref).toLowerCase());
   if (byTitle) return byTitle;
-  throw new Error(`No slide "${ref}". Slides: ${d.order.map((id, i) => `${i + 1} "${d.slides[id].title}"`).join(", ")}`);
+  throw Object.assign(new Error(`No slide "${ref}". Slides: ${d.order.map((id, i) => `${i + 1} "${d.slides[id].title}"`).join(", ")}`), { status: 404 });
 }
 
 /* ---------------- Tools ---------------- */
@@ -304,7 +304,7 @@ function tools(s: Session, user: CurrentUser): ToolDef[] {
       run: ({ sheet, range }) => guard(async () => {
         const sh = requireSheet(s.doc, sheet);
         const rect = parseRange(range);
-        if (!rect) throw new Error(`"${range}" is not a range`);
+        if (!rect) throw Object.assign(new Error(`"${range}" is not a range`), { status: 400 });
         const lines: string[] = [];
         let n = 0;
         const u = s.engine.usedRange(sh.id);
@@ -380,7 +380,7 @@ function tools(s: Session, user: CurrentUser): ToolDef[] {
       run: (i) => guard(async () => {
         const axis = i.action.endsWith("rows") ? "r" : "c";
         const at = axis === "r" ? Number(i.at) : colIndex(i.at.replace(/[^A-Za-z]/g, ""));
-        if (!at) throw new Error(`"${i.at}" is not a ${axis === "r" ? "row number" : "column letter"}`);
+        if (!at) throw Object.assign(new Error(`"${i.at}" is not a ${axis === "r" ? "row number" : "column letter"}`), { status: 400 });
         const n = i.action.startsWith("insert") ? i.count : -i.count;
         await s.commit(shiftCells(s.doc, i.sheet, axis, at, n), `${i.action.replace("_", " ")} at ${i.at} on ${i.sheet}`);
         return `Done: ${i.action.replace("_", " ")} ×${i.count} at ${i.at}. References were updated.`;
@@ -547,8 +547,8 @@ function tools(s: Session, user: CurrentUser): ToolDef[] {
         const tickerOf = () => { const t = /\(([A-Z.]+)\)/.exec(String(Object.values(wb.sheets)[0]?.cells.A1?.v ?? "")); return t?.[1] ?? null; };
         const fin = finFrom(tickerOf() ? await getCompanyData(tickerOf()!) : null);
         const deck = kind === "valuation"
-          ? (() => { const dcf = anchorsFromNames(wb, "DCF"); if (!dcf) throw new Error("No DCF in the workbook yet. Use build_model with template valuation or dcf first."); return buildValuationDeck(fin, wb, { dcf, comps: anchorsFromNames(wb, "COMPS"), summary: anchorsFromNames(wb, "SUMMARY") }); })()
-          : (() => { const a = anchorsFromNames(wb, "LBO"); if (!a) throw new Error("No LBO in the workbook yet. Use build_model with template lbo first."); return buildLboDeck(fin, wb, a); })();
+          ? (() => { const dcf = anchorsFromNames(wb, "DCF"); if (!dcf) throw Object.assign(new Error("No DCF in the workbook yet. Use build_model with template valuation or dcf first."), { status: 409 }); return buildValuationDeck(fin, wb, { dcf, comps: anchorsFromNames(wb, "COMPS"), summary: anchorsFromNames(wb, "SUMMARY") }); })()
+          : (() => { const a = anchorsFromNames(wb, "LBO"); if (!a) throw Object.assign(new Error("No LBO in the workbook yet. Use build_model with template lbo first."), { status: 409 }); return buildLboDeck(fin, wb, a); })();
         await s.commit(deckPatches(deck), `Built a ${kind} deck`);
         return `Added ${deck.order.length} linked slides.`;
       }),
@@ -595,7 +595,7 @@ function tools(s: Session, user: CurrentUser): ToolDef[] {
       schema: z.object({ id: z.string(), resolution: z.string() }),
       run: ({ id, resolution }) => guard(async () => {
         const comments = s.doc.comments.map((c) => (c.id === id ? { ...c, resolved: true, resolution } : c));
-        if (!s.doc.comments.some((c) => c.id === id)) throw new Error(`No comment ${id}`);
+        if (!s.doc.comments.some((c) => c.id === id)) throw Object.assign(new Error(`No comment ${id}`), { status: 404 });
         await s.commit([{ op: "comments", comments }], "Resolved a comment");
         return "Resolved.";
       }),
@@ -754,6 +754,6 @@ export async function runAction(user: CurrentUser, docId: number, action: string
       if (b.deck?.order.length) await save(deckPatches(b.deck), `Built ${b.deck.order.length} linked slides`);
       return { events, result: { notes: b.notes } };
     }
-    default: throw new Error(`Unknown action ${action}`);
+    default: throw Object.assign(new Error(`Unknown action ${action}`), { status: 400 });
   }
 }

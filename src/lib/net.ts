@@ -22,6 +22,7 @@
  *   public addresses, each redirect checked, time and size capped.
  */
 import { assertPublicUrl, guardedLookup, requestVia } from "@/lib/calendar/net";
+import { logError } from "@/lib/errors";
 
 /** http(s) to names that resolve only to public addresses (the check safePublicFetch makes per hop). */
 export { assertPublicUrl, isPrivateAddress, resolvePublicHost } from "@/lib/calendar/net";
@@ -87,6 +88,21 @@ export function isNetworkError(e: unknown): boolean {
     if (name === "TypeError" && /fetch failed|network|socket|terminated/i.test(message)) return true;
   }
   return false;
+}
+
+/** A data source we could not reach, or one that answered its own 5xx ("EDGAR 503 for …", "Treasury 502"). Pure. */
+export function isSourceDown(e: unknown): boolean {
+  return isNetworkError(e) || /^[A-Za-z][\w.-]* 5\d\d(?: for \S+)?$/.test(e instanceof Error ? e.message : "");
+}
+
+/**
+ * A route's answer when the data source behind it is down (isSourceDown): a 503 that names it, as the
+ * crypto routes answer, with the real error logged under the reference. Null for any other error.
+ */
+export function sourceDownResponse(e: unknown, source: string, where: string): Response | null {
+  if (!isSourceDown(e)) return null;
+  const ref = logError(e, { status: 503, where });
+  return Response.json({ error: `${source} is not answering right now. Try again shortly.`, ref }, { status: 503 });
 }
 
 /**

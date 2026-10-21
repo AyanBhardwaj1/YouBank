@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const doc = await importAudioUrl(user.id, body.url, body.title ?? "");
     let note: string | undefined;
     if (body.speakers === true) { try { await requestPremiumRead(user, doc.id, "diarize"); } catch (e) { note = publicMessage(e); } }
-    await ingest(doc.id);
+    await ingest(doc.id, user.id);
     return NextResponse.json({ docId: doc.id, status: "reading", ...(note ? { note } : {}) });
   });
 }

@@ -12,17 +12,20 @@ export function parseArgs(argv, defaults) {
 }
 
 /**
- * Load tests run against a local build (localhost) or, with LOADTEST_ALLOW_PREVIEW=1, a Vercel preview
- * deployment that has its own database. Never the production site.
+ * Load tests run against a local build (localhost) or a Vercel preview deployment that has its own
+ * database, named exactly in LOADTEST_ALLOW_PREVIEW (its hostname, typed on purpose: a preview often shares
+ * production's database, and a production deployment has a vercel.app address too). Never the production
+ * site, its aliases, or the main branch's preview address.
  */
 export function guardTarget(raw) {
   const url = new URL(raw);
-  const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  const site = (() => { try { return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "").hostname; } catch { return ""; } })();
-  const production = /^(youbank-nu\.vercel\.app|youbank\.vercel\.app)$/i.test(url.hostname) || (!!site && url.hostname === site) || !url.hostname.endsWith(".vercel.app") && !local;
+  const host = url.hostname.toLowerCase();
+  const local = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(host);
   if (local) return url.origin;
-  if (!production && process.env.LOADTEST_ALLOW_PREVIEW === "1") return url.origin;
-  throw new Error(`Refusing to load-test ${url.hostname}: only localhost, or a preview deployment with LOADTEST_ALLOW_PREVIEW=1 (never production).`);
+  const site = (() => { try { return new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "").hostname.toLowerCase(); } catch { return ""; } })();
+  const production = /^youbank(-nu)?\.vercel\.app$/.test(host) || (!!site && host === site) || /-git-(main|master)-/.test(host) || !host.endsWith(".vercel.app");
+  if (!production && url.protocol === "https:" && (process.env.LOADTEST_ALLOW_PREVIEW ?? "").toLowerCase() === host) return url.origin;
+  throw new Error(`Refusing to load-test ${host}: only localhost, or a preview deployment named exactly in LOADTEST_ALLOW_PREVIEW (never production).`);
 }
 
 export function percentile(sorted, p) {

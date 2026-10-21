@@ -14,9 +14,15 @@ import { ReviewQueue, type Draft } from "./ReviewQueue";
 import { api, btn, money, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 import { promptDialog } from "@/components/ui/Dialog";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import { MeetingLine, ScheduleButton, useMeetingSummaries } from "@/components/calendar/MeetingBadges";
 import { errorMessage } from "@/lib/client/errors";
+import { SetupNotice } from "@/components/ui/SetupScreen";
+import { useTabInView } from "@/components/ui/useTabInView";
+import { AddDeal } from "./AddDeal";
+
+/** Pages of 500 deals the pipeline loads at most (10,000 deals). */
+const MAX_DEAL_PAGES = 20;
 
 // The review queue (the default tab) ships with the page; every other tab loads when it is opened.
 const PanelLoading = () => <div className="shimmer h-48 ctl" />;
@@ -92,7 +98,9 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   useIdlePreload([ContactsPanel, MeetingsPanel, InsightsPanel, NurturePanel, CampaignsPanel, AgentSettings]);
+  const tabRow = useTabInView<HTMLDivElement>(tab);
   useSubNav("/app/crm", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
+  useViewInUrl("/app/crm", "tab", tab, "drafts");
   const [threads, setThreads] = useState<Thread[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -121,11 +129,25 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   useEffect(() => {
     if (needsMigration) return;
     let cancelled = false;
+    // The pipeline comes 500 deals a page (newest first): follow `next` so a large board is shown whole.
+    const allDeals = async () => {
+      const first = await api<{ deals: Deal[]; contacts: Contact[]; counts: Counts; next?: string | null }>("/api/crm/deals");
+      const seen = new Set(first.deals.map((x) => x.id));
+      const deals = [...first.deals];
+      let next = first.next ?? null;
+      for (let page = 1; next && page < MAX_DEAL_PAGES && !cancelled; page++) {
+        const more = await api<{ deals: Deal[]; next?: string | null }>(`/api/crm/deals?cursor=${encodeURIComponent(next)}`);
+        // A deal changed between pages moves to the top and can come twice: keep its first copy.
+        for (const x of more.deals) if (!seen.has(x.id)) { seen.add(x.id); deals.push(x); }
+        next = more.next ?? null;
+      }
+      return { ...first, deals };
+    };
     const load = async () => {
       try {
         const [t, d, q, a, s] = await Promise.all([
           api<Thread[]>("/api/crm/threads"),
-          api<{ deals: Deal[]; contacts: Contact[]; counts: Counts }>("/api/crm/deals"),
+          allDeals(),
           api<Draft[]>("/api/crm/drafts"),
           api<MailboxInfo>("/api/crm/accounts"),
           api<Settings>("/api/crm/settings"),
@@ -187,12 +209,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   if (needsMigration) {
     return (
       <Shell counts={null} autopilot={null} onAutopilot={() => undefined}>
-        <div className="mt-6 ctl border border-info/40 bg-info/5 p-4">
-          <h2 className="flex items-center gap-2 text-[14px] font-semibold"><Icon name="AlertTriangle" className="h-4 w-4" /> Not set up yet</h2>
-          <p className="mt-2 max-w-[70ch] text-[12px] text-muted">The CRM tables have not been created. Apply the migrations and reload:</p>
-          <pre className="num mt-3 overflow-auto ctl border border-line bg-elevated/60 p-3 text-[11.5px]">( set -a; . ./.env.local; set +a; pnpm exec drizzle-kit push )</pre>
-          <p className="mt-2 text-[11.5px] text-muted">The statements are in <span className="num">drizzle/0002_crm.sql</span>, <span className="num">0004_outreach.sql</span> and <span className="num">0005_autopilot.sql</span>. They only add tables and columns.</p>
-        </div>
+        <SetupNotice what="Relationships" />
       </Shell>
     );
   }
@@ -201,7 +218,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
     <Shell counts={counts} autopilot={settings?.autopilot.enabled ?? null} onAutopilot={() => setTab("agent")}>
       {!aiConfigured && (
         <div className="mt-4 ctl border border-info/40 bg-info/5 px-3 py-2 text-[12px]">
-          No AI provider is configured, so the agent cannot read or draft. Add a key in <Link href="/app/settings" className="text-accent hover:underline">Settings</Link>.
+          AI is not set up yet, so the agent cannot read or draft email. Contacts, the pipeline and meetings work as usual; see <Link href="/app/settings?tab=ai" className="text-accent hover:underline">Settings → AI model</Link> for its status.
         </div>
       )}
       {/* A premium feature the plan lacks (Autopilot, campaigns, a second mailbox) shows its plan message with a link. */}
@@ -213,7 +230,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
         {/* On a phone the tabs are one row that scrolls sideways, as a native segmented bar does. */}
-        <div role="tablist" aria-label="Relationships" className="no-scrollbar flex flex-wrap gap-1.5 max-md:-mx-4 max-md:w-[calc(100%+2rem)] max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4">
+        <div ref={tabRow} role="tablist" aria-label="Relationships" className="no-scrollbar flex flex-wrap gap-1.5 max-md:-mx-4 max-md:w-[calc(100%+2rem)] max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4">
           {TABS.map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
               className={`ctl flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-[12px] transition max-md:min-h-10 ${tab === t.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>
@@ -257,9 +274,10 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
 
       {tab === "drafts" && <div className="mt-5"><ReviewQueue ctx={ctx} drafts={drafts} canSend={canSend} autopilotOn={!!settings?.autopilot.enabled} /></div>}
 
+      {tab === "pipeline" && <div className="mt-4"><AddDeal ctx={ctx} stages={stagesFor(mode)} contacts={contacts} /></div>}
       {tab === "pipeline" && (
         // A board: stacked columns on a big screen, a sideways-swiping row of stages on a phone.
-        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3 max-md:-mx-4 max-md:flex max-md:snap-x max-md:snap-mandatory max-md:overflow-x-auto max-md:scroll-px-4 max-md:px-4 max-md:pb-2 no-scrollbar">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3 max-md:-mx-4 max-md:flex max-md:snap-x max-md:snap-mandatory max-md:overflow-x-auto max-md:scroll-px-4 max-md:px-4 max-md:pb-2 no-scrollbar">
           {pipeline.map((stage) => {
             const inStage = deals.filter((d) => d.stage === stage);
             if (LOST_STAGES.includes(stage) && inStage.length === 0) return null;

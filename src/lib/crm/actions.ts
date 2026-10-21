@@ -166,7 +166,7 @@ async function claimAction(userId: string, id: number): Promise<ActionRow> {
   if (a) return a;
   const [existing] = await db.select({ status: schema.crmActions.status }).from(schema.crmActions)
     .where(and(eq(schema.crmActions.id, id), eq(schema.crmActions.userId, userId)));
-  throw new Error(existing ? `This suggestion was already ${existing.status}` : "Suggestion not found");
+  throw Object.assign(new Error(existing ? `This suggestion was already ${existing.status}` : "Suggestion not found"), { status: existing ? 409 : 404 });
 }
 
 async function latestThreadFor(userId: string, contactId: number | null, dealId: number | null) {
@@ -231,7 +231,7 @@ async function carryOut(userId: string, a: ActionRow, input: { email?: string } 
     const patch = dealPatch(p.changes as { field: string; to: unknown }[]);
     if (!Object.keys(patch).length) throw new Error("Nothing in this suggestion can be applied");
     const [row] = await db.update(schema.crmDeals).set({ ...patch, updatedAt: new Date() }).where(and(eq(schema.crmDeals.id, p.dealId), eq(schema.crmDeals.userId, userId))).returning();
-    if (!row) throw new Error("Deal not found");
+    if (!row) throw Object.assign(new Error("Deal not found"), { status: 404 });
     message = `${row.name} updated.`;
   } else if (a.kind === "update_contact") {
     if (typeof p.contactId !== "number" || !p.changes || typeof p.changes !== "object") throw new Error("This suggestion is missing its contact");

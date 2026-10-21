@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { cursorParam } from "@/lib/cursor";
 import { ingestThread, listThreads, processThread, threadActivity } from "@/lib/crm/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** Threads, each with what the agent has done about it: drafted, scheduled, sent, or waiting on a question. */
-export async function GET() {
+/**
+ * Threads, newest first, each with what the agent has done about it: drafted, scheduled, sent, or waiting
+ * on a question. Fifty a page; the next page's cursor is in the `x-next-cursor` header (absent on the last
+ * page), and `?cursor=` asks for it. The body stays the plain list it always was.
+ */
+export async function GET(req: Request) {
   return guarded(async (user) => {
-    const threads = await listThreads(user.id);
+    const { rows: threads, next } = await listThreads(user.id, 50, cursorParam(req));
     const activity = await threadActivity(user.id, threads.map((t) => t.id));
-    return NextResponse.json(threads.map((t) => ({ ...t, activity: activity[t.id] ?? null })));
+    return NextResponse.json(threads.map((t) => ({ ...t, activity: activity[t.id] ?? null })), next ? { headers: { "x-next-cursor": next } } : undefined);
   });
 }
 

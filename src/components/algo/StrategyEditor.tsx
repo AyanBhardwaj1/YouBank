@@ -58,7 +58,8 @@ export function StrategyEditor({ templates, initial, strategyId, riskConfirmed, 
   const reb = { ...(resolved?.rebalance ?? {}), ...(spec.rebalance ?? {}) } as Record<string, unknown>;
   const exe = { ...(resolved?.execution ?? {}), ...(spec.execution ?? {}) } as Record<string, unknown>;
 
-  const pickTemplate = (t: Template) => { const s = t.spec as Spec; setSpec(s); setText(JSON.stringify(s, null, 2)); setPicked(t.id); };
+  // A template without its own capital keeps the amount already in the form, so the field never goes blank.
+  const pickTemplate = (t: Template) => { const s = { capitalUsd: spec.capitalUsd ?? BLANK.capitalUsd, ...(t.spec as Spec) }; setSpec(s); setText(JSON.stringify(s, null, 2)); setPicked(t.id); };
   const save = async () => {
     setBusy(true); setError(null);
     try {

@@ -33,8 +33,19 @@ export type Affinity = { features: Map<string, Feature>; signals: number };
 
 export const EMPTY_AFFINITY: Affinity = { features: new Map(), signals: 0 };
 
-/** "Acme Holdings, Inc." and "ACME HOLDINGS" share a key; same normalization as the ranking's network match. */
-const companyKey = (name: string) => name.toLowerCase().replace(/[.,'’]/g, " ").replace(/\b(inc|incorporated|corp|corporation|co|company|ltd|limited|llc|lp|plc|holdings?|group|the|sa|nv|ag|se)\b/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * "Acme Holdings, Inc." and "ACME HOLDINGS" share a key; same normalization as the ranking's network match.
+ * Kept per name (bounded): ranking and the variety pass ask for the same names on every request.
+ */
+const companyKeys = new Map<string, string>();
+const companyKey = (name: string) => {
+  let k = companyKeys.get(name);
+  if (k !== undefined) return k;
+  k = name.toLowerCase().replace(/[.,'’]/g, " ").replace(/\b(inc|incorporated|corp|corporation|co|company|ltd|limited|llc|lp|plc|holdings?|group|the|sa|nv|ag|se)\b/g, " ").replace(/\s+/g, " ").trim();
+  if (companyKeys.size >= 20_000) companyKeys.clear();
+  companyKeys.set(name, k);
+  return k;
+};
 
 export function tagLabel(tag: string): string {
   return SECTOR_LABEL[tag as SectorKey] ?? LENS_LABEL[tag as Lens] ?? tag;
@@ -122,12 +133,13 @@ export type Diverse = { id: number; score: number; category: string; tickers: st
  * company -25%, the same category -10% for each one beyond the second, the same sector -5% each beyond
  * the third). Stories below the window keep their order. Pure.
  */
+const SECTORS = new Set(Object.keys(SECTOR_LABEL));
+
 export function diversify<T extends Diverse>(stories: T[], window = 40): T[] {
   const head = stories.slice(0, window), tail = stories.slice(window);
   const picked: T[] = [];
   const cats = new Map<string, number>(), leads = new Set<string>(), sectors = new Map<string, number>();
   const leadOf = (s: T) => s.tickers[0] ?? (s.names?.[0] ? companyKey(s.names[0]) : "");
-  const SECTORS = new Set(Object.keys(SECTOR_LABEL));
   const sectorOf = (s: T) => s.desks.find((d) => SECTORS.has(d)) ?? "";
   while (head.length) {
     let best = 0, bestScore = -Infinity;

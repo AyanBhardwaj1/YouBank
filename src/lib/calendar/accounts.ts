@@ -98,14 +98,14 @@ export async function connectCalDav(user: Pick<CurrentUser, "id" | "email">, inp
   assertEncryption();
   const preset = input.preset ? CALDAV_PRESETS[input.preset] : undefined;
   const serverUrl = (preset?.url || input.serverUrl || "").trim();
-  if (!serverUrl) throw new Error("Enter the CalDAV server address.");
+  if (!serverUrl) throw Object.assign(new Error("Enter the CalDAV server address."), { status: 400 });
   const username = input.username.trim();
   const password = input.password.replace(/\s+/g, "");
-  if (!username || !password) throw new Error("Enter the user name and the app password.");
+  if (!username || !password) throw Object.assign(new Error("Enter the user name and the app password."), { status: 400 });
   const provider = new CalDavCalendar({ serverUrl, username, password, email: username.includes("@") ? username : "" }, publicFetch());
   const { homeUrl, email } = await provider.discoverHome();
   const calendars = await provider.listCalendars();
-  if (!calendars.length) throw new Error("Signed in, but that account has no calendars.");
+  if (!calendars.length) throw Object.assign(new Error("Signed in, but that account has no calendars."), { status: 400 });
   const address = (email || username).toLowerCase();
   await checkAccountLimit(user, "caldav", address);
   const settings: CalendarAccountSettings = { serverUrl, homeUrl, username, preset: input.preset ?? "custom" };

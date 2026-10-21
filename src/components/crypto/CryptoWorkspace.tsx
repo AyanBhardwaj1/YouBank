@@ -11,7 +11,8 @@ import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { PremiumBadge } from "@/components/billing/Premium";
 import type { Command } from "@/lib/functions";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
+import { useTabInView } from "@/components/ui/useTabInView";
 
 const Loading = () => <div className="flex flex-col gap-3 p-3" aria-busy="true"><div className="shimmer h-14 ctl" /><div className="shimmer h-56 ctl" /></div>;
 const screen = (name: "CrypScreen" | "TokenScreen" | "DefiScreen" | "StblScreen" | "YldScreen" | "BtcnScreen" | "RaiseScreen" | "UnlkScreen" | "TrsyScreen" | "RwaScreen") =>
@@ -46,8 +47,10 @@ const isTab = (v: string | undefined): v is TabId => CRYPTO_TABS.some((t) => t.i
 export function CryptoWorkspace({ initialTab, initialToken }: { initialTab?: string; initialToken?: string }) {
   const router = useRouter();
   const [tab, setTab] = useState<TabId>(isTab(initialTab) ? initialTab : initialToken ? "token" : "markets");
+  const tabRow = useTabInView<HTMLElement>(tab);
   const [token, setToken] = useState(initialToken ?? "");
   useSubNav("/app/crypto", (v) => { if (isTab(v)) setTab(v); });
+  useViewInUrl("/app/crypto", "tab", tab === "token" ? null : tab, "markets");
 
   // Screens ask to open things as terminal commands; here they become tabs, or the terminal for a company.
   const onRun = (c: Command) => {
@@ -68,7 +71,7 @@ export function CryptoWorkspace({ initialTab, initialToken }: { initialTab?: str
           </div>
           <span className="text-[10.5px] text-faint">Also in the terminal: CRYP, TOKEN, DEFI, STBL, YLD, BTCN, RAISE, UNLK, TRSY, RWA, WALLET</span>
         </div>
-        <nav className="-mb-px mt-2 flex gap-0.5 overflow-x-auto" aria-label="Crypto">
+        <nav ref={tabRow} className="-mb-px mt-2 flex gap-0.5 overflow-x-auto" aria-label="Crypto">
           {CRYPTO_TABS.map((t) => (
             <button key={t.id} type="button" onClick={() => setTab(t.id)} aria-current={tab === t.id ? "page" : undefined}
               className={`flex shrink-0 items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-[12px] ${tab === t.id ? "border-accent text-accent" : "border-transparent text-muted hover:text-fg"}`}>

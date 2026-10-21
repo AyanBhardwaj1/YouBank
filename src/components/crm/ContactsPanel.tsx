@@ -55,9 +55,10 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
       </div>
 
       {adding && (
-        <div className="ctl border border-line bg-elevated/40 p-3.5">
+        // A form, so Enter in any field adds the contact; Esc closes it.
+        <form onSubmit={(e) => { e.preventDefault(); if (!ctx.busy && adding.email.trim()) void add(); }} onKeyDown={(e) => { if (e.key === "Escape") setAdding(null); }} className="ctl border border-line bg-elevated/40 p-3.5">
           <div className="grid gap-2 sm:grid-cols-2">
-            <Field label="Email"><input value={adding.email} onChange={(e) => setAdding({ ...adding, email: e.target.value })} placeholder="maya@ledgerline.io" className={input} /></Field>
+            <Field label="Email"><input type="email" autoFocus value={adding.email} onChange={(e) => setAdding({ ...adding, email: e.target.value })} placeholder="maya@ledgerline.io" className={input} /></Field>
             <Field label="Name"><input value={adding.name} onChange={(e) => setAdding({ ...adding, name: e.target.value })} className={input} /></Field>
             <Field label="Company" hint="Matched against the startup directory when it can be."><input value={adding.company} onChange={(e) => setAdding({ ...adding, company: e.target.value })} className={input} /></Field>
             <Field label="Who they are">
@@ -72,10 +73,10 @@ export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
             </Field>
           </div>
           <div className="mt-2.5 flex gap-2">
-            <button type="button" onClick={add} disabled={!!ctx.busy || !adding.email.trim()} className={btn.primary}>{ctx.busy === "add-contact" ? "Adding…" : "Add"}</button>
+            <button type="submit" disabled={!!ctx.busy || !adding.email.trim()} className={btn.primary}>{ctx.busy === "add-contact" ? "Adding…" : "Add"}</button>
             <button type="button" onClick={() => setAdding(null)} className={btn.link}>Cancel</button>
           </div>
-        </div>
+        </form>
       )}
 
       {shown.length === 0 && <Empty>{contacts.length === 0 ? "No contacts yet. Everyone who writes to you is added as the agent reads their email, or add someone by hand." : "Nobody matches that search."}</Empty>}

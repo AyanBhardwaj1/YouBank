@@ -19,7 +19,7 @@ const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late n
 export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: number | null; sheets: number; groups: number }; brief?: BriefSeed }) {
   const { profile, config, tools } = useWorkspace();
   const [runs, setRuns] = useState<Run[] | null>(null);
-  const { data, loading } = useCompanies(config.watchlist);
+  const { data, errors, loading } = useCompanies(config.watchlist);
   const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
   const movers = [...rows].sort((a, b) => Math.abs(b.price?.changePct ?? 0) - Math.abs(a.price?.changePct ?? 0)).slice(0, 6);
   const first = config.watchlist[0] ?? "SNOW";
@@ -60,7 +60,7 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
               <section className="panel p-3">
                 <div className="mb-2 flex items-baseline justify-between">
                   <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
-                  <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : `${rows.length} names · click to open`}</span>
+                  <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>
                 </div>
                 <div className="table-scroll overflow-auto">
                   <table className="w-full whitespace-nowrap text-[11.5px]">
@@ -81,7 +81,15 @@ export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: numbe
                           </tr>
                         );
                       })}
-                      {rows.length === 0 && Array.from({ length: 4 }).map((_, i) => <tr key={i}><td colSpan={7} className="py-1"><span className="shimmer block h-4 ctl" /></td></tr>)}
+                      {rows.length === 0 && loading && Array.from({ length: 4 }).map((_, i) => <tr key={i}><td colSpan={7} className="py-1"><span className="shimmer block h-4 ctl" /></td></tr>)}
+                      {/* Nothing loaded and nothing still coming: say why instead of a shimmer that never ends. */}
+                      {rows.length === 0 && !loading && (
+                        <tr><td colSpan={7} className="whitespace-normal py-3 text-[11.5px] text-muted">
+                          {config.watchlist.length === 0
+                            ? <>No names yet. Open a company in the <Link href="/app/terminal" className="text-fg hover:text-accent">terminal</Link> to start your watchlist.</>
+                            : <>{Object.values(errors)[0] ?? "Prices and filings could not be loaded right now."} Your watchlist ({config.watchlist.slice(0, 6).join(", ")}{config.watchlist.length > 6 ? "…" : ""}) will fill in when they are back.</>}
+                        </td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>

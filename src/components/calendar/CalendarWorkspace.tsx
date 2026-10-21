@@ -13,9 +13,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { safeText } from "@/lib/client/errors";
-import { useSubNav } from "@/lib/subnav";
+import { useSubNav, useViewInUrl } from "@/lib/subnav";
 import type { SchedulePrefill } from "./Scheduler";
 import { browserTz, btn, calApi, colorOf, dayStart, fmt, isoDay, localIsoDay, minutesOfDay, relative, zoneFor, type Meeting, type Overview, errorMessage } from "./shared";
+import { SetupNotice } from "@/components/ui/SetupScreen";
 
 // The event panel and the scheduling dialog load when one is opened.
 const EventPanel = lazyPanel(() => import("./EventPanel").then((m) => m.EventPanel));
@@ -68,6 +69,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
   const [tick, setTick] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   useSubNav("/app/calendar", (v) => { if (VIEWS.some((x) => x.id === v)) setView(v as View); });
+  useViewInUrl("/app/calendar", "view", picked); // no default: on a phone the unpicked view is the agenda
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
 
@@ -126,11 +128,7 @@ export function CalendarWorkspace({ needsMigration, initialView }: { needsMigrat
   if (needsMigration) {
     return (
       <Shell>
-        <div className="mt-6 ctl border border-info/40 bg-info/5 p-4">
-          <h2 className="flex items-center gap-2 text-[14px] font-semibold"><Icon name="AlertTriangle" className="h-4 w-4" /> Not set up yet</h2>
-          <p className="mt-2 max-w-[70ch] text-[12px] text-muted">The calendar tables have not been created. Apply the migration and reload:</p>
-          <pre className="num mt-3 overflow-auto ctl border border-line bg-elevated/60 p-3 text-[11.5px]">DATABASE_URL=… pnpm exec tsx scripts/apply-sql.mts drizzle/0018_calendar.sql</pre>
-        </div>
+        <SetupNotice what="Calendar" />
       </Shell>
     );
   }
