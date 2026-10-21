@@ -11,13 +11,14 @@
  */
 import { withProvenance, type Provider } from "@/lib/market/provenance";
 import { historyFrom, quotes } from "@/lib/market/data";
+import { canonical } from "@/lib/market/symbols";
 import { cloneEvents } from "@/lib/copytrade/analytics";
 import type { BrokerQuote } from "./brokers/types";
 import { panelOf, type Panel } from "./evaluate";
 import { symbolsOf, type StrategySpec } from "./strategy";
 
-/** Our symbol as the market data layer spells it: BRK-B → BRK.B, BTC-USD → BTCUSD. */
-export const dataSymbol = (s: string) => (/-USD$/.test(s) ? s.replace("-", "") : s.replace(/-/g, "."));
+/** Our symbol as the market data layer takes it: canonical (BRK-B → BRK.B; each feed respells it), BTC-USD → BTCUSD. */
+export const dataSymbol = (s: string) => (/-USD$/.test(s) ? s.replace("-", "") : canonical(s));
 
 async function pool<T>(xs: T[], n: number, f: (x: T) => Promise<void>): Promise<void> {
   let i = 0;

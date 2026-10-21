@@ -9,6 +9,7 @@ import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
 import { edgarJson, edgarText, HOUR } from "@/lib/edgar/client";
+import { form4Xml } from "@/lib/edgar/form4";
 import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
 import { holdingPercent, parseHeader } from "@/lib/edge/graph/parse";
 import { CONTRACT_VERSION, type QuantSignal } from "../contracts";
@@ -36,7 +37,8 @@ async function primaryDoc(cik: string, acc: string, want: "xml" | "doc"): Promis
   const pick = want === "xml" ? items.find((i) => /\.xml$/i.test(i.name) && !/^xsl|filingsummary/i.test(i.name)) : items.find((i) => /\.(xml|htm|html|txt)$/i.test(i.name) && !/index|filingsummary|\.hdr/i.test(i.name));
   if (!pick) return null;
   const url = `${folder(cik, acc)}/${pick.name}`;
-  return { url, text: await edgarText(url, `doc-${acc}-${pick.name}.json`, 30 * 24 * HOUR) };
+  // A Form 4's XML shares INS's cache entry (edgar/form4): one key per filing.
+  return { url, text: want === "xml" ? await form4Xml(url, acc) : await edgarText(url, `doc-${acc}-${pick.name}.json`, 30 * 24 * HOUR) };
 }
 
 /** Store a Form 4's open-market lines. Returns the issuer CIK when anything was stored. */
