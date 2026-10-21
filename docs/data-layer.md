@@ -57,7 +57,10 @@ is background unless it opts in.
 
 **Hedging needs a reason.** No hedge when the first source's breaker is closed and this instance's last
 5 minutes of calls to it (at least 20) have a p95 under 2.5 s and fewer than 5 % errors: then a slow call
-waits for its own timeout. A hedge never aborts the first source: its answer still fills the cache.
+waits for its own timeout. A hedge never aborts the first source, and each source caches under its own
+key, so a late answer never overwrites the one that was served. A late answer usually fills its own
+cache for the next request, but on serverless the instance may be frozen once the response is sent, so
+that is not guaranteed.
 
 **Worst case before a person sees an answer** (first source hangs, the backup answers; derived from the
 budgets, and checked with stubbed sources in `scripts/test-datalayer.ts`):
@@ -71,7 +74,7 @@ budgets, and checked with stubbed sources in `scripts/test-datalayer.ts`):
 | MA | 10 s, then a 504 | 2.5 s + EDGAR full-text search |
 | EE/ANR/DVD | 10 s, then a 504 | 6 s (FMP's timeout) + Nasdaq, + research ≤ 25 s |
 | PULSE, first request of the day | 6 × 30 s = 180 s (route limit 120 s) | 2 × 30 s = 60 s (three states at once) |
-| An SEC request behind a slow one | waits for it (2,982 ms measured behind a 3 s one) | ≤ 125 ms (starts paced at 8/s, requests run at once) |
+| An SEC request behind a slow one | waits for it (2,982 ms measured behind a 3 s one) | ≤ 125 ms (starts paced at 8/s per process after the shared budget's slot, requests run at once) |
 | AI research | up to ~360 s | ≤ 25 s |
 | Any source whose breaker is open | its full timeout, every request | 0 s (skipped) |
 
@@ -99,7 +102,8 @@ Stale answers are flagged in `x-data-sources` (`stale: true`, `oldestFetchedAt`)
 
 companyfacts goes through the shared cache in compact form (`src/lib/edgar/compact.ts`: the concepts the
 app reads; 126 KB of 5 MB on the synthetic test document, real filers vary), so a new instance makes no SEC call for a company another
-instance loaded. **Reading a new XBRL concept on an interactive path? Add it to `FACT_CONCEPTS`.** The
+instance loaded. **Reading a new XBRL concept on an interactive path? Add it to `FACT_CONCEPTS`.** The cache key carries
+a fingerprint of the list (`compactVersion()`), so entries compacted without the new concept are not read. The
 XBRL concept browser and background jobs use `getCompanyFactsFull()`.
 
 ## Circuit breakers
@@ -111,14 +115,17 @@ instance in a `kv_cache` row `breaker:<source>` (`src/lib/market/breaker.ts`):
 - **open**: calls are refused at once (`breaker-open`) and the chain moves on, for 30 s;
 - **half-open**: one probe at a time across instances; success closes it, failure opens it for another 30 s.
 
-A breaker that cannot be read fails open (the source is tried). To close one by hand:
+A breaker that cannot be read fails open (the source is tried). A Nasdaq failure (or its open breaker)
+while finding a symbol's asset class is not remembered as "not on Nasdaq"; only two well-formed empty
+answers are. To close one by hand:
 `breakers.reset("fmp")`, or delete its `kv_cache` row.
 
 ## Reading the stats and the health page
 
 Every upstream call is recorded (source, endpoint, time, outcome, failure kind) and written per minute
 to `source_stats` (migration `drizzle/0028_source_stats.sql`), in one batched upsert per instance at most
-every 10 s. Rows with `op` starting `chain:` are the chain's own outcomes (which source answered when it
+every 10 s, and after each terminal and `/api/companies` answer (`after()`). Calls still buffered when a
+serverless instance is frozen or recycled are lost: it is telemetry, not a ledger. Rows with `op` starting `chain:` are the chain's own outcomes (which source answered when it
 was not the first: fallbacks and hedges, and "nothing here" moves).
 
 `GET /api/market/health` with `Authorization: Bearer $CRON_SECRET` returns:
@@ -142,7 +149,7 @@ from source_stats where minute > now() - interval '1 hour' and op not like 'chai
 group by source order by calls desc;
 ```
 
-Rows older than 30 days can be deleted at will.
+Rows older than 30 days are pruned automatically (now and then, by a flush, 5,000 at a time).
 
 ## Measuring real latency: `scripts/data-latency.mts`
 
@@ -158,7 +165,9 @@ pnpm exec tsx scripts/data-latency.mts --base https://<your-domain> --runs 10 \
 It calls each terminal command and `/api/companies`, and prints per command the wall time (first run
 apart, then p50/p95/max) and statuses, and per source the server's own time from each answer's
 Server-Timing (so it is the upstream's latency from `cle1`, not your laptop's). With `--secret` it also
-prints the health page's hourly rollups. `--fns price,indices` limits the commands. Run it once at the
+prints the health page's hourly rollups. `--fns price,indices` limits the commands. Requests go one at a
+time, 1 s apart (`--gap`); against anything but localhost it refuses more than 20 runs, more than 5
+tickers or a gap under 500 ms. It measures, it is not a load test. Run it once at the
 US open and once after the close; repeated runs mostly hit the cache, so read the per-source table and the
 rollups for upstream latency.
 

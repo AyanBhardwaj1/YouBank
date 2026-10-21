@@ -135,7 +135,9 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
    rm .env.production.local
    ```
    `finish` is safe to re-run; it skips what exists. Run it again after any deploy that adds a
-   `drizzle/NNNN_*.sql`.
+   `drizzle/NNNN_*.sql`. `drizzle-kit push --force` is for this first, empty database only: never re-run
+   it (or `push` without `--strict`) against a live one, where it drops indexes the SQL files create that
+   `schema.ts` does not list. A drift check is `pnpm exec drizzle-kit push --strict`, answering "No".
 4. **Deploy** (push to `main`, or `vercel --prod`).
 5. **Check** (see [Health](#health-and-monitoring)):
    ```bash
