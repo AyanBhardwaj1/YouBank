@@ -43,6 +43,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0025_algo", ["algo_settings", "algo_connections", "algo_strategies", "algo_equity", "algo_decisions", "algo_batches", "algo_orders", "algo_consents", "algo_agent_messages", "algo_backtests", "algo_audit"], "algo_audit_user_idx"],
   ["0026_quant", ["quant_signals", "quant_targets", "quant_trials", "quant_runs", "quant_fills", "quant_factor_returns", "quant_universe", "quant_insider_tx", "quant_consents", "quant_events", "quant_base_rates"], "quant_events_issuer_idx"],
   ["0027_scale", ["ai_spend"], "ai_spend_day_idx"],
+  ["0028_source_stats", ["source_stats"], "source_stats_minute_idx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
