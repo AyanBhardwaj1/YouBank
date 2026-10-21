@@ -424,7 +424,8 @@ function orderFor(dataset: DatasetId, opts: ChainOptions): ChainOptions & { name
   return { prefer, append, exclude: opts.exclude, named: new Set([...view, ...(u?.order[dataset] ?? [])]) };
 }
 
-export type Plan<D extends DatasetId> = { run: Adapter<A<D>, R<D>>[]; skipped: Skipped[] };
+/** `rank`: the skipped source's place in the chain, so only the ones ranked ahead of the answer are reported. */
+export type Plan<D extends DatasetId> = { run: Adapter<A<D>, R<D>>[]; skipped: (Skipped & { rank: number })[]; rankOf: (a: Adapter<A<D>, R<D>>) => number };
 
 /**
  * The adapters that will be asked, in order, and the ones the person named that cannot answer here
@@ -433,16 +434,16 @@ export type Plan<D extends DatasetId> = { run: Adapter<A<D>, R<D>>[]; skipped: S
 export function planChain<D extends DatasetId>(dataset: D, args: A<D>, opts: ChainOptions = {}): Plan<D> {
   const order = orderFor(dataset, opts);
   const chain = resolveChain(dataset, order);
-  const run: Adapter<A<D>, R<D>>[] = [], skipped: Skipped[] = [];
-  for (const a of chain) {
-    if (!a.fetch || (a.covers && !a.covers(args))) continue;
+  const run: Adapter<A<D>, R<D>>[] = [], skipped: Plan<D>["skipped"] = [];
+  chain.forEach((a, rank) => {
+    if (!a.fetch || (a.covers && !a.covers(args))) return;
     const e = eligibility(a);
     if (e.ok) run.push(a);
-    else if (order.named.has(a.id) || a.licence === "user-key") skipped.push({ dataset, id: a.id, label: a.label, reason: e.reason });
-  }
+    else if (order.named.has(a.id) || a.licence === "user-key") skipped.push({ dataset, id: a.id, label: a.label, reason: e.reason, rank });
+  });
   const view = dataUser()?.override;
-  if (view?.dataset === dataset && !adaptersOf(dataset).some((a) => a.id === view.id)) skipped.push({ dataset, id: view.id, label: metaOf(view.id).label, reason: `Does not provide ${DATASETS[dataset].label.toLowerCase()}.` });
-  return { run, skipped };
+  if (view?.dataset === dataset && !adaptersOf(dataset).some((a) => a.id === view.id)) skipped.push({ dataset, id: view.id, label: metaOf(view.id).label, reason: `Does not provide ${DATASETS[dataset].label.toLowerCase()}.`, rank: -1 });
+  return { run, skipped, rankOf: (a) => chain.indexOf(a) };
 }
 
 /* ---------------- The chain ---------------- */
@@ -507,10 +508,14 @@ async function fillFields<D extends DatasetId>(dataset: D, args: A<D>, a: Adapte
  * none had data; with NoSourceError when none may answer.
  */
 export async function fromChain<D extends DatasetId>(dataset: D, args: A<D>, opts: ChainOptions = {}): Promise<Answered<R<D>>> {
-  const { run, skipped } = planChain(dataset, args, opts);
-  skipped.forEach(noteSkipped);
-  if (!run.length) throw new NoSourceError(dataset);
-  const { a, ans, index } = await firstAnswer(dataset, run, args);
+  const { run, skipped, rankOf } = planChain(dataset, args, opts);
+  // Sources ranked after the one that answers do not matter to this answer: only those ahead are reported.
+  const note = (before: number) => skipped.filter((k) => k.rank < before).forEach((k) => noteSkipped({ dataset: k.dataset, id: k.id, label: k.label, reason: k.reason }));
+  if (!run.length) { note(Infinity); throw new NoSourceError(dataset); }
+  let won: Awaited<ReturnType<typeof firstAnswer<D>>>;
+  try { won = await firstAnswer(dataset, run, args); } catch (e) { note(Infinity); throw e; }
+  const { a, ans, index } = won;
+  note(rankOf(a));
   const merged = await fillFields(dataset, args, a, ans, run.slice(index + 1));
   noteSource(a.provider, ans.note, ans.meta);
   noteAdapter(byOf(a, ans.yourKey));

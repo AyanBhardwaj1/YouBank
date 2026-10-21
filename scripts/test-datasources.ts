@@ -561,6 +561,9 @@ async function testPrefsOrder() {
   } finally { FIXTURES.splice(FIXTURES.indexOf(nasdaq), 1); }
   const C = person(`carol-${uid()}`, {}, { "daily-bars": ["tiingo", "fmp"] });
   const r = await as(C, () => historyFrom(`Q${uid()}`.slice(0, 6), from30()));
+  const D = person(`dee-${uid()}`, {}, { "daily-bars": ["fmp", "tiingo", "finnhub"] });
+  const dr = await as(D, () => historyFrom(`Q${uid()}`.slice(0, 6), from30()));
+  check("C4 a source without a key ranked after the one that answered is not reported (no noise on every answer)", dr.value.by?.id === "fmp" && dr.skipped.length === 0, dr.skipped);
   check("C4 an ineligible source (no key) is skipped with the stated reason; the next eligible one answers", r.value.by?.id === "fmp" && r.skipped.some((k) => k.id === "tiingo" && /Needs your Tiingo key/.test(k.reason)), r.skipped);
 }
 
