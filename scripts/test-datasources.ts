@@ -662,6 +662,37 @@ async function testRouteDb() {
   delete process.env.YOUBANK_DEV_USER;
 }
 
+/**
+ * Review fix: a pasted key is checked from YouBank's address, and accounts are free to make, so the check
+ * must not be an oracle for stolen keys: a day's cap per person and an hour's cap per address, on top of
+ * the per-minute limit (which alone allows 14,400 checks a day per account).
+ */
+async function testKeyCheckLimits() {
+  const route = await import("@/app/api/settings/data-sources/route");
+  const { db } = await import("@/db");
+  const { schema } = await import("@/db");
+  const post = async (user: string, ip: string, body: unknown) => {
+    process.env.YOUBANK_DEV_USER = user;
+    const req = new Request("http://localhost/api/settings/data-sources", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", "x-real-ip": ip } });
+    return (await route.POST(req)).status;
+  };
+  try {
+    // One person who has already checked a day's worth of pasted keys (the counter, as the limiter keeps it).
+    const heavy = `hv${uid().toLowerCase()}`;
+    await db!.insert(schema.kvCache).values({ key: `rate:data-sources-key:dev-${heavy}:${Math.floor(Date.now() / 86_400_000)}`, value: "20", expiresAt: new Date(Date.now() + 86_400_000) })
+      .onConflictDoUpdate({ target: schema.kvCache.key, set: { value: "20" } });
+    const dayCapped = await post(heavy, `10.1.${Math.floor(Math.random() * 250)}.1`, { action: "test-key", provider: "tiingo", key: KEYS.tiingoA });
+    check("C3(review) a person past a day's pasted-key checks is refused (429), whatever the minute's count", dayCapped === 429, dayCapped);
+    // Many fresh accounts from one address, each well under its own per-minute limit.
+    const ip = `10.2.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 31; i++) statuses.push(await post(`ip${i}${uid().toLowerCase()}`, ip, { action: "test-key", provider: "tiingo", key: `tiingoKeyGUESS${String(i).padStart(4, "0")}XXXXXXXXXXXXX` }));
+    check("C3(review) one address cannot check pasted keys at scale through many accounts: past 30 an hour it is refused (429)", statuses.slice(0, 30).every((s) => s === 200) && statuses[30] === 429, statuses.slice(-3));
+    const saved = await post(heavy, ip, { action: "test-chain", dataset: "quote" });
+    check("C3(review) the caps are for pasted keys only: a chain test still runs", saved === 200, saved);
+  } finally { delete process.env.YOUBANK_DEV_USER; }
+}
+
 /* ---------------- C5 field-level fallthrough ---------------- */
 
 async function testMerge() {
@@ -692,6 +723,14 @@ async function main() {
   const { overrideBudgets } = await import("@/lib/market/budgets");
   overrideBudgets("interactive", { hedgeDelayMs: 200, fmpTimeoutMs: 600, nasdaqTimeoutMs: 600, freeTimeoutMs: 600, secTimeoutMs: 600, macroTimeoutMs: 600, fmpSlotTries: 2, researchMs: 300 });
   overrideBudgets("background", { fmpTimeoutMs: 800, nasdaqTimeoutMs: 800, freeTimeoutMs: 800, secTimeoutMs: 800, macroTimeoutMs: 800, fmpSlotTries: 2, researchMs: 300 });
+  if (localDb()) {
+    // A run starts from an empty cache: a copy an earlier run left (the Treasury's curve, say) would be
+    // served stale when a check takes its source down, and the check would read the wrong source.
+    const { db } = await import("@/db");
+    const { sql } = await import("drizzle-orm");
+    await db!.execute(sql`delete from kv_cache where key not like 'rate:%'`);
+    await db!.execute(sql`delete from company_cache`);
+  }
   await section("C2 registry metadata", testMetadata);
   await section("C1 SEC profile and the SIC sector map", testSecProfile);
   await section("C1 SEC earnings actuals and dividends", testSecEarningsDividends);
@@ -715,6 +754,7 @@ async function main() {
   await section("C4 key and chain tests", testKeyAndChainTests);
   if (localDb()) await section("C4 storage: encrypted keys, prefs, purge (Postgres)", testStoreDb);
   if (localDb()) await section("C4 the settings route: 400s, owner-only, keys never returned", testRouteDb);
+  if (localDb()) await section("C3 review: pasted-key checks are capped per person per day and per address", testKeyCheckLimits);
   await section("C5 field-level fallthrough and badges", testMerge);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
