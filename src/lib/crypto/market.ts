@@ -10,6 +10,7 @@
  */
 import { COINGECKO, coingeckoCoin, type Cite } from "./sources";
 import { arr, cachedJson, CryptoDataError, HOUR, MIN, num, str, webUrl } from "./http";
+import { CG, envelope } from "./schema";
 
 /** The calls this request may make to CoinGecko: the free API, or the paid Pro API for a person entitled to it. */
 export type Tier = "free" | "pro";
@@ -47,6 +48,7 @@ const thin = (xs: number[], n: number) => (xs.length <= n ? xs : Array.from({ le
 
 /** CoinGecko /coins/markets rows, normalised. Pure, for tests. */
 export function parseMarkets(raw: unknown): TokenRow[] {
+  envelope(CG.markets, raw, "CoinGecko", "coins/markets");
   return arr<RawMarket>(raw).filter((r) => r && typeof r.id === "string").map((r) => ({
     id: str(r.id), symbol: str(r.symbol).toUpperCase(), name: str(r.name), image: str(r.image), rank: num(r.market_cap_rank),
     price: num(r.current_price), marketCap: num(r.market_cap), fdv: num(r.fully_diluted_valuation), volume24h: num(r.total_volume),
@@ -70,6 +72,7 @@ export type GlobalStats = { totalMarketCap: number | null; totalVolume: number |
 
 /** CoinGecko /global, normalised. Pure, for tests. */
 export function parseGlobal(raw: unknown): GlobalStats {
+  envelope(CG.global, raw, "CoinGecko", "global");
   const d = ((raw as { data?: Record<string, unknown> })?.data ?? {}) as Record<string, Record<string, unknown> | unknown>;
   const usd = (k: string) => num((d[k] as Record<string, unknown> | undefined)?.usd);
   const share = (k: string) => pct((d.market_cap_percentage as Record<string, unknown> | undefined)?.[k]);
@@ -92,6 +95,7 @@ export type TokenInfo = {
 
 /** CoinGecko /coins/{id}, normalised. Pure, for tests. */
 export function parseCoin(raw: unknown): TokenInfo {
+  envelope(CG.coin, raw, "CoinGecko", "coins/{id}");
   const r = (raw ?? {}) as Record<string, unknown>;
   const m = (r.market_data ?? {}) as Record<string, unknown>;
   const usd = (k: string) => num((m[k] as Record<string, unknown> | undefined)?.usd);
@@ -118,6 +122,7 @@ export type Close = { date: string; close: number };
 
 /** Daily closes from /market_chart, one per day (the last point of each day), oldest first. Pure, for tests. */
 export function parseChart(raw: unknown): Close[] {
+  envelope(CG.chart, raw, "CoinGecko", "market_chart");
   const byDay = new Map<string, number>();
   for (const p of arr<unknown[]>((raw as { prices?: unknown })?.prices)) {
     const t = num(p?.[0]), v = num(p?.[1]);
@@ -136,6 +141,7 @@ export function simplePrices(ids: string[]): Promise<Record<string, { usd: numbe
   const list = [...new Set(ids.filter(Boolean))].sort();
   if (!list.length) return Promise.resolve({});
   return get(`/simple/price?ids=${list.join(",")}&vs_currencies=usd&include_24hr_change=true`, `simple:${list.join(",")}`, 2 * MIN, (raw: Record<string, { usd?: unknown; usd_24h_change?: unknown }>) => {
+    envelope(CG.simple, raw, "CoinGecko", "simple/price");
     const out: Record<string, { usd: number; d1: number | null }> = {};
     for (const [k, v] of Object.entries(raw ?? {})) { const p = num(v?.usd); if (p !== null) out[k] = { usd: p, d1: pct(v?.usd_24h_change) }; }
     return out;
@@ -155,7 +161,7 @@ export async function resolveToken(q: string): Promise<{ id: string; symbol: str
   const hit = top.find((t) => t.id === s) ?? top.find((t) => t.symbol.toLowerCase() === s) ?? top.find((t) => t.name.toLowerCase() === s);
   if (hit) return { id: hit.id, symbol: hit.symbol, name: hit.name };
   const found = await get(`/search?query=${encodeURIComponent(s)}`, `search:${s}`, 6 * HOUR, (raw: { coins?: unknown[] }) =>
-    arr<Record<string, unknown>>(raw?.coins).map((c) => ({ id: str(c.id), symbol: str(c.symbol).toUpperCase(), name: str(c.name), rank: num(c.market_cap_rank) })));
+    (envelope(CG.search, raw, "CoinGecko", "search"), arr)<Record<string, unknown>>(raw?.coins).map((c) => ({ id: str(c.id), symbol: str(c.symbol).toUpperCase(), name: str(c.name), rank: num(c.market_cap_rank) })));
   const best = found.find((c) => c.symbol.toLowerCase() === s && c.rank !== null) ?? found.find((c) => c.id === s) ?? found[0];
   return best ? { id: best.id, symbol: best.symbol, name: best.name } : null;
 }

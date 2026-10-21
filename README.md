@@ -1626,7 +1626,9 @@ All tables are in `src/db/schema.ts`.
   - `0023_copytrade`
   - `0024_seat_cooldown`
   - `0026_quant`
-- After applying them, `drizzle-kit push` should report no changes.
+- After applying them, `drizzle-kit push --strict` should propose nothing (answer "No" to anything it
+  proposes). Never run `drizzle-kit push` without `--strict` (or with `--force`) against an existing
+  database: indexes the SQL files create are not all in `schema.ts`, and push would drop them.
 
 ---
 
@@ -1820,7 +1822,7 @@ deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays ever
    ```bash
    set -a; . ./.env.local; set +a
    DATABASE_URL="$DATABASE_URL_UNPOOLED" pnpm exec tsx scripts/apply-sql.mts drizzle/0011_newsroom.sql
-   pnpm exec drizzle-kit push        # should report no changes
+   pnpm exec drizzle-kit push --strict   # a drift check: it should propose nothing; answer "No" to any prompt
    ```
 3. **Build and ship:**
    ```bash

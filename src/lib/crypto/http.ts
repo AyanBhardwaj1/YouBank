@@ -10,6 +10,7 @@
 import { cacheJson } from "@/lib/cache";
 import { logError } from "@/lib/errors";
 import { fetchRetry } from "@/lib/net";
+import { callSource } from "@/lib/market/source";
 
 export const MIN = 60_000;
 export const HOUR = 60 * MIN;
@@ -38,6 +39,12 @@ export async function cachedJson<T, R = T>(url: string, opts: Opts, shape?: (raw
 
 /** One uncached JSON request with a timeout. Throws a CryptoDataError naming `source` on any failure. */
 export async function fetchJson<T>(url: string, opts: Pick<Opts, "source" | "headers" | "timeoutMs" | "init" | "idempotent">): Promise<T> {
+  // Timed and counted per source for the health page (market/stats); no breaker here, behaviour unchanged.
+  // The op is the host only: some node URLs carry a key in their path.
+  return callSource(opts.source.toLowerCase().replace(/[^a-z0-9]+/g, ""), new URL(url).hostname, () => fetchJsonOnce<T>(url, opts), { breaker: false, label: opts.source });
+}
+
+async function fetchJsonOnce<T>(url: string, opts: Pick<Opts, "source" | "headers" | "timeoutMs" | "init" | "idempotent">): Promise<T> {
   let res: Response;
   try {
     // GETs (and read-only RPC posts, marked idempotent) get one retry on a network failure, 429 or 5xx.

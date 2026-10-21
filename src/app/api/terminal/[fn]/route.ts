@@ -1,10 +1,13 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { guarded } from "@/lib/auth/user";
 import { structured } from "@/lib/ai/agent";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MarketDataError } from "@/lib/market/fmp";
-import { withProvenance } from "@/lib/market/provenance";
+import { withMode } from "@/lib/market/budgets";
+import { withProvenance, type ProvenanceRun } from "@/lib/market/provenance";
+import { sourceHeaders as buildSourceHeaders } from "@/lib/market/source-header";
+import { flushSourceStats } from "@/lib/market/stats";
 import { companySnapshot, type Need } from "@/lib/terminal/snapshot";
 import { creditView, debtView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
 import { curveView, macroView } from "@/lib/terminal/macro";
@@ -80,8 +83,18 @@ function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers:
   return NextResponse.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), planLimited, ...extra }, { status: f.status, headers });
 }
 
-/** The sources an answer used, for the screen's badge: providers and notes such as "S&P 500 tracked by the SPY ETF". */
-const sourceHeaders = (providers: string[], notes: string[]): Record<string, string> => (providers.length ? { "x-data-sources": JSON.stringify({ providers: [...new Set(providers)], notes: [...new Set(notes)].slice(0, 8) }) } : {});
+/**
+ * The sources an answer used, for the screen's badge (x-data-sources: providers, notes such as "S&P 500
+ * via SPY", the adapters that answered, and whether anything was stale or delayed, with the oldest as-of),
+ * and Server-Timing with each source's time. One builder (market/source-header) for every route.
+ */
+const sourceHeaders = (run: ProvenanceRun<unknown>, t0?: number): Record<string, string> => buildSourceHeaders(run, t0 === undefined ? undefined : performance.now() - t0);
+
+/** The older of two ISO times (either may be missing). */
+const oldest = (a?: string, b?: string) => (!a ? b : !b ? a : Date.parse(b) < Date.parse(a) ? b : a);
+
+/** The per-minute source rollups are written after the answer is sent (market/stats). */
+const flushLater = () => { try { after(flushSourceStats); } catch { /* outside a request */ } };
 
 /** The source a function cannot work without, named when it is down (a 503, not "our side"). */
 const SOURCE: Record<string, string> = { deals: "SEC EDGAR", curve: "The US Treasury's rate feed" };
@@ -93,16 +106,25 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
   return guarded(async (user) => {
     const fn = (await ctx.params).fn;
     const params = new URL(req.url).searchParams;
-    const run = await withProvenance(async () => {
+    const t0 = performance.now();
+    // A person is waiting: interactive budgets (market/budgets): short attempts, hedged backups.
+    const run = await withProvenance(() => withMode("interactive", async () => {
       try { return { data: await compute(fn, params, user.id) }; } catch (error) { return { error }; }
-    });
-    const headers = sourceHeaders(run.providers, run.notes);
+    }));
+    flushLater();
+    const headers = sourceHeaders(run, t0);
     if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? CRYPTO_TTL[fn] ?? 60}` } });
     const e = run.value.error;
     // No feed has this company's prices: offer what research can find (price, range, beta) instead of nothing.
     if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {
-      const snap = await withProvenance(() => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null));
-      if (snap.value) return errorResponse(e, { snapshot: snap.value }, sourceHeaders([...run.providers, ...snap.providers], [...run.notes, ...snap.notes]));
+      const snap = await withProvenance(() => withMode("interactive", () => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null)));
+      if (snap.value) {
+        const both = {
+          ...snap, providers: [...run.providers, ...snap.providers], notes: [...run.notes, ...snap.notes], sources: [...run.sources, ...snap.sources], timings: [...run.timings, ...snap.timings],
+          stale: run.stale || snap.stale, delayed: run.delayed || snap.delayed, asOf: oldest(run.asOf, snap.asOf), oldestFetchedAt: oldest(run.oldestFetchedAt, snap.oldestFetchedAt), meta: {},
+        };
+        return errorResponse(e, { snapshot: snap.value }, sourceHeaders(both, t0));
+      }
     }
     return (SOURCE[fn] ? sourceDownResponse(e, SOURCE[fn], `terminal-${fn}`) : null) ?? errorResponse(e, {}, headers);
   });
@@ -161,8 +183,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
         }
         case "portfolio": {
           const holdings = (Array.isArray(body?.holdings) ? body.holdings : []).filter((h): h is Holding => !!h && typeof (h as Holding).symbol === "string" && typeof (h as Holding).weight === "number");
-          const run = await withProvenance(() => portfolioView(holdings));
-          return NextResponse.json(run.value, { headers: sourceHeaders(run.providers, run.notes) });
+          const t0 = performance.now();
+          const run = await withProvenance(() => withMode("interactive", () => portfolioView(holdings)));
+          flushLater();
+          return NextResponse.json(run.value, { headers: sourceHeaders(run, t0) });
         }
         case "skills": {
           const key = typeof body?.key === "string" ? body.key.toUpperCase() : "";

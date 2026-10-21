@@ -16,6 +16,7 @@ import { insiderTransactions } from "../edgar/insiders";
 import { evaluateScript } from "../calc";
 import { isTimeout, logError, looksInternal } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
+import { fmtChange } from "@/lib/market/units";
 
 export type Source = { id: string; label: string; url: string };
 export type ToolCtx = { addSource: (label: string, url: string) => string };
@@ -31,10 +32,19 @@ export function def<T>(t: Omit<ToolDef<T>, "parameters">): ToolDef<T> {
   return { ...t, parameters: z.toJSONSchema(t.schema) as Record<string, unknown> };
 }
 
+/** Where a person can check a price, by the feed that supplied it (`c.price.source`). */
+const PRICE_SOURCE_URL: Record<string, (ticker: string) => string> = {
+  FMP: () => "https://financialmodelingprep.com/",
+  Nasdaq: (t) => `https://www.nasdaq.com/market-activity/stocks/${t.toLowerCase().replace(/[.-]/g, ".")}`,
+};
+
 function summarize(c: CompanyData, ctx: ToolCtx) {
   const d = derive(c);
   const src = ctx.addSource(`${c.ticker} SEC XBRL company facts, LTM to ${c.ltm.periodEnd} (${c.sources.concepts.revenue ?? "revenue"})`, c.sources.factsUrl);
-  const px = c.price ? ctx.addSource(`${c.ticker} price and market cap, FMP, ${c.price.asOf.slice(0, 16)}Z`, `https://financialmodelingprep.com/`) : null;
+  // Cite the feed that actually answered (FMP, or the Nasdaq backup), at its own as-of time, and say when it is stale or delayed.
+  const feed = c.price?.source ?? "FMP";
+  const flags = c.price ? [c.price.stale ? "stale" : "", c.price.delayed ? "delayed" : ""].filter(Boolean).join(", ") : "";
+  const px = c.price ? ctx.addSource(`${c.ticker} price and market cap, ${feed}, as of ${c.price.asOf.slice(0, 16)}Z${flags ? ` (${flags})` : ""}`, PRICE_SOURCE_URL[feed]?.(c.ticker) ?? "https://financialmodelingprep.com/") : null;
   return {
     ticker: c.ticker, name: c.name, source: src, price_source: px, sic: `${c.sic} ${c.sicLabel}`, fye: c.fye, hq: c.hq, industry: c.industry,
     description: c.description.slice(0, 600),
@@ -42,7 +52,7 @@ function summarize(c: CompanyData, ctx: ToolCtx) {
       operating_income: c.ltm.operatingIncome, operating_margin: d.opMargin, da: c.ltm.da, ebitda_reported: c.ltm.ebitda, sbc: c.ltm.sbc, adj_ebitda_ex_sbc: c.ltm.adjEbitda,
       operating_cash_flow: c.ltm.operatingCashFlow, capex: c.ltm.capex, fcf: d.fcf, fcf_margin: d.fcfMargin, net_income: c.ltm.netIncome, rule_of_40: d.ruleOf40 },
     balance_usd_mm: { as_of: c.balance.asOf, cash_and_st_investments: c.balance.cash, debt: c.balance.debt, net_debt: d.netDebt, shares_out_mm: c.balance.sharesOut },
-    valuation_usd_mm: c.price ? { price: c.price.last, change_pct: c.price.changePct, market_cap: d.marketCap, enterprise_value: d.ev, ev_to_ltm_revenue: d.evRevLtm, ev_to_ltm_ebitda: d.evEbitdaLtm, ev_to_adj_ebitda: d.evAdjEbitdaLtm, ev_to_fcf: d.evFcf, pe_ltm: d.peLtm, ntm_estimates: "not available (no estimates source)" } : null,
+    valuation_usd_mm: c.price ? { price: c.price.last, change_today: fmtChange(c.price.changePct), market_cap: d.marketCap, enterprise_value: d.ev, ev_to_ltm_revenue: d.evRevLtm, ev_to_ltm_ebitda: d.evEbitdaLtm, ev_to_adj_ebitda: d.evAdjEbitdaLtm, ev_to_fcf: d.evFcf, pe_ltm: d.peLtm, ntm_estimates: "not available (no estimates source)" } : null,
     quarterly_revenue: c.quarters.map((q) => `${q.label} (${q.end}): ${q.revenue}`),
     recent_filings: c.filings.slice(0, 6).map((f) => `${f.form} filed ${f.filed}${f.period ? ` for period ${f.period}` : ""}`),
     xbrl_concepts_used: c.sources.concepts, derivation_notes: c.sources.notes,
@@ -51,7 +61,7 @@ function summarize(c: CompanyData, ctx: ToolCtx) {
 
 export const getCompanyTool = def({
   name: "get_company_financials",
-  description: "Fundamentals for a US-listed company from SEC XBRL (LTM income statement, cash flow, balance sheet, quarterly revenue) plus price, market cap, and EV from FMP. USD millions.",
+  description: "Fundamentals for a US-listed company from SEC XBRL (LTM income statement, cash flow, balance sheet, quarterly revenue) plus price, market cap, and EV from the price feed that answered (FMP, or a backup; the price source says which and when). USD millions.",
   schema: z.object({ ticker: z.string().describe("Ticker symbol, e.g. SNOW") }),
   run: async ({ ticker }, ctx) => {
     const c = await getCompanyData(ticker);

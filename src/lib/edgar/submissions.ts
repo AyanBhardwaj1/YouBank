@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { parseOrThrow } from "@/lib/market/validate";
 import { HOUR, edgarJson } from "./client";
 
 export type Submissions = {
@@ -26,8 +28,23 @@ export function submissionsUrl(cik: string) {
   return `https://data.sec.gov/submissions/CIK${cik}.json`;
 }
 
-export function getSubmissions(cik: string): Promise<Submissions> {
-  return edgarJson<Submissions>(submissionsUrl(cik), `submissions-${cik}.json`, 6 * HOUR);
+export async function getSubmissions(cik: string): Promise<Submissions> {
+  return parseSubmissions(await edgarJson<unknown>(submissionsUrl(cik), `submissions-${cik}.json`, 6 * HOUR));
+}
+
+const strs = z.array(z.string().nullable().transform((v) => v ?? ""));
+const SubmissionsSchema = z.looseObject({
+  cik: z.union([z.string(), z.number()]).transform(String), name: z.string(), sic: z.string().nullish().transform((v) => v ?? ""),
+  sicDescription: z.string().nullish().transform((v) => v ?? ""), fiscalYearEnd: z.string().nullish().transform((v) => v ?? ""),
+  tickers: z.array(z.string()), exchanges: z.array(z.string().nullable().transform((v) => v ?? "")),
+  filings: z.looseObject({
+    recent: z.looseObject({ accessionNumber: strs, filingDate: strs, reportDate: strs, form: strs, primaryDocument: strs, primaryDocDescription: strs, items: strs.optional() }),
+  }),
+});
+
+/** A submissions answer, checked (drift is SourceError "schema"). */
+export function parseSubmissions(raw: unknown): Submissions {
+  return parseOrThrow(SubmissionsSchema, raw, "SEC EDGAR", "submissions") as Submissions;
 }
 
 export function filingUrl(cik: string, accession: string, primaryDoc: string) {

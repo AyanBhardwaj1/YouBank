@@ -2,7 +2,9 @@
 
 import type { Command } from "@/lib/functions";
 import type { AssetRow } from "@/lib/terminal/markets";
-import type { Deal, Mover } from "@/lib/market/fmp";
+import type { Deal } from "@/lib/market/fmp";
+import type { MoverRow as Mover } from "@/lib/terminal/markets";
+import { fmtChange, NA } from "@/lib/market/units";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { AiRead, AskAi, BarList, DataTable, fn, fp, Frame, fsp, Heat, Hint, Section, Tile, Tiles, tone, useTerminal, Why, type Column } from "../kit";
 
@@ -15,7 +17,8 @@ function assetColumns(extra: Column<AssetRow>[] = []): Column<AssetRow>[] {
   return [
     ...extra,
     { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span><span className="text-fg">{r.name}</span> <span className="num text-[10px] text-faint">{r.symbol}</span>{r.via && <span className="ml-1 rounded border border-line px-1 text-[9.5px] text-muted" title={r.via === "AI research" ? "Latest level researched on the web; no history" : r.via === "ECB fixing" ? "The ECB's daily reference rate" : `Returns of the ${r.via} ETF, which tracks it; the level shown is the ETF's`}>via {r.via}</span>}</span> },
-    { key: "price", label: "Last", value: (r) => r.price, render: (r) => px(r.price) },
+    // An ETF standing in for an index or commodity: its level is the ETF's, so the label says so beside it.
+    { key: "price", label: "Last", value: (r) => r.price, render: (r) => (r.price === null ? NA : r.label ? <span title={`${r.label}: the ETF's price, not the ${r.name} level`}>{px(r.price)} <span className="text-[9.5px] text-faint">{r.label}</span></span> : px(r.price)) },
     { key: "d1", label: "1D", value: (r) => r.d1, render: (r) => <Heat v={r.d1} scale={0.02} /> },
     { key: "z", label: "1D in σ", title: "The day's move divided by the asset's typical daily move over the last year", value: (r) => r.z, render: (r) => <span className={r.z !== null && Math.abs(r.z) >= 2 ? "font-semibold text-chart-emphasis" : "text-muted"}>{r.z === null ? "—" : `${r.z >= 0 ? "+" : ""}${r.z.toFixed(1)}σ`}</span> },
     { key: "w1", label: "1W", value: (r) => r.w1, render: (r) => <Heat v={r.w1} scale={0.04} /> },
@@ -67,7 +70,7 @@ export function MostScreen({ onRun }: Props) {
     { key: "symbol", label: "Ticker", align: "left", value: (r) => r.symbol, render: (r) => <span className="num font-semibold text-accent">{r.symbol}</span> },
     { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span className="block max-w-[180px] truncate">{r.name}</span> },
     { key: "price", label: "Price", value: (r) => r.price, render: (r) => fn(r.price) },
-    { key: "chg", label: "Change", value: (r) => r.changesPercentage, render: (r) => fsp(r.changesPercentage / 100), className: (r) => tone(r.changesPercentage) },
+    { key: "chg", label: "Change", value: (r) => r.changePct, render: (r) => fmtChange(r.changePct, 1), className: (r) => tone(r.changePct) },
   ];
   const open = (r: Mover) => onRun?.({ ticker: r.symbol, fn: "DES", via: "click" });
   return (

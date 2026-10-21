@@ -17,7 +17,7 @@ import { z } from "zod";
 import { requireDb, schema } from "@/db";
 import { structured } from "@/lib/ai/agent";
 import { edgarFetch } from "@/lib/edgar/client";
-import { getCompanyFacts, instantAt, latestEnd, ltmAt, pickConcept } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, instantAt, latestEnd, ltmAt, pickConcept } from "@/lib/edgar/facts";
 import { filingUrl, getSubmissions } from "@/lib/edgar/submissions";
 import { tickerByName } from "@/lib/edgar/tickers";
 import { failureMessage } from "@/lib/errors";
@@ -239,7 +239,7 @@ export async function ingestCompany(cikIn: string, deadline: number): Promise<In
 
   // 7. Size (XBRL, monthly) and headquarters (once).
   if (time() && (!seen.facts || seen.facts < daysAgo(30))) await step("facts", async () => {
-    const cf = await getCompanyFacts(cik.padStart(10, "0"));
+    const cf = await getCompanyFactsFull(cik.padStart(10, "0"));
     const assetRows = pickConcept(cf, ["Assets"])?.rows ?? [];
     const revRows = pickConcept(cf, ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenuesNetOfInterestExpense"])?.rows ?? [];
     // Equity (partners' or members' capital for partnerships and LLCs) stands in for section 8's capital test (algo.ts).

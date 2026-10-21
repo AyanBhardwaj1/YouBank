@@ -8,7 +8,8 @@ import { z } from "zod";
 import { structured } from "@/lib/ai/agent";
 import type { AiPrefs } from "@/lib/ai/models";
 import { tickerMap } from "@/lib/edgar/tickers";
-import { frame, frameAny, lastFullYear } from "@/lib/market/frames";
+import { CHAINS } from "@/lib/edgar/concepts";
+import { frame, frameChain, lastFullYear } from "@/lib/market/frames";
 import { percentRank } from "@/lib/inference/stats";
 
 export const METRICS = {
@@ -28,15 +29,14 @@ export type Metric = keyof typeof METRICS;
 export type Filter = { metric: Metric; op: ">" | "<" | ">=" | "<="; value: number };
 export type ScreenRow = { cik: string; ticker: string | null; name: string } & Partial<Record<Metric, number | null>>;
 
-const REV = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenueFromContractWithCustomerIncludingAssessedTax"];
-
 /** The universe for the last full calendar year: one row per filer that reported revenue. */
 export async function universe(year = lastFullYear()): Promise<{ year: number; rows: ScreenRow[] }> {
   const Y = `CY${year}`, P = `CY${year - 1}`, I = `CY${year}Q4I`;
   const [rev, revP, ni, oi, cfo, assets, equity, ltd, cash, tickers] = await Promise.all([
-    frameAny(REV, Y), frameAny(REV, P), frame("NetIncomeLoss", Y), frame("OperatingIncomeLoss", Y).catch(() => null),
-    frame("NetCashProvidedByUsedInOperatingActivities", Y).catch(() => null), frame("Assets", I).catch(() => null), frame("StockholdersEquity", I).catch(() => null),
-    frame("LongTermDebtNoncurrent", I).catch(() => null), frame("CashAndCashEquivalentsAtCarryingValue", I).catch(() => null), tickerMap(),
+    // The same concept chains DES and FCST read (edgar/concepts), so a company's revenue agrees across screens.
+    frameChain(CHAINS.revenue, Y), frameChain(CHAINS.revenue, P), frameChain(CHAINS.netIncome, Y), frameChain(CHAINS.operatingIncome, Y).catch(() => null),
+    frameChain(CHAINS.operatingCashFlow, Y).catch(() => null), frame("Assets", I).catch(() => null), frame("StockholdersEquity", I).catch(() => null),
+    frame("LongTermDebtNoncurrent", I).catch(() => null), frameChain(CHAINS.cash, I).catch(() => null), tickerMap(),
   ]);
   const byCik = new Map<string, string>();
   for (const t of tickers.values()) { const c = String(Number(t.cik)); if (!byCik.has(c)) byCik.set(c, t.ticker); }

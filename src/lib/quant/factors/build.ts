@@ -11,7 +11,7 @@
  */
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
-import { getCompanyFacts } from "@/lib/edgar/facts";
+import { getCompanyFactsFull } from "@/lib/edgar/facts";
 import { getJson, putJson, putObject, r2Ready } from "@/lib/edge/infra/r2";
 import { CURATED } from "@/lib/copytrade/funds";
 import { barReturns, storedBars, sliceBars } from "../pit/bars";
@@ -44,7 +44,7 @@ export async function refreshFactsSlice(n: number, deadline: number): Promise<{ 
   for (const m of order.slice(0, n)) {
     if (Date.now() > deadline) break;
     try {
-      const cf = await getCompanyFacts(m.cik!);
+      const cf = await getCompanyFactsFull(m.cik!);
       const gp = firstFacts(cf, CONCEPTS.grossProfit);
       const facts: Facts = { shares: compact(sharesFacts(cf)), equity: compact(firstFacts(cf, CONCEPTS.equity)), assets: compact(firstFacts(cf, CONCEPTS.assets)), grossProfit: compact(gp.length ? gp : derivedGrossProfit(cf)), netIncome: compact(firstFacts(cf, CONCEPTS.netIncome)) };
       await putJson(factsKey(m.cik!), facts);

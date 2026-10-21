@@ -13,7 +13,7 @@
 import { sql } from "drizzle-orm";
 import { requireDb } from "@/db";
 import { edgarFetch } from "@/lib/edgar/client";
-import { getCompanyFacts } from "@/lib/edgar/facts";
+import { getCompanyFactsFull } from "@/lib/edgar/facts";
 import { getSubmissions } from "@/lib/edgar/submissions";
 import { tickerMap } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
@@ -43,7 +43,7 @@ export async function fetchRaw(cik: string, listed: boolean, ticker = "", opts: 
     const res = await edgarFetch(`https://data.sec.gov/submissions/${f.name}`).catch(() => null);
     if (res?.ok) filings = filings.concat(compactFilings(cik, (await res.json()) as SubmissionsFull["filings"]["recent"]));
   }
-  const facts = opts.keepFacts ?? (await getCompanyFacts(padded).then((cf) => compactFacts(cf as never)).catch(() => ({})));
+  const facts = opts.keepFacts ?? (await getCompanyFactsFull(padded).then((cf) => compactFacts(cf as never)).catch(() => ({})));
   return { cik, name: sub.name, ticker: ticker || sub.tickers?.[0] || "", sic: sub.sic ?? "", listed, facts, filings, fetchedAt: new Date().toISOString() };
 }
 

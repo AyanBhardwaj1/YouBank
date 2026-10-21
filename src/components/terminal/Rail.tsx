@@ -8,6 +8,7 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { FUNCTIONS, type Command, type FunctionCode } from "@/lib/functions";
 import type { OpenPanel } from "./Terminal";
 import { LogoMark } from "@/components/brand/Logo";
+import { changeTone, fmtChange } from "@/lib/market/units";
 
 const shortName = (name: string) =>
   name.replace(/,?\s+(Inc\.?|N\.V\.|Technologies Inc\.?|Corp\.?|plc|Holdings)$/i, "").replace(/ Technologies$/, "").trim();
@@ -53,7 +54,7 @@ export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "asi
                   </span>
                   <span className="flex items-baseline justify-between text-[10.5px]">
                     <span className="truncate text-muted">{c ? shortName(c.name) : failed ? "unavailable" : "loading…"}</span>
-                    {chg !== null && <span className={`num ${chg >= 0 ? "text-pos" : "text-neg"}`}>{chg >= 0 ? "+" : ""}{chg.toFixed(2)}%</span>}
+                    {chg !== null && <span className={`num ${changeTone(chg)}`}>{fmtChange(chg)}</span>}
                   </span>
                 </span>
                 {c && c.quarters.length > 1 && (

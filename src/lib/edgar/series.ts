@@ -1,4 +1,4 @@
-import { getCompanyFacts, normalize } from "./facts";
+import { getCompanyFactsFull, normalize } from "./facts";
 
 export type SeriesPoint = { end: string; value: number; form?: string; fy?: number };
 export type ConceptSeries = { concept: string; unit: string; annual: SeriesPoint[]; quarterly: SeriesPoint[]; instants: SeriesPoint[]; error?: string };
@@ -6,7 +6,7 @@ export type ConceptMatch = { taxonomy: string; concept: string; unit: string; co
 
 /** Time series for XBRL concepts (raw units) and a regex finder for concept names. */
 export async function conceptSeries(cik: string, concepts: string[], periods = 8): Promise<ConceptSeries[]> {
-  const cf = await getCompanyFacts(cik);
+  const cf = await getCompanyFactsFull(cik);
   return concepts.map((c) => {
     const [tax, name] = c.includes(":") ? c.split(":") : ["us-gaap", c];
     const units = cf.facts[tax]?.[name]?.units;
@@ -15,7 +15,7 @@ export async function conceptSeries(cik: string, concepts: string[], periods = 8
     const rows = normalize(raw);
     return {
       concept: c, unit,
-      annual: rows.filter((r) => r.start && r.days >= 350 && r.days <= 380).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form, fy: r.fy })),
+      annual: rows.filter((r) => r.start && r.days >= 350 && r.days <= 380).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form, fy: r.fy ?? undefined })),
       quarterly: rows.filter((r) => r.start && r.days >= 60 && r.days <= 100).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form })),
       instants: rows.filter((r) => !r.start).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form })),
     };
@@ -23,7 +23,7 @@ export async function conceptSeries(cik: string, concepts: string[], periods = 8
 }
 
 export async function findConcepts(cik: string, pattern: string, limit = 60): Promise<ConceptMatch[]> {
-  const cf = await getCompanyFacts(cik);
+  const cf = await getCompanyFactsFull(cik);
   const re = new RegExp(pattern, "i");
   const out: ConceptMatch[] = [];
   for (const [tax, byConcept] of Object.entries(cf.facts)) for (const [concept, v] of Object.entries(byConcept)) {

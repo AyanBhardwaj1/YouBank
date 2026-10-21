@@ -135,7 +135,9 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
    rm .env.production.local
    ```
    `finish` is safe to re-run; it skips what exists. Run it again after any deploy that adds a
-   `drizzle/NNNN_*.sql`.
+   `drizzle/NNNN_*.sql`. `drizzle-kit push --force` is for this first, empty database only: never re-run
+   it (or `push` without `--strict`) against a live one, where it drops indexes the SQL files create that
+   `schema.ts` does not list. A drift check is `pnpm exec drizzle-kit push --strict`, answering "No".
 4. **Deploy** (push to `main`, or `vercel --prod`).
 5. **Check** (see [Health](#health-and-monitoring)):
    ```bash
@@ -207,6 +209,11 @@ Anyone sees the verdict and counts. Operators (`Authorization: Bearer $CRON_SECR
 `ADMIN_EMAILS` address) also see the names of missing settings, which migration is missing which tables (and
 the command that fixes it), which features are on, and the real-money switches. Values are never included.
 
+**Market data.** `GET /api/market/health` (Bearer `CRON_SECRET`) probes every data source from the
+deployment and shows the last hour's p50/p95, error rate, fallbacks and circuit breaker per source.
+[data-layer.md](data-layer.md) explains the sources and their fallbacks, latency budgets, stale data,
+breakers, and how to measure real latency with `scripts/data-latency.mts`.
+
 **Logs.** Every failure a person sees as "Something went wrong on our side (ref abcd1234)" is one JSON line
 in Vercel → Logs: search for the ref, or for `"level":"error"`. Each line has `ref`, `status`, `where`, a
 hashed user tag, the error and a short stack; Vercel groups lines under their request (path, status,
@@ -228,7 +235,7 @@ or on Pro a log drain (Vercel → Settings → Log Drains) to Better Stack, Axio
 | **Vercel** | The offline banner ("Couldn't reach YouBank, retrying") or nothing loads | vercel-status.com. Nothing to do but wait; a bad deploy: Deployments → previous → Promote to Production. |
 | **A bad deploy** | Errors after a push | Instant rollback: Deployments → the previous production deployment → Promote. Tabs on the bad build reload on their next navigation. |
 | **OpenAI / Anthropic** | AI answers fail with "took too long" or "our side" | Switch `AI_PROVIDER` (if both keys are set) and redeploy, or `AI_DISABLED=1`; everything else works. AI calls time out at 120 s with one retry. |
-| **FMP** | Prices from the backups, some screens empty | If `fmp:daily-limit` is in `kv_cache`, the plan quota is spent (resets daily; upgrade the plan). 5xx are retried once. |
+| **FMP** | Prices from the backups (badge), or cached prices flagged stale | If `fmp:daily-limit` is in `kv_cache`, the plan quota is spent (resets daily; upgrade the plan). After 10 failures in a minute its breaker opens and FMP is skipped for 30 s at a time (`/api/market/health`; [data-layer.md](data-layer.md)). |
 | **SEC EDGAR** | Filings slow or "SEC asked us to slow down" | A 429/403 starts a one-minute shared back-off (`edgar:backoff` in `kv_cache`). Check `EDGAR_USER_AGENT` has a real email. |
 | **Stripe** | Checkout or the portal fails | status.stripe.com. Payments are confirmed by the webhook later; Stripe retries webhooks for three days. Nothing is lost. |
 | **Inngest** | Background runs queue | Work already queued resumes; with jobs off, long work runs in the request. Check Inngest → Apps for a sync error after a domain change. |
