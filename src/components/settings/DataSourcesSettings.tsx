@@ -166,8 +166,9 @@ function SourceItem({ s, i, last, onMove }: { s: SourceRow; i: number; last: boo
       <span className="text-[10.5px] text-muted">{s.freshness}</span>
       {!s.eligible && <span className="rounded border border-line px-1.5 text-[10px] text-muted" title={s.reason}>{s.needsKey ? "Needs key" : "Unavailable"}</span>}
       <span className="ml-auto flex gap-1">
-        <button type="button" className={btn} disabled={i === 0} onClick={() => onMove(i, -1)} aria-label={`Move ${s.label} up`}>↑</button>
-        <button type="button" className={btn} disabled={last} onClick={() => onMove(i, 1)} aria-label={`Move ${s.label} down`}>↓</button>
+        {/* aria-disabled, not disabled: a button that becomes disabled under the keyboard drops focus to the page. */}
+        <button type="button" className={`${btn} aria-disabled:opacity-40`} aria-disabled={i === 0} onClick={() => onMove(i, -1)} aria-label={`Move ${s.label} up`}>↑</button>
+        <button type="button" className={`${btn} aria-disabled:opacity-40`} aria-disabled={last} onClick={() => onMove(i, 1)} aria-label={`Move ${s.label} down`}>↓</button>
       </span>
       {!s.eligible && s.reason && <span className="w-full pl-6 text-[10.5px] text-muted">{s.reason}</span>}
     </li>

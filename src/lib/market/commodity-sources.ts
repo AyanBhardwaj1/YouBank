@@ -43,6 +43,7 @@ export async function eiaSpot(symbol: string, from: string): Promise<{ date: str
 const PINK_SHEET_URL = "https://thedocs.worldbank.org/en/doc/5d903e848db1d1b83e0ec8f744e55570-0350012021/related/CMO-Historical-Data-Monthly.xlsx";
 const PINK_SHEET_HOST = "thedocs.worldbank.org";
 const PINK_SHEET_TTL_MS = 24 * HOUR;
+const PINK_SHEET_MAX_BYTES = 25 * 1024 * 1024;
 const LB_PER_TONNE = 2_204.62;
 const BU_PER_TONNE_CORN = 39.368;
 const BU_PER_TONNE_WHEAT = 36.744;
@@ -98,7 +99,11 @@ async function pinkSheet(): Promise<Record<string, { date: string; value: number
   const e = await cacheEntry("worldbank:pinksheet:v1", PINK_SHEET_TTL_MS, () => callSource("worldbank", "pink-sheet", async () => {
     const res = await fetchRetry(pinkSheetUrl(), { cache: "no-store", timeoutMs: budget().macroTimeoutMs * 2 });
     if (!res.ok) throw Object.assign(new Error(`World Bank ${res.status}`), { status: res.status });
-    return parsePinkSheet(await res.arrayBuffer());
+    // The workbook is a few megabytes; anything far larger is not it (and is never unzipped).
+    if (Number(res.headers.get("content-length") ?? 0) > PINK_SHEET_MAX_BYTES) throw Object.assign(new Error("World Bank workbook too large"), { status: 502 });
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > PINK_SHEET_MAX_BYTES) throw Object.assign(new Error("World Bank workbook too large"), { status: 502 });
+    return parsePinkSheet(buf);
   }, { label: "The World Bank's Pink Sheet" }), { shared: true, staleMs: PINK_SHEET_TTL_MS, staleIfErrorMs: MACRO_STALE_IF_ERROR_MS });
   if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
   return e.value;

@@ -7,7 +7,7 @@
  * answer for you (no key, switched off) are listed, disabled, with the reason. A native select, so it
  * works from the keyboard and with screen readers.
  */
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useId, useState } from "react";
 import { errorMessage } from "@/lib/client/errors";
 import { loadDataSources, saveOrder } from "@/lib/client/data-sources";
 import type { DatasetView } from "@/lib/market/byo/settings";
@@ -24,6 +24,8 @@ const ORDER = "";
 
 export function SourceChip({ dataset, answered }: { dataset: DatasetName; answered?: string }) {
   const panel = useContext(PanelSourceContext);
+  // One id per chip: two panels can show the same dataset's chip at once.
+  const selectId = useId();
   const [list, setList] = useState<DatasetView | null>(null);
   const [state, setState] = useState<{ open?: boolean; busy?: boolean; note?: string }>({});
   if (!panel) return null;
@@ -41,8 +43,8 @@ export function SourceChip({ dataset, answered }: { dataset: DatasetName; answer
   }
   return (
     <span className="ml-auto flex items-center gap-1">
-      <label className="sr-only" htmlFor={`src-${dataset}`}>Data source for this panel</label>
-      <select id={`src-${dataset}`} autoFocus disabled={state.busy || !list} value={panel.source ?? ORDER} onChange={(e) => panel.setSource(e.target.value || undefined)} onKeyDown={(e) => { if (e.key === "Escape") setState({}); }} className="ctl border border-line bg-bg px-1 py-px text-[10.5px] text-fg">
+      <label className="sr-only" htmlFor={selectId}>Data source for this panel</label>
+      <select id={selectId} autoFocus disabled={state.busy || !list} value={panel.source ?? ORDER} onChange={(e) => panel.setSource(e.target.value || undefined)} onKeyDown={(e) => { if (e.key === "Escape") setState({}); }} className="ctl border border-line bg-bg px-1 py-px text-[10.5px] text-fg">
         <option value={ORDER}>Your order (Settings)</option>
         {list?.sources.map((s) => <option key={s.id} value={s.id} disabled={!s.eligible} title={s.reason}>{s.label} · {s.licenceLabel}{s.eligible ? "" : ` · ${s.needsKey ? "needs key" : "unavailable"}`}</option>)}
       </select>
