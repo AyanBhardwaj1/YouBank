@@ -11,27 +11,34 @@ chain of adapters; the default order is below. Adding a source is one entry ther
 
 | Dataset | Default chain (first answers; the next on any failure) | Notes |
 |---|---|---|
-| `daily-bars` (stocks, ETFs, indices, commodities) | FMP → Nasdaq | Indices and commodities use a tracking ETF on Nasdaq (S&P 500 via SPY), labelled `via` |
-| `fx` | FMP → ECB reference rates | ECB is a daily fixing, labelled "ECB fixing" |
+| `daily-bars` (stocks, ETFs, indices) | FMP → Nasdaq | Indices use a tracking ETF on Nasdaq (S&P 500 via SPY), labelled `via` |
+| `fx` | FMP → ECB reference rates (Frankfurter, then the ECB's own API) → Fed H.10 (via FRED) | ECB is a daily fixing, labelled "ECB fixing"; H.10 is the noon New York rate |
+| `commodity` (CMDTY) | FMP → EIA spot → Nasdaq ETF stand-ins → World Bank Pink Sheet (monthly) | EIA covers WTI, Brent, Henry Hub; monthly rows show no daily move |
+| `cot` (CMDTY positioning) | CFTC Commitments of Traders | Weekly, Tuesday positions |
 | `crypto` (BTC, ETH, SOL bars) | FMP → CoinGecko | |
 | `quote` | FMP → Nasdaq | Not for FX, crypto or proxied symbols (boards use the last close) |
-| `profile` (DES/FA/COMPS price, cap, range) | FMP → Nasdaq | |
+| `profile` (DES/FA/COMPS price, cap, range) | FMP → Nasdaq → SEC EDGAR | SEC fills name, exchange and a SIC-based sector; never a price |
 | `fundamentals`, `filings` | SEC EDGAR | A stale copy stands in when SEC fails |
-| `deals` (MA) | FMP → SEC full-text search | |
-| `movers` (MOST) | FMP → Nasdaq | |
+| `earnings` (EE) | FMP → Nasdaq → SEC filings → AI research | SEC: reported EPS and revenue, dated by the 8-K Item 2.02; no estimates |
+| `analysts` (ANR) | FMP → Nasdaq → AI research | No free licensed source |
+| `dividends` (DVD) | FMP → Nasdaq → SEC filings → AI research | SEC: per share by fiscal quarter; no ex or pay dates |
+| `deals` (MA) | FMP → SEC full-text search (merger forms) | |
+| `movers` (MOST) | FMP → Nasdaq | No free licensed source |
 | `sectors` (SECT) | FMP → SPDR sector ETFs on Nasdaq | |
-| `curve` (GC, WACC) | US Treasury | A stale copy stands in |
-| `macro` (ECO) | FRED, BLS (each covers its own series) | A stale copy stands in |
-| `earnings`, `estimates`, `analysts`, `dividends` | FMP → Nasdaq → (SEC for dividends) → AI research | Staged: `terminal/street.ts` runs them in this order |
-| `crypto-market`, `defi` | CoinGecko; DefiLlama | Staged: `crypto/*` |
-| `intraday` | none yet | |
+| `curve` (GC, WACC) | US Treasury → Fed H.15 (via FRED) | A stale copy stands in; WACC reads the Treasury only |
+| `macro` (ECO) | per series: BLS, BEA, EIA or the Treasury → FRED | FRED only where no original answers; never cached |
+| `estimates` | FMP → Nasdaq → AI research | Staged: `terminal/street.ts` (FCST) |
+| `crypto-market`, `defi`, `news` | CoinGecko; DefiLlama; EDGAR, Federal Register, GDELT | Staged: `crypto/*`, the news pipeline |
+| `intraday` | none | No free licensed source |
 
-Backups (Nasdaq, the ECB, CoinGecko, AI research) are off with `MARKET_BACKUP=off`.
+The unverified backups (Nasdaq, CoinGecko, AI research) are off with `MARKET_BACKUP=off`. Public sources
+(SEC, the Treasury, BLS, BEA, the EIA, the ECB, the World Bank, the CFTC) are not affected by it.
 
-**Per-request order.** `resolveChain(dataset, { prefer, exclude })` puts preferred adapter ids first and
-removes excluded ones; `fromChain(dataset, args, opts)`, `historyFrom(…, opts)`, `quotes(…, opts)` and
-`quoteProfile(symbol, opts)` take the same options. Without options the default order applies. Nothing
-is stored per person yet. The adapter that answered is in the response's `x-data-sources`
+**Per-request order.** `resolveChain(dataset, { prefer, exclude, append })` puts preferred adapter ids
+first, then the default order, then appended ones, and removes excluded ones; `fromChain(dataset, args,
+opts)`, `historyFrom(…, opts)`, `quotes(…, opts)` and `quoteProfile(symbol, opts)` take the same options.
+A request made for a person (`withDataUser`, see "Free sources & your own keys") uses that person's
+saved order. Without either the default order applies. The adapter that answered is in the response's `x-data-sources`
 (`sources: [{ id, label, provider }]`). Both routes build that header and Server-Timing with one
 function, `sourceHeaders()` in `src/lib/market/source-header.ts`: providers, notes (an ETF stand-in's
 label, "S&P 500 via SPY", which the registry also returns as the data's `label`), sources, the oldest
@@ -97,7 +104,8 @@ per entry:
 | Nasdaq, ECB, CoinGecko | per endpoint | as long again | 1 day |
 | SEC documents, compact companyfacts | 6–12 h | as long again | 7 days |
 | Company record (`company_cache`) | 6 h | up to 7 days (rebuilt in the background) | 7 days |
-| Treasury curve, FRED, BLS | 2 h, 12 h | as long again | 3 days |
+| Treasury curve (per year: this one 2 h, past ones 7 days), BLS, BEA, EIA, CFTC, World Bank | 2 h to 24 h | as long again | 3 days |
+| FRED (H.15, H.10 and the ECO fallback) | never cached: one request at most (FRED's terms) | no | no |
 
 Stale answers are flagged in `x-data-sources` (`stale: true`, `oldestFetchedAt`) and in Server-Timing
 (`cache;desc="stale"`), so screens can show "Stale · as of …". A failed source is retried at most every
@@ -111,7 +119,7 @@ XBRL concept browser and background jobs use `getCompanyFactsFull()`.
 
 ## Circuit breakers
 
-One per source (`fmp`, `nasdaq`, `sec`, `treasury`, `fred`, `bls`, `ecb`, `coingecko`), shared by every
+One per source (`fmp`, `nasdaq`, `sec`, `treasury`, `fred`, `bls`, `bea`, `eia`, `ecb`, `worldbank`, `cftc`, `coingecko`; not the person-key sources, whose failures are one person's key), shared by every
 instance in a `kv_cache` row `breaker:<source>` (`src/lib/market/breaker.ts`):
 - **closed**: 10 outage-type failures within a minute open it (timeouts, network, 5xx, rate limits,
   schema; not "this symbol is not covered");
@@ -189,10 +197,143 @@ From the research behind this work (`research.md`; vendor terms change, so confi
 - **Delayed data notice**: exchange plans (UTP) treat 15-minute delayed display as mostly fee-free but
   require a visible "Delayed Data" notice. Screens should show the `delayed` flag from `x-data-sources`.
 - SEC, Treasury, BLS and FRED's public-domain series are free to display; some FRED series carry
-  third-party copyright (see `src/lib/market/fred.ts`).
+  third-party copyright (see `src/lib/market/fred.ts`). FRED's terms also bar caching and AI use: see
+  "Free sources & your own keys" below.
+
+
+## Free sources & your own keys
+
+Code: `src/lib/market/sources-meta.ts` (what each source is and its licence), `registry.ts` (which source
+serves what, in which order), `user-context.ts` (whose request), `byo/` (keys, their cache, the providers),
+`fields.ts` (field-level fallthrough), `badges.ts` (what a screen says). Tests: `scripts/test-datasources.ts`
+(stubbed providers built from their documented answers; no live data was fetched in writing them).
+
+### Licences
+
+Every adapter declares its licence, the credit it requires, its delay and the fields it fills; a test
+fails if one does not, or if a dataset has no public, attribution or owner-licensed source and no
+"no free source" note. Classes from the research (`free-sources.md`): (a) public, (a\*) public with
+restrictions, (b) free with attribution, (b?) unconfirmed, (c) personal only.
+
+| Licence in the registry | Class | Sources | Shown to |
+|---|---|---|---|
+| `public` | (a) | SEC EDGAR, US Treasury, BLS, BEA, EIA, CFTC, Federal Register | everyone; credit shown |
+| `attribution` | (a), (a\*), (b) | ECB (cross rates "derived by YouBank", for information only), World Bank Pink Sheet (CC BY 4.0), FRED and the Fed's H.15/H.10 via FRED (a\*: no caching, no AI), GDELT (cite and link) | everyone; credit shown word for word |
+| `owner-licensed` | per contract | FMP (YouBank's account) | everyone, subject to the owner's FMP display terms |
+| `unverified` | (b?), (?) | Nasdaq.com, CoinGecko, DefiLlama, AI web research | everyone today; badged "Terms unverified"; Nasdaq, CoinGecko and research are off with `MARKET_BACKUP=off` |
+| `user-key` | (c) | Tiingo, Twelve Data, Alpha Vantage, Finnhub, FMP with the person's own key | the key's owner only |
+
+**Default chains by command, after this change** (first answers; licence class in brackets):
+
+| Command | Chain |
+|---|---|
+| GP, HP, BETA, RISK, PORT, WEI | FMP (owner) → Nasdaq.com (unverified). No class a/b free source for prices (IEX HIST is next-day pcap; not built) |
+| DES, COMPS (price, profile) | FMP (owner) → Nasdaq.com (unverified) → SEC submissions + SIC sector (a; never a price) |
+| FA, CAP, DDIS, QUAL, XBRL, EQS, IRAT | SEC companyfacts and frames (a) |
+| FIL, EVT, INS | SEC submissions and Form 4 (a) |
+| EE | FMP (owner) → Nasdaq.com (unverified) → SEC XBRL EPS + 8-K 2.02 dates (a) → AI research (unverified) |
+| ANR | FMP (owner) → Nasdaq.com (unverified) → AI research (unverified); no free source |
+| DVD | FMP (owner) → Nasdaq.com (unverified) → SEC XBRL dividends per share (a) → AI research (unverified) |
+| FCST (estimates) | FMP (owner) → Nasdaq.com → AI research; no free source |
+| MA | FMP (owner) → SEC full-text search on merger forms (a) |
+| MOST | FMP (owner) → Nasdaq.com (unverified); no free source |
+| SECT | FMP (owner) → SPDR ETFs on Nasdaq.com (unverified) |
+| GC | US Treasury par curve (a) → Fed H.15 via FRED (a\*, uncached) |
+| ECO | per series: BLS (a) for CPI, core CPI, unemployment, payrolls; BEA (a) for real GDP, core PCE prices; EIA (a) for WTI; Treasury (a) for the 10-year and its spreads → FRED (a\*, uncached) for the rest (claims, IP, retail sales, housing starts, fed funds, Moody's spread, the broad dollar) |
+| FXC | FMP (owner) → ECB via Frankfurter, then the ECB's API (a) → Fed H.10 via FRED (a\*, uncached) |
+| CMDTY | FMP (owner) → EIA spot for WTI, Brent, Henry Hub (a) → ETF stand-ins on Nasdaq.com (unverified) → World Bank Pink Sheet, monthly (a, CC BY 4.0); CFTC COT positioning (a); crypto rows FMP → CoinGecko (unverified) |
+| CRYP, TOKEN, DEFI, STBL, YLD, RWA | CoinGecko, DefiLlama (unverified) |
+| TOP, NI, CN | EDGAR (a), Federal Register (a), GDELT (b) |
+
+**What changed in the defaults** (all class-a data the app already relied on, or new fallbacks after the
+existing ones):
+- ECO: each series comes from its original publisher first; FRED, which was first for all 17 tiles, is now
+  the fallback, and is never cached (it was cached 12 hours in kv_cache, against its June 2024 terms).
+- EE: SEC filings answer before AI research when FMP and Nasdaq fail (actuals only; estimates say why
+  they are empty).
+- CMDTY: the EIA's spot prices answer before the ETF stand-ins for WTI, Brent and Henry Hub.
+- FX and GC gain the Fed's H.10 and H.15 (via FRED) after the ECB and the Treasury.
+- DES gains SEC as a last source, which can fill a missing name, exchange or sector, never a price.
+- `MARKET_BACKUP=off` now switches off only the unverified backups; the ECB stays on.
+
+### FRED, FINRA and crypto caveats
+
+- **FRED.** The API terms (June 2024) bar "storing, caching, or archiving" FRED content, AI or ML use, and
+  passing third-party series on. So FRED is a fallback only, kept for one request at most
+  (`requestMemo`), shown with "Source: FRED, Federal Reserve Bank of St. Louis", and never sent to a model:
+  the AI read and the macro tool leave out every series FRED answered, and refuse a curve that came from
+  H.15 via FRED. The Fed's own download program (DDP) is being retired (Build-Your-Package removal
+  planned for the week of 9 November 2026), so H.15 and H.10 are read from FRED's copies.
+- **FINRA** short interest and short-sale volume: not built. FINRA's terms allow only non-commercial use.
+- **Crypto.** CoinGecko's free API and DefiLlama's terms are unconfirmed for a commercial product (marked
+  `unverified`, badged on screen). Exchange APIs (Coinbase, Kraken, Binance) are personal-use and not used.
+  CoinMarketCap Basic is the candidate to confirm.
+
+### Your own keys (bring your own key)
+
+A person may add a key for Tiingo, Twelve Data, Alpha Vantage, Finnhub or FMP in Settings → Data
+sources. Massive is not offered (its individual terms forbid sharing a key). Alpaca is not offered:
+Alpaca's documentation does not confirm that its OAuth tokens (which YouBank already holds for algo
+trading) may call the market-data API, so reusing them is left until Alpaca confirms.
+
+Rules, as built (each has a test):
+- **Stored encrypted.** One AES-256-GCM blob per person (`user_data_sources.keys_enc`, migration 0029,
+  `lib/crm/crypto` with `EMAIL_TOKEN_SECRET`); decrypted only on the server when a keyed source fetches.
+  The page sees the last four characters, the plan type and the last test; a key is never sent back.
+- **Plan type.** Each key records "individual" or "business". A team member adding an individual-plan
+  FMP, Alpha Vantage or Finnhub key is warned (those terms say "not on behalf of a company").
+- **Only for its owner.** Keyed answers are cached under `byo:v1:<hash of the person>:<provider>:…` in
+  kv_cache, nowhere else; never in the shared `cj1:` entries, `company_cache`, R2 bars or news sparks.
+  Shared code runs `publicOnly(…)` (the company record, R2 bar refreshes, news sparks), which sees the
+  default order and no keys.
+- **Never in jobs.** Keyed sources answer only inside `withDataUser` on an interactive request; background
+  mode (crons, Inngest, scripts) skips them with "never in background jobs". Only the terminal route and
+  the settings test set a data user (a test checks the source tree).
+- **Never shared or exported.** Keyed data appears only in the person's own terminal answers, sent
+  `private, no-store`. The AI read, exports, shared and collab views fetch their own data through the
+  shared path, so they show the public value or "—" with the reason.
+- **Purged on removal.** Removing (or replacing) a key deletes that person's cached data from that
+  provider (Finnhub's terms require deletion when a subscription ends).
+- **No key in logs, errors, headers or stats.** Keys go in headers where the provider allows (Tiingo,
+  Twelve Data, Finnhub) and in the query only for Alpha Vantage and FMP; errors are rebuilt from the
+  status and scrubbed; stats record the source id and dataset only; one person's refused key never opens a
+  breaker for others.
+- **Tests are rate-limited**: 10 key or chain tests a minute per person.
+
+### Choosing sources
+
+- Settings → Data sources: per dataset, the person's order (up/down buttons), with licence badges,
+  freshness, "Needs key" and the reason; Save, Reset, and Test (which source answered and how fast).
+- In the terminal: `AAPL GP @tiingo`, or the "Source ▾" chip on a screen's badge, sets the source for that
+  panel's main dataset only; "Make default" saves it first in the person's order.
+- A source the person named that cannot answer (no key, a background job, switched off, not for this
+  data) is skipped and the reason travels in `x-data-sources.skipped`.
+- **Field-level fallthrough.** When the source that answered leaves a field empty (SEC has no price or
+  estimates), the next eligible source that can fill it is asked (at most two, never AI research), and
+  `x-data-sources.fields` says where each filled field came from, or why it is empty ("—", never a zero).
+- **Badges** name the sources, show each one's required credit word for word (`attributions`), "Your key",
+  "Backup source", "Delayed", "Stale · as of" and "Terms unverified". `x-data-sources` is ASCII-escaped so
+  any text survives as a header value.
+
+### Owner decisions
+
+1. **FMP display licence** (unchanged): showing FMP data to paying users needs FMP's display agreement.
+2. **Turn the Nasdaq backup off in production** (`MARKET_BACKUP=off`): it now leaves the public sources on.
+3. **Register the free owner keys** so the originals answer instead of FRED: `BLS_API_KEY` (v2: 500 a
+   day, 20 years), `BEA_API_KEY`, `EIA_API_KEY`. Without them those series fall back to FRED.
+4. **FRED**: keep it as an uncached fallback, ask the St. Louis Fed for permission, or drop it.
+5. **Hosted BYO keys**: get written confirmation from FMP, Alpha Vantage and Finnhub that a tool fetching
+   with a person's own key on YouBank's server is not "permitting others access"; firms need business
+   plans. A browser-only mode (the key never leaves the device) is not built.
+6. **Crypto**: confirm CoinMarketCap Basic or a paid CoinGecko plan; ask DefiLlama for written consent.
+7. **World Bank Pink Sheet link**: the Bank republishes the workbook at new addresses; set
+   `WORLD_BANK_PINK_SHEET_URL` (it must stay on thedocs.worldbank.org) if the default stops answering.
+8. **Alpaca market data via OAuth**: ask Alpaca; if confirmed, it is the cleanest BYO pattern.
+9. Apply migration `drizzle/0029_data_sources.sql`. `EMAIL_TOKEN_SECRET` must be set to save keys;
+   rotating it makes saved keys unreadable (people add them again).
 
 ## Not built yet
 
-Per-person source preferences and their storage (the registry takes them per request), new providers,
-converting the staged Street and crypto datasets into single-request adapters, a security master,
-reconciliation between sources, and nightly SEC bulk files.
+A security master, reconciliation between sources, nightly SEC bulk files, IEX HIST ingestion, FINRA
+short data, a browser-only key mode, intraday sources, and converting the staged crypto datasets into
+single-request adapters.
