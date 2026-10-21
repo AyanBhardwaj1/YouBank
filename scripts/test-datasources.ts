@@ -612,7 +612,7 @@ async function testRouteDb() {
   const route = await import("@/app/api/settings/data-sources/route");
   const call = async (method: "GET" | "PUT" | "POST" | "DELETE", body?: unknown, qs = "") => {
     const req = new Request(`http://localhost/api/settings/data-sources${qs}`, { method, ...(body !== undefined ? { body: typeof body === "string" ? body : JSON.stringify(body), headers: { "content-type": "application/json" } } : {}) });
-    const res = await (route as Record<string, (r: Request) => Promise<Response>>)[method](req);
+    const res = await (route as unknown as Record<string, (r: Request) => Promise<Response>>)[method](req);
     return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, unknown> | null, cache: res.headers.get("cache-control") };
   };
   const bad1 = await call("PUT", "{not json"), bad2 = await call("PUT", { order: { "daily-bars": ["nope"] } }), bad3 = await call("PUT", { order: { curve: ["tiingo"] } });
