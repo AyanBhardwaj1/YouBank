@@ -1,20 +1,25 @@
 /**
  * Macro views behind ECO (the economy) and GC (the Treasury curve).
  *
- * Data sources are chosen by licence. FRED series are displayed with attribution and nothing more.
- * Forecasts run only on primary, public-domain data: BLS for inflation, jobs and wages, and the
- * Treasury for the curve. On top: the Sahm rule (from BLS unemployment) and the New York Fed's
- * yield-curve recession probability (from Treasury yields).
+ * Data sources are chosen by licence. Each ECO series comes from its original publisher first (BLS,
+ * BEA, the EIA, the Treasury; market/registry.ts, dataset "macro"), and from FRED only when the original
+ * is not available; FRED's copies are displayed with attribution and nothing more (never cached, never
+ * shown to a model). Forecasts run only on primary, public-domain data: BLS for inflation, jobs and
+ * wages, and the Treasury for the curve. On top: the Sahm rule (from BLS unemployment) and the New York
+ * Fed's yield-curve recession probability (from Treasury yields).
  */
 import { forecast } from "@/lib/inference/forecast";
 import { curveShape, nelsonSiegel, recessionProbability, sahmRule, type CurvePoint } from "@/lib/inference/macro";
 import { percentRank } from "@/lib/inference/stats";
 import { BLS_SERIES, blsSeries, type BlsObs } from "@/lib/market/bls";
-import { fredSeries, MACRO_SERIES, type Obs } from "@/lib/market/fred";
-import { TENORS, treasuryCurves } from "@/lib/market/treasury";
+import { MACRO_SERIES, type Obs } from "@/lib/market/fred";
+import { fromChain } from "@/lib/market/registry";
+import { TENORS, treasuryCurves, type CurveRow } from "@/lib/market/treasury";
 
 export type MacroSeries = {
   id: string; label: string; group: string; unit: string; source: string;
+  /** The source that answered ("bls", "fred"), its name, and the credit it requires. Null when none did. */
+  answeredBy: { id: string; label: string; attribution: string } | null;
   latest: { date: string; value: number } | null; prior: number | null; yearAgo: number | null;
   percentile10y: number | null; spark: number[];
 };
@@ -74,11 +79,14 @@ export type MacroView = {
 export async function macroView(): Promise<MacroView> {
   const start = new Date(Date.now() - 12 * 365.25 * 86_400_000).toISOString().slice(0, 10);
   const [loaded, bls, curves] = await Promise.all([
-    Promise.all(MACRO_SERIES.map(async (m) => ({ m, obs: await fredSeries(m.id, start).catch(() => [] as Obs[]) }))),
+    Promise.all(MACRO_SERIES.map(async (m) => {
+      const a = await fromChain("macro", { series: m.id, start }).catch(() => null);
+      return { m, obs: (a?.data ?? []) as Obs[], by: a ? { id: a.by.id, label: a.by.label, attribution: a.by.attribution ?? "" } : null };
+    })),
     blsSeries().catch(() => ({} as Record<string, BlsObs[]>)),
     treasuryCurves().catch(() => []),
   ]);
-  const series: MacroSeries[] = loaded.map(({ m, obs }) => {
+  const series: MacroSeries[] = loaded.map(({ m, obs, by }) => {
     const base = m.freq === "daily" || m.freq === "weekly" ? monthly(obs) : obs;
     const lag = m.freq === "quarterly" ? 4 : 12;
     const v = transform(base, m.transform, lag);
@@ -86,7 +94,7 @@ export async function macroView(): Promise<MacroView> {
     const raw = transform(obs, m.transform, m.freq === "weekly" ? 52 : m.freq === "daily" ? 252 : lag);
     const latest = raw[raw.length - 1] ?? null;
     return {
-      id: m.id, label: m.label, group: m.group, unit: m.unit, source: m.source,
+      id: m.id, label: m.label, group: m.group, unit: m.unit, source: m.source, answeredBy: by,
       latest: latest ? { date: latest.date, value: latest.value } : null,
       prior: vals.length > 1 ? vals[vals.length - 2] : null,
       yearAgo: vals.length > lag ? vals[vals.length - 1 - lag] : null,
@@ -102,6 +110,8 @@ export async function macroView(): Promise<MacroView> {
 
 export type CurveView = {
   asOf: string; labels: string[];
+  /** The curve's source: the Treasury, or the Fed's H.15 via FRED when the Treasury's feed did not answer. */
+  source: { id: string; label: string; attribution: string };
   curves: { label: string; date: string; yields: (number | null)[] }[];
   fit: { level: number; slope: number; curvature: number; rmse: number; fitted: number[] } | null;
   shape: ReturnType<typeof curveShape>;
@@ -110,7 +120,8 @@ export type CurveView = {
 };
 
 export async function curveView(): Promise<CurveView> {
-  const rows = await treasuryCurves();
+  const a = await fromChain("curve", {});
+  const rows: CurveRow[] = a.data;
   if (!rows.length) throw new Error("Treasury rates unavailable");
   const today = rows[0];
   const nearest = (days: number) => { const d = new Date(new Date(today.date + "T00:00:00Z").getTime() - days * 86_400_000).toISOString().slice(0, 10); return rows.find((r) => r.date <= d) ?? rows[rows.length - 1]; };
@@ -121,7 +132,7 @@ export async function curveView(): Promise<CurveView> {
   const spread = month.length ? month.reduce((a, r) => a + r.yields["10 Yr"] - r.yields["3 Mo"], 0) / month.length : null;
   const at = (r: typeof today, k: string) => (r.yields[k] !== undefined ? r.yields[k] : null);
   return {
-    asOf: today.date, labels: TENORS.map(([k]) => k.replace(" Mo", "M").replace(" Yr", "Y")),
+    asOf: today.date, labels: TENORS.map(([k]) => k.replace(" Mo", "M").replace(" Yr", "Y")), source: { id: a.by.id, label: a.by.label, attribution: a.by.attribution ?? "" },
     curves: pick.map((p) => ({ label: p.label, date: p.row.date, yields: TENORS.map(([k]) => at(p.row, k)) })),
     fit: ns ? { level: ns.level, slope: ns.slope, curvature: ns.curvature, rmse: ns.rmse, fitted: TENORS.map(([, t]) => ns.fitted(t)) } : null,
     shape: curveShape(points(today)),

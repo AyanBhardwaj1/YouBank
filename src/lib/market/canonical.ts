@@ -25,9 +25,12 @@ export type Quote = Provenance & {
 /** One trading day's bar; `date` is the New York trading date. */
 export type DailyBar = { date: string; open: number; high: number; low: number; close: number; volume: number };
 
-/** Price and description of a company. `marketCap` in dollars; null when the provider has none. */
+/**
+ * Price and description of a company. `marketCap` in dollars; null when the provider has none. `price` is
+ * null from a source with no prices (SEC filings): the field-level fallthrough fills it, or says why not.
+ */
 export type Profile = Provenance & {
-  symbol: string; name: string; price: number; change: number | null; changePct: number | null; marketCap: number | null;
+  symbol: string; name: string; price: number | null; change: number | null; changePct: number | null; marketCap: number | null;
   low52: number | null; high52: number | null; exchange: string; industry: string; sector: string; website: string; description: string;
   cik?: string; city?: string; state?: string;
 };

@@ -1,6 +1,8 @@
 /**
  * Macro series from FRED (Federal Reserve Bank of St. Louis), shown with attribution. The public graph
- * CSV needs no key; each series is cached for twelve hours.
+ * CSV needs no key. FRED is a fallback only (registry.ts: the original publishers answer first), and its
+ * terms bar "storing, caching, or archiving" its content, so nothing from FRED is cached: a series is
+ * fetched at most once per request (requestMemo) and forgotten when the request ends.
  *
  * FRED's terms bar using its content in connection with machine learning or generative AI, and some
  * series belong to third parties (ICE BofA indices, the S&P 500, Cboe's VIX, the Michigan survey). So
@@ -9,10 +11,9 @@
  * Moody's yield spread, which FRED allows with a citation. Forecasts use BLS data directly.
  */
 import { z } from "zod";
-import { cacheEntry } from "@/lib/cache";
 import { fetchRetry } from "@/lib/net";
-import { budget, MACRO_STALE_IF_ERROR_MS } from "./budgets";
-import { noteFreshness } from "./provenance";
+import { budget } from "./budgets";
+import { requestMemo } from "./provenance";
 import { callSource } from "./source";
 import { parseOrThrow } from "./validate";
 
@@ -33,14 +34,12 @@ export function parseFredCsv(text: string, id: string): Obs[] {
 }
 
 export async function fredSeries(id: string, start?: string): Promise<Obs[]> {
-  const e = await cacheEntry<Obs[]>(`fred:${id}`, 12 * 3_600_000, async () => callSource("fred", "series", async () => {
+  const rows = await requestMemo(`fred:${id}`, () => callSource("fred", "series", async () => {
     const res = await fetchRetry(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" }, timeoutMs: budget().macroTimeoutMs });
     if (!res.ok) throw Object.assign(new Error(`FRED ${res.status} for ${id}`), { status: res.status });
-    // Drift is FRED failing (SourceError "schema"): counted for the breaker, and the last good copy keeps serving.
+    // Drift is FRED failing (SourceError "schema"): counted for the breaker, and the next source answers.
     return parseFredCsv(await res.text(), id);
-  }, { label: "FRED" }), { staleMs: 12 * 3_600_000, staleIfErrorMs: MACRO_STALE_IF_ERROR_MS });
-  if (e.stale) noteFreshness({ stale: true, fetchedAt: new Date(e.fetchedAt).toISOString() });
-  const rows = e.value;
+  }, { label: "FRED" }));
   return start ? rows.filter((r) => r.date >= start) : rows;
 }
 

@@ -110,7 +110,9 @@ export const macroTool = def({
   run: async (_i, ctx) => {
     try {
       const { macroView, curveView } = await import("@/lib/terminal/macro");
-      const [m, c] = await Promise.all([macroView(), curveView().catch(() => null)]);
+      const [m, both] = await Promise.all([macroView(), curveView().catch(() => null)]);
+      // FRED's content may not reach a model: a curve the Fed's H.15 answered through FRED is left out.
+      const c = both && both.source.id === "treasury" ? both : null;
       const bls = ctx.addSource("Bureau of Labor Statistics (public domain), YouBank outlook models", "https://www.bls.gov/data/");
       const tsy = ctx.addSource(`U.S. Treasury daily par yield curve${c ? `, ${c.asOf}` : ""}`, "https://home.treasury.gov/resource-center/data-chart-center/interest-rates");
       return J({

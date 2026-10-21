@@ -1,7 +1,9 @@
 /**
  * US labor and price statistics straight from the Bureau of Labor Statistics (public domain). The
- * keyless v1 API allows 25 requests a day, so every series is fetched in one request and cached for
- * twelve hours. These are the series YouBank forecasts: primary-source data carries no licence limits.
+ * keyless v1 API allows 25 requests a day (10 years per query); with the owner's free registration key
+ * (BLS_API_KEY) the v2 API allows 500 a day (20 years). Every series is fetched in one request and cached
+ * for twelve hours. These are the series YouBank forecasts, and the originals the economy screen shows
+ * before FRED's copies (BLS_DISPLAY): primary-source data carries no licence limits.
  */
 import { z } from "zod";
 import { cacheEntry } from "@/lib/cache";
@@ -19,6 +21,18 @@ export const BLS_SERIES: Record<string, { label: string; unit: string; transform
   CES0000000001: { label: "Nonfarm payrolls", unit: "k, m/m", transform: "diff" },
   CES0500000003: { label: "Average hourly earnings", unit: "% y/y", transform: "yoy" },
 };
+
+/**
+ * The economy screen's FRED series that BLS publishes itself, by FRED id: the same measure, seasonally
+ * adjusted like FRED's (CUSR, not the forecasts' unadjusted CUUR), so the screen never mixes the two.
+ */
+export const BLS_DISPLAY: Record<string, string> = { CPIAUCSL: "CUSR0000SA0", CPILFESL: "CUSR0000SA0L1E", UNRATE: "LNS14000000", PAYEMS: "CES0000000001" };
+
+/** v1 without a key, v2 with the owner's registration key. */
+const BLS_V1 = "https://api.bls.gov/publicAPI/v1/timeseries/data/";
+const BLS_V2 = "https://api.bls.gov/publicAPI/v2/timeseries/data/";
+/** Years per query: v1 allows 10, v2 20. */
+const BLS_YEARS = { v1: 9, v2: 19 };
 
 export type BlsObs = { date: string; value: number };
 
@@ -40,15 +54,20 @@ export function parseBls(raw: unknown): Record<string, BlsObs[]> {
   return out;
 }
 
+/** The request body: every forecast and display series in one query. The key goes in the body (never a URL). */
+function blsRequest(end: number): { url: string; body: string } {
+  const key = process.env.BLS_API_KEY?.trim();
+  const ids = [...new Set([...Object.keys(BLS_SERIES), ...Object.values(BLS_DISPLAY)])];
+  const years = key ? BLS_YEARS.v2 : BLS_YEARS.v1;
+  return { url: key ? BLS_V2 : BLS_V1, body: JSON.stringify({ seriesid: ids, startyear: String(end - years), endyear: String(end), ...(key ? { registrationkey: key } : {}) }) };
+}
+
 export async function blsSeries(): Promise<Record<string, BlsObs[]>> {
-  const e = await cacheEntry<Record<string, BlsObs[]>>("bls:core", 12 * 3_600_000, async () => {
-    const end = marketYear();
+  const e = await cacheEntry<Record<string, BlsObs[]>>("bls:core:v2", 12 * 3_600_000, async () => {
+    const { url, body } = blsRequest(marketYear());
     const json = await callSource("bls", "timeseries", async () => {
       // A read-only query, so it may be repeated, but only on a server failure: BLS's keyless quota is 25 a day.
-      const res = await fetchRetry("https://api.bls.gov/publicAPI/v1/timeseries/data/", {
-        method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", timeoutMs: budget().macroTimeoutMs, idempotent: true, retryOn: retryServerErrors,
-        body: JSON.stringify({ seriesid: Object.keys(BLS_SERIES), startyear: String(end - 9), endyear: String(end) }),
-      });
+      const res = await fetchRetry(url, { method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store", timeoutMs: budget().macroTimeoutMs, idempotent: true, retryOn: retryServerErrors, body });
       // Drift is BLS failing (SourceError "schema"): counted for the breaker, and the last good copy keeps serving.
       return parseOrThrow(BlsAnswer, await res.json(), "BLS", "timeseries/data");
     }, { label: "BLS" });

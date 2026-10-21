@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useMemo, useState } from "react";
+import { PanelSourceContext } from "./SourceChip";
 import type { AiStatus, OpenPanel } from "./Terminal";
 import { FUNCTIONS, needsTicker, type Command } from "@/lib/functions";
 import { refreshCompany, useCompany } from "@/lib/client/companies";
@@ -97,6 +99,9 @@ type Props = {
 const NEEDS_COMPANY = new Set(["DES", "FA", "COMPS", "FIL", "CAP"]);
 
 export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openPanels, activeTicker }: Props) {
+  // This panel's data source (`AAPL GP @tiingo`, or its "Source ▾" chip): its screen's requests carry it.
+  const [source, setSource] = useState<string | undefined>(panel.source);
+  const sourceCtx = useMemo(() => ({ source, setSource }), [source]);
   const needs = NEEDS_COMPANY.has(panel.fn) || panel.fn === "AI";
   const { data: company, error, loading } = useCompany(needs && panel.ticker ? panel.ticker : null);
   const t = panel.ticker;
@@ -185,6 +190,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
           {needsTicker(panel.fn) && panel.fn !== "TOOLS" && t && <span className="num font-semibold text-fg">{t}</span>}
           <span className="truncate text-muted" title={title}>{title}</span>
           {company?.ltm.periodEnd && NEEDS_COMPANY.has(panel.fn) && <span className="num hidden text-[10px] text-faint xl:inline">LTM {company.ltm.periodEnd}</span>}
+          {source && <span className="num rounded border border-accent/40 bg-accent-soft px-1 text-[10px] text-accent" title="This panel's data source">@{source}</span>}
         </div>
         <div className="hover-reveal flex items-center gap-0.5 text-muted opacity-60 transition-opacity group-hover:opacity-100">
           <button type="button" onClick={onToggleMax} aria-label={maximized ? "Restore panel" : "Maximize panel"} title={maximized ? "Restore" : "Maximize"}
@@ -192,7 +198,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
           <button type="button" onClick={onClose} aria-label="Close panel" title="Close" className="grid h-6 w-6 place-items-center ctl hover:bg-raised hover:text-neg max-md:h-10 max-md:w-10 max-md:text-[18px]">×</button>
         </div>
       </header>
-      <div className="@container scroll-touch min-h-0 flex-1 overflow-auto">{body}</div>
+      <div className="@container scroll-touch min-h-0 flex-1 overflow-auto"><PanelSourceContext value={sourceCtx}>{body}</PanelSourceContext></div>
     </section>
   );
 }

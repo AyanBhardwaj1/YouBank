@@ -13,6 +13,9 @@ import type { Snapshot } from "@/lib/terminal/snapshot";
 import { errorMessage, messageFor } from "@/lib/client/errors";
 import type { SourcesHeader } from "@/lib/market/source-header";
 import { etClock } from "@/lib/market/units";
+import { badgeModel, BACKUP_PROVIDERS, type BadgeTone } from "@/lib/market/badges";
+import { FN_DATASET } from "@/lib/market/sources-meta";
+import { PanelSourceContext, SourceChip } from "./SourceChip";
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Data                                                                                             */
@@ -70,7 +73,8 @@ export function prefetchTerminal(fn: string, params: Record<string, string | num
 
 /** Stale-while-revalidate fetch of one analytics function. Cached answers render at once. */
 export function useTerminal<T>(fn: string, params: Record<string, string | number | undefined | null> = {}, enabled = true) {
-  const url = terminalUrl(fn, params);
+  const panel = useContext(PanelSourceContext);
+  const url = terminalUrl(fn, panel?.source && FN_DATASET[fn] ? { ...params, src: panel.source } : params);
   const [state, setState] = useState<{ url: string; r: Result<T> } | null>(null);
   const [nonce, setNonce] = useState(0);
   useEffect(() => {
@@ -83,7 +87,7 @@ export function useTerminal<T>(fn: string, params: Record<string, string | numbe
   }, [url, enabled, nonce]);
   const r = (state?.url === url ? state.r : (cache.get(url)?.r as Result<T> | undefined));
   return {
-    data: r?.data, error: r?.error, planLimited: r?.planLimited ?? false, loading: enabled && !r, sources: r?.sources, snapshot: r?.snapshot,
+    data: r?.data, error: r?.error, planLimited: r?.planLimited ?? false, loading: enabled && !r, sources: r?.sources, snapshot: r?.snapshot, fn,
     reload: () => { cache.delete(url); setNonce((n) => n + 1); },
   };
 }
@@ -151,10 +155,10 @@ export const tone = (v: number | null | undefined) => (!ok(v) ? "text-faint" : v
 /* Layout                                                                                           */
 /* ----------------------------------------------------------------------------------------------- */
 
-type Q<T> = { data?: T; error?: string; planLimited: boolean; loading: boolean; reload?: () => void; sources?: Sources; snapshot?: Snapshot };
+type Q<T> = { data?: T; error?: string; planLimited: boolean; loading: boolean; reload?: () => void; sources?: Sources; snapshot?: Snapshot; fn?: string };
 
 /** The providers that count as backups: a screen that used any of them says so. */
-const BACKUPS = ["Nasdaq", "ECB", "CoinGecko", "SEC EDGAR", "AI research"];
+const BACKUPS = BACKUP_PROVIDERS;
 /** The sources behind the Frame being rendered, so "Models and sources" can name the backups that answered. */
 const SourcesContext = createContext<Sources | undefined>(undefined);
 
@@ -167,7 +171,7 @@ const SourcesContext = createContext<Sources | undefined>(undefined);
 export function Frame<T>({ q, what, children }: { q: Q<T>; what: string; children: (data: T) => ReactNode }) {
   if (q.data) {
     const research = (q.data as { research?: Researched | null }).research ?? null;
-    return <SourcesContext value={q.sources}><SourceBadge sources={q.sources} />{children(q.data)}{research && <div className="px-3 pb-3"><ResearchNote research={research} /></div>}</SourcesContext>;
+    return <SourcesContext value={q.sources}><SourceBadge sources={q.sources} fn={q.fn} />{children(q.data)}{research && <div className="px-3 pb-3"><ResearchNote research={research} /></div>}</SourcesContext>;
   }
   if (q.snapshot) return <SnapshotCard snapshot={q.snapshot} what={what} sources={q.sources} />;
   if (q.loading || (!q.error && !q.data)) {
@@ -206,8 +210,8 @@ export const answeredBy = (sources?: Pick<Sources, "providers" | "sources">): st
 };
 
 /** One small badge in the kit's style. */
-export function Chip({ tone: t = "muted", title, children }: { tone?: "muted" | "warn" | "info" | "ai"; title?: string; children: ReactNode }) {
-  const cls = t === "warn" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : t === "info" ? "border-info/30 bg-info/10 text-fg/90" : t === "ai" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : "border-line bg-elevated text-muted";
+export function Chip({ tone: t = "muted", title, children }: { tone?: BadgeTone; title?: string; children: ReactNode }) {
+  const cls = t === "warn" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : t === "info" ? "border-info/30 bg-info/10 text-fg/90" : t === "ai" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : t === "key" ? "border-accent/40 bg-accent-soft text-accent" : "border-line bg-elevated text-muted";
   return <span title={title} className={`rounded border px-1.5 py-px text-[10px] ${cls}`}>{children}</span>;
 }
 
@@ -223,20 +227,26 @@ export function TimingChips({ delayed, delayedMinutes, stale, asOf }: { delayed?
 }
 
 /**
- * Where an answer came from: the source names that answered, "Backup source" when a backup stood in for
- * FMP (with the reason and notes), "Delayed" and "Stale · as of HH:MM ET". Nothing when no source was noted.
+ * Where an answer came from (market/badges): the sources that answered, "Your key", "Backup source",
+ * "Delayed", "Stale · as of HH:MM ET", the credit each source requires, fields filled from another
+ * source or empty with the reason, sources asked for that could not answer, and the "Source ▾" chip
+ * that switches this panel's source. Nothing when no source was noted.
  */
-export function SourceBadge({ sources }: { sources?: Sources }) {
-  const names = answeredBy(sources);
-  if (!names.length) return null;
-  const backups = (sources?.providers ?? []).filter((p) => BACKUPS.includes(p));
-  const ai = backups.includes("AI research"), partly = sources?.providers.includes("FMP");
+export function SourceBadge({ sources, fn }: { sources?: Sources; fn?: string }) {
+  const b = badgeModel(sources);
+  if (!b) return null;
+  const ai = b.chips.some((c) => c.tone === "ai"), backup = b.chips.some((c) => c.text.startsWith("Backup"));
+  const dataset = fn ? FN_DATASET[fn] : undefined;
   return (
-    <div className={`mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border px-2.5 py-1 text-[10.5px] ${ai ? "border-chart-emphasis/40 bg-chart-emphasis/10" : backups.length ? "border-info/30 bg-info/10" : "border-line"}`} title={(sources?.notes ?? []).join("\n")}>
-      <span className="text-muted">Source: <span className="font-semibold text-fg/90">{names.join(", ")}</span></span>
-      {backups.length > 0 && <Chip tone={ai ? "ai" : "info"} title={`${partly ? "Some of this" : "This"} came from ${backups.join(", ")} because FMP was unavailable`}>{ai ? "Backup source, partly researched by AI" : "Backup source"}</Chip>}
-      <TimingChips delayed={sources?.delayed} delayedMinutes={sources?.delayedMinutes} stale={sources?.stale} asOf={sources?.asOf} />
-      {sources?.notes?.length ? <span className="text-faint">{sources.notes.slice(0, 2).join(" · ")}{sources.notes.length > 2 ? " …" : ""}</span> : null}
+    <div className={`mx-3 mt-2 rounded-md border px-2.5 py-1 text-[10.5px] ${ai ? "border-chart-emphasis/40 bg-chart-emphasis/10" : backup ? "border-info/30 bg-info/10" : "border-line"}`} title={[...b.notes, ...b.fieldNotes, ...b.skipped].join("\n")}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+        <span className="text-muted">Source: <span className="font-semibold text-fg/90">{b.names.join(", ")}</span></span>
+        {b.chips.map((c) => <Chip key={c.text} tone={c.tone} title={c.title}>{c.text}</Chip>)}
+        {b.notes.length ? <span className="text-faint">{b.notes.slice(0, 2).join(" · ")}{b.notes.length > 2 ? " …" : ""}</span> : null}
+        {dataset && <SourceChip dataset={dataset} answered={sources?.sources?.[0]?.label} />}
+      </div>
+      {b.attributions.length > 0 && <div className="mt-0.5 text-faint">{b.attributions.join(" · ")}</div>}
+      {(b.fieldNotes.length > 0 || b.skipped.length > 0) && <div className="mt-0.5 text-muted">{[...b.fieldNotes.slice(0, 3), ...b.skipped.slice(0, 2)].join(" · ")}</div>}
     </div>
   );
 }

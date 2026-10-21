@@ -3,7 +3,8 @@ import { resolveTicker } from "./edgar/tickers";
 import { fyeLabel, getSubmissions, recentFilings, submissionsUrl } from "./edgar/submissions";
 import { factsUrl, fiscalLabel, fyeMonthOf, getCompanyFacts, latestEnd, ltmAt, addMonths, quarterAt, quarterEnds, type CompanyFacts } from "./edgar/facts";
 import { capFromShares, chainOf, CHAINS, instantOf, ltmOf, resolveRevenue, sharesOutstanding as resolveShares, type Chain, type Shares } from "./edgar/concepts";
-import { quoteProfile, type Profile } from "./market/data";
+import { quoteProfile, type PricedProfile } from "./market/data";
+import { publicOnly } from "./market/user-context";
 import { isStaleQuote } from "./market/calendar";
 import { noteSource, type Provider } from "./market/provenance";
 import { canonical } from "./market/symbols";
@@ -98,7 +99,7 @@ const refreshing = sharedMap<string, Promise<unknown>>("company:refreshing");
 export const RECORD_VERSION = 2;
 
 /** The record's price block from a profile (USD millions), with the provider's own as-of, source and flags. */
-function priceFrom(p: Profile, shares: Pick<Shares, "total" | "classes"> | null, prior: CompanyData["price"]): NonNullable<CompanyData["price"]> {
+function priceFrom(p: PricedProfile, shares: Pick<Shares, "total" | "classes"> | null, prior: CompanyData["price"]): NonNullable<CompanyData["price"]> {
   const asOf = p.asOf ?? p.fetchedAt ?? new Date().toISOString();
   return {
     last: p.price, change: p.change, changePct: p.changePct, marketCap: marketCapMm(p.marketCap, p.price, shares) ?? prior?.marketCap ?? null,
@@ -135,8 +136,16 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
   return withInputs;
 }
 
-/** The shared record: filings and fundamentals (cached six hours) with a fresh price. A private copy. */
-async function companyBase(tickerRaw: string): Promise<CompanyData | null> {
+/**
+ * The shared record: filings and fundamentals (cached six hours) with a fresh price. A private copy.
+ * Built public-only (market/user-context): it is shared through company_cache, so no one's own keys or
+ * source order ever feed it.
+ */
+function companyBase(tickerRaw: string): Promise<CompanyData | null> {
+  return publicOnly(() => sharedCompanyBase(tickerRaw));
+}
+
+async function sharedCompanyBase(tickerRaw: string): Promise<CompanyData | null> {
   const ticker = canonical(tickerRaw);
   let base: CompanyData | null = null;
   if (db) {

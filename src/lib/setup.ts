@@ -44,6 +44,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0026_quant", ["quant_signals", "quant_targets", "quant_trials", "quant_runs", "quant_fills", "quant_factor_returns", "quant_universe", "quant_insider_tx", "quant_consents", "quant_events", "quant_base_rates"], "quant_events_issuer_idx"],
   ["0027_scale", ["ai_spend"], "ai_spend_day_idx"],
   ["0028_source_stats", ["source_stats"], "source_stats_minute_idx"],
+  ["0029_data_sources", ["user_data_sources"], "user_data_sources_updated_idx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
