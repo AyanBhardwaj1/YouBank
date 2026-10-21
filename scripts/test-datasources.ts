@@ -745,6 +745,34 @@ async function testStoreRaces() {
   check("C3(review) a key removed while its fetch was in flight leaves nothing cached behind the purge", left === 0, left);
 }
 
+/** Review fix: FRED's terms bar caching its content, so a terminal answer that used it (H.15 for GC) is not kept by the browser either. */
+async function testFredNotBrowserCached() {
+  const route = await import("@/app/api/terminal/[fn]/route");
+  const { NOT_CACHEABLE } = await import("@/lib/market/registry");
+  const { sharedMap } = await import("@/lib/shared");
+  const { db } = await import("@/db");
+  const { sql } = await import("drizzle-orm");
+  check("C1(review) the sources that may not be cached are FRED's (FRED, H.10, H.15)", [...NOT_CACHEABLE].sort().join() === "fred,h10,h15", [...NOT_CACHEABLE]);
+  // No copy of the Treasury's curve anywhere, so with the Treasury down the Fed's H.15 (via FRED) answers.
+  await db!.execute(sql`delete from kv_cache where key like '%treasury%'`);
+  const mem = sharedMap<string, unknown>("cache:mem");
+  for (const k of [...mem.keys()]) if (k.includes("treasury")) mem.delete(k);
+  process.env.YOUBANK_DEV_USER = `gc${uid().toLowerCase()}`;
+  forced["home.treasury.gov"] = "503";
+  try {
+    const res = await route.GET(new Request("http://localhost/api/terminal/curve"), { params: Promise.resolve({ fn: "curve" }) });
+    const src = JSON.parse(res.headers.get("x-data-sources") ?? "{}") as { sources?: { id: string }[] };
+    check("C1(review) a GC answer from H.15 via FRED is sent private, no-store (FRED's terms bar caching)", res.status === 200 && !!src.sources?.some((x) => x.id === "h15") && res.headers.get("cache-control") === "private, no-store", { status: res.status, cc: res.headers.get("cache-control"), sources: src.sources });
+  } finally { delete forced["home.treasury.gov"]; delete process.env.YOUBANK_DEV_USER; }
+  const { breakers } = await import("@/lib/market/breaker");
+  await breakers.reset("treasury");
+  process.env.YOUBANK_DEV_USER = `gc${uid().toLowerCase()}`;
+  try {
+    const res = await route.GET(new Request("http://localhost/api/terminal/curve"), { params: Promise.resolve({ fn: "curve" }) });
+    check("C1(review) the Treasury's own curve keeps its browser cache time", res.status === 200 && res.headers.get("cache-control") === "private, max-age=900", { status: res.status, cc: res.headers.get("cache-control"), src: res.headers.get("x-data-sources")?.slice(0, 200) });
+  } finally { delete process.env.YOUBANK_DEV_USER; }
+}
+
 /* ---------------- C5 field-level fallthrough ---------------- */
 
 async function testMerge() {
@@ -808,6 +836,7 @@ async function main() {
   if (localDb()) await section("C4 the settings route: 400s, owner-only, keys never returned", testRouteDb);
   if (localDb()) await section("C3 review: pasted-key checks are capped per person per day and per address", testKeyCheckLimits);
   if (localDb()) await section("C3 review: key storage under concurrency, and a purge during a fetch", testStoreRaces);
+  if (localDb()) await section("C1 review: answers that used FRED are not cached by the browser", testFredNotBrowserCached);
   await section("C5 field-level fallthrough and badges", testMerge);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);

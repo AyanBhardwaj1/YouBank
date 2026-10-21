@@ -13,6 +13,7 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { getBytes, putObject, r2Ready } from "@/lib/edge/infra/r2";
 import { historyFrom } from "@/lib/market/data";
+import { NOT_CACHEABLE } from "@/lib/market/registry";
 import { publicOnly } from "@/lib/market/user-context";
 import { canonical } from "@/lib/market/symbols";
 import type { Provider } from "@/lib/market/provenance";
@@ -107,7 +108,8 @@ export async function refreshBars(symbol: string, backfillFrom: string): Promise
   const from = old?.d.length ? new Date(Date.parse(`${old.d[old.d.length - 1]}T00:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10) : backfillFrom;
   try {
     const r = await publicOnly(() => historyFrom(canonical(symbol), from));
-    if (r.data.length) {
+    // A series FRED answered (the Fed's H.10 via FRED) is never stored: FRED's terms bar caching it.
+    if (r.data.length && !NOT_CACHEABLE.has(r.by?.id ?? "")) {
       const merged = mergeBars(rebaseBars(old, r.data), r.data, symbol, r.source);
       await putBars(merged);
       return merged.d.length;

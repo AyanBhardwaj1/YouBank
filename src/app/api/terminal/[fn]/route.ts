@@ -9,6 +9,7 @@ import { dataUserFor } from "@/lib/market/byo/store";
 import { FN_DATASET, isSourceId } from "@/lib/market/sources-meta";
 import { forModel, withDataUser, type DataUser } from "@/lib/market/user-context";
 import { withProvenance, type ProvenanceRun } from "@/lib/market/provenance";
+import { NOT_CACHEABLE } from "@/lib/market/registry";
 import { sourceHeaders as buildSourceHeaders } from "@/lib/market/source-header";
 import { flushSourceStats } from "@/lib/market/stats";
 import { companySnapshot, type Need } from "@/lib/terminal/snapshot";
@@ -116,8 +117,12 @@ async function requestUser(userId: string, fn: string, src: string | null): Prom
   return dataUserFor(userId, src && dataset ? { dataset, id: src } : undefined).catch(() => null);
 }
 
-/** Answers with the person's own keyed data are never kept by the browser's or any shared HTTP cache. */
-const cacheControl = (fn: string, yourKey: boolean) => (fn === "skills" || yourKey ? "private, no-store" : `private, max-age=${TTL[fn] ?? CRYPTO_TTL[fn] ?? 60}`);
+/**
+ * Answers with the person's own keyed data are never kept by the browser's or any shared HTTP cache, nor
+ * are answers from a source whose terms bar caching (FRED, and the Fed's H.10 and H.15 read through it).
+ */
+const cacheControl = (fn: string, sources: { id: string; yourKey?: boolean }[]) =>
+  (fn === "skills" || sources.some((x) => x.yourKey || NOT_CACHEABLE.has(x.id)) ? "private, no-store" : `private, max-age=${TTL[fn] ?? CRYPTO_TTL[fn] ?? 60}`);
 
 export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }) {
   return guarded(async (user) => {
@@ -130,7 +135,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
     const run = await withProvenance(() => withMode("interactive", () => (u ? withDataUser(u, work) : work())));
     flushLater();
     const headers = sourceHeaders(run, t0);
-    if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": cacheControl(fn, run.sources.some((x) => x.yourKey)) } });
+    if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": cacheControl(fn, run.sources) } });
     const e = run.value.error;
     // No feed has this company's prices: offer what research can find (price, range, beta) instead of nothing.
     if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {

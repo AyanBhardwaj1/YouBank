@@ -384,6 +384,9 @@ const DEFAULTS = {
 /** Every dataset's adapters in default order (read-only: preferences go through resolveChain). */
 export const REGISTRY: { readonly [D in DatasetId]: readonly Adapter<A<D>, R<D>>[] } = DEFAULTS;
 
+/** Source ids whose terms bar caching their content (FRED, and the Fed's series read through it): an answer that used one is never kept, not even by the browser. */
+export const NOT_CACHEABLE: ReadonlySet<string> = new Set((Object.values(DEFAULTS) as readonly Adapter<unknown, unknown>[][]).flat().filter((a) => a.persistentCache === false).map((a) => a.id));
+
 /** The adapters a person's own keys unlock, by dataset (never in a default chain). */
 export const USER_KEY_ADAPTERS: { readonly [D in DatasetId]?: readonly Adapter<A<D>, R<D>>[] } = KEYED;
 
