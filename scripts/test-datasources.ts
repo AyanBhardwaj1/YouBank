@@ -43,12 +43,13 @@ function localDb(): boolean {
 
 /* ---------------- The stubbed network (documented shapes; synthetic values) ---------------- */
 
-/** Keys used in these tests: each provider answers with a price that names the key (A's 111, B's 222). */
+/** Keys used in these tests: each provider answers with a price that names the key (A's 111.111, B's 222.222). */
 const KEYS = {
   tiingoA: "tiingoKeyAAAAAAAAAAAAAAAAAAAAAAA1", tiingoB: "tiingoKeyBBBBBBBBBBBBBBBBBBBBBBB2", finnhubA: "finnhubKeyAAAAAAAA1", twelveA: "twelveKeyAAAAAAAAAAAA1",
   alphaA: "ALPHAKEYAAAAAAA1", fmpA: "fmpUserKeyAAAAAAAAAAAAAA1",
 };
-const MARK: Record<string, number> = { [KEYS.tiingoA]: 111, [KEYS.tiingoB]: 222, [KEYS.finnhubA]: 333, [KEYS.twelveA]: 444, [KEYS.alphaA]: 555, [KEYS.fmpA]: 666 };
+/** Values no other fixture produces, so a keyed answer is recognisable wherever it lands. */
+const MARK: Record<string, number> = { [KEYS.tiingoA]: 111.111, [KEYS.tiingoB]: 222.222, [KEYS.finnhubA]: 333.333, [KEYS.twelveA]: 444.444, [KEYS.alphaA]: 555.555, [KEYS.fmpA]: 666.666 };
 const calls: string[] = [];
 /** Per URL substring: a forced answer (a status, a hang, a network error, or a body). */
 const forced: Record<string, "503" | "401" | "neterr" | "neterr-url" | { body: unknown; status?: number }> = {};
@@ -413,14 +414,14 @@ async function testIsolation() {
   const B = person(`bob-${uid()}`, {}, { "daily-bars": ["tiingo"] });
   const B2 = person(`bob2-${uid()}`, { tiingo: KEYS.tiingoB }, { "daily-bars": ["tiingo"] });
   const a = await as(A, () => historyFrom(sym, from30()));
-  check("C3 user A's own key answers A's request (Tiingo first in A's order), marked as A's key", a.value.by?.id === "tiingo" && a.value.data.at(-1)?.close === 111 && a.sources.some((x) => x.yourKey), { by: a.value.by, last: a.value.data.at(-1)?.close });
+  check("C3 user A's own key answers A's request (Tiingo first in A's order), marked as A's key", a.value.by?.id === "tiingo" && a.value.data.at(-1)?.close === 111.111 && a.sources.some((x) => x.yourKey), { by: a.value.by, last: a.value.data.at(-1)?.close });
   const n0 = tiingoCalls();
   const b = await as(B, () => historyFrom(sym, from30()));
   check("C3 user B, same symbol, same order, no key: never A's answer; the shared default answers; Tiingo skipped with the reason", b.value.data.at(-1)?.close === 100 && b.value.by?.id === "fmp" && tiingoCalls() === n0 && b.skipped.some((k) => k.id === "tiingo" && /Needs your Tiingo key/.test(k.reason)), { last: b.value.data.at(-1)?.close, skipped: b.skipped });
   const b2 = await as(B2, () => historyFrom(sym, from30()));
-  check("C3 user B with their own Tiingo key gets their own answer (222), not A's cached one (111): caches are per person and provider", b2.value.data.at(-1)?.close === 222 && tiingoCalls() === n0 + 1, b2.value.data.at(-1)?.close);
+  check("C3 user B with their own Tiingo key gets their own answer (222.222), not A's cached one (111.111): caches are per person and provider", b2.value.data.at(-1)?.close === 222.222 && tiingoCalls() === n0 + 1, b2.value.data.at(-1)?.close);
   const a2 = await as(A, () => historyFrom(sym, from30()));
-  check("C3 A's second request is served from A's own partition (no new call)", a2.value.data.at(-1)?.close === 111 && tiingoCalls() === n0 + 1);
+  check("C3 A's second request is served from A's own partition (no new call)", a2.value.data.at(-1)?.close === 111.111 && tiingoCalls() === n0 + 1);
 }
 
 async function testGlobalCachesUntouched() {
@@ -431,21 +432,22 @@ async function testGlobalCachesUntouched() {
   const A = person(`alice-${uid()}`, { tiingo: KEYS.tiingoA, fmp: KEYS.fmpA }, { "daily-bars": ["tiingo"], quote: ["fmp-key"], profile: ["fmp-key"] });
   await as(A, async () => { await historyFrom(sym, from30()); await quotes([sym]); });
   const company = await as(A, () => getCompanyData("AAPL"));
-  check("C3 the shared company record never takes A's keyed price (666): it is built public-only", company.value?.price?.last === 100, company.value?.price);
+  check("C3 the shared company record never takes A's keyed price (666.666): it is built public-only", company.value?.price?.last === 100, company.value?.price);
   const mem = sharedMap<string, { value: string }>("cache:mem");
-  const leaked = [...mem.entries()].filter(([, v]) => /"close":111\b|"price":666\b|"price":111\b/.test(v.value)).map(([k]) => k);
+  const leaked = [...mem.entries()].filter(([, v]) => /"close":111\.111|"price":666\.666|"price":111\.111/.test(v.value)).map(([k]) => k);
   check("C3 no shared cache entry (memory layer) holds keyed data", leaked.length === 0, leaked);
   const byo = sharedMap<string, unknown>("byo:mem");
   const { keyedPrefix } = await import("@/lib/market/byo/cache");
-  check("C3 keyed data sits only in A's own partitions (byo:v1:<A>:<provider>:…)", byo.size > 0 && [...byo.keys()].every((k) => k.startsWith("byo:v1:")) && [...byo.keys()].some((k) => k.startsWith(keyedPrefix(A.userId, "tiingo"))), [...byo.keys()].slice(0, 4));
+  if (!localDb()) check("C3 keyed data sits only in A's own partitions (byo:v1:<A>:<provider>:…)", byo.size > 0 && [...byo.keys()].every((k) => k.startsWith("byo:v1:")) && [...byo.keys()].some((k) => k.startsWith(keyedPrefix(A.userId, "tiingo"))), [...byo.keys()].slice(0, 4));
   if (localDb()) {
     const { db } = await import("@/db");
     const { sql } = await import("drizzle-orm");
-    const rows = await db!.execute<{ key: string }>(sql`select key from kv_cache where value like '%"close":111%' or value like '%"price":666%'`);
-    const shared = (rows as unknown as { key: string }[]).filter((r) => !r.key.startsWith("byo:v1:"));
+    const rows = (await db!.execute<{ key: string }>(sql`select key from kv_cache where value like '%"close":111.111%' or value like '%"price":666.666%'`)).rows;
+    const shared = rows.filter((r) => !r.key.startsWith("byo:v1:"));
+    check("C3(db) keyed data sits only in A's own partitions in kv_cache (byo:v1:<A>:<provider>:…)", rows.length > 0 && rows.some((r) => r.key.startsWith(keyedPrefix(A.userId, "tiingo"))), rows.map((r) => r.key).slice(0, 3));
     check("C3(db) no kv_cache row outside the byo: partitions holds keyed data", shared.length === 0, shared);
-    const cc = await db!.execute<{ n: number }>(sql`select count(*)::int as n from company_cache where data::text like '%666%'`);
-    check("C3(db) company_cache never holds keyed data", (cc as unknown as { n: number }[])[0]?.n === 0);
+    const cc = (await db!.execute<{ n: number }>(sql`select count(*)::int as n from company_cache where data::text like '%666.666%'`)).rows;
+    check("C3(db) company_cache never holds keyed data", cc[0]?.n === 0, cc);
   }
 }
 
@@ -517,6 +519,146 @@ async function testNoKeyLeaks() {
   check("C3 a refused key reads as such, in words (no key, no URL)", errors.some((e) => /Tiingo refused your key/.test(e)), errors.map((e) => e.slice(0, 80)));
 }
 
+
+/* ---------------- C4 preferences ---------------- */
+
+async function testPrefsOrder() {
+  const { resolveChain, planChain } = await import("@/lib/market/registry");
+  const { historyFrom } = await import("@/lib/market/data");
+  const { withDataUser } = await import("@/lib/market/user-context");
+  const A = person(`alice-${uid()}`, { tiingo: KEYS.tiingoA }, { "daily-bars": ["nasdaq", "fmp"] });
+  const { withMode } = await import("@/lib/market/budgets");
+  const ids = (u: DataUser) => withMode("interactive", () => withDataUser(u, async () => planChain("daily-bars", { symbol: "X", from: from30() }).run.map((a) => a.id)));
+  check("C4 the person's order goes first; their keyed sources follow the defaults", JSON.stringify(await ids(A)) === '["nasdaq","fmp","tiingo"]', await ids(A));
+  check("C4 without a person the default order applies (and no keyed source)", JSON.stringify(resolveChain("daily-bars").map((a) => a.id)) === '["fmp","nasdaq"]');
+  const sym = `O${uid()}`.slice(0, 6);
+  const nasdaq: [RegExp, unknown] = [/api\.nasdaq\.com/, (u: string) => u.includes("/info") ? json({ data: { symbol: sym, companyName: "O Co", exchange: "NASDAQ-GS", primaryData: { lastSalePrice: "$50.00", netChange: "+1.00", percentageChange: "+2.04%", lastTradeTimestamp: "Oct 20, 2026 4:00 PM ET", isRealTime: false } } })
+    : json({ data: { tradesTable: { rows: DAYS.slice(-40).map((d) => { const [y, m, dd] = d.split("-"); return { date: `${m}/${dd}/${y}`, close: "$50.00", volume: "1", open: "$50.00", high: "$50.00", low: "$50.00" }; }) } } })];
+  FIXTURES.unshift(nasdaq);
+  try {
+    const r = await as(A, () => historyFrom(sym, from30()));
+    check("C4 the order is honoured by fromChain: Nasdaq (first in the person's order) answers, FMP is not asked", r.value.by?.id === "nasdaq" && !calls.some((c) => c.includes(`symbol=${sym}`) && c.includes("financialmodelingprep")), r.value.by);
+  } finally { FIXTURES.splice(FIXTURES.indexOf(nasdaq), 1); }
+  const C = person(`carol-${uid()}`, {}, { "daily-bars": ["tiingo", "fmp"] });
+  const r = await as(C, () => historyFrom(`Q${uid()}`.slice(0, 6), from30()));
+  check("C4 an ineligible source (no key) is skipped with the stated reason; the next eligible one answers", r.value.by?.id === "fmp" && r.skipped.some((k) => k.id === "tiingo" && /Needs your Tiingo key/.test(k.reason)), r.skipped);
+}
+
+async function testSourceSyntax() {
+  const { parseCommand } = await import("@/lib/functions");
+  const a = parseCommand("AAPL GP @tiingo", "MSFT"), b = parseCommand("GP @sec", "MSFT"), c = parseCommand("AAPL GP @nope", "MSFT"), d = parseCommand("AI what did @elon say", "MSFT");
+  check("C4 `AAPL GP @tiingo` parses as AAPL GP with source tiingo", a.ok && a.command.ticker === "AAPL" && a.command.fn === "GP" && a.command.source === "tiingo", a);
+  check("C4 @source with the active ticker; an unknown @source is refused in words; @text inside a question stays text", b.ok && b.command.ticker === "MSFT" && b.command.source === "sec" && !c.ok && /Unknown data source "@nope"/.test(c.error) && d.ok && d.command.arg === "what did @elon say" && !d.command.source, { b, c, d });
+  const { historyFrom } = await import("@/lib/market/data");
+  const { fromChain } = await import("@/lib/market/registry");
+  const V = person(`dan-${uid()}`, { tiingo: KEYS.tiingoA }, {}, { dataset: "daily-bars", id: "tiingo" });
+  const r = await as(V, async () => ({ bars: await historyFrom(`V${uid()}`.slice(0, 6), from30()), quote: await fromChain("quote", { symbol: `V${uid()}`.slice(0, 6) }) }));
+  check("C4 a view's source (@tiingo on GP) applies to that view's dataset only: bars from Tiingo, the quote from the default", r.value.bars.by?.id === "tiingo" && r.value.quote.by.id === "fmp", { bars: r.value.bars.by?.id, quote: r.value.quote.by.id });
+  const W = person(`erin-${uid()}`, {}, {}, { dataset: "curve", id: "tiingo" });
+  const w = await as(W, () => fromChain("curve", {}));
+  check("C4 a view's source that does not serve the dataset is skipped with the reason", ["treasury", "h15"].includes(w.value.by.id) && w.skipped.some((k) => k.id === "tiingo" && /Does not provide treasury curve/.test(k.reason)), w.skipped);
+}
+
+async function testValidation() {
+  const { validateOrder, checkKeyShape } = await import("@/lib/market/byo/settings");
+  const status = (f: () => unknown) => { try { f(); return 200; } catch (e) { return (e as { status?: number }).status ?? 500; } };
+  check("C4 a well-formed order validates", JSON.stringify(validateOrder({ order: { "daily-bars": ["tiingo", "fmp", "tiingo"] } })) === '{"daily-bars":["tiingo","fmp"]}');
+  check("C4 malformed orders are 400s: wrong shape, unknown dataset, a source not in that dataset, a staged dataset, extra fields",
+    [() => validateOrder(null), () => validateOrder({ order: { nope: ["fmp"] } }), () => validateOrder({ order: { curve: ["tiingo"] } }), () => validateOrder({ order: { news: ["gdelt"] } }), () => validateOrder({ order: {}, userId: "x" })].every((f) => status(f) === 400));
+  check("C4 key shapes are allowlisted before anything is sent", status(() => checkKeyShape("tiingo", "short")) === 400 && status(() => checkKeyShape("tiingo", "abc$%^&*()def123456789012")) === 400 && status(() => checkKeyShape("tiingo", KEYS.tiingoA)) === 200);
+  const { planWarning } = await import("@/lib/market/sources-meta");
+  check("C3 a team member adding an individual-plan FMP, Alpha Vantage or Finnhub key is warned; Tiingo, business plans and non-members are not",
+    !!planWarning("fmp", "individual", true) && !!planWarning("alphavantage", "individual", true) && !!planWarning("finnhub", "individual", true)
+    && !planWarning("tiingo", "individual", true) && !planWarning("fmp", "business", true) && !planWarning("fmp", "individual", false));
+}
+
+async function testKeyAndChainTests() {
+  const { testKey } = await import("@/lib/market/byo/settings");
+  const ok = await testKey("tiingo", KEYS.tiingoA), bad = await testKey("tiingo", "tiingoKeyWRONGWRONGWRONGWRONGWR9");
+  check("C4 key test: a working key answers ok with its time; a refused one says so, without the key", ok.ok && ok.ms >= 0 && !bad.ok && /refused your key/.test(bad.message ?? "") && !JSON.stringify(bad).includes("WRONG"), { ok, bad });
+  const tw = await testKey("twelvedata", KEYS.twelveA), fh = await testKey("finnhub", KEYS.finnhubA), av = await testKey("alphavantage", KEYS.alphaA), fm = await testKey("fmp", KEYS.fmpA);
+  check("C4 key tests for Twelve Data, Finnhub, Alpha Vantage and FMP", tw.ok && fh.ok && av.ok && fm.ok, { tw, fh, av, fm });
+}
+
+async function testStoreDb() {
+  const { saveKey, removeKey, saveOrder, loadSettings, dataUserFor, forgetSettings } = await import("@/lib/market/byo/store");
+  const { settingsView, testChain } = await import("@/lib/market/byo/settings");
+  const { db } = await import("@/db");
+  const { sql } = await import("drizzle-orm");
+  const alice = `alice-${uid()}`, bob = `bob-${uid()}`;
+  await saveOrder(alice, { "daily-bars": ["tiingo", "fmp"] });
+  await saveKey(alice, "tiingo", KEYS.tiingoA, "individual");
+  const [row] = (await db!.execute<{ keys_enc: string; key_meta: unknown }>(sql`select keys_enc, key_meta from user_data_sources where user_id = ${alice}`)).rows;
+  check("C4(db) keys are encrypted at rest: the row holds neither the key nor any part beyond the last four", !!row && row.keys_enc.startsWith("v1.") && !row.keys_enc.includes(KEYS.tiingoA) && !JSON.stringify(row.key_meta).includes(KEYS.tiingoA.slice(0, -4)) && JSON.stringify(row.key_meta).includes(KEYS.tiingoA.slice(-4)), row && { enc: row.keys_enc.slice(0, 8), meta: row.key_meta });
+  const view = await settingsView(alice);
+  check("C4(db) the settings view shows the last four and the plan, never the key; order first in the dataset", !JSON.stringify(view).includes(KEYS.tiingoA) && view.keys[0]?.last4 === KEYS.tiingoA.slice(-4) && view.keys[0].plan === "individual" && view.datasets.find((d) => d.id === "daily-bars")?.sources[0].id === "tiingo", view.keys);
+  const bobView = await settingsView(bob);
+  check("C4(db) another person's prefs and keys are not readable: Bob's view is his own (empty)", bobView.keys.length === 0 && !bobView.datasets.some((d) => d.customized) && (await loadSettings(bob)).order["daily-bars"] === undefined);
+  const u = await dataUserFor(alice);
+  check("C4(db) the data user reads the order and which keys exist, and decrypts the key only when asked", u.keyed.has("tiingo") && u.order["daily-bars"]?.[0] === "tiingo" && (await u.key("tiingo")) === KEYS.tiingoA);
+  const t = await testChain(alice, "daily-bars");
+  check("C4(db) Test: the person's chain on its sample says which source answered and how long it took", t.ok && t.answeredBy?.id === "tiingo" && t.answeredBy.yourKey === true && t.ms >= 0 && t.header?.yourKey === true, t);
+  const before = (await db!.execute<{ n: number }>(sql`select count(*)::int as n from kv_cache where key like 'byo:v1:%'`)).rows;
+  const r = await removeKey(alice, "tiingo");
+  forgetSettings(alice);
+  const after = (await db!.execute<{ n: number }>(sql`select count(*)::int as n from kv_cache where key like 'byo:v1:%'`)).rows;
+  check("C3(db) removing a key purges the person's cached data from that provider (kv_cache rows gone)", r.removed && r.purged >= 1 && after[0].n === before[0].n - r.purged && !(await loadSettings(alice)).keyMeta.tiingo, { r, before: before[0].n, after: after[0].n });
+  const t2 = await testChain(alice, "daily-bars");
+  check("C4(db) after removal the chain skips Tiingo with the reason and the default answers", t2.ok && t2.answeredBy?.id === "fmp" && !!t2.header?.skipped?.some((k) => k.id === "tiingo"), t2);
+}
+
+async function testRouteDb() {
+  process.env.YOUBANK_DEV_USER = `ann${uid().toLowerCase()}`;
+  const route = await import("@/app/api/settings/data-sources/route");
+  const call = async (method: "GET" | "PUT" | "POST" | "DELETE", body?: unknown, qs = "") => {
+    const req = new Request(`http://localhost/api/settings/data-sources${qs}`, { method, ...(body !== undefined ? { body: typeof body === "string" ? body : JSON.stringify(body), headers: { "content-type": "application/json" } } : {}) });
+    const res = await (route as Record<string, (r: Request) => Promise<Response>>)[method](req);
+    return { status: res.status, body: (await res.json().catch(() => null)) as Record<string, unknown> | null, cache: res.headers.get("cache-control") };
+  };
+  const bad1 = await call("PUT", "{not json"), bad2 = await call("PUT", { order: { "daily-bars": ["nope"] } }), bad3 = await call("PUT", { order: { curve: ["tiingo"] } });
+  check("C4(route) a malformed PUT returns 400 with words", bad1.status === 400 && bad2.status === 400 && bad3.status === 400 && /not a source/.test(String(bad2.body?.error)), [bad1.status, bad2.status, bad3.status, bad2.body?.error]);
+  const ok = await call("PUT", { order: { "daily-bars": ["nasdaq", "fmp"] } });
+  check("C4(route) PUT saves the order and answers with the view (no-store)", ok.status === 200 && (ok.body?.datasets as { id: string; sources: { id: string }[] }[]).find((d) => d.id === "daily-bars")?.sources[0].id === "nasdaq" && ok.cache === "no-store", ok.status);
+  const save = await call("POST", { action: "save-key", provider: "tiingo", key: KEYS.tiingoA, plan: "business" });
+  check("C4(route) save-key tests the key, saves it and never sends it back", save.status === 200 && !JSON.stringify(save.body).includes(KEYS.tiingoA) && JSON.stringify(save.body).includes(KEYS.tiingoA.slice(-4)), save.status);
+  const refused = await call("POST", { action: "save-key", provider: "finnhub", key: "finnhubKeyWRONGWRONG", plan: "individual" });
+  check("C4(route) a key that does not work is not saved (400 with the provider's words)", refused.status === 400 && /did not work/.test(String(refused.body?.error)), refused.body);
+  const badPost = await call("POST", { action: "save-key", provider: "massive", key: "x".repeat(20), plan: "individual" });
+  check("C4(route) providers are allowlisted (Massive is not offered): 400", badPost.status === 400, badPost.status);
+  const me = process.env.YOUBANK_DEV_USER;
+  process.env.YOUBANK_DEV_USER = `bea${uid().toLowerCase()}`;
+  const other = await call("GET");
+  check("C4(route) another signed-in person reads only their own settings", other.status === 200 && (other.body?.keys as unknown[]).length === 0 && !(other.body?.datasets as { customized: boolean }[]).some((d) => d.customized), other.status);
+  process.env.YOUBANK_DEV_USER = me;
+  const del = await call("DELETE", undefined, "?provider=tiingo"), delBad = await call("DELETE", undefined, "?provider=../etc");
+  check("C4(route) DELETE removes the key; an unknown provider is a 400", del.status === 200 && del.body?.removed === true && delBad.status === 400, [del.status, delBad.status]);
+  delete process.env.YOUBANK_DEV_USER;
+}
+
+/* ---------------- C5 field-level fallthrough ---------------- */
+
+async function testMerge() {
+  const { mergeFields, FIELD_SPECS, isEmptyValue } = await import("@/lib/market/fields");
+  const spec = FIELD_SPECS.profile!;
+  const sec = { data: { name: "Apple Inc.", price: null, marketCap: null, sector: "Information Technology", description: "", low52: null, high52: null, changePct: null }, source: { id: "sec", label: "SEC EDGAR" }, reasons: { description: "Not in filings" } };
+  const tiingo = { data: { name: "Apple", price: 230, marketCap: null, description: "", changePct: 0 }, source: { id: "tiingo", label: "Tiingo (your key)", yourKey: true } };
+  const fmp = { data: { price: 229, marketCap: 3.4e12, description: "", changePct: 0.01 }, source: { id: "fmp", label: "Financial Modeling Prep" } };
+  const m = mergeFields(sec as never, [tiingo, fmp] as never, spec);
+  const d = m.data as Record<string, unknown>, f = m.fields as Record<string, { id?: string; yourKey?: boolean; reason?: string }>;
+  check("C5 merge: each empty field from the first later source that has it (price from Tiingo, market cap from FMP), the first source's own fields kept",
+    d.name === "Apple Inc." && d.price === 230 && f.price.id === "tiingo" && f.price.yourKey === true && d.marketCap === 3.4e12 && f.marketCap.id === "fmp" && d.sector === "Information Technology" && !f.name && !f.sector, { d, f });
+  check("C5 merge: a zero is a value (change 0 from Tiingo), never treated as missing", d.changePct === 0 && f.changePct.id === "tiingo" && !isEmptyValue(0));
+  check("C5 merge: no source has it -> null with the first source's reason (never a silent zero or blank)", d.description === null && f.description.reason === "Not in filings" && d.website === null && typeof f.website.reason === "string", { desc: d.description, f: f.description, w: f.website });
+  const { badgeModel } = await import("@/lib/market/badges");
+  const b = badgeModel({ providers: ["SEC EDGAR", "Tiingo"], notes: [], sources: [{ id: "sec", label: "SEC EDGAR", provider: "SEC EDGAR", licence: "public" }, { id: "tiingo", label: "Tiingo (your key)", provider: "Tiingo", yourKey: true, licence: "user-key" }], yourKey: true, stale: true, asOf: "2026-10-20T14:42:00Z", delayed: true, delayedMinutes: 15, attributions: ["Source: U.S. Securities and Exchange Commission (EDGAR)"], fields: { "profile.price": { id: "tiingo", label: "Tiingo (your key)", yourKey: true }, "profile.description": { reason: "Not in filings" } }, skipped: [{ dataset: "quote", id: "finnhub", label: "Finnhub (your key)", reason: "Needs your Finnhub key (Settings → Data sources)." }] });
+  check("C5 badges: source names, Your key, Delayed 15 min, Stale · as of, the credit, per-field notes and skipped sources",
+    !!b && b.names.join() === "SEC EDGAR,Tiingo (your key)" && ["Your key", "Delayed 15 min", "Stale · as of 10:42 ET"].every((t) => b.chips.some((c) => c.text === t)) && b.attributions[0].startsWith("Source: U.S. Securities")
+    && b.fieldNotes.includes("Price from Tiingo (your key)") && b.fieldNotes.includes("Description: — Not in filings") && /Finnhub \(your key\) skipped: Needs your Finnhub key/.test(b.skipped[0]), b);
+  const { sourceHeaders } = await import("@/lib/market/source-header");
+  const h = sourceHeaders({ providers: ["EIA"], notes: ["WTI — spot · EIA"], sources: [{ id: "eia", label: "U.S. Energy Information Administration", provider: "EIA", licence: "public", attribution: "Source: U.S. Energy Information Administration" }] })["x-data-sources"];
+  check("C5 the header carries the attribution, and is ASCII-only (a valid header value) yet parses back to the same text", /^[\x20-\x7e]*$/.test(h) && JSON.parse(h).attributions[0] === "Source: U.S. Energy Information Administration" && JSON.parse(h).notes[0] === "WTI — spot · EIA", h);
+}
+
 /* ---------------- Main ---------------- */
 
 async function main() {
@@ -538,6 +680,14 @@ async function main() {
   await section("C3 background and shared code refuse keyed adapters", testBackgroundRefusal);
   await section("C3 removing a key purges its cache", testPurge);
   await section("C3 keys never in logs, headers, errors or stats", testNoKeyLeaks);
+  await resetAll();
+  await section("C4 preferences: the order is honoured, ineligible sources skipped with a reason", testPrefsOrder);
+  await section("C4 @source and the view's source", testSourceSyntax);
+  await section("C4 input validation", testValidation);
+  await section("C4 key and chain tests", testKeyAndChainTests);
+  if (localDb()) await section("C4 storage: encrypted keys, prefs, purge (Postgres)", testStoreDb);
+  if (localDb()) await section("C4 the settings route: 400s, owner-only, keys never returned", testRouteDb);
+  await section("C5 field-level fallthrough and badges", testMerge);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");

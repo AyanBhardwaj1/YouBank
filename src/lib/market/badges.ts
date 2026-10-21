@@ -45,7 +45,7 @@ function chipsOf(s: SourcesHeader): Chip[] {
 export function badgeModel(s?: SourcesHeader): BadgeModel | null {
   const names = answeredNames(s);
   if (!s || !names.length) return null;
-  const fieldNotes = Object.entries(s.fields ?? {}).map(([k, p]) => ("reason" in p ? `${fieldName(k)}: — ${p.reason}` : `${fieldName(k)} from ${p.label}${p.yourKey ? " (your key)" : ""}`));
+  const fieldNotes = Object.entries(s.fields ?? {}).map(([k, p]) => ("reason" in p ? `${fieldName(k)}: — ${p.reason}` : `${fieldName(k)} from ${p.label}${p.yourKey && !/your key/i.test(p.label) ? " (your key)" : ""}`));
   const skipped = (s.skipped ?? []).map((k) => `${k.label} skipped: ${k.reason}`);
   return { names, chips: chipsOf(s), attributions: s.attributions ?? [], fieldNotes, skipped, notes: s.notes ?? [] };
 }

@@ -1,4 +1,5 @@
 import type { Profile } from "./roles";
+import { splitSourceToken } from "./market/sources-meta";
 
 export type FunctionGroup = "company" | "market" | "workspace" | "edge" | "crypto" | "quant";
 type FnDef = { label: string; hint: string; group: FunctionGroup; /** Takes free text after the code, e.g. a screen in words. */ args?: boolean };
@@ -82,7 +83,11 @@ export type FunctionCode = keyof typeof FUNCTIONS;
 export const FUNCTION_CODES = Object.keys(FUNCTIONS) as FunctionCode[];
 export const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,7}$/;
 
-export type Command = { ticker: string; fn: FunctionCode; arg?: string; /** How the command was given: typed evidence counts for more in knowledge tracing. */ via?: "typed" | "click" };
+export type Command = {
+  ticker: string; fn: FunctionCode; arg?: string;
+  /** How the command was given: typed evidence counts for more in knowledge tracing. */ via?: "typed" | "click";
+  /** The data source for this view (`AAPL GP @tiingo`): a source id from market/sources-meta. */ source?: string;
+};
 
 export function isFunctionCode(s: string): s is FunctionCode {
   return (FUNCTION_CODES as string[]).includes(s);
@@ -117,6 +122,16 @@ function build(fn: FunctionCode, ticker: string, rest: string[]): { ok: true; co
  * with the beta on.
  */
 export function parseCommand(input: string, activeTicker: string, edge = false): { ok: true; command: Command } | { ok: false; error: string } {
+  // "AAPL GP @tiingo": the data source for this view, anywhere on the line.
+  // An "@word" that is not a source stays in the text (a question to AI may mention @someone); after a
+  // function that takes no text it reads as unexpected, with the hint below.
+  const at = splitSourceToken(input);
+  const r = parseWords(at.source ? at.rest : input, activeTicker, edge);
+  if (!r.ok && at.unknown !== undefined) return { ok: false, error: `Unknown data source "@${at.unknown}". Try @sec, @fmp or @tiingo (Settings → Data sources lists them)` };
+  return r.ok && at.source ? { ok: true, command: { ...r.command, source: at.source } } : r;
+}
+
+function parseWords(input: string, activeTicker: string, edge: boolean): { ok: true; command: Command } | { ok: false; error: string } {
   const raw = input.trim().split(/\s+/).filter(Boolean);
   const tokens = raw.map((t) => t.toUpperCase());
   if (tokens.length === 0) return { ok: false, error: "Type a ticker and a function, e.g. SNOW COMPS" };
