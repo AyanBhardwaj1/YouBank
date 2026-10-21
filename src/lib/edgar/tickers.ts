@@ -1,7 +1,23 @@
+import { z } from "zod";
+import { forSec } from "@/lib/market/symbols";
+import { parseOrThrow } from "@/lib/market/validate";
 import { DAY, edgarJson } from "./client";
 import type { TickerRow } from "../types";
 
-type Raw = Record<string, { cik_str: number; ticker: string; title: string }>;
+/** SEC's company_tickers.json: { "0": { cik_str, ticker, title }, … }. */
+const TickerFile = z.record(z.string(), z.looseObject({ cik_str: z.union([z.number(), z.string().regex(/^\d+$/)]), ticker: z.string(), title: z.string() }));
+
+/** The ticker file, checked (drift is SourceError "schema"), as ticker -> row in SEC's own spelling (BRK-B). */
+export function parseTickerFile(raw: unknown): Map<string, TickerRow> {
+  const m = new Map<string, TickerRow>();
+  for (const r of Object.values(parseOrThrow(TickerFile, raw, "SEC EDGAR", "company_tickers.json"))) {
+    m.set(r.ticker.toUpperCase(), { cik: String(r.cik_str).padStart(10, "0"), ticker: r.ticker.toUpperCase(), name: r.title });
+  }
+  return m;
+}
+
+/** A ticker as typed (BRK.B, brk/b, "BRK B") looked up in SEC's map, which spells classes BRK-B. */
+export const findTicker = (map: Map<string, TickerRow>, ticker: string): TickerRow | null => map.get(forSec(ticker)) ?? null;
 
 let mapPromise: Promise<Map<string, TickerRow>> | null = null;
 
@@ -12,20 +28,14 @@ let mapPromise: Promise<Map<string, TickerRow>> | null = null;
  */
 export function tickerMap(): Promise<Map<string, TickerRow>> {
   if (!mapPromise) {
-    mapPromise = edgarJson<Raw>("https://www.sec.gov/files/company_tickers.json", "company_tickers.json", DAY).then((raw) => {
-      const m = new Map<string, TickerRow>();
-      for (const r of Object.values(raw)) {
-        m.set(r.ticker.toUpperCase(), { cik: String(r.cik_str).padStart(10, "0"), ticker: r.ticker.toUpperCase(), name: r.title });
-      }
-      return m;
-    });
+    mapPromise = edgarJson<unknown>("https://www.sec.gov/files/company_tickers.json", "company_tickers.json", DAY).then(parseTickerFile);
     mapPromise.catch(() => { mapPromise = null; });
   }
   return mapPromise;
 }
 
 export async function resolveTicker(ticker: string): Promise<TickerRow | null> {
-  return (await tickerMap()).get(ticker.toUpperCase()) ?? null;
+  return findTicker(await tickerMap(), ticker);
 }
 
 // Names compared without spaces or legal suffixes ("Exxon Mobil" and "ExxonMobil Holdings Corp" differ only

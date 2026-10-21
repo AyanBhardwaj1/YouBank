@@ -8,17 +8,32 @@
  * below keeps to public-domain originals (BLS, BEA, the Fed, the Department of Labor, the EIA) plus
  * Moody's yield spread, which FRED allows with a citation. Forecasts use BLS data directly.
  */
+import { z } from "zod";
 import { cacheJson } from "@/lib/cache";
 import { fetchRetry } from "@/lib/net";
+import { parseOrThrow } from "./validate";
 
 export type Obs = { date: string; value: number };
+
+/** FRED's graph CSV: a header of a date column and the series id, then "YYYY-MM-DD,value" rows ("." for none). */
+const FredCsv = z.object({
+  header: z.tuple([z.string().regex(/date/i), z.string()]),
+  rows: z.array(z.tuple([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.string().regex(/^(-?\d+(\.\d+)?([eE][-+]?\d+)?|\.)?$/)])),
+});
+
+/** One series' observations, oldest first, checked: drift (an HTML page, a new layout) is SourceError "schema". */
+export function parseFredCsv(text: string, id: string): Obs[] {
+  const [head = "", ...lines] = text.trim().split("\n");
+  const cells = lines.filter((l) => l.trim()).map((l) => l.trim().split(","));
+  const parsed = parseOrThrow(FredCsv, { header: head.trim().split(","), rows: cells }, "FRED", `fredgraph.csv ${id}`);
+  return parsed.rows.filter(([, v]) => v !== "." && v !== "").map(([date, v]) => ({ date, value: Number(v) })).filter((o) => Number.isFinite(o.value));
+}
 
 export async function fredSeries(id: string, start?: string): Promise<Obs[]> {
   const rows = await cacheJson<Obs[]>(`fred:${id}`, 12 * 3_600_000, async () => {
     const res = await fetchRetry(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`, { cache: "no-store", headers: { "User-Agent": "YouBank research terminal" }, timeoutMs: 15_000 });
     if (!res.ok) throw new Error(`FRED ${res.status} for ${id}`);
-    const text = await res.text();
-    return text.split("\n").slice(1).map((l) => l.split(",")).filter((p) => p.length >= 2 && p[1] !== "." && p[1] !== "").map((p) => ({ date: p[0], value: Number(p[1]) })).filter((o) => Number.isFinite(o.value));
+    return parseFredCsv(await res.text(), id);
   });
   return start ? rows.filter((r) => r.date >= start) : rows;
 }

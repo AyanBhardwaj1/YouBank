@@ -1,20 +1,27 @@
 import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
+import type { Profile } from "@/lib/market/canonical";
 import { fmpSlot } from "@/lib/market/fmp";
+import { ProfileRows, profileOf } from "@/lib/market/fmp-schema";
+import { forFmp } from "@/lib/market/symbols";
+import { parseOrThrow } from "@/lib/market/validate";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
 
 /** Financial Modeling Prep. Free tier: `profile` (price, market cap, change, 52w range) and `search-name`. */
 const BASE = "https://financialmodelingprep.com/stable";
 
-export type FmpProfile = {
-  symbol: string; price: number; marketCap: number; change: number; changePercentage: number; range: string;
-  companyName: string; cik: string; exchange: string; exchangeFullName: string; industry: string; sector: string;
-  website: string; description: string; city?: string; state?: string; ipoDate?: string; fullTimeEmployees?: string;
-};
+/** A profile row as FMP sends it, stamped with when it was fetched (kept through the cache). */
+type Stamped = Record<string, unknown> & { fetchedAt?: string };
 
-export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetchedAt: string }) | null> {
+/**
+ * A company's profile in the canonical shape (fraction change, market cap in dollars or null). FMP's
+ * profile carries no quote time, so its as-of is the time it was fetched: stamped when the answer is
+ * loaded and kept in the cache, so a cache hit 14 minutes later still says when the price was read.
+ */
+export async function fmpProfile(raw: string): Promise<Profile | null> {
   const key = process.env.FMP_API_KEY;
   if (!key) return null;
-  const rows = await cacheJson<FmpProfile[] | null>(`fmp:profile:${symbol}`, 15 * 60_000, async () => {
+  const symbol = forFmp(raw);
+  const rows = await cacheJson<Stamped[] | null>(`fmp:profile:${symbol}`, 15 * 60_000, async () => {
     // The plan's daily limit (see FMP_LIMIT_KEY in market/fmp): skip the request while it is in force.
     if (await cacheGet("fmp:daily-limit")) return null;
     // The shared per-minute budget (market/fmp). With none left it throws, so nothing is cached for long
@@ -25,8 +32,11 @@ export async function fmpProfile(symbol: string): Promise<(FmpProfile & { fetche
     if (!res.ok) return null;
     const data = (await res.json().catch(() => null)) as unknown;
     if (data && typeof data === "object" && /Limit Reach/i.test(String((data as { "Error Message"?: string })["Error Message"] ?? ""))) { await cacheSet("fmp:daily-limit", "1", 30 * 60_000); return null; }
-    return Array.isArray(data) ? (data as FmpProfile[]) : null; // FMP returns an object with a message on plan errors
+    const fetchedAt = new Date().toISOString();
+    return Array.isArray(data) ? (data as Stamped[]).map((r) => ({ ...r, fetchedAt })) : null; // FMP returns an object with a message on plan errors
   }, { shared: true });
-  const p = rows?.[0];
-  return p ? { ...p, fetchedAt: new Date().toISOString() } : null;
+  if (!rows?.length) return null;
+  const [p] = parseOrThrow(ProfileRows, rows, "FMP", "profile");
+  // Entries cached before the stamp existed read as fetched now.
+  return profileOf(p, typeof rows[0].fetchedAt === "string" ? rows[0].fetchedAt : new Date().toISOString());
 }

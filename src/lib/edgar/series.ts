@@ -15,7 +15,7 @@ export async function conceptSeries(cik: string, concepts: string[], periods = 8
     const rows = normalize(raw);
     return {
       concept: c, unit,
-      annual: rows.filter((r) => r.start && r.days >= 350 && r.days <= 380).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form, fy: r.fy })),
+      annual: rows.filter((r) => r.start && r.days >= 350 && r.days <= 380).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form, fy: r.fy ?? undefined })),
       quarterly: rows.filter((r) => r.start && r.days >= 60 && r.days <= 100).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form })),
       instants: rows.filter((r) => !r.start).slice(-periods).map((r) => ({ end: r.end, value: r.val, form: r.form })),
     };

@@ -2,31 +2,50 @@
  * The Treasury's daily par yield curve, from the Treasury itself (public domain), for this year and
  * last year. Cached for two hours; the Treasury publishes once a day, after the close.
  */
+import { z } from "zod";
 import { cacheJson } from "@/lib/cache";
 import { fetchRetry } from "@/lib/net";
+import { marketYear } from "./calendar";
+import type { CurvePoint } from "./canonical";
+import { parseOrThrow } from "./validate";
 
 export type CurveRow = { date: string; yields: Record<string, number> };
 export const TENORS: [string, number][] = [["1 Mo", 1 / 12], ["2 Mo", 2 / 12], ["3 Mo", 0.25], ["4 Mo", 4 / 12], ["6 Mo", 0.5], ["1 Yr", 1], ["2 Yr", 2], ["3 Yr", 3], ["5 Yr", 5], ["7 Yr", 7], ["10 Yr", 10], ["20 Yr", 20], ["30 Yr", 30]];
+
+/** The CSV's layout: a Date column first, then tenor columns ("1 Mo" … "30 Yr"); every row dated MM/DD/YYYY. */
+const CsvShape = z.object({
+  cols: z.array(z.string()).refine((c) => c[0] === "Date" && c.slice(1).some((x) => TENORS.some(([t]) => t === x)), "Date then tenor columns"),
+  rows: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), yields: z.record(z.string(), z.number()) })),
+});
+
+/** The Treasury's daily par yield curve CSV (yields in percent, as published), checked: drift is SourceError "schema". */
+export function parseTreasuryCsv(text: string): CurveRow[] {
+  const [head = "", ...lines] = text.trim().split("\n");
+  const cols = head.split(",").map((c) => c.replace(/"/g, "").trim());
+  const rows = lines.map((l) => {
+    const v = l.split(",");
+    const [m = "", d = "", yy = ""] = (v[0] ?? "").replace(/"/g, "").trim().split("/");
+    const yields: Record<string, number> = {};
+    cols.forEach((c, i) => { if (i > 0 && v[i] !== undefined && v[i] !== "") { const n = Number(v[i]); if (Number.isFinite(n)) yields[c] = n; } });
+    return { date: `${yy}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`, yields };
+  });
+  return parseOrThrow(CsvShape, { cols, rows }, "US Treasury", "daily_treasury_yield_curve.csv").rows;
+}
+
+/** A curve row as canonical points (yields as fractions). */
+export const curvePoints = (r: CurveRow): CurvePoint[] => TENORS.filter(([t]) => r.yields[t] !== undefined).map(([tenor, years]) => ({ date: r.date, tenor, years, yield: r.yields[tenor] / 100 }));
 
 async function year(y: number): Promise<CurveRow[]> {
   const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/${y}/all?type=daily_treasury_yield_curve&field_tdr_date_value=${y}&page&_format=csv`;
   const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 15_000 });
   if (!res.ok) throw new Error(`Treasury ${res.status}`);
-  const [head, ...lines] = (await res.text()).trim().split("\n");
-  const cols = head.split(",").map((c) => c.replace(/"/g, "").trim());
-  return lines.map((l) => {
-    const v = l.split(",");
-    const [m, d, yy] = v[0].split("/");
-    const yields: Record<string, number> = {};
-    cols.forEach((c, i) => { if (i > 0 && v[i] !== undefined && v[i] !== "") { const n = Number(v[i]); if (Number.isFinite(n)) yields[c] = n; } });
-    return { date: `${yy}-${m}-${d}`, yields };
-  });
+  return parseTreasuryCsv(await res.text());
 }
 
 /** Daily curves, newest first, covering at least the last year. */
 export async function treasuryCurves(): Promise<CurveRow[]> {
   return cacheJson<CurveRow[]>("treasury:curves", 2 * 3_600_000, async () => {
-    const y = new Date().getUTCFullYear();
+    const y = marketYear();
     const [a, b] = await Promise.all([year(y), year(y - 1).catch(() => [] as CurveRow[])]);
     return [...a, ...b].sort((p, q) => (p.date < q.date ? 1 : -1));
   });

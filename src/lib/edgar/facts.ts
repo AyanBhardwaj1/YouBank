@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { parseOrThrow } from "@/lib/market/validate";
 import { HOUR, edgarJson } from "./client";
 
 /**
@@ -7,7 +9,7 @@ import { HOUR, edgarJson } from "./client";
  * point-in-time balances, deduplicating restated values by keeping the latest filing.
  */
 
-export type RawFact = { start?: string; end: string; val: number; accn: string; fy: number; fp: string; form: string; filed: string; frame?: string };
+export type RawFact = { start?: string; end: string; val: number; accn: string; fy: number | null; fp: string | null; form: string; filed: string; frame?: string };
 export type Fact = RawFact & { days: number };
 export type CompanyFacts = { cik: number; entityName: string; facts: Record<string, Record<string, { units: Record<string, RawFact[]> }>> };
 
@@ -15,8 +17,43 @@ export function factsUrl(cik: string) {
   return `https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`;
 }
 
-export function getCompanyFacts(cik: string): Promise<CompanyFacts> {
-  return edgarJson<CompanyFacts>(factsUrl(cik), `facts-${cik}.json`, 12 * HOUR);
+export async function getCompanyFacts(cik: string): Promise<CompanyFacts> {
+  return parseCompanyFacts(await edgarJson<unknown>(factsUrl(cik), `facts-${cik}.json`, 12 * HOUR));
+}
+
+/* ---------------- Schema (data.sec.gov/api/xbrl/companyfacts) ---------------- */
+
+const SOURCE = "SEC EDGAR";
+const Envelope = z.looseObject({
+  cik: z.union([z.number(), z.string()]), entityName: z.string(),
+  facts: z.record(z.string(), z.record(z.string(), z.looseObject({ units: z.record(z.string(), z.array(z.unknown())) }))),
+});
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "not a date");
+const FactRows = z.array(z.looseObject({
+  start: date.optional(), end: date, val: z.number().refine(Number.isFinite, "not a finite number"), accn: z.string(),
+  fy: z.number().nullish().transform((v) => v ?? null), fp: z.string().nullish().transform((v) => v ?? null), form: z.string(), filed: date, frame: z.string().optional(),
+}));
+
+/**
+ * A companyfacts answer, checked at its envelope (the rows of each concept are checked when first read,
+ * by factRows, so a multi-megabyte document is not walked twice). Drift is SourceError "schema".
+ */
+export function parseCompanyFacts(raw: unknown): CompanyFacts {
+  parseOrThrow(Envelope, raw, SOURCE, "companyfacts");
+  return raw as CompanyFacts;
+}
+
+const checked = new WeakMap<object, RawFact[]>();
+
+/** One concept's reported rows in one unit, checked against the schema once per document. */
+export function factRows(cf: CompanyFacts, taxonomy: string, concept: string, unit: string): RawFact[] {
+  const raw = cf.facts[taxonomy]?.[concept]?.units?.[unit];
+  if (!raw?.length) return [];
+  const hit = checked.get(raw);
+  if (hit) return hit;
+  const rows = parseOrThrow(FactRows, raw, SOURCE, `companyfacts ${taxonomy}:${concept}`) as RawFact[];
+  checked.set(raw, rows);
+  return rows;
 }
 
 const FORMS = new Set(["10-K", "10-K/A", "10-Q", "10-Q/A", "20-F", "20-F/A", "40-F"]);
@@ -37,8 +74,8 @@ export function pickConcept(cf: CompanyFacts, candidates: string[], unit = "USD"
   let best: { concept: string; rows: Fact[]; score: number; latest: string } | null = null;
   for (const concept of candidates) {
     const units = cf.facts[taxonomy]?.[concept]?.units;
-    const raw = units?.[unit] ?? (unit === "USD" ? undefined : units?.["shares"]);
-    if (!raw?.length) continue;
+    const raw = units?.[unit]?.length ? factRows(cf, taxonomy, concept, unit) : unit === "USD" ? [] : factRows(cf, taxonomy, concept, "shares");
+    if (!raw.length) continue;
     const rows = normalize(raw);
     if (!rows.length) continue;
     const latest = rows.reduce((m, r) => (r.end > m ? r.end : m), "");
@@ -176,20 +213,46 @@ export function instantAt(rows: Fact[], end: string): Fact | null {
   return best;
 }
 
-/** Fiscal quarter label for a period end, given the fiscal year-end month (1-12). */
-export function fiscalLabel(end: string, fyeMonth: number): string {
+/** 52/53-week years end within a week of a month end: a period ending on the 1st-7th belongs to the month before. */
+const SPILL_DAYS = 7;
+
+/** The month a period end belongs to, as [year, month 1-12]. */
+function closingMonth(end: string): [number, number] {
   const d = toDate(end);
-  const m = d.getUTCMonth() + 1;
-  const monthsToFye = (fyeMonth - m + 12) % 12;
-  const q = 4 - monthsToFye / 3;
-  const fy = d.getUTCFullYear() + (m > fyeMonth ? 1 : 0);
-  return `Q${Math.round(q)} FY${String(fy).slice(2)}`;
+  const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+  if (d.getUTCDate() > SPILL_DAYS) return [y, m];
+  return m === 1 ? [y - 1, 12] : [y, m - 1];
+}
+
+/** The fiscal year-end month from SEC's MMDD ("0930" is 9; "0203", a 52-week January year, is 1). Defaults to December. */
+export function fyeMonthOf(mmdd: string | null | undefined): number {
+  if (!mmdd || !/^\d{4}$/.test(mmdd)) return 12;
+  const m = Number(mmdd.slice(0, 2)), d = Number(mmdd.slice(2));
+  if (m < 1 || m > 12) return 12;
+  return d <= SPILL_DAYS ? (m === 1 ? 12 : m - 1) : m;
+}
+
+/**
+ * Fiscal quarter label for a period end, given the fiscal year-end month (1-12): the quarter whose end
+ * is nearest, and the fiscal year named by the calendar year it ends in. A 52-week year ending Oct 1 for
+ * a September company is Q4 of the year just ended (it used to read "Q0" of the next).
+ */
+export function fiscalLabel(end: string, fyeMonth: number): string {
+  const [y, m] = closingMonth(end);
+  const after = (m - fyeMonth + 12) % 12; // months after the fiscal year end
+  const k = Math.round(after / 3); // 0..4 quarters after the year end
+  const shift = after - 3 * k; // -1, 0 or 1: how far past that quarter's end
+  const alignedIndex = y * 12 + (m - 1) - shift;
+  const ay = Math.floor(alignedIndex / 12), am = (alignedIndex % 12) + 1;
+  const q = k % 4 === 0 ? 4 : k;
+  const fy = ay + (am > fyeMonth ? 1 : 0);
+  return `Q${q} FY${String(fy).slice(2)}`;
 }
 
 /** Normalized USD duration/instant rows for one concept in any taxonomy (company extensions included). */
 export function rowsFor(cf: CompanyFacts, taxonomy: string, concept: string, unit = "USD"): Fact[] {
-  const raw = cf.facts[taxonomy]?.[concept]?.units?.[unit];
-  return raw?.length ? normalize(raw) : [];
+  const raw = factRows(cf, taxonomy, concept, unit);
+  return raw.length ? normalize(raw) : [];
 }
 
 /** Concepts across company-specific taxonomies (not us-gaap/dei/ifrs-full/srt) whose names match a pattern. */
