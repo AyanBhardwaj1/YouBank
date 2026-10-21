@@ -6,7 +6,9 @@ import { derive, fmtMoney, fmtPct } from "@/lib/metrics";
 import { Columns } from "@/components/charts/Columns";
 import type { Snapshot } from "@/lib/terminal/snapshot";
 import { StatTile } from "../StatTile";
-import { ResearchNote, SourceBadge, useTerminal } from "../kit";
+import { PriceBadges, ResearchNote, SourceBadge, useTerminal } from "../kit";
+import { companySources } from "@/lib/client/companies";
+import { changeTone, fmtChange, NA } from "@/lib/market/units";
 import { CompanyNewsStrip } from "./NewsScreens";
 
 export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: (cmd: Command) => void }) {
@@ -15,12 +17,12 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
   const needs = [!c.price ? "quote" : "", !c.description ? "profile" : ""].filter(Boolean);
   const snap = useTerminal<Snapshot>("snapshot", { ticker: c.ticker, need: needs.join(",") }, needs.length > 0);
   const s = snap.data;
-  const p = c.price ?? (s && s.price !== null ? { last: s.price, changePct: s.changePct !== null ? s.changePct * 100 : null, low52: s.low52, high52: s.high52 } : null);
+  const p = c.price ?? (s && s.price !== null ? { last: s.price, changePct: s.changePct, low52: s.low52, high52: s.high52 } : null);
   const researchedPrice = !c.price && !!p;
   const chg = p?.changePct ?? null;
   const rangePos = p && p.low52 !== null && p.high52 !== null && p.high52 > p.low52 ? Math.min(1, Math.max(0, (p.last - p.low52) / (p.high52 - p.low52))) : null;
   const marketCap = d.marketCap ?? (researchedPrice ? s?.marketCap ?? null : null);
-  const ev = d.ev ?? (marketCap !== null ? marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null);
+  const ev = d.ev ?? (marketCap !== null && c.balance.debt !== null && c.balance.cash !== null ? marketCap + c.balance.debt - c.balance.cash : null);
   const description = c.description || s?.description || "";
 
   return (
@@ -48,10 +50,11 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
           <div className="shrink-0 text-right">
             <div className="num text-[20px] font-semibold leading-none">{p.last.toFixed(2)}{researchedPrice && <span className="ml-1 align-middle font-sans text-[9.5px] font-normal text-chart-emphasis" title="Looked up on the web by AI research; see the sources below">researched</span>}</div>
             {chg !== null && (
-              <div className={`num mt-1 text-[11px] ${chg >= 0 ? "text-pos" : "text-neg"}`}>
-                {chg >= 0 ? "▲" : "▼"} {Math.abs(chg).toFixed(2)}% <span className="text-muted">today</span>
+              <div className={`num mt-1 text-[11px] ${changeTone(chg)}`}>
+                {fmtChange(chg, 2, true)} <span className="text-muted">today</span>
               </div>
             )}
+            <PriceBadges price={c.price} delayedMinutes={companySources(c.ticker)?.delayedMinutes} />
             {rangePos !== null && (
               <div className="mt-2 w-40" title="52-week range">
                 <div className="relative h-1.5 rounded-full bg-chart-1/20">
@@ -82,9 +85,9 @@ export function DesScreen({ company: c, onRun }: { company: CompanyData; onRun: 
           <p className="line-clamp-6 text-[12px] leading-relaxed text-fg/90">{description || (snap.loading ? "Looking up what the company does…" : "No description available.")}</p>
           <dl className="num mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-[11px]">
             <dt className="text-muted">CIK</dt><dd>{c.cik}</dd>
-            <dt className="text-muted">LTM period</dt><dd>{c.ltm.periodEnd}</dd>
+            <dt className="text-muted">LTM period</dt><dd>{c.ltm.periodEnd}{c.sources.filed ? <span className="text-muted"> (filed {c.sources.filed})</span> : null}</dd>
             <dt className="text-muted">Shares out</dt><dd className="truncate" title={c.sources.concepts.shares}>{c.balance.sharesOut !== null ? `${fmtMoney(c.balance.sharesOut)} shares` : "n/a"}{c.sources.concepts.shares?.includes("Weighted") ? <span className="text-muted"> (diluted wtd. avg.)</span> : null}</dd>
-            <dt className="text-muted">Debt / cash</dt><dd>${fmtMoney(c.balance.debt)} / ${fmtMoney(c.balance.cash)}</dd>
+            <dt className="text-muted">Debt / cash</dt><dd>{c.balance.debt !== null ? `$${fmtMoney(c.balance.debt)}` : NA} / {c.balance.cash !== null ? `$${fmtMoney(c.balance.cash)}` : NA}</dd>
             {c.website && <><dt className="text-muted">Web</dt><dd><a href={c.website} target="_blank" rel="noreferrer" className="text-info hover:underline">{c.website.replace(/^https?:\/\//, "")}</a></dd></>}
           </dl>
         </div>

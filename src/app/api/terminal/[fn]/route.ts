@@ -5,6 +5,7 @@ import { structured } from "@/lib/ai/agent";
 import { loadUserContext } from "@/lib/ai/persona";
 import { MarketDataError } from "@/lib/market/fmp";
 import { withProvenance } from "@/lib/market/provenance";
+import { sourceHeaders } from "@/lib/market/source-header";
 import { companySnapshot, type Need } from "@/lib/terminal/snapshot";
 import { creditView, debtView, forecastView, qualityView } from "@/lib/terminal/fundamentals";
 import { curveView, macroView } from "@/lib/terminal/macro";
@@ -80,9 +81,6 @@ function errorResponse(e: unknown, extra: Record<string, unknown> = {}, headers:
   return NextResponse.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), planLimited, ...extra }, { status: f.status, headers });
 }
 
-/** The sources an answer used, for the screen's badge: providers and notes such as "S&P 500 tracked by the SPY ETF". */
-const sourceHeaders = (providers: string[], notes: string[]): Record<string, string> => (providers.length ? { "x-data-sources": JSON.stringify({ providers: [...new Set(providers)], notes: [...new Set(notes)].slice(0, 8) }) } : {});
-
 /** The source a function cannot work without, named when it is down (a 503, not "our side"). */
 const SOURCE: Record<string, string> = { deals: "SEC EDGAR", curve: "The US Treasury's rate feed" };
 
@@ -96,13 +94,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ fn: string }> }
     const run = await withProvenance(async () => {
       try { return { data: await compute(fn, params, user.id) }; } catch (error) { return { error }; }
     });
-    const headers = sourceHeaders(run.providers, run.notes);
+    const headers = sourceHeaders(run);
     if ("data" in run.value) return NextResponse.json(run.value.data, { headers: { ...headers, "Cache-Control": fn === "skills" ? "no-store" : `private, max-age=${TTL[fn] ?? CRYPTO_TTL[fn] ?? 60}` } });
     const e = run.value.error;
     // No feed has this company's prices: offer what research can find (price, range, beta) instead of nothing.
     if (e instanceof MarketDataError && PRICE_FNS.has(fn)) {
       const snap = await withProvenance(() => companySnapshot(params.get("ticker") ?? "", ["risk"]).catch(() => null));
-      if (snap.value) return errorResponse(e, { snapshot: snap.value }, sourceHeaders([...run.providers, ...snap.providers], [...run.notes, ...snap.notes]));
+      if (snap.value) return errorResponse(e, { snapshot: snap.value }, sourceHeaders({ providers: [...run.providers, ...snap.providers], notes: [...run.notes, ...snap.notes], meta: run.meta }));
     }
     return (SOURCE[fn] ? sourceDownResponse(e, SOURCE[fn], `terminal-${fn}`) : null) ?? errorResponse(e, {}, headers);
   });
@@ -162,7 +160,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
         case "portfolio": {
           const holdings = (Array.isArray(body?.holdings) ? body.holdings : []).filter((h): h is Holding => !!h && typeof (h as Holding).symbol === "string" && typeof (h as Holding).weight === "number");
           const run = await withProvenance(() => portfolioView(holdings));
-          return NextResponse.json(run.value, { headers: sourceHeaders(run.providers, run.notes) });
+          return NextResponse.json(run.value, { headers: sourceHeaders(run) });
         }
         case "skills": {
           const key = typeof body?.key === "string" ? body.key.toUpperCase() : "";
