@@ -764,12 +764,12 @@ async function testFredNotBrowserCached() {
     const src = JSON.parse(res.headers.get("x-data-sources") ?? "{}") as { sources?: { id: string }[] };
     check("C1(review) a GC answer from H.15 via FRED is sent private, no-store (FRED's terms bar caching)", res.status === 200 && !!src.sources?.some((x) => x.id === "h15") && res.headers.get("cache-control") === "private, no-store", { status: res.status, cc: res.headers.get("cache-control"), sources: src.sources });
   } finally { delete forced["home.treasury.gov"]; delete process.env.YOUBANK_DEV_USER; }
-  const { breakers } = await import("@/lib/market/breaker");
-  await breakers.reset("treasury");
+  // The control: an answer with no FRED source keeps its browser cache time (deals: FMP, 600 s).
   process.env.YOUBANK_DEV_USER = `gc${uid().toLowerCase()}`;
   try {
-    const res = await route.GET(new Request("http://localhost/api/terminal/curve"), { params: Promise.resolve({ fn: "curve" }) });
-    check("C1(review) the Treasury's own curve keeps its browser cache time", res.status === 200 && res.headers.get("cache-control") === "private, max-age=900", { status: res.status, cc: res.headers.get("cache-control"), src: res.headers.get("x-data-sources")?.slice(0, 200) });
+    const res = await route.GET(new Request("http://localhost/api/terminal/deals"), { params: Promise.resolve({ fn: "deals" }) });
+    const src = JSON.parse(res.headers.get("x-data-sources") ?? "{}") as { sources?: { id: string }[] };
+    check("C1(review) an answer with no FRED source keeps its browser cache time", res.status === 200 && !src.sources?.some((x) => NOT_CACHEABLE.has(x.id)) && res.headers.get("cache-control") === "private, max-age=600", { status: res.status, cc: res.headers.get("cache-control"), sources: src.sources });
   } finally { delete process.env.YOUBANK_DEV_USER; }
 }
 
