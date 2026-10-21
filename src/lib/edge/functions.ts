@@ -36,8 +36,17 @@ import { failureMessage } from "@/lib/errors";
 
 const asSteps = (step: unknown) => step as Steps;
 
+/**
+ * Concurrency at hundreds of people: one person's burst must not queue everyone else's work behind it,
+ * and the GPU service (Modal) takes a bounded number of jobs whatever asks. So person-started functions
+ * are limited per person (`event.data.userId`), and every function that calls the ML service shares one
+ * account-wide key for it. (Inngest allows two constraints per function.)
+ */
+const PER_PERSON = (limit: number) => ({ key: "event.data.userId", limit });
+const ML_SERVICE = { key: '"modal-ml"', limit: 4, scope: "env" as const };
+
 export const canvasRun = inngest.createFunction(
-  { id: "edge-canvas-run", triggers: { event: "edge/canvas.run" }, concurrency: 3, retries: 2 },
+  { id: "edge-canvas-run", triggers: { event: "edge/canvas.run" }, concurrency: [{ limit: 8 }, PER_PERSON(2)], retries: 2 },
   async ({ event, step }) => {
     await executeRun(Number((event.data as { runId: number }).runId), asSteps(step), "inngest");
     return { runId: (event.data as { runId: number }).runId };
@@ -56,7 +65,7 @@ export const digestTick = inngest.createFunction(
 );
 
 export const detectionRefine = inngest.createFunction(
-  { id: "edge-detection-refine", triggers: { event: "edge/detection.created" }, concurrency: 2, retries: 1 },
+  { id: "edge-detection-refine", triggers: { event: "edge/detection.created" }, concurrency: [{ limit: 2 }, ML_SERVICE], retries: 1 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const started = await s.run("start", () => startRefine(Number((event.data as { id: number }).id)));
@@ -75,7 +84,7 @@ export const detectionRefine = inngest.createFunction(
 
 /** Read an uploaded document or recording: parse or transcribe on the ML service, then embed the passages. */
 export const docIngest = inngest.createFunction(
-  { id: "edge-doc-ingest", triggers: { event: "edge/doc.uploaded" }, concurrency: 2, retries: 1 },
+  { id: "edge-doc-ingest", triggers: { event: "edge/doc.uploaded" }, concurrency: [PER_PERSON(2), ML_SERVICE], retries: 1 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const docId = Number((event.data as { docId: number }).docId);
@@ -131,7 +140,7 @@ export const graphIngest = inngest.createFunction(
 
 /** Train the deal model on the ML service and store its scorecard and predictions. */
 export const graphTrain = inngest.createFunction(
-  { id: "edge-graph-train", triggers: { event: "edge/graph.train" }, concurrency: 1, retries: 0 },
+  { id: "edge-graph-train", triggers: { event: "edge/graph.train" }, concurrency: [{ limit: 1 }, ML_SERVICE], retries: 0 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const data = event.data as { reason?: string; gpu?: boolean; by?: string };
@@ -154,7 +163,7 @@ export const graphTrain = inngest.createFunction(
 
 /** Refine a scenario: ten thousand statistical paths, or two thousand from the diffusion model on the ML service. */
 export const scenarioRefine = inngest.createFunction(
-  { id: "edge-scenario-refine", triggers: { event: "edge/scenario.refine" }, concurrency: 2, retries: 1 },
+  { id: "edge-scenario-refine", triggers: { event: "edge/scenario.refine" }, concurrency: [PER_PERSON(1), ML_SERVICE], retries: 1 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const { id, userId } = event.data as { id: number; userId: string };
@@ -170,7 +179,7 @@ export const scenarioRefine = inngest.createFunction(
  * when they pressed Refine); 20,000 paths on the ML service, or here when it is not set up.
  */
 export const lboRefine = inngest.createFunction(
-  { id: "edge-lbo-refine", triggers: { event: "edge/lbo.refine" }, concurrency: 2, retries: 0 },
+  { id: "edge-lbo-refine", triggers: { event: "edge/lbo.refine" }, concurrency: [PER_PERSON(1), ML_SERVICE], retries: 0 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const { id, userId } = event.data as { id: number; userId: string };
@@ -187,22 +196,33 @@ export const lboRefine = inngest.createFunction(
 );
 
 /**
- * Thesis Agent ticks (E7): hourly, the theses whose tick is due (four a run), each tick in slices of a few
- * minutes so it fits a step; also on request (a plan just approved, a thesis resumed). A premium thesis
- * re-checks its owner's plan before it ticks; free theses never open a premium scope.
+ * Thesis Agent ticks (E7): hourly, the theses whose tick is due, four at a time, batch after batch (up to
+ * AGENT_BATCHES, 40 theses a run) until none is due, each tick in slices of a few minutes so it fits a
+ * step; also on request (a plan just approved, a thesis resumed). Four a run served a few dozen people;
+ * with hundreds, the due list outgrew the hour. A batch whose theses were all ticked earlier in the run (a
+ * failing one stays due) ends it. A premium thesis re-checks its owner's plan before it ticks; free theses
+ * never open a premium scope.
  */
+const AGENT_BATCHES = 10;
 export const agentTick = inngest.createFunction(
   { id: "edge-agent-tick", triggers: [{ cron: "15 * * * *" }, { event: "edge/agent.tick" }], concurrency: 1, retries: 1 },
   async ({ event, step }) => {
     const s = metered(asSteps(step));
     const one = Number((event?.data as { id?: number } | undefined)?.id);
-    const ids = Number.isInteger(one) && one > 0 ? [one] : await s.run("due", () => dueAgents(4));
+    const seen = new Set<number>();
     let ticked = 0;
-    for (const id of ids) {
-      for (let k = 0; k < 4; k++) {
-        const r = await s.run(`tick-${id}-${k}`, async () => { const x = await tickAgent(id, Date.now() + 200_000); await flushUsage(); return x; });
-        if (r.done) { ticked++; break; }
+    // The loop depends only on the steps' recorded results, so Inngest's replays take the same path.
+    for (let b = 0; b < (Number.isInteger(one) && one > 0 ? 1 : AGENT_BATCHES); b++) {
+      const ids = Number.isInteger(one) && one > 0 ? [one] : await s.run(b === 0 ? "due" : `due-${b}`, () => dueAgents(4));
+      const fresh = ids.filter((id) => !seen.has(id));
+      for (const id of fresh) {
+        seen.add(id);
+        for (let k = 0; k < 4; k++) {
+          const r = await s.run(`tick-${id}-${k}`, async () => { const x = await tickAgent(id, Date.now() + 200_000); await flushUsage(); return x; });
+          if (r.done) { ticked++; break; }
+        }
       }
+      if (ids.length < 4 || !fresh.length) break;
     }
     return { ticked };
   },

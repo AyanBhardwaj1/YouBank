@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { CurrentUser } from "@/lib/auth/user";
+import { forgetAiCaps } from "@/lib/ai/limits";
 import { releaseTeamSeat } from "@/lib/billing/seats";
 import { can, canAssignRole, isTeamRole, outranks, slugify, type TeamPermission, type TeamRole } from "./roles";
 
@@ -99,8 +100,11 @@ export async function renameTeam(teamId: number, name: string): Promise<void> {
 }
 
 export async function deleteTeam(teamId: number): Promise<void> {
+  // Whoever held a plan seat through this team loses it with the membership: drop their cached plans.
+  const seated = await requireDb().select({ userId: schema.seatAssignments.userId }).from(schema.seatAssignments).where(eq(schema.seatAssignments.teamId, teamId)).catch(() => []);
   // Members and invitations cascade. An active-team pointer left behind is ignored on read.
   await requireDb().delete(schema.teams).where(eq(schema.teams.id, teamId));
+  for (const s of seated) forgetAiCaps(s.userId);
 }
 
 /** Invite by email. Re-inviting the same address refreshes the role and token instead of erroring. */
@@ -173,6 +177,7 @@ export async function removeMember(teamId: number, actor: TeamMember, targetUser
   await db.delete(schema.teamMembers).where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, targetUserId)));
   // A plan seat given through this team goes with the membership (entitlements also checks membership).
   await releaseTeamSeat(teamId, targetUserId).catch(() => undefined);
+  forgetAiCaps(targetUserId);
 }
 
 /**

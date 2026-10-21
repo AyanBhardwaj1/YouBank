@@ -4,7 +4,7 @@
  * what it touches in the person's own YouBank), the brief, deals, and the globe. The radar is in
  * ./radar/view.ts; public, signed-out pages read ./public.ts.
  */
-import { and, desc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, gte, ilike, inArray, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { NewsSummary } from "@/db/schema";
 import { memo } from "@/lib/memo";
@@ -58,14 +58,22 @@ async function cardsFor(userId: string | null, clusters: (ClusterRow & { reasons
   const db = requireDb();
   const [items, states, deals, followed] = await Promise.all([
     itemsOf(ids),
-    userId ? db.select().from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), inArray(schema.newsUserItems.clusterId, ids))) : Promise.resolve([]),
+    userId ? db.select({ clusterId: schema.newsUserItems.clusterId, savedAt: schema.newsUserItems.savedAt, readAt: schema.newsUserItems.readAt }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), inArray(schema.newsUserItems.clusterId, ids))) : Promise.resolve([]),
     db.select().from(schema.newsDeals).where(inArray(schema.newsDeals.clusterId, ids)),
     userId ? followedAmong(userId, ids) : Promise.resolve(new Set<number>()),
   ]);
+  const byCluster = new Map<number, ItemRow[]>();
+  for (const i of items) {
+    if (i.clusterId === null) continue;
+    const list = byCluster.get(i.clusterId);
+    if (list) list.push(i); else byCluster.set(i.clusterId, [i]);
+  }
+  const stateOf = new Map(states.map((s) => [s.clusterId, s]));
+  const dealOf = new Map(deals.map((d) => [d.clusterId, d]));
   return clusters.map((c) => {
-    const mine = items.filter((i) => i.clusterId === c.id);
-    const st = states.find((s) => s.clusterId === c.id);
-    const d = deals.find((x) => x.clusterId === c.id);
+    const mine = byCluster.get(c.id) ?? [];
+    const st = stateOf.get(c.id);
+    const d = dealOf.get(c.id);
     const f = mine.find((i) => i.kind === "filing");
     return {
       id: c.id, headline: c.headline, category: c.category, categoryLabel: CATEGORY_LABEL[c.category as Category] ?? "News", importance: c.importance, tickers: c.tickers, tags: c.desks,
@@ -85,25 +93,35 @@ export type FeedView = {
   learned: { liked: { label: string; affinity: number }[]; avoided: { label: string; affinity: number }[]; signals: number };
 };
 
+/** The candidate stories for a feed request: the saved list, a search, or the shared recent pool. */
+async function feedCandidates(userId: string, opts: { q?: string; saved?: boolean; hours?: number }): Promise<ClusterRow[]> {
+  if (opts.saved) {
+    const saved = await requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.savedAt} is not null`)).orderBy(desc(schema.newsUserItems.savedAt)).limit(200);
+    return saved.length ? requireDb().select({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` }).from(schema.newsClusters).where(inArray(schema.newsClusters.id, saved.map((s) => s.id))) : [];
+  }
+  if (opts.q?.trim()) {
+    const q = `%${opts.q.trim().replace(/[%_]/g, "")}%`;
+    return requireDb().select({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` }).from(schema.newsClusters).where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - 30 * 86_400_000)), ilike(schema.newsClusters.headline, q))).orderBy(desc(schema.newsClusters.updatedAt)).limit(200);
+  }
+  return sharedRecentClusters(Math.min(Math.max(Math.round(opts.hours ?? 72), 1), 168), 800, 0.12);
+}
+
 export async function feedView(userId: string, opts: { desk?: string; category?: string; kind?: string; q?: string; saved?: boolean; hours?: number; limit?: number } = {}): Promise<FeedView | null> {
-  const ctx = await readerFor(userId);
+  // The person's reader context, the candidate stories and what they hid do not depend on each other:
+  // read them at once (one round trip of latency instead of three).
+  const [ctx, clusters, hiddenRows] = await Promise.all([
+    readerFor(userId),
+    feedCandidates(userId, opts),
+    requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.hiddenAt} is not null`)),
+  ]);
   if (!ctx) return null;
   const desk = (opts.desk && allDesks().find((d) => d.id === opts.desk)) || ctx.desk;
   const reader = { ...ctx.reader, desk };
-  let clusters: ClusterRow[];
-  if (opts.saved) {
-    const saved = await requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.savedAt} is not null`)).orderBy(desc(schema.newsUserItems.savedAt)).limit(200);
-    clusters = saved.length ? await requireDb().select().from(schema.newsClusters).where(inArray(schema.newsClusters.id, saved.map((s) => s.id))) : [];
-  } else if (opts.q?.trim()) {
-    const q = `%${opts.q.trim().replace(/[%_]/g, "")}%`;
-    clusters = await requireDb().select().from(schema.newsClusters).where(and(gte(schema.newsClusters.updatedAt, new Date(Date.now() - 30 * 86_400_000)), ilike(schema.newsClusters.headline, q))).orderBy(desc(schema.newsClusters.updatedAt)).limit(200);
-  } else {
-    clusters = await sharedRecentClusters(Math.min(Math.max(Math.round(opts.hours ?? 72), 1), 168), 800, 0.12);
-  }
-  const hidden = new Set((await requireDb().select({ id: schema.newsUserItems.clusterId }).from(schema.newsUserItems).where(and(eq(schema.newsUserItems.userId, userId), sql`${schema.newsUserItems.hiddenAt} is not null`))).map((r) => r.id));
+  const hidden = new Set(hiddenRows.map((r) => r.id));
   let ranked = rank(reader, clusters.filter((c) => !hidden.has(c.id)));
   // The ranked page, not a search or the saved list, is kept varied at the top.
-  if (!opts.saved && !opts.q?.trim()) ranked = diversify(ranked.map((c) => ({ ...c, names: c.entities.filter((e) => e.kind !== "person").map((e) => e.name) })));
+  // Only the head (diversify's window) needs the company names; the rest pass through uncopied.
+  if (!opts.saved && !opts.q?.trim()) ranked = diversify([...ranked.slice(0, 40).map((c) => ({ ...c, names: c.entities.filter((e) => e.kind !== "person").map((e) => e.name) })), ...ranked.slice(40)]);
   const counts: Record<string, number> = {};
   for (const c of ranked) counts[c.category] = (counts[c.category] ?? 0) + 1;
   if (opts.category) ranked = ranked.filter((c) => c.category === opts.category);
@@ -180,12 +198,15 @@ export async function globeView(): Promise<{ points: GlobePoint[]; stories: numb
 }
 
 export async function briefView(userId: string, deskId?: string) {
-  const ctx = await readerFor(userId);
+  // The reader context and the shared recent stories at once; the brief needs the desk from the first.
+  const [ctx, recent] = await Promise.all([readerFor(userId), sharedRecentClusters(30, 600, 0.2)]);
   if (!ctx) return null;
   const desk = (deskId && allDesks().find((d) => d.id === deskId)) || ctx.desk;
   const brief = await deskBrief(desk);
-  const mine = forYou({ ...ctx.reader, desk }, await sharedRecentClusters(30, 600, 0.2), 5);
-  const cards = await cardsFor(userId, [...mine, ...(await requireDb().select().from(schema.newsClusters).where(inArray(schema.newsClusters.id, brief.items.map((i) => i.clusterId).length ? brief.items.map((i) => i.clusterId) : [-1])))]);
+  const mine = forYou({ ...ctx.reader, desk }, recent, 5);
+  const briefIds = brief.items.map((i) => i.clusterId);
+  const briefClusters = briefIds.length ? await requireDb().select({ ...getTableColumns(schema.newsClusters), centroid: sql<string | null>`null` }).from(schema.newsClusters).where(inArray(schema.newsClusters.id, briefIds)) : [];
+  const cards = await cardsFor(userId, [...mine, ...briefClusters]);
   return { brief, forYou: cards.slice(0, mine.length), cards: Object.fromEntries(cards.slice(mine.length).map((c) => [c.id, c])) };
 }
 

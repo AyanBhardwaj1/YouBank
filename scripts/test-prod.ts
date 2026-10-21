@@ -22,6 +22,7 @@ import { backoffDelay, fetchRetry, fetchWithTimeout, isIdempotentMethod, isNetwo
 import { requestVia, resolvePublicHost } from "@/lib/calendar/net";
 import { imapClient, mailEndpoint, MAIL_PORTS } from "@/lib/crm/imap";
 import { lookup as dnsLookup } from "node:dns";
+import { readdirSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -214,8 +215,9 @@ function testDb() {
   check("a read is retried after a dropped connection", mayRetry("select 1", pg("ECONNRESET")));
 
   console.log("database: migrations");
-  check("migrations 0015 to 0026 are all checked", ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026"].every((n) => MIGRATIONS.some(([m]) => m.startsWith(n))));
-  check("every migration file is listed", MIGRATIONS.length === 26, MIGRATIONS.length);
+  check("migrations 0015 to 0027 are all checked", ["0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027"].every((n) => MIGRATIONS.some(([m]) => m.startsWith(n))));
+  const files = readdirSync("drizzle").filter((n) => /^\d{4}_.*\.sql$/.test(n)).map((n) => n.replace(/\.sql$/, "")).sort();
+  check("every migration file is listed", files.length === MIGRATIONS.length && files.every((f, i) => MIGRATIONS[i][0] === f), { files: files.length, listed: MIGRATIONS.length });
   check("no relation is checked twice", new Set(expectedRelations()).size === expectedRelations().length);
   const s1 = summarize(["algo_orders", "quant_events_issuer_idx"], ["crm_messages.topics"]);
   check("missing objects are grouped by migration", s1.migrations.map((m) => m.name).join() === "0010_contact_knowledge,0025_algo,0026_quant", s1);

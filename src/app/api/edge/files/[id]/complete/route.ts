@@ -33,7 +33,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (isPremiumRead(method) && doc.status !== "ready") {
       try { await requestPremiumRead(user, doc.id, method); } catch (e) { note = publicMessage(e); }
     }
-    const how = doc.status === "ready" ? "ready" : await ingest(doc.id);
+    const how = doc.status === "ready" ? "ready" : await ingest(doc.id, user.id);
     return NextResponse.json({ docId: doc.id, status: how === "ready" ? "ready" : "reading", ...(note ? { note } : {}) });
   });
 }

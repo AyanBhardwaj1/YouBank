@@ -3,6 +3,7 @@ import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import type { SQLWrapper } from "drizzle-orm";
 import * as schema from "./schema";
 import { mayRetry } from "./transient";
+import { shared } from "@/lib/shared";
 
 const url = process.env.DATABASE_URL;
 
@@ -11,22 +12,27 @@ const url = process.env.DATABASE_URL;
  * is what serverless functions should use. Migrations and scripts/db-setup.mts use the direct address
  * (DATABASE_URL_UNPOOLED) instead.
  *
+ * - One pool per server process (src/lib/shared): Next.js builds route handlers, server components and
+ *   rendering as separate layers, each with its own copy of this module, which used to mean a pool per
+ *   layer (two or three times the connections the setting says).
  * - `prepare: false`: in transaction mode a connection is lent per transaction, so a statement prepared
  *   on one would be missing on the next.
- * - `max` (DB_POOL_MAX, 6 by default): enough for a request's parallel reads; Fluid compute serves many
- *   requests per instance, and the pooler takes thousands of client connections.
+ * - `max` (DB_POOL_MAX, 10 by default, 1 to 30): the most statements one instance runs at once. Fluid
+ *   compute serves many requests per instance, and each request's reads mostly run in parallel, so the pool
+ *   is sized for the instance, not the request; Neon's pooler takes up to 10,000 client connections and
+ *   runs them on its own server-side pool (docs/scale.md has the arithmetic).
  * - `idle_timeout` 20 s: a quiet instance holds nothing, so Neon can scale to zero.
  * - `connect_timeout` 15 s: a compute waking from zero answers in a second or two; this is the ceiling.
  * - `max_lifetime` 10 min: connections are renewed, so a pooler restart or failover is picked up.
  * Queries are cut off server-side after 30 seconds (the role's statement_timeout, set by
  * scripts/db-setup.mts finish).
  */
-const poolMax = Math.min(Math.max(Number(process.env.DB_POOL_MAX) || 6, 1), 20);
+export const poolMax = Math.min(Math.max(Number(process.env.DB_POOL_MAX) || 10, 1), 30);
 const raw = url
-  ? postgres(url, {
+  ? shared(`postgres:${url}`, () => postgres(url, {
       prepare: false, max: poolMax, idle_timeout: 20, connect_timeout: 15, max_lifetime: 600,
       connection: { application_name: "youbank" }, onnotice: () => undefined,
-    })
+    }))
   : null;
 
 /**

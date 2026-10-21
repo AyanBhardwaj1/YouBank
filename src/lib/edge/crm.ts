@@ -55,11 +55,13 @@ export async function noteFindingsForNetworks(found: Detection[], big: (d: Detec
         if (d.ownerId && d.ownerId !== userId) continue;
         const keys = new Set((companies.get(d.id) ?? []).map(normCompany).filter((k) => k.length >= 3));
         for (const deal of deals.filter((x) => keys.has(normCompany(x.name))).slice(0, 3)) {
-          // A deal's signal has no contact, so the unique index cannot catch a repeat; check first.
+          // A deal's signal has no contact: drizzle/0027's partial unique index refuses a repeat (two passes
+          // at once), and the check first keeps a database without it from collecting them.
           const [had] = await requireDb().select({ id: schema.crmSignals.id }).from(schema.crmSignals).where(and(eq(schema.crmSignals.userId, userId), eq(schema.crmSignals.dealId, deal.id), eq(schema.crmSignals.sourceKey, `edge:${d.id}`))).limit(1);
           if (had) continue;
-          await requireDb().insert(schema.crmSignals).values({ userId, dealId: deal.id, kind: "edge", sourceKey: `edge:${d.id}`, title: d.title.slice(0, 300), detail: d.summary.slice(0, 1000), url, strength: "name", occurredAt: d.observedAt ?? d.detectedAt });
-          n++;
+          const added = await requireDb().insert(schema.crmSignals).values({ userId, dealId: deal.id, kind: "edge", sourceKey: `edge:${d.id}`, title: d.title.slice(0, 300), detail: d.summary.slice(0, 1000), url, strength: "name", occurredAt: d.observedAt ?? d.detectedAt })
+            .onConflictDoNothing().returning({ id: schema.crmSignals.id });
+          if (added.length) n++;
         }
         for (const person of peopleAt(network, companies.get(d.id) ?? [])) {
           const [signal] = await requireDb().insert(schema.crmSignals).values({

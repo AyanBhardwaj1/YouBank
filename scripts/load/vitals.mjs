@@ -4,13 +4,13 @@
  * page loads three times with the cache disabled (a first visit); the median is reported. Interaction
  * latency (INP) needs a person clicking, so it is not measured here.
  *
- *   node scripts/load/vitals.mjs --base http://localhost:3999 --users /tmp/users.json --out /tmp/vitals.json
+ *   node scripts/load/vitals.mjs --base http://localhost:3301 --users /tmp/users.json --out /tmp/vitals.json
  */
 import { spawn } from "node:child_process";
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { guardTarget, parseArgs } from "./common.mjs";
 
-const args = parseArgs(process.argv.slice(2), { base: "http://localhost:3999", users: "", out: "", runs: "3", chrome: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" });
+const args = parseArgs(process.argv.slice(2), { base: "http://localhost:3301", users: "", out: "", runs: "3", chrome: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" });
 const base = guardTarget(args.base);
 const user = JSON.parse(readFileSync(args.users, "utf8")).find((u) => u.docId);
 const pages = ["/app", "/app/news", "/app/terminal", `/app/studio/${user.docId}`];

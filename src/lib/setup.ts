@@ -9,6 +9,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
+import { shared } from "./shared";
 
 /** Tables the schema push creates and every page needs. */
 export const CORE_TABLES = ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache"];
@@ -41,6 +42,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0024_seat_cooldown", ["seat_history"], "seat_history_owner_idx"],
   ["0025_algo", ["algo_settings", "algo_connections", "algo_strategies", "algo_equity", "algo_decisions", "algo_batches", "algo_orders", "algo_consents", "algo_agent_messages", "algo_backtests", "algo_audit"], "algo_audit_user_idx"],
   ["0026_quant", ["quant_signals", "quant_targets", "quant_trials", "quant_runs", "quant_fills", "quant_factor_returns", "quant_universe", "quant_insider_tx", "quant_consents", "quant_events", "quant_base_rates"], "quant_events_issuer_idx"],
+  ["0027_scale", ["ai_spend"], "ai_spend_day_idx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
@@ -77,7 +79,8 @@ export async function schemaStatus(d: Db): Promise<SchemaStatus> {
 
 export type SetupState = { ready: true } | { ready: false; reason: "database" | "schema" | "auth" };
 
-let okUntil = 0;
+/** Per process (src/lib/shared): the layout, pages and routes are separate build layers with their own module copies. */
+const ready = shared("setup:ready", () => ({ until: 0 }));
 
 /**
  * For pages: whether to render the app or the "being set up" screen. Only configuration and the core
@@ -91,7 +94,7 @@ export async function setupState(): Promise<SetupState> {
   // The development sign-in (YOUBANK_DEV_USER, never in production builds) needs no auth secret.
   const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
   if (!devUser && !process.env.BETTER_AUTH_SECRET?.trim()) return { ready: false, reason: "auth" };
-  if (Date.now() < okUntil) return { ready: true };
+  if (Date.now() < ready.until) return { ready: true };
   let missing: number;
   try {
     const r = await db.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
@@ -103,6 +106,6 @@ export async function setupState(): Promise<SetupState> {
     return { ready: true };
   }
   if (missing) return { ready: false, reason: "schema" };
-  okUntil = Date.now() + 5 * 60_000;
+  ready.until = Date.now() + 5 * 60_000;
   return { ready: true };
 }

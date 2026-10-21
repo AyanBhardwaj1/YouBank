@@ -1,53 +1,58 @@
 /**
  * The load test's sandbox for the app server, loaded with NODE_OPTIONS="--import ./scripts/load/offline.mjs"
  * into `next start` only. It changes no app code:
- * - outbound requests may reach only localhost and Neon (the test branch's database and auth); FMP,
- *   SEC, Nasdaq, the government sources and everything else are refused, so a load test never
- *   spends a real quota or bothers a real service;
+ * - outbound HTTP may reach only this machine; FMP, SEC, Nasdaq, OpenFIGI, the government sources and
+ *   everything else are refused, so a load test never spends a real quota or bothers a real service.
+ *   The database is a postgres:// connection (not fetch), so it is unaffected; sign-in is Better Auth,
+ *   served by the app itself on its own database;
  * - OpenAI answers with a canned, streamed reply (about 1.5 s, like a short real one), so the chat
  *   scenario exercises the whole path without a key or a bill;
- * - it counts database queries (Neon's HTTP /sql calls) and auth calls per second into
- *   LOADTEST_STATS, which is how the load test reports database queries per second.
+ * - it writes, every second, to LOADTEST_STATS: the event loop's delay (p50/p99/max since the last
+ *   write, from perf_hooks), the process's CPU time so far, heap and RSS, and counts of blocked and
+ *   mocked calls. CPU per request is the steadiest number on a shared machine: latency moves with
+ *   whatever else is running, CPU spent per request much less. Database queries and
+ *   connections are measured from Postgres itself by run.mjs (--db).
  * It refuses to load on Vercel.
  */
-import { writeFileSync } from "node:fs";
+import { renameSync, writeFileSync } from "node:fs";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 
 if (process.env.VERCEL) throw new Error("scripts/load/offline.mjs is for local load tests only");
+const dbHost = (() => { try { return new URL((process.env.DATABASE_URL ?? "").replace(/^postgres(ql)?:/, "http:")).hostname; } catch { return ""; } })();
+if (!dbHost) throw new Error("Start the load-test server with DATABASE_URL set to the test database");
+if (!["localhost", "127.0.0.1", "::1"].includes(dbHost) && process.env.LOADTEST_DB_CONFIRM !== dbHost) {
+  throw new Error(`The load-test server runs on a local database, or on a test branch named exactly in LOADTEST_DB_CONFIRM (got ${dbHost})`);
+}
 
 const real = globalThis.fetch;
 const started = Date.now();
-const counts = { sql: 0, auth: 0, openai: 0, blocked: 0 };
-const perSecond = new Map();
+const counts = { openai: 0, blocked: 0 };
 const blockedHosts = new Map();
-const tick = (kind) => {
-  counts[kind]++;
-  if (kind !== "sql") return;
-  const s = Math.floor((Date.now() - started) / 1000);
-  perSecond.set(s, (perSecond.get(s) ?? 0) + 1);
-};
+const RESOLUTION_MS = 10;
+const loop = monitorEventLoopDelay({ resolution: RESOLUTION_MS });
+loop.enable();
+const lagSeconds = [];
 
 const statsFile = process.env.LOADTEST_STATS;
-if (statsFile) {
-  const flush = () => {
-    try { writeFileSync(statsFile, JSON.stringify({ startedAt: started, at: Date.now(), counts, perSecond: Object.fromEntries(perSecond), blockedHosts: Object.fromEntries(blockedHosts) })); } catch { /* ignore */ }
-  };
-  setInterval(flush, 1_000).unref();
-  process.on("exit", flush);
-}
+const flush = () => {
+  // The histogram counts the sampling interval itself (RESOLUTION_MS) as delay; only the excess is lag.
+  const ms = (ns) => Math.max(0, Math.round(ns / 1e4) / 100 - RESOLUTION_MS);
+  lagSeconds.push({ at: Date.now(), p50: ms(loop.percentile(50)), p99: ms(loop.percentile(99)), max: ms(loop.max) });
+  if (lagSeconds.length > 3_600) lagSeconds.shift();
+  loop.reset();
+  if (!statsFile) return;
+  const mem = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  try {
+    // Written whole, then renamed into place, so a reader never sees half a file.
+    writeFileSync(`${statsFile}.tmp`, JSON.stringify({ startedAt: started, at: Date.now(), counts, blockedHosts: Object.fromEntries(blockedHosts), lag: lagSeconds, cpuMs: Math.round((cpu.user + cpu.system) / 1000), heapMB: Math.round(mem.heapUsed / 1048576), rssMB: Math.round(mem.rss / 1048576) }));
+    renameSync(`${statsFile}.tmp`, statsFile);
+  } catch { /* ignore */ }
+};
+setInterval(flush, 1_000).unref();
+process.on("exit", flush);
 
-// Only the test branch's own database and auth hosts, taken from the environment the server was started
-// with; any other Neon host (production's, say) is refused like every other outside service.
-const hostOf = (v) => { try { return new URL(v.replace(/^postgres(ql)?:/, "https:")).hostname; } catch { return ""; } };
-const dbHost = hostOf(process.env.DATABASE_URL ?? "");
-const authHost = hostOf(process.env.NEON_AUTH_BASE_URL ?? "");
-if (!dbHost || !authHost) throw new Error("Start the load-test server with DATABASE_URL and NEON_AUTH_BASE_URL set to the test branch");
-const neonHosts = new Set([dbHost, dbHost.replace("-pooler.", "."), authHost]);
-// The HTTP driver sends every query to the region's API host (api.<region>.neon.tech) with the
-// connection string in a header; production uses the same host, so the header must name this branch.
-const apiHost = dbHost.replace(/^[^.]+\./, "api.");
-const endpointId = dbHost.split(".")[0].replace(/-pooler$/, "");
-const allowed = (host) => host === "localhost" || host === "127.0.0.1" || host === "::1" || neonHosts.has(host) || host === apiHost;
-const headerOf = (input, init, name) => new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).get(name) ?? "";
+const allowed = (host) => host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const REPLY = "Here is a short answer from the load-test model. It stands in for a real reply so the whole chat path runs: streaming, usage, the ledger and the limits.".split(" ");
@@ -84,18 +89,11 @@ function openaiResponse(url, init) {
 globalThis.fetch = async function sandboxedFetch(input, init) {
   const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const url = new URL(href);
-  if (url.hostname === "api.openai.com") { tick("openai"); return openaiResponse(url, init ?? (typeof input === "object" && !(input instanceof URL) ? { body: await input.clone().text() } : undefined)); }
+  if (url.hostname === "api.openai.com") { counts.openai++; return openaiResponse(url, init ?? (typeof input === "object" && !(input instanceof URL) ? { body: await input.clone().text() } : undefined)); }
   if (!allowed(url.hostname)) {
-    tick("blocked");
+    counts.blocked++;
     blockedHosts.set(url.hostname, (blockedHosts.get(url.hostname) ?? 0) + 1);
     throw new TypeError(`fetch failed (blocked by the load-test sandbox: ${url.hostname})`);
   }
-  if (url.hostname === apiHost && !headerOf(input, init, "neon-connection-string").includes(endpointId)) {
-    tick("blocked");
-    blockedHosts.set("another Neon database", (blockedHosts.get("another Neon database") ?? 0) + 1);
-    throw new TypeError("fetch failed (blocked by the load-test sandbox: not the test branch)");
-  }
-  if (url.hostname === authHost) tick("auth");
-  else if (url.pathname.endsWith("/sql")) tick("sql");
   return real(input, init);
 };

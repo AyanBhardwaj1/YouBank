@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { memo } from "@/lib/memo";
 import { producerSummary, signalsAsOf } from "@/lib/quant/signals";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export const maxDuration = 30;
 export async function GET(req: Request) {
   return guarded(async () => {
     const q = new URL(req.url).searchParams;
-    if (q.get("summary") === "1") return NextResponse.json({ producers: await producerSummary() });
+    if (q.get("summary") === "1") return NextResponse.json({ producers: await memo("quant:status:producers", 300_000, producerSummary) });
     const list = (k: string) => (q.get(k) ?? "").split(",").map((s) => s.trim()).filter(Boolean);
     const at = q.get("at") || undefined;
     if (at && !Number.isFinite(Date.parse(at))) return NextResponse.json({ error: "`at` must be an ISO time." }, { status: 400 });

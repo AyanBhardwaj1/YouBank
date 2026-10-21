@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { lease, type Release } from "./locks";
+import { sharedMap } from "./shared";
 
 /**
  * Layered string cache: memory (per process) -> disk (local dev) -> Neon kv_cache (serverless).
@@ -10,10 +12,10 @@ import { db, schema } from "@/db";
  * at the open costs one upstream call per instance, not one per request) and remembers a failure for
  * half a minute (so an upstream outage is not hammered by every request).
  */
-const mem = new Map<string, { exp: number; value: string }>();
+const mem = sharedMap<string, { exp: number; value: string }>("cache:mem");
 const MEM_MAX = 5_000;
-const loading = new Map<string, Promise<unknown>>();
-const failed = new Map<string, { until: number; error: unknown }>();
+const loading = sharedMap<string, Promise<unknown>>("cache:loading");
+const failed = sharedMap<string, { until: number; error: unknown }>("cache:failed");
 const FAILURE_MS = 30_000;
 
 /** Keep the memory layer bounded: drop expired entries, then the oldest tenth (a Map keeps insertion order). */
@@ -86,7 +88,30 @@ export async function cacheSet(key: string, value: string, ttlMs: number): Promi
   }
 }
 
-export async function cacheJson<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+export type CacheJsonOptions = {
+  /**
+   * Share the refill across instances, for public data from a provider with a quota (market data, SEC):
+   * on a miss the first instance takes a short lease and loads; the others wait up to `waitMs` for its
+   * answer to land in the shared cache before loading themselves. So a key expiring under hundreds of
+   * people costs one upstream call, not one per instance. Fails open: no lease, no wait.
+   */
+  shared?: boolean;
+  waitMs?: number;
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Wait for another instance's load to land in the shared cache (polling it), up to `waitMs`. */
+async function awaitOtherFill(key: string, waitMs: number): Promise<string | null> {
+  for (let waited = 0; waited < waitMs; waited += 200) {
+    await sleep(200);
+    const hit = await cacheGet(key);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export async function cacheJson<T>(key: string, ttlMs: number, load: () => Promise<T>, opts: CacheJsonOptions = {}): Promise<T> {
   const hit = await cacheGet(key);
   if (hit) return JSON.parse(hit) as T;
   const f = failed.get(key);
@@ -94,7 +119,15 @@ export async function cacheJson<T>(key: string, ttlMs: number, load: () => Promi
   const pending = loading.get(key);
   if (pending) return pending as Promise<T>;
   const p = (async () => {
+    let release: Release | null = null;
     try {
+      if (opts.shared && db) {
+        release = await lease(`fill:${key}`, 20_000);
+        if (!release) {
+          const other = await awaitOtherFill(key, opts.waitMs ?? 2_000);
+          if (other) return JSON.parse(other) as T;
+        }
+      }
       const value = await load();
       failed.delete(key);
       await cacheSet(key, JSON.stringify(value), ttlMs);
@@ -105,6 +138,7 @@ export async function cacheJson<T>(key: string, ttlMs: number, load: () => Promi
       throw e;
     } finally {
       loading.delete(key);
+      if (release) await release();
     }
   })();
   loading.set(key, p);

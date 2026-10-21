@@ -26,6 +26,9 @@ import { SetupNotice } from "@/components/ui/SetupScreen";
 import { useTabInView } from "@/components/ui/useTabInView";
 import { AddDeal } from "./AddDeal";
 
+/** Pages of 500 deals the pipeline loads at most (10,000 deals). */
+const MAX_DEAL_PAGES = 20;
+
 type Activity = {
   draft: { status: string; scheduledFor: string | null; sentBy: string; holdReason: string } | null;
   questions: number;
@@ -121,11 +124,25 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
   useEffect(() => {
     if (needsMigration) return;
     let cancelled = false;
+    // The pipeline comes 500 deals a page (newest first): follow `next` so a large board is shown whole.
+    const allDeals = async () => {
+      const first = await api<{ deals: Deal[]; contacts: Contact[]; counts: Counts; next?: string | null }>("/api/crm/deals");
+      const seen = new Set(first.deals.map((x) => x.id));
+      const deals = [...first.deals];
+      let next = first.next ?? null;
+      for (let page = 1; next && page < MAX_DEAL_PAGES && !cancelled; page++) {
+        const more = await api<{ deals: Deal[]; next?: string | null }>(`/api/crm/deals?cursor=${encodeURIComponent(next)}`);
+        // A deal changed between pages moves to the top and can come twice: keep its first copy.
+        for (const x of more.deals) if (!seen.has(x.id)) { seen.add(x.id); deals.push(x); }
+        next = more.next ?? null;
+      }
+      return { ...first, deals };
+    };
     const load = async () => {
       try {
         const [t, d, q, a, s] = await Promise.all([
           api<Thread[]>("/api/crm/threads"),
-          api<{ deals: Deal[]; contacts: Contact[]; counts: Counts }>("/api/crm/deals"),
+          allDeals(),
           api<Draft[]>("/api/crm/drafts"),
           api<MailboxInfo>("/api/crm/accounts"),
           api<Settings>("/api/crm/settings"),
