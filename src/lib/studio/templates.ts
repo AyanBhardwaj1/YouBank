@@ -19,7 +19,7 @@ export type Fin = {
 
 type CompanyLike = {
   ticker: string; name: string; description: string;
-  price: { last: number; marketCap: number; low52: number | null; high52: number | null; asOf: string } | null;
+  price: { last: number; marketCap: number | null; low52: number | null; high52: number | null; asOf: string } | null;
   ltm: { periodEnd: string; revenue: number | null; priorRevenue: number | null; ebitda: number | null; operatingIncome: number | null; da: number | null; capex: number | null; netIncome: number | null; sbc?: number | null };
   balance: { cash: number | null; debt: number | null; sharesOut: number | null };
   sources: { factsUrl: string };
@@ -39,7 +39,7 @@ export function finFrom(c: CompanyLike | null): Fin {
   const revenue = l.revenue ?? 0;
   const da = l.da ?? (revenue ? revenue * 0.03 : 0);
   const ebitda = l.ebitda ?? (l.operatingIncome !== null ? l.operatingIncome + da : 0);
-  const shares = c.balance.sharesOut ?? (c.price && c.price.last ? c.price.marketCap / c.price.last : 0);
+  const shares = c.balance.sharesOut ?? (c.price && c.price.last && c.price.marketCap !== null ? c.price.marketCap / c.price.last : 0);
   return {
     ticker: c.ticker, name: c.name, periodEnd: l.periodEnd, revenue: r1(revenue), priorRevenue: l.priorRevenue !== null ? r1(l.priorRevenue) : null,
     ebitda: r1(ebitda), da: r1(da), capex: r1(l.capex ?? revenue * 0.03), sbc: r1(l.sbc ?? 0), netIncome: r1(l.netIncome ?? 0),

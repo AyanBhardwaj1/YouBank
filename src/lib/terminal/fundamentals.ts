@@ -4,7 +4,8 @@
  * inference library for the models. Everything keeps its inputs so the screens can show the working.
  */
 import { getCompanyData } from "@/lib/company";
-import { fiscalLabel, getCompanyFacts, pickConcept, quarterAt, quarterEnds } from "@/lib/edgar/facts";
+import { maturityLadder, resolveRevenue } from "@/lib/edgar/concepts";
+import { fiscalLabel, fyeMonthOf, getCompanyFacts, quarterAt, quarterEnds, type CompanyFacts } from "@/lib/edgar/facts";
 import { impliedRating, type ImpliedRating } from "@/lib/inference/credit";
 import { forecast, impliedGrowth, type Forecast } from "@/lib/inference/forecast";
 import { annualPanel, type Annual } from "@/lib/inference/fundamentals";
@@ -14,8 +15,6 @@ import { history } from "@/lib/market/data";
 import { estimates } from "@/lib/market/fmp";
 import { noteSource } from "@/lib/market/provenance";
 import { factNum, research, type Researched } from "@/lib/market/research";
-
-const REVENUE = ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet"];
 
 async function base(ticker: string) {
   const company = await getCompanyData(ticker);
@@ -52,13 +51,13 @@ export async function creditView(ticker: string): Promise<CreditView> {
     const r = impliedRating(a, panel[i - 1] ?? null, { marketCapUsd: null, equityVol: null, pastReturn: null });
     return { fy: a.fy, zpp: r.zpp?.value ?? null, o: r.o?.value ?? null };
   });
-  const debt = (latest.ltDebt ?? 0) + (latest.stDebt ?? 0);
+  const debt = latest.ltDebt === null && latest.stDebt === null ? null : (latest.ltDebt ?? 0) + (latest.stDebt ?? 0);
   const ebitda = latest.ebit !== null ? latest.ebit + (latest.da ?? 0) : null;
   const financial = /^6[0-7]/.test(company.sic);
   return {
     ticker: company.ticker, name: company.name, panel, rating, history: hist,
     market: { marketCap, equityVol, pastReturn, volSource: daily !== null ? "daily" : range !== null ? "range" : null },
-    coverage: { ebitToInterest: latest.ebit !== null && latest.interest ? latest.ebit / latest.interest : null, debtToEbitda: ebitda && ebitda > 0 ? debt / ebitda : null, netDebt: debt - (latest.cash ?? 0) },
+    coverage: { ebitToInterest: latest.ebit !== null && latest.interest ? latest.ebit / latest.interest : null, debtToEbitda: debt !== null && ebitda && ebitda > 0 ? debt / ebitda : null, netDebt: debt !== null && latest.cash !== null ? debt - latest.cash : null },
     caveat: financial ? "Banks, insurers and other financials carry leverage these models were not built for: read the implied rating as a rough guide at best." : null,
   };
 }
@@ -94,18 +93,21 @@ export type ForecastView = {
   ticker: string; name: string;
   history: { label: string; end: string; revenue: number }[];
   forecast: Forecast; labels: string[]; growth: (number | null)[];
-  consensus: { period: string; revenueAvg: number; revenueLow: number; revenueHigh: number; analysts: number }[];
+  consensus: { period: string; revenueAvg: number; revenueLow: number; revenueHigh: number; analysts: number | null }[];
   /** Where the Street's numbers came from: FMP, or AI research (one figure, with its source) when FMP has none. */
   consensusSource: "FMP" | "AI research" | null;
   research: Researched | null;
   modelVsStreet: { period: string; model: number; street: number; gap: number } | null;
 };
 
+/** The revenue rows FCST forecasts from: the same resolver DES uses (edgar/concepts), so the two agree. */
+export const forecastRevenue = (cf: CompanyFacts) => resolveRevenue(cf);
+
 export async function forecastView(ticker: string): Promise<ForecastView> {
   const { company, cf } = await base(ticker);
-  const pick = pickConcept(cf, REVENUE);
+  const pick = forecastRevenue(cf);
   if (!pick) throw new Error("No revenue reported in XBRL");
-  const fyeMonth = Number(company.fyeMMDD.slice(0, 2)) || 12;
+  const fyeMonth = fyeMonthOf(company.fyeMMDD);
   const latest = pick.rows.reduce((m, r) => (r.start && r.end > m ? r.end : m), "");
   const ends = quarterEnds(pick.rows, latest, 28);
   const hist = ends.map((end) => ({ end, revenue: quarterAt(pick.rows, end), label: fiscalLabel(end, fyeMonth) })).filter((h): h is { end: string; revenue: number; label: string } => h.revenue !== null && h.revenue > 0);
@@ -118,8 +120,9 @@ export async function forecastView(ticker: string): Promise<ForecastView> {
     return fiscalLabel(d.toISOString().slice(0, 10), fyeMonth);
   });
   const est = await estimates(ticker, "quarter").catch(() => []);
-  const future = est.filter((e) => e.date > hist[hist.length - 1].end).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 4);
-  let consensus = future.map((e) => ({ period: fiscalLabel(e.date, fyeMonth), revenueAvg: e.revenueAvg / 1e6, revenueLow: e.revenueLow / 1e6, revenueHigh: e.revenueHigh / 1e6, analysts: e.numAnalystsRevenue }));
+  // An estimate row without a revenue figure is not a consensus of zero: it is left out.
+  const future = est.filter((e) => e.date > hist[hist.length - 1].end && e.revenueAvg !== null).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(0, 4);
+  let consensus = future.map((e) => ({ period: fiscalLabel(e.date, fyeMonth), revenueAvg: (e.revenueAvg as number) / 1e6, revenueLow: (e.revenueLow ?? (e.revenueAvg as number)) / 1e6, revenueHigh: (e.revenueHigh ?? (e.revenueAvg as number)) / 1e6, analysts: e.numAnalystsRevenue }));
   let consensusSource: ForecastView["consensusSource"] = consensus.length ? "FMP" : null;
   let researched: Researched | null = null;
   if (consensus.length) noteSource("FMP");
@@ -142,15 +145,6 @@ export async function forecastView(ticker: string): Promise<ForecastView> {
   };
 }
 
-const MATURITY = [
-  ["Next 12 months", "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths"],
-  ["Year 2", "LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"],
-  ["Year 3", "LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree"],
-  ["Year 4", "LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour"],
-  ["Year 5", "LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive"],
-  ["After year 5", "LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive"],
-] as const;
-
 export type DebtView = {
   ticker: string; name: string; asOf: string | null;
   ladder: { bucket: string; amount: number }[]; total: number; cash: number | null; cfo: number | null;
@@ -158,30 +152,25 @@ export type DebtView = {
   runway: string;
 };
 
+export { maturityLadder };
+
 export async function debtView(ticker: string): Promise<DebtView> {
   const { company, cf } = await base(ticker);
   const panel = annualPanel(cf, 2);
   const latest = panel[panel.length - 1];
-  let asOf: string | null = null;
-  const ladder: { bucket: string; amount: number }[] = [];
-  for (const [bucket, tag] of MATURITY) {
-    const rows = pickConcept(cf, [tag])?.rows.filter((r) => !r.start) ?? [];
-    const lastRow = rows[rows.length - 1];
-    if (!lastRow) continue;
-    if (!asOf || lastRow.end > asOf) asOf = lastRow.end;
-    ladder.push({ bucket, amount: lastRow.val / 1e6 });
-  }
+  const { asOf, ladder } = maturityLadder(cf);
   const total = ladder.reduce((a, l) => a + l.amount, 0);
   const cash = latest?.cash !== null && latest?.cash !== undefined ? latest.cash / 1e6 : null;
   const cfo = latest?.cfo !== null && latest?.cfo !== undefined ? latest.cfo / 1e6 : null;
-  const near = ladder.find((l) => l.bucket === "Next 12 months")?.amount ?? 0;
-  const two = near + (ladder.find((l) => l.bucket === "Year 2")?.amount ?? 0);
+  // A bucket the filing does not tag is unknown, not zero.
+  const near = ladder.find((l) => l.bucket === "Next 12 months")?.amount ?? null;
+  const two = near === null ? null : near + (ladder.find((l) => l.bucket === "Year 2")?.amount ?? 0);
   const resources = (cash ?? 0) + Math.max(0, cfo ?? 0);
-  const runway = !total ? "No scheduled maturities reported in XBRL." : resources >= two ? "Cash and a year of operating cash flow cover the next two years of maturities." : resources >= near ? "Covers the next year of maturities; year two will need refinancing or cash generation." : "Near-term maturities exceed cash plus a year of operating cash flow: refinancing risk.";
+  const runway = !total ? "No scheduled maturities reported in XBRL." : near === null || two === null ? "The latest filing does not tag next year's maturities, so the near-term runway cannot be read." : resources >= two ? "Cash and a year of operating cash flow cover the next two years of maturities." : resources >= near ? "Covers the next year of maturities; year two will need refinancing or cash generation." : "Near-term maturities exceed cash plus a year of operating cash flow: refinancing risk.";
   return {
     ticker: company.ticker, name: company.name, asOf, ladder, total, cash, cfo,
     interest: latest?.interest ? latest.interest / 1e6 : null, ebit: latest?.ebit !== null && latest?.ebit !== undefined ? latest.ebit / 1e6 : null,
     coverage: latest?.ebit !== null && latest?.ebit !== undefined && latest.interest ? latest.ebit / latest.interest : null,
-    nearTermShare: total ? near / total : null, runway,
+    nearTermShare: total && near !== null ? near / total : null, runway,
   };
 }

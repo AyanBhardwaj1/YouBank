@@ -4,6 +4,7 @@
  * net income, operating cash flow, capex, interest, pre-tax income and tax) and balances at each fiscal year end. Each field
  * tries the usual us-gaap tags in order, so a company that switched tags still has a continuous series.
  */
+import { CHAINS, resolveSeries, sharesNear, type Chain } from "@/lib/edgar/concepts";
 import { pickConcept, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
 
 export type Annual = {
@@ -17,16 +18,17 @@ export type Annual = {
   ltDebt: number | null; stDebt: number | null; cash: number | null; shares: number | null;
 };
 
+/** Line items shared with DES, FCST and EQS resolve through edgar/concepts; the rest are read only here. */
+const SHARED: Record<string, Chain> = {
+  revenue: CHAINS.revenue, ebit: CHAINS.operatingIncome, netIncome: CHAINS.netIncome, cfo: CHAINS.operatingCashFlow, capex: CHAINS.capex,
+  cash: CHAINS.cash, ltDebt: CHAINS.debtNoncurrent, stDebt: CHAINS.debtCurrent,
+};
+
 const FLOWS: Record<string, string[]> = {
-  revenue: ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "SalesRevenueNet", "SalesRevenueGoodsNet"],
   cogs: ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold", "CostOfServices"],
   grossProfit: ["GrossProfit"],
   sga: ["SellingGeneralAndAdministrativeExpense", "GeneralAndAdministrativeExpense"],
   da: ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet", "Depreciation"],
-  ebit: ["OperatingIncomeLoss"],
-  netIncome: ["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"],
-  cfo: ["NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"],
-  capex: ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets"],
   interest: ["InterestExpense", "InterestExpenseDebt", "InterestExpenseNonoperating", "InterestPaidNet"],
   pretax: ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments"],
   incomeTax: ["IncomeTaxExpenseBenefit"],
@@ -42,9 +44,6 @@ const INSTANTS: Record<string, string[]> = {
   receivables: ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent", "AccountsReceivableNet"],
   inventory: ["InventoryNet", "InventoryGross"],
   ppe: ["PropertyPlantAndEquipmentNet", "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetAfterAccumulatedDepreciationAndAmortization"],
-  ltDebt: ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermDebt", "LongTermNotesPayable"],
-  stDebt: ["LongTermDebtCurrent", "DebtCurrent", "ShortTermBorrowings", "LongTermDebtAndCapitalLeaseObligationsCurrent"],
-  cash: ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents", "Cash"],
 };
 
 const days = (a: string, b: string) => Math.abs(new Date(a + "T00:00:00Z").getTime() - new Date(b + "T00:00:00Z").getTime()) / 86_400_000;
@@ -63,9 +62,9 @@ function instant(rows: Fact[], end: string): number | null {
 
 /** The last `years` fiscal years, oldest first. */
 export function annualPanel(cf: CompanyFacts, years = 6): Annual[] {
-  const flows = Object.fromEntries(Object.entries(FLOWS).map(([k, c]) => [k, pickConcept(cf, c)?.rows ?? []])) as Record<string, Fact[]>;
-  const inst = Object.fromEntries(Object.entries(INSTANTS).map(([k, c]) => [k, pickConcept(cf, c)?.rows ?? []])) as Record<string, Fact[]>;
-  const sharesRows = pickConcept(cf, ["EntityCommonStockSharesOutstanding"], "shares", "dei")?.rows ?? pickConcept(cf, ["WeightedAverageNumberOfDilutedSharesOutstanding", "CommonStockSharesOutstanding"], "shares")?.rows ?? [];
+  const shared = Object.fromEntries(Object.entries(SHARED).map(([k, c]) => [k, resolveSeries(cf, c)?.rows ?? []])) as Record<string, Fact[]>;
+  const flows = { ...Object.fromEntries(Object.entries(FLOWS).map(([k, c]) => [k, pickConcept(cf, c)?.rows ?? []])), ...shared } as Record<string, Fact[]>;
+  const inst = { ...Object.fromEntries(Object.entries(INSTANTS).map(([k, c]) => [k, pickConcept(cf, c)?.rows ?? []])), ...shared } as Record<string, Fact[]>;
   // Fiscal year ends: annual rows of the best-covered anchor concepts, one per year.
   const anchor = [...flows.revenue, ...flows.netIncome, ...flows.cfo].filter((r) => r.start && r.days >= 350 && r.days <= 380);
   const ends: { end: string; fy: number }[] = [];
@@ -80,7 +79,6 @@ export function annualPanel(cf: CompanyFacts, years = 6): Annual[] {
     const revenue = f("revenue"), cogs = f("cogs");
     const gp = f("grossProfit") ?? (revenue !== null && cogs !== null ? revenue - cogs : null);
     const ta = i("totalAssets"), eq = i("equity");
-    const sharesNear = (() => { let best: Fact | null = null; for (const r of sharesRows) if (days(r.end, end) <= 120 && (!best || days(r.end, end) < days(best.end, end))) best = r; return best?.val ?? null; })();
     return {
       end, fy,
       revenue, cogs, grossProfit: gp, sga: f("sga"), da: f("da"), ebit: f("ebit"), netIncome: f("netIncome"), cfo: f("cfo"), capex: f("capex"), interest: f("interest"),
@@ -88,7 +86,7 @@ export function annualPanel(cf: CompanyFacts, years = 6): Annual[] {
       totalAssets: ta, currentAssets: i("currentAssets"), currentLiabilities: i("currentLiabilities"),
       totalLiabilities: i("totalLiabilities") ?? (ta !== null && eq !== null ? ta - eq : null),
       retainedEarnings: i("retainedEarnings"), equity: eq, receivables: i("receivables"), inventory: i("inventory"), ppe: i("ppe"),
-      ltDebt: i("ltDebt"), stDebt: i("stDebt"), cash: i("cash"), shares: sharesNear,
+      ltDebt: i("ltDebt"), stDebt: i("stDebt"), cash: i("cash"), shares: sharesNear(cf, end),
     };
   });
 }

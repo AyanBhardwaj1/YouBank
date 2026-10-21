@@ -758,7 +758,7 @@ const lboReturns: ToolDef = {
   ],
   example: { ebitda: 33.4, entryMultiple: 10.5, exitMultiple: 10.5, years: 5, ebitdaGrowth: 9, senTurns: 4, senRate: 9, senAmort: 1, subTurns: 0.75, subRate: 12, subPik: false, sweep: 75, daPct: 22, capexPct: 14, nwcPct: 25, taxRate: 25, txFeePct: 2, finFeePct: 2.5, minCash: 5, mgmtPool: 8 },
   prefill: (c) => {
-    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null; const x = e && ev && e > 0 ? Math.round((ev / e) * 10) / 10 : 10.5;
+    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && c.price.marketCap !== null && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null; const x = e && ev && e > 0 ? Math.round((ev / e) * 10) / 10 : 10.5;
     return {
       ebitda: e && e > 0 ? Math.round(e * 10) / 10 : 100,
       entryMultiple: Math.min(25, Math.max(4, x)), exitMultiple: Math.min(25, Math.max(4, x)),
@@ -826,7 +826,7 @@ const paperLbo: ToolDef = {
   ],
   example: { ebitda: 100, entryMultiple: 10, leverage: 5, rate: 9, ebitdaGrowth: 8, fcfPct: 55, exitMultiple: 10, years: 5 },
   prefill: (c) => {
-    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null; const x = e && ev && e > 0 ? Math.round((ev / e) * 10) / 10 : 10;
+    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && c.price.marketCap !== null && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null; const x = e && ev && e > 0 ? Math.round((ev / e) * 10) / 10 : 10;
     return { ebitda: e && e > 0 ? Math.round(e) : 100, entryMultiple: Math.min(25, Math.max(4, x)), exitMultiple: Math.min(25, Math.max(4, x)) };
   },
   compute: (i: Inputs): WorkflowOutput => {
@@ -1614,7 +1614,7 @@ const abilityToPay: ToolDef = {
   ],
   example: { ebitda: 33.4, targetIrr: 22, exitMultiple: 10.5, years: 5, ebitdaGrowth: 9, senTurns: 4, senRate: 9, senAmort: 1, subTurns: 0.75, subRate: 12, sweep: 75, daPct: 22, capexPct: 14, nwcPct: 25, taxRate: 25, txFeePct: 2, finFeePct: 2.5, minCash: 5, mgmtPool: 8 },
   prefill: (c) => {
-    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null;
+    const e = c.ltm.adjEbitda ?? c.ltm.ebitda; const ev = c.price && c.price.marketCap !== null && e ? c.price.marketCap + (c.balance.debt ?? 0) - (c.balance.cash ?? 0) : null;
     return { ebitda: e && e > 0 ? Math.round(e * 10) / 10 : 100, exitMultiple: e && ev && e > 0 ? Math.min(25, Math.max(4, Math.round((ev / e) * 10) / 10)) : 10.5 };
   },
   compute: (i: Inputs): WorkflowOutput => {
