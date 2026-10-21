@@ -95,7 +95,7 @@ function refreshRecord(ticker: string) {
 const refreshing = sharedMap<string, Promise<unknown>>("company:refreshing");
 
 /** Bumped when the stored record's units or fields change, so older records are rebuilt rather than misread. */
-const RECORD_VERSION = 2;
+export const RECORD_VERSION = 2;
 
 /** The record's price block from a profile (USD millions), with the provider's own as-of, source and flags. */
 function priceFrom(p: Profile, shares: Pick<Shares, "total" | "classes"> | null, prior: CompanyData["price"]): NonNullable<CompanyData["price"]> {

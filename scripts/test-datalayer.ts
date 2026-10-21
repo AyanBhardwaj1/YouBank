@@ -467,10 +467,11 @@ async function testCompactFactsDb() {
 async function testCompanyStaleDb() {
   const { db, schema } = await import("@/db");
   const { eq } = await import("drizzle-orm");
-  const { getCompanyData } = await import("@/lib/company");
+  const { getCompanyData, RECORD_VERSION } = await import("@/lib/company");
   const { withProvenance } = await import("@/lib/market/provenance");
   const ticker = `Z${uid()}`.slice(0, 8);
-  const record = { ticker, name: "Stale Co", cik: "0000000001", price: null, balance: { asOf: "2026-01-31", cash: 1, debt: 0, sharesOut: 100 }, ltm: {}, quarters: [], filings: [], description: "", sources: { concepts: {}, notes: [] } };
+  // A record in the current format (company.ts RECORD_VERSION): an older one is rebuilt, never served stale (checked below).
+  const record = { ticker, name: "Stale Co", cik: "0000000001", price: null, balance: { asOf: "2026-01-31", cash: 1, debt: 0, sharesOut: 100 }, ltm: {}, quarters: [], filings: [], description: "", sources: { concepts: {}, notes: [] }, recordVersion: RECORD_VERSION };
   forced["sec.gov"] = "neterr"; // SEC is down: a refresh cannot succeed
   try {
     await db!.insert(schema.companyCache).values({ ticker, data: record, fetchedAt: new Date(Date.now() - 8 * 3_600_000) });
@@ -482,6 +483,10 @@ async function testCompanyStaleDb() {
     forgetMemo(`company:${ticker}`);
     const old = await timed(() => getCompanyData(ticker));
     check("A3 a record past its stale window (7 days) is not served when SEC is down", !!old.error || old.value === null, old.error ? String(old.error) : old.value);
+    await db!.update(schema.companyCache).set({ data: { ...record, recordVersion: RECORD_VERSION - 1 }, fetchedAt: new Date(Date.now() - 8 * 3_600_000) }).where(eq(schema.companyCache.ticker, ticker));
+    forgetMemo(`company:${ticker}`);
+    const older = await timed(() => getCompanyData(ticker));
+    check("M5 a record in an older format (RECORD_VERSION) inside the stale window is rebuilt, not served stale (here SEC is down: no answer)", !!older.error || older.value === null, older.error ? String(older.error) : older.value);
   } finally {
     delete forced["sec.gov"];
     await db!.delete(schema.companyCache).where(eq(schema.companyCache.ticker, ticker));
