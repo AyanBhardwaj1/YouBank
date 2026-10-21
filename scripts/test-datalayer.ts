@@ -47,11 +47,13 @@ function localDb(): boolean {
 
 /* ---------------- The stubbed network ---------------- */
 
-type Mode = "ok" | "hang" | "neterr" | "503" | "badjson" | "empty" | "limit" | { delayMs: number };
+type Mode = "ok" | "hang" | "neterr" | "503" | "badjson" | "empty" | "limit" | "drift" | { delayMs: number };
 /** Per symbol, how FMP answers; anything not listed answers at once. */
 const fmpMode: Record<string, Mode> = {};
 /** Per URL substring, extra delay for Nasdaq, SEC and the other sources. */
 const delays: Record<string, number> = {};
+/** Per symbol (as Nasdaq spells it), the last trade time Nasdaq reports; default "Oct 20, 2026 4:00 PM ET". */
+const nasdaqTradeTime: Record<string, string> = {};
 /** Per URL substring, a forced behaviour for any source (hang, neterr, 503). */
 const forced: Record<string, Mode> = {};
 const calls: string[] = [];
@@ -77,7 +79,16 @@ async function behave(m: Mode | undefined, signal?: AbortSignal | null): Promise
   if (m === "badjson") return new Response("<html>gateway</html>", { status: 200 });
   if (m === "limit") return json({ "Error Message": "Limit Reach . Please upgrade your plan" });
   if (m === "empty") return json([]);
-  return null;
+  return null; // "drift" is answered per endpoint (fmpDrift)
+}
+
+/** FMP after a provider change: well-formed JSON whose rows renamed a field the code reads (close, price). */
+function fmpDrift(url: string, sym: string, from: string): Response {
+  if (url.includes("historical-price-eod/full")) return json(fmpBars(from).map(({ close, ...b }) => ({ ...b, closePrice: close })));
+  if (url.includes("historical-price-eod/light")) return json(fmpBars(from).map((b) => ({ symbol: sym, date: b.date, last: b.close, volume: 1 })));
+  if (url.includes("/profile")) return json([{ symbol: sym, lastPrice: 100, companyName: "Drift" }]);
+  if (url.includes("/quote")) return json([{ symbol: sym, name: sym, lastPrice: 100, changePercentage: 1, timestamp: Math.floor(Date.now() / 1000) }]);
+  return json([{ renamed: true }]);
 }
 
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -93,6 +104,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const r = await behave(fmpMode[sym], init?.signal);
     if (r) return r;
     const from = /from=([^&]+)/.exec(url)?.[1] ?? DAYS[0];
+    if (fmpMode[sym] === "drift") return fmpDrift(url, sym, from);
     if (url.includes("/profile")) return json([{ symbol: sym, price: 100, marketCap: 1e10, change: 1, changePercentage: 1, range: "80-120", companyName: "Test", cik: "1", exchange: "NASDAQ", exchangeFullName: "", industry: "", sector: "", website: "", description: "" }]);
     if (url.includes("/quote")) return json([{ symbol: sym, name: sym, price: 100, changePercentage: 1, change: 1, volume: 1, dayLow: 1, dayHigh: 1, yearHigh: 1, yearLow: 1, marketCap: 1, priceAvg50: 1, priceAvg200: 1, exchange: "X", open: 1, previousClose: 99, timestamp: Math.floor(Date.now() / 1000) }]);
     if (url.includes("historical-price-eod/light")) return json(fmpBars(from).map((b) => ({ symbol: sym, date: b.date, price: b.close, volume: 1 })));
@@ -102,7 +114,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return json([]);
   }
   if (url.includes("api.nasdaq.com")) {
-    if (url.includes("/info")) return json({ data: { symbol: "X", companyName: "Test Common Stock", exchange: "NASDAQ-GS", primaryData: { lastSalePrice: "$50.00", netChange: "+1.00", percentageChange: "+2.04%", lastTradeTimestamp: "Oct 20, 2026 4:00 PM ET", isRealTime: false } } });
+    const nsym = decodeURIComponent(/\/quote\/([^/]+)\//.exec(url)?.[1] ?? "");
+    if (url.includes("/info")) return json({ data: { symbol: "X", companyName: "Test Common Stock", exchange: "NASDAQ-GS", primaryData: { lastSalePrice: "$50.00", netChange: "+1.00", percentageChange: "+2.04%", lastTradeTimestamp: nasdaqTradeTime[nsym] ?? "Oct 20, 2026 4:00 PM ET", isRealTime: false } } });
     if (url.includes("/summary")) return json({ data: { summaryData: { MarketCap: { value: "10,000,000,000" }, FiftTwoWeekHighLow: { value: "$60.00/$40.00" } } } });
     if (url.includes("/historical")) return json({ data: { tradesTable: { rows: nasdaqRows(/fromdate=([^&]+)/.exec(url)?.[1] ?? DAYS[0]) } } });
     return json({ data: null });
@@ -634,6 +647,123 @@ async function testCompactVersion() {
   check("R5 the compact companyfacts version follows the allowlist", compactVersion() === compactVersion(FACT_CONCEPTS) && compactVersion(new Set([...FACT_CONCEPTS, "SomeNewConcept"])) !== compactVersion(), compactVersion());
 }
 
+/* ---------------- M: Slice B's semantics inside Slice A's transport (the merge) ---------------- */
+
+/** How many failures of `kind` the stats buffer holds for `source` (optionally one op). */
+function failuresOf(source: string, kind: string, op?: string): number {
+  return statsBuffer().filter((x) => x.source === source && (!op || x.op === op)).reduce((a, x) => a + (x.rollup.kinds[kind as never] ?? 0), 0);
+}
+let statsBuffer: () => { source: string; op: string; rollup: { kinds: Record<string, number> } }[] = () => [];
+
+/** FMP drift (a renamed field, valid JSON) is SourceError "schema" from zod, recorded as such, and the chain answers from Nasdaq. */
+async function testDriftFallsBack() {
+  const stats = await import("@/lib/market/stats");
+  statsBuffer = stats.bufferedRollups;
+  await stats.flushSourceStats(); // start a fresh flush interval, so the buffer still holds this test's calls when it is read
+  const { historyFrom, quotes } = await import("@/lib/market/data");
+  const { withProvenance } = await import("@/lib/market/provenance");
+  const { withMode } = await import("@/lib/market/budgets");
+  const { cacheGet } = await import("@/lib/cache");
+  const sym = `DR${uid()}`;
+  fmpMode[sym] = "drift";
+  const before = { full: failuresOf("fmp", "schema", "historical-price-eod/full"), chain: failuresOf("fmp", "schema", "chain:daily-bars") };
+  const r = await timed(() => withMode("interactive", () => withProvenance(() => historyFrom(sym))));
+  const v = r.value as Awaited<ReturnType<typeof withProvenance<Awaited<ReturnType<typeof historyFrom>>>>> | undefined;
+  check("M1 FMP drift (close renamed): bars answered from Nasdaq through the registry chain", !r.error && v?.value.source === "Nasdaq" && v.sources[0]?.id === "nasdaq" && (v.value.data.length ?? 0) > 0, { err: r.error ? String(r.error) : null, source: v?.value.source });
+  check("M1 the drift is recorded as kind \"schema\" on FMP's call and on the chain (not a parse error: the body was valid JSON)", failuresOf("fmp", "schema", "historical-price-eod/full") > before.full && failuresOf("fmp", "schema", "chain:daily-bars") > before.chain, { before, after: { full: failuresOf("fmp", "schema", "historical-price-eod/full"), chain: failuresOf("fmp", "schema", "chain:daily-bars") } });
+  check("M1 a drifted FMP answer is never cached (the last good copy, if any, would keep serving)", (await cacheGet(`cj1:fmp:bars:v1:${sym}`)) === null);
+  const { SourceError } = await import("@/lib/market/source-error");
+  const { history } = await import("@/lib/market/fmp");
+  const dsym = `DT${uid()}`;
+  fmpMode[dsym] = "drift";
+  const thrown = await history(dsym).catch((e) => e);
+  check("M1 FMP's own history() throws SourceError(\"schema\") on drift (zod at the boundary)", thrown instanceof SourceError && thrown.kind === "schema", { kind: (thrown as { kind?: string })?.kind });
+  const qsym = `DQ${uid()}`;
+  fmpMode[qsym] = "drift";
+  const q = await withProvenance(() => withMode("interactive", () => quotes([qsym])));
+  check("M1 FMP quote drift (price renamed): the quote comes from Nasdaq, as a fraction", q.value[qsym]?.source === "Nasdaq" && q.value[qsym]?.changePct === 0.0204 && q.sources.some((x) => x.id === "nasdaq"), q.value[qsym]);
+  check("M1 quote drift recorded as schema on the quote chain", failuresOf("fmp", "schema", "chain:quote") > 0);
+}
+
+/** Canonical symbols run inside the adapters: every spelling reaches FMP as FMP spells it, under one canonical cache key. */
+async function testSymbolsInChain() {
+  const { fromChain } = await import("@/lib/market/registry");
+  const { cacheGet } = await import("@/lib/cache");
+  const from = DAYS[DAYS.length - 30];
+  const fmpCalls = (path: string) => calls.filter((c) => c.includes("financialmodelingprep.com") && c.includes(path));
+  if (localDb()) {
+    // Real tickers: clear what an earlier run left in the shared cache, so the upstream calls are counted again.
+    const { db, schema } = await import("@/db");
+    const { or, like } = await import("drizzle-orm");
+    await db!.delete(schema.kvCache).where(or(like(schema.kvCache.key, "%BRK%"), like(schema.kvCache.key, "%SHOP.TO%")));
+  }
+  calls.length = 0;
+  const brk = [];
+  for (const spelling of ["BRK.B", "brk-b", "BRK/B", "brk b"]) brk.push(await fromChain("daily-bars", { symbol: spelling, from }));
+  const brkCalls = fmpCalls("historical-price-eod/full");
+  check("M2 BRK.B through the daily-bars chain reaches FMP as BRK-B", brkCalls.length === 1 && brkCalls[0].includes("symbol=BRK-B") && !calls.some((c) => c.includes("financialmodelingprep.com") && /symbol=BRK(\.|%2F|%20|\/)B/i.test(c)), brkCalls);
+  check("M2 four spellings of BRK.B share one canonical bars key (one upstream call, key fmp:bars:v1:BRK.B)", brk.every((a) => a.by.id === "fmp" && a.data.length > 0) && (await cacheGet("cj1:fmp:bars:v1:BRK.B")) !== null && (await cacheGet("cj1:fmp:bars:v1:BRK-B")) === null);
+  calls.length = 0;
+  for (const spelling of ["SHOP.TO", "shop.to", " Shop.TO "]) await fromChain("daily-bars", { symbol: spelling, from });
+  const shopCalls = fmpCalls("historical-price-eod/full");
+  check("M2 SHOP.TO keeps its exchange suffix at FMP (SHOP.TO, not SHOP-TO), one call for every spelling", shopCalls.length === 1 && shopCalls[0].includes("symbol=SHOP.TO") && (await cacheGet("cj1:fmp:bars:v1:SHOP.TO")) !== null, shopCalls);
+  calls.length = 0;
+  const q1 = await fromChain("quote", { symbol: "BRK.B" }), q2 = await fromChain("quote", { symbol: "brk/b" });
+  const quoteCalls = fmpCalls("/quote?");
+  check("M2 BRK.B quotes reach FMP as BRK-B once for both spellings (getEntry's key is FMP's canonical spelling)", quoteCalls.length === 1 && quoteCalls[0].includes("symbol=BRK-B") && q1.data.price === 100 && q2.data.changePct === 0.01, quoteCalls);
+  calls.length = 0;
+  await fromChain("daily-bars", { symbol: "brk-b", from }, { prefer: ["nasdaq"] });
+  check("M2 the Nasdaq adapter asks for BRK.B as Nasdaq spells it", calls.some((c) => c.includes("api.nasdaq.com") && c.includes("/quote/BRK.B/")) && !calls.some((c) => c.includes("api.nasdaq.com") && c.includes("BRK-B")), calls.filter((c) => c.includes("nasdaq")));
+}
+
+/** One header builder: both routes' x-data-sources carry providers, notes, sources, stale, asOf and delayed, with Server-Timing; the badge reads it. */
+async function testUnifiedHeader() {
+  const { quotes } = await import("@/lib/market/data");
+  const { withProvenance, noteSource } = await import("@/lib/market/provenance");
+  const { withMode } = await import("@/lib/market/budgets");
+  const { sourceHeaders } = await import("@/lib/market/source-header");
+  const sym = `HD${uid()}`;
+  fmpMode[sym] = "neterr";
+  nasdaqTradeTime[sym] = "Oct 1, 2026 4:00 PM ET"; // weeks behind the NYSE session: stale by the calendar
+  const t0 = performance.now();
+  const run = await withProvenance(() => withMode("interactive", () => quotes([sym])));
+  const h = sourceHeaders(run, performance.now() - t0);
+  const x = JSON.parse(h["x-data-sources"] ?? "{}") as { providers?: string[]; sources?: { id: string; label: string; provider?: string }[]; stale?: boolean; delayed?: boolean; asOf?: string; notes?: string[] };
+  check("M3 x-data-sources names the provider and the adapter that answered (sources: id, label)", x.providers?.includes("Nasdaq") === true && x.sources?.some((s) => s.id === "nasdaq" && s.label === "Nasdaq.com" && s.provider === "Nasdaq") === true, x);
+  check("M3 x-data-sources carries the quote's asOf (Nasdaq's trade time), stale (behind the session) and delayed (not real time)", x.asOf === "2026-10-01T20:00:00.000Z" && x.stale === true && x.delayed === true, x);
+  check("M3 Server-Timing comes from the same builder (FMP's failed call, Nasdaq's call, the stale flag, the total)", /fmp;dur=[\d.]+;desc="1 call, 1 failed"/.test(h["Server-Timing"] ?? "") && /nasdaq;dur=/.test(h["Server-Timing"] ?? "") && /cache;desc="stale"/.test(h["Server-Timing"] ?? "") && /total;dur=/.test(h["Server-Timing"] ?? ""), h["Server-Timing"]);
+  const big = await withProvenance(async () => { for (let i = 0; i < 40; i++) noteSource("Nasdaq", `${"a very long note ".repeat(20)}${i}`); });
+  const bigHeader = sourceHeaders(big)["x-data-sources"] ?? "";
+  check("M3 the header stays bounded (at most 8 notes, each cut short)", JSON.parse(bigHeader).notes.length === 8 && bigHeader.length < 1_500, bigHeader.length);
+  const { readFileSync } = await import("node:fs");
+  const routes = ["src/app/api/companies/route.ts", "src/app/api/terminal/[fn]/route.ts"].map((f) => readFileSync(f, "utf8"));
+  check("M3 both routes build their headers with source-header's sourceHeaders (one builder)", routes.every((r) => /from "@\/lib\/market\/source-header"/.test(r) && /sourceHeaders\(/.test(r) && !/provenanceHeaders/.test(r)));
+  const { answeredBy } = await import("@/components/terminal/kit");
+  check("M3 the badge reads the unified header: the adapter's label for a provider, the provider's own name otherwise", JSON.stringify(answeredBy({ ...x, providers: ["Nasdaq", "SEC EDGAR"] } as never)) === '["Nasdaq.com","SEC EDGAR"]' && JSON.stringify(answeredBy({ providers: ["FMP"] } as never)) === '["FMP"]', answeredBy(x as never));
+}
+
+/** The ETF stand-in label lives in the registry: the Nasdaq adapter returns it as the data's label and the note; the board shows it. */
+async function testStandInLabel() {
+  const registry = await import("@/lib/market/registry");
+  const data = await import("@/lib/market/data");
+  const { withProvenance } = await import("@/lib/market/provenance");
+  const from = DAYS[DAYS.length - 30];
+  const a = await registry.fromChain("daily-bars", { symbol: "^GSPC", from }, { exclude: ["fmp"] });
+  check("M4 the registry's Nasdaq adapter labels the stand-in: label and note \"S&P 500 via SPY\", via SPY", a.label === "S&P 500 via SPY" && a.note === "S&P 500 via SPY" && a.via === "SPY" && a.by.id === "nasdaq", { label: a.label, note: a.note, via: a.via });
+  check("M4 data.ts re-exports the registry's label (one definition)", data.standInLabel === registry.standInLabel && registry.standInLabel("^N225") === "Nikkei 225 via EWJ" && registry.standInLabel("AAPL") === undefined);
+  fmpMode["^GSPC"] = "drift";
+  try {
+    const run = await withProvenance(() => data.historyFrom("^GSPC", from));
+    check("M4 FMP drift on ^GSPC: historyFrom answers from SPY with the label in the data and the sources note", run.value.label === "S&P 500 via SPY" && run.value.via === "SPY" && run.notes.includes("S&P 500 via SPY"), { label: run.value.label, notes: run.notes });
+    const { worldIndices } = await import("@/lib/terminal/markets");
+    const board = await worldIndices();
+    const spx = board.find((r) => r.symbol === "^GSPC"), dji = board.find((r) => r.symbol === "^DJI");
+    check("M4 the board's ^GSPC row carries the label (its price cell shows it) and the ETF's close, while FMP rows carry none", spx?.label === "S&P 500 via SPY" && spx.via === "SPY" && spx.price === 50 && !dji?.label, { spx: spx && { label: spx.label, via: spx.via, price: spx.price }, dji: dji?.label });
+  } finally {
+    delete fmpMode["^GSPC"];
+  }
+}
+
 /* ---------------- Main ---------------- */
 
 async function main() {
@@ -666,6 +796,13 @@ async function main() {
   if (localDb()) await section("R3 source_stats retention", testStatsPruneDb);
   await section("R4 the latency script's limits", testLatencyScriptLimits);
   await section("R5 compact companyfacts versioning", testCompactVersion);
+  await breakers.reset("fmp");
+  await section("M1 FMP drift falls back to Nasdaq, recorded as schema", testDriftFallsBack);
+  await breakers.reset("fmp");
+  await section("M2 canonical symbols at the provider boundary, one cache key", testSymbolsInChain);
+  await section("M3 one header builder: sources, stale, asOf, delayed", testUnifiedHeader);
+  await breakers.reset("fmp");
+  await section("M4 ETF stand-in labels from the registry", testStandInLabel);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");
