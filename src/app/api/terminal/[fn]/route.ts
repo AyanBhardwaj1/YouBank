@@ -7,7 +7,7 @@ import { MarketDataError } from "@/lib/market/fmp";
 import { withMode } from "@/lib/market/budgets";
 import { dataUserFor } from "@/lib/market/byo/store";
 import { FN_DATASET, isSourceId } from "@/lib/market/sources-meta";
-import { withDataUser, type DataUser } from "@/lib/market/user-context";
+import { forModel, withDataUser, type DataUser } from "@/lib/market/user-context";
 import { withProvenance, type ProvenanceRun } from "@/lib/market/provenance";
 import { sourceHeaders as buildSourceHeaders } from "@/lib/market/source-header";
 import { flushSourceStats } from "@/lib/market/stats";
@@ -225,7 +225,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ fn: string }> 
           if (!(target in EXPLAIN_FNS)) return NextResponse.json({ error: "Nothing to explain" }, { status: 400 });
           const params = new URLSearchParams();
           for (const k of ["ticker", "erp", "beta", "q", "stable"]) if (typeof body?.[k] === "string") params.set(k, body[k] as string);
-          const data = (await compute(target, params, user.id)) as Record<string, unknown>;
+          // For a model: public sources only, none whose terms bar AI use (FRED and the Fed's series through it).
+          const data = (await forModel(() => compute(target, params, user.id))) as Record<string, unknown>;
           // FRED's copies are display-only under its terms: the model sees the series their original
           // publishers answered (BLS, BEA, the EIA, the Treasury) and the outlooks, never one FRED answered,
           // nor a curve that came from FRED.

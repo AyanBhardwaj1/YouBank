@@ -151,7 +151,7 @@ export const DATASETS: Record<DatasetName, DatasetInfo> = {
 /** The dataset a terminal screen's "Source ▾" chip switches (the screen's main data). */
 export const FN_DATASET: Record<string, DatasetName> = {
   price: "daily-bars", earnings: "earnings", analysts: "analysts", dividends: "dividends", indices: "daily-bars", fx: "fx", commodities: "commodity",
-  movers: "movers", sectors: "sectors", deals: "deals", curve: "curve", macro: "macro", snapshot: "profile",
+  movers: "movers", sectors: "sectors", deals: "deals", curve: "curve", macro: "macro",
 };
 
 /**

@@ -47,7 +47,7 @@ import { DATASETS, metaOf, type DatasetName, type KeyProvider, type Licence, typ
 import type { AnalystData, DividendData, EarningsData } from "./street-types";
 import { canonical } from "./symbols";
 import { treasuryCurves, type CurveRow } from "./treasury";
-import { dataUser, keyedEligibility } from "./user-context";
+import { dataUser, inForModel, keyedEligibility, NOT_FOR_AI } from "./user-context";
 
 /* ---------------- Types ---------------- */
 
@@ -101,6 +101,8 @@ export type Adapter<A, R> = {
   requires?: string;
   /** False when its terms bar caching (FRED): kept for one request at most. */
   persistentCache?: boolean;
+  /** True when its terms bar AI use (FRED): never asked for anything a model will read (forModel). */
+  noAi?: boolean;
   /** False when it may not be asked just to fill another source's fields (paid lookups). */
   fills?: boolean;
   /** A backup: off when MARKET_BACKUP=off (the unverified sources only). */
@@ -182,7 +184,9 @@ const RESEARCH = { ...metaOf("ai-research"), provider: "AI research", source: "a
 const ECB = { ...metaOf("ecb"), provider: "ECB", source: "ecb", free: true } as const;
 const COINGECKO = { ...metaOf("coingecko"), provider: "CoinGecko", source: "coingecko", free: true, backup: true } as const;
 const TREASURY = { ...metaOf("treasury"), provider: "US Treasury", source: "treasury", free: true } as const;
-const FRED = { ...metaOf("fred"), provider: "FRED", source: "fred", free: true, persistentCache: false } as const;
+/** FRED and the Fed's series read through it: never cached, never for a model (its terms). */
+const VIA_FRED = { provider: "FRED", source: "fred", free: true, persistentCache: false, noAi: true } as const;
+const FRED = { ...metaOf("fred"), ...VIA_FRED } as const;
 const EIA = { ...metaOf("eia"), provider: "EIA", source: "eia", free: true, requires: "EIA_API_KEY" } as const;
 
 const fmpBars: Adapter<BarsArgs, Bar[]> = {
@@ -217,7 +221,7 @@ const ecbBars: Adapter<BarsArgs, Bar[]> = {
 };
 
 const h10Bars: Adapter<BarsArgs, Bar[]> = {
-  ...metaOf("h10"), provider: "FRED", source: "fred", free: true, persistentCache: false, fields: CLOSE,
+  ...metaOf("h10"), ...VIA_FRED, fields: CLOSE,
   covers: ({ symbol }) => h10Covers(symbol),
   fetch: async ({ symbol, from }) => {
     const xs = await h10Pair(symbol, from);
@@ -364,7 +368,7 @@ const DEFAULTS = {
   ],
   curve: [
     { ...TREASURY, fields: ["yields"], fetch: async () => ({ data: await treasuryCurves() }) },
-    { ...metaOf("h15"), provider: "FRED", source: "fred", free: true, persistentCache: false, fields: ["yields"], fetch: async () => { const rows = await h15Curves(); return rows.length ? { data: rows, note: "Treasury yields from the Fed's H.15 (via FRED): the Treasury's feed did not answer" } : null; } },
+    { ...metaOf("h15"), ...VIA_FRED, fields: ["yields"], fetch: async () => { const rows = await h15Curves(); return rows.length ? { data: rows, note: "Treasury yields from the Fed's H.15 (via FRED): the Treasury's feed did not answer" } : null; } },
   ],
   macro,
   cot: [{ ...metaOf("cftc"), provider: "CFTC", source: "cftc", free: true, fields: ["positioning"], fetch: async () => { const p = await cotPositioning(); return Object.keys(p).length ? { data: p } : null; } }],
@@ -403,8 +407,9 @@ export const BACKUP_OFF = "Switched off on this server (unverified backups are o
 export const NOT_SET_UP = "Not set up on this server yet.";
 
 /** Whether an adapter may answer here, and if not, why (in words people read). */
-export function eligibility(a: Pick<Adapter<unknown, unknown>, "licence" | "keyProvider" | "backup" | "requires">): { ok: true } | { ok: false; reason: string } {
+export function eligibility(a: Pick<Adapter<unknown, unknown>, "licence" | "keyProvider" | "backup" | "requires" | "noAi">): { ok: true } | { ok: false; reason: string } {
   if (a.licence === "user-key") return keyedEligibility(a.keyProvider!);
+  if (a.noAi && inForModel()) return { ok: false, reason: NOT_FOR_AI };
   if (a.backup && !backupEnabled()) return { ok: false, reason: BACKUP_OFF };
   if (a.requires && !process.env[a.requires]?.trim()) return { ok: false, reason: NOT_SET_UP };
   return { ok: true };

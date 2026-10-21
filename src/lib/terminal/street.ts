@@ -173,7 +173,8 @@ const bucketCounts = (firms: { grade: string }[]) => ({ buy: firms.filter((f) =>
 
 /** FMP: grades (the latest per firm within a year), the target consensus and its rating snapshot. */
 export async function fmpAnalystData(t: string): Promise<Answer<AnalystData> | null> {
-  const [g, tg, snap] = await Promise.all([grades(t), priceTarget(t), ratingSnapshot(t)]);
+  // Grades failing on their own leave the target to answer (FMP's call is recorded as failed either way).
+  const [g, tg, snap] = await Promise.all([grades(t).catch(() => [] as Awaited<ReturnType<typeof grades>>), priceTarget(t), ratingSnapshot(t)]);
   if (!g.length && !tg) return null;
   const yearAgo = new Date(Date.now() - 365 * 86_400_000).toISOString().slice(0, 10);
   const latestByFirm = new Map<string, (typeof g)[number]>();

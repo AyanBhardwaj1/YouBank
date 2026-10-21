@@ -29,12 +29,24 @@ export type DataUser = {
 
 const users = new AsyncLocalStorage<DataUser>();
 const shared = new AsyncLocalStorage<true>();
+const model = new AsyncLocalStorage<true>();
 
 /** Run `fn` as `u`'s request: their order and keys apply to the data layer inside it. */
 export const withDataUser = <T>(u: DataUser, fn: () => Promise<T>): Promise<T> => users.run(u, fn);
 
 /** Run `fn` for shared data: default order, public and owner-licensed sources only, no one's keys. */
 export const publicOnly = <T>(fn: () => Promise<T>): Promise<T> => shared.run(true, fn);
+
+/**
+ * Run `fn` for a model (AI tools, the terminal's AI read): public-only, and without the sources whose terms
+ * bar AI use (FRED, and the Fed's H.15 and H.10 read through FRED; their adapters say `noAi`).
+ */
+export const forModel = <T>(fn: () => Promise<T>): Promise<T> => model.run(true, () => publicOnly(fn));
+
+/** Whether the current code runs for a model (forModel). */
+export const inForModel = (): boolean => model.getStore() === true;
+
+export const NOT_FOR_AI = "FRED's terms keep its data away from AI, so it is not used here.";
 
 /** Whether the current code runs for shared data (publicOnly). */
 export const inPublicOnly = (): boolean => shared.getStore() === true;

@@ -261,8 +261,11 @@ existing ones):
 - **FRED.** The API terms (June 2024) bar "storing, caching, or archiving" FRED content, AI or ML use, and
   passing third-party series on. So FRED is a fallback only, kept for one request at most
   (`requestMemo`), shown with "Source: FRED, Federal Reserve Bank of St. Louis", and never sent to a model:
-  the AI read and the macro tool leave out every series FRED answered, and refuse a curve that came from
-  H.15 via FRED. The Fed's own download program (DDP) is being retired (Build-Your-Package removal
+  every AI tool and the terminal's AI read run inside `forModel(…)` (user-context.ts), where FRED and the
+  Fed's series read through it are not eligible (and no one's own keys are used either); the AI read also
+  leaves out any ECO tile FRED answered. With the owner's BEA and EIA keys set, seven ECO tiles still come
+  from FRED alone (claims, industrial production, retail sales, housing starts, fed funds, Moody's spread,
+  the broad dollar), fetched on every uncached ECO request: watch FRED's rate limits. The Fed's own download program (DDP) is being retired (Build-Your-Package removal
   planned for the week of 9 November 2026), so H.15 and H.10 are read from FRED's copies.
 - **FINRA** short interest and short-sale volume: not built. FINRA's terms allow only non-commercial use.
 - **Crypto.** CoinGecko's free API and DefiLlama's terms are unconfirmed for a commercial product (marked

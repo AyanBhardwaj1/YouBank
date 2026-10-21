@@ -389,6 +389,26 @@ async function testFxCommoditiesCot() {
 }
 
 
+
+async function testForModel() {
+  const { fromChain } = await import("@/lib/market/registry");
+  const { forModel, withDataUser, NOT_FOR_AI } = await import("@/lib/market/user-context");
+  const { withProvenance } = await import("@/lib/market/provenance");
+  const { withMode } = await import("@/lib/market/budgets");
+  const before = calls.filter((c) => c.includes("fredgraph")).length;
+  const m = await run(() => forModel(() => fromChain("macro", { series: "BAA10Y" }).catch((e) => e)));
+  check("C1 for a model (AI tools, the AI read) FRED never answers: a FRED-only series has no source, and FRED is not called", m.value instanceof Error && calls.filter((c) => c.includes("fredgraph")).length === before, String(m.value));
+  const cpi = await run(() => forModel(() => fromChain("macro", { series: "CPIAUCSL" })));
+  check("C1 for a model, the original publisher still answers (BLS)", cpi.value.by.id === "bls");
+  forced["financialmodelingprep.com/stable/historical-price-eod/full?symbol=USDCHF"] = "503"; forced["frankfurter.app"] = "503"; forced["data-api.ecb.europa.eu"] = "503";
+  try {
+    const A = person(`al-${uid()}`, { tiingo: KEYS.tiingoA }, { fx: ["h10"] });
+    const r = await withProvenance(() => withMode("interactive", () => withDataUser(A, () => forModel(() => fromChain("fx", { symbol: "USDCHF", from: from30() }).catch((e) => e)))));
+    check("C1/C3 for a model: H.10 via FRED is refused and no one's keys or order apply", r.value instanceof Error && !r.sources.length && !calls.some((c) => c.includes("DEXSZUS")), { v: String(r.value), skipped: r.skipped });
+  } finally { for (const k of ["financialmodelingprep.com/stable/historical-price-eod/full?symbol=USDCHF", "frankfurter.app", "data-api.ecb.europa.eu"]) delete forced[k]; }
+  void NOT_FOR_AI;
+}
+
 /* ---------------- C3 bring-your-own keys ---------------- */
 
 import type { DataUser } from "@/lib/market/user-context";
@@ -671,6 +691,7 @@ async function main() {
   await section("C1 SEC merger filings", testSecDeals);
   await section("C1 curve and economy: originals first, FRED last and uncached", testCurveAndMacro);
   await section("C1 currencies, commodities and COT", testFxCommoditiesCot);
+  await section("C1 nothing a model reads comes from FRED", testForModel);
   const { breakers } = await import("@/lib/market/breaker");
   const resetAll = async () => { for (const b of ["fmp", "nasdaq", "treasury", "fred", "ecb", "sec", "eia", "worldbank", "cftc", "bea", "bls"]) await breakers.reset(b); };
   await resetAll();
