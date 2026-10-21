@@ -48,6 +48,13 @@ export async function dueStrategies(limit: number, now = new Date()): Promise<nu
   return rows.map((r) => r.id);
 }
 
+/** The due strategies with their owners, oldest first (the tick loop runs different owners side by side). */
+export async function dueStrategyOwners(limit: number, now = new Date()): Promise<{ id: number; userId: string }[]> {
+  return requireDb().select({ id: schema.algoStrategies.id, userId: schema.algoStrategies.userId }).from(schema.algoStrategies)
+    .where(and(eq(schema.algoStrategies.status, "active"), inArray(schema.algoStrategies.mode, ["paper", "live_approval", "live_auto"]), lte(schema.algoStrategies.nextTickAt, now)))
+    .orderBy(schema.algoStrategies.nextTickAt).limit(limit);
+}
+
 /** Run one strategy's tick. `force` runs a decision now even when it is not a decision day (the person's "Run now"). */
 export async function tickStrategy(id: number, deadline: number, opts: { force?: boolean; actor?: string } = {}): Promise<TickResult> {
   const release = await lease(`algo-tick:${id}`, 180_000);

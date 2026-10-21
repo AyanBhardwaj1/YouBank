@@ -6,7 +6,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { after } from "next/server";
 import { requireDb, schema } from "@/db";
 import { aiUser, runAsUser } from "./context";
-import { noteAiSpend } from "./limits";
+import { noteAiSpend, recordSpend } from "./limits";
 import { costOf, type Usage } from "./pricing";
 
 export { aiUser, runAsUser };
@@ -25,9 +25,10 @@ export async function meterSpend<T>(fn: () => Promise<T>): Promise<{ value: T; u
 
 /**
  * Record a call; never throws and never delays the caller's result. `extraCostUsd` carries fees that
- * are not tokens, such as the provider's charge per web search. The spend limits see the cost at once;
- * the ledger row is written after the response (`after`), so a function frozen at the end of a
- * request still records it.
+ * are not tokens, such as the provider's charge per web search. The spend limits see the cost at once:
+ * on this instance straight away, and on every instance as soon as the atomic running total (./spend)
+ * lands, which starts now. The ledger row is written after the response (`after`), so a function frozen
+ * at the end of a request still records it (and still finishes the running total).
  */
 export function recordUsage(r: { feature: string; provider: string; model: string; effort?: string; usage: Usage; extraCostUsd?: number }) {
   const u = r.usage;
@@ -35,6 +36,7 @@ export function recordUsage(r: { feature: string; provider: string; model: strin
   const cost = (costOf(r.model, u) ?? 0) + (r.extraCostUsd ?? 0);
   const userId = aiUser();
   noteAiSpend(userId, cost);
+  const counted = recordSpend(userId, cost);
   const m = meters.getStore();
   if (m) m.usd += cost;
   const write = () => requireDb().insert(schema.aiUsage).values({
@@ -42,7 +44,7 @@ export function recordUsage(r: { feature: string; provider: string; model: strin
     inputTokens: u.input, cachedTokens: u.cached, cacheWriteTokens: u.cacheWrite, outputTokens: u.output, reasoningTokens: u.reasoning, costUsd: cost,
   }).then(() => undefined, () => undefined);
   try {
-    after(write);
+    after(() => Promise.all([write(), counted]));
   } catch {
     // Outside a request (scripts): write now.
     void write();

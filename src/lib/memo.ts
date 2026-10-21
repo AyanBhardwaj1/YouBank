@@ -3,10 +3,13 @@
  * load, and the value is reused for `ttlMs`. Meant for data that is the same for everyone for a minute
  * or two (the Newsroom's candidate stories, deals, facets) and for a person's own slow-changing data
  * (their network). Values are shared objects, so callers must not mutate them. Failures are not kept.
+ * The maps are per process (src/lib/shared), not per copy of this module.
  */
-const values = new Map<string, { exp: number; value: unknown }>();
-const loading = new Map<string, Promise<unknown>>();
-const MAX_KEYS = 2_000;
+import { sharedMap } from "./shared";
+
+const values = sharedMap<string, { exp: number; value: unknown }>("memo:values");
+const loading = sharedMap<string, Promise<unknown>>("memo:loading");
+const MAX_KEYS = 10_000;
 
 export function memo<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   const hit = values.get(key);
@@ -29,4 +32,9 @@ function evict() {
   if (values.size < MAX_KEYS) return;
   let n = Math.ceil(MAX_KEYS / 10);
   for (const k of values.keys()) { if (n-- <= 0) break; values.delete(k); }
+}
+
+/** Drop a key (its next read loads afresh), e.g. after the person changed what it was built from. */
+export function forgetMemo(key: string) {
+  values.delete(key);
 }

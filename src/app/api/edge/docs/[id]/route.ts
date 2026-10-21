@@ -59,6 +59,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       await rateLimit(`edge-premium-read:${user.id}`, 30, 3_600_000, "Many documents re-read this hour; try again later.");
       await requestPremiumRead(user, d.id, body.with);
     }
-    return NextResponse.json({ status: await ingest(d.id) });
+    return NextResponse.json({ status: await ingest(d.id, user.id) });
   });
 }

@@ -7,6 +7,9 @@ import postgres from "postgres";
 import { readFileSync } from "node:fs";
 
 const sql = postgres(process.env.DATABASE_URL!, { prepare: false, max: 1, onnotice: () => undefined });
+// The app's role cuts statements off at 30 s (scripts/db-setup.mts finish); an index build may take longer,
+// and a CONCURRENTLY build cut off midway leaves an invalid index that IF NOT EXISTS then skips for good.
+await sql`set statement_timeout = 0`;
 for (const f of process.argv.slice(2)) {
   const text = readFileSync(f, "utf8").split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
   const stmts = text.split(";").map((s) => s.trim()).filter(Boolean);

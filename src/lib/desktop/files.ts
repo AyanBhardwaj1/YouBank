@@ -112,7 +112,7 @@ export async function completeFile(user: CurrentUser, device: DesktopDevice, fil
   if (!isHash(input.pathKey) || !isHash(input.sha256)) throw status("bad file key", 400);
   await requireEdge(user.id);
   const doc = await completeUpload(user.id, fileId);
-  const how = doc.status === "ready" ? "ready" : await ingest(doc.id);
+  const how = doc.status === "ready" ? "ready" : await ingest(doc.id, user.id);
   await dropIfUnused(user.id, await link(user.id, device.id, input, doc.id));
   return { docId: doc.id, status: how === "ready" ? "ready" : "reading" };
 }

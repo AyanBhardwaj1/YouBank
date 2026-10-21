@@ -8,6 +8,8 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { requireDb, schema } from "@/db";
+import { lease } from "@/lib/locks";
+import { memo } from "@/lib/memo";
 import { structured } from "@/lib/ai/agent";
 import { allow } from "./budget";
 import { calendarFor, marketWatch, type CalEvent, type WatchRow } from "./calendar";
@@ -47,18 +49,44 @@ function fallback(desk: Desk, picks: Ranked<ClusterRow>[]): Pick<Brief, "title" 
 /** A desk's brief for the slot: stored once, generated on first need. */
 export async function deskBrief(desk: Desk, opts: { slot?: string; force?: boolean } = {}): Promise<Brief> {
   const slot = opts.slot ?? briefSlot();
+  if (opts.force) return buildBrief(desk, slot, true);
+  // The same for everyone on the desk: read once per instance a minute, and built once across instances.
+  // Without this, the first morning visits (before the pass has written the slot) each built it: the same
+  // model call for every person opening the brief at once.
+  return memo(`news:brief:${desk.id}:${slot}`, 60_000, async () => {
+    const stored = await storedBrief(desk.id, slot);
+    if (stored) return stored;
+    const release = await lease(`news-brief:${desk.id}:${slot}`, 120_000);
+    if (!release) {
+      // Another instance is writing it: wait a little for its row, else serve the plain version (no model
+      // call, not stored) and read the stored one on a later visit.
+      for (let i = 0; i < 8; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const done = await storedBrief(desk.id, slot);
+        if (done) return done;
+      }
+      return buildBrief(desk, slot, false);
+    }
+    try { return await buildBrief(desk, slot, true); } finally { await release(); }
+  });
+}
+
+async function storedBrief(deskId: string, slot: string): Promise<Brief | null> {
+  const [row] = await requireDb().select({ content: schema.newsBriefs.content }).from(schema.newsBriefs)
+    .where(and(eq(schema.newsBriefs.desk, deskId), eq(schema.newsBriefs.kind, "morning"), eq(schema.newsBriefs.slot, slot)));
+  return row ? (row.content as unknown as Brief) : null;
+}
+
+/** Build the slot's brief; `write`: with the model (budget allowing), and stored for everyone. */
+async function buildBrief(desk: Desk, slot: string, write: boolean): Promise<Brief> {
   const db = requireDb();
-  if (!opts.force) {
-    const [row] = await db.select().from(schema.newsBriefs).where(and(eq(schema.newsBriefs.desk, desk.id), eq(schema.newsBriefs.kind, "morning"), eq(schema.newsBriefs.slot, slot)));
-    if (row) return row.content as unknown as Brief;
-  }
   const ranked = rank(deskReader(desk), await recentClusters(30, 700, 0.25)).filter((c) => c.score > 0.2).slice(0, 16);
   const [watch, calendar] = await Promise.all([
     marketWatch(desk.watch).catch(() => []),
     calendarFor(desk, desk.watch.map((w) => w.symbol).filter((s) => /^[A-Z]{1,5}$/.test(s))).catch(() => []),
   ]);
   let body = fallback(desk, ranked);
-  if (ranked.length >= 3 && (await allow("brief"))) {
+  if (write && ranked.length >= 3 && (await allow("brief"))) {
     const list = ranked.map((c) => `#${c.id} [${c.category}, ${c.sourceCount} source${c.sourceCount === 1 ? "" : "s"}] ${c.headline}${c.summary?.bullets?.length ? `\n  ${c.summary.bullets.join(" ")}` : ""}${c.summary?.why ? `\n  Why: ${c.summary.why}` : ""}`).join("\n");
     try {
       const r = await structured(Out, "news-brief",
@@ -73,7 +101,7 @@ export async function deskBrief(desk: Desk, opts: { slot?: string; force?: boole
     } catch { /* the fallback stands */ }
   }
   const brief: Brief = { desk: desk.id, deskLabel: desk.label, slot, ...body, watch, calendar, generatedAt: new Date().toISOString() };
-  if (brief.items.length) {
+  if (write && brief.items.length) {
     await db.insert(schema.newsBriefs).values({ desk: desk.id, kind: "morning", slot, content: brief as unknown as Record<string, unknown>, model: brief.model })
       .onConflictDoUpdate({ target: [schema.newsBriefs.desk, schema.newsBriefs.kind, schema.newsBriefs.slot], set: { content: brief as unknown as Record<string, unknown>, model: brief.model, createdAt: new Date() } });
   }

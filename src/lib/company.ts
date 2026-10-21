@@ -8,6 +8,7 @@ import { aiUser } from "@/lib/ai/context";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { describeFailure } from "@/lib/errors";
+import { forgetMemo, memo } from "@/lib/memo";
 
 const MM = 1e6;
 const mm = (v: number | null | undefined) => (v === null || v === undefined ? null : Math.round((v / MM) * 10) / 10);
@@ -101,6 +102,18 @@ function sharesOutstanding(cf: CompanyFacts, concepts: Record<string, string>): 
 
 const COMPANY_TTL_MS = 6 * 3_600_000;
 
+/**
+ * The stored record for a ticker (a large JSON document), read at most once a minute per instance and
+ * shared by concurrent requests: a watchlist of five tickers polled by hundreds of people would otherwise
+ * read and parse the same five rows on every request. Callers clone it before changing anything.
+ */
+function cachedRecord(ticker: string): Promise<{ data: unknown; fetchedAt: Date } | null> {
+  return memo(`company:${ticker}`, 60_000, async () => {
+    const [row] = await db!.select({ data: schema.companyCache.data, fetchedAt: schema.companyCache.fetchedAt }).from(schema.companyCache).where(eq(schema.companyCache.ticker, ticker));
+    return row ?? null;
+  });
+}
+
 /** A company with the caller's own manual estimates applied (the person comes from the request context). */
 export async function getCompanyData(tickerRaw: string): Promise<CompanyData | null> {
   const base = await companyBase(tickerRaw);
@@ -115,7 +128,7 @@ async function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   let base: CompanyData | null = null;
   if (db) {
     try {
-      const [row] = await db.select().from(schema.companyCache).where(eq(schema.companyCache.ticker, ticker));
+      const row = await cachedRecord(ticker);
       if (row && Date.now() - row.fetchedAt.getTime() < COMPANY_TTL_MS) {
         base = structuredClone(row.data as CompanyData);
         // Refresh the price part more often than the fundamentals.
@@ -135,6 +148,7 @@ async function companyBase(tickerRaw: string): Promise<CompanyData | null> {
     if (!base) return null;
     if (db) {
       try { await db.insert(schema.companyCache).values({ ticker, data: base, fetchedAt: new Date() }).onConflictDoUpdate({ target: schema.companyCache.ticker, set: { data: base, fetchedAt: new Date() } }); } catch { /* ignore */ }
+      forgetMemo(`company:${ticker}`);
     }
     base = structuredClone(base);
   }
