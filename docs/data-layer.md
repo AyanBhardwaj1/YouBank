@@ -260,7 +260,9 @@ existing ones):
 
 - **FRED.** The API terms (June 2024) bar "storing, caching, or archiving" FRED content, AI or ML use, and
   passing third-party series on. So FRED is a fallback only, kept for one request at most
-  (`requestMemo`), shown with "Source: FRED, Federal Reserve Bank of St. Louis", and never sent to a model:
+  (`requestMemo`; a terminal answer that used it is sent `private, no-store`, so the browser does not keep
+  it either, and the nightly bar store never saves it), shown with "Source: FRED, Federal Reserve Bank of
+  St. Louis", and never sent to a model:
   every AI tool and the terminal's AI read run inside `forModel(…)` (user-context.ts), where FRED and the
   Fed's series read through it are not eligible (and no one's own keys are used either); the AI read also
   leaves out any ECO tile FRED answered. With the owner's BEA and EIA keys set, seven ECO tiles still come
@@ -301,7 +303,11 @@ Rules, as built (each has a test):
   Twelve Data, Finnhub) and in the query only for Alpha Vantage and FMP; errors are rebuilt from the
   status and scrubbed; stats record the source id and dataset only; one person's refused key never opens a
   breaker for others.
-- **Tests are rate-limited**: 10 key or chain tests a minute per person.
+- **Tests are rate-limited**: 10 key or chain tests a minute per person; checks of a pasted (new) key also
+  stop at 20 a day per person and 30 an hour per address, so the check cannot be used to try stolen keys.
+- **Changed under a lock.** Saving or removing a key, a key test and an order each change the person's row
+  as stored, locked for the change: two saves at once keep both keys. A fetch in flight when its key is
+  removed does not cache its answer after the purge.
 
 ### Choosing sources
 
