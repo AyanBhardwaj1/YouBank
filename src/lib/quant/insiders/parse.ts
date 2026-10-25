@@ -13,35 +13,22 @@
  * Fixtures under scripts/fixtures/quant/insiders/ are constructed from these layouts (the sandbox could not reach
  * sec.gov) and labelled as such.
  */
+import { parseForm4Doc, type Owner } from "@/lib/edgar/form4";
 import { newYorkTime } from "../pit/calendar";
 
-export type Owner = { cik: string; name: string; isDirector: boolean; isOfficer: boolean; isTenPct: boolean; title: string };
+export type { Owner };
 export type TxLine = { line: number; code: string; acquired: boolean; shares: number; price: number | null; ownedAfter: number | null; tradeDate: string; security: string; direct: boolean };
 export type Form4 = { form: string; issuerCik: string; issuerName: string; symbol: string; period: string; owner: Owner; owners: Owner[]; plan10b51: boolean; lines: TxLine[] };
 
 const tag = (x: string, t: string) => new RegExp(`<${t}>([\\s\\S]*?)</${t}>`).exec(x)?.[1]?.trim() ?? "";
-const val = (x: string, t: string) => { const inner = tag(x, t); const v = tag(inner, "value"); return (v || inner).replace(/<[^>]+>/g, "").trim(); };
-const yes = (s: string) => s === "1" || /^true$/i.test(s) || /^y/i.test(s);
-const num = (s: string) => { const n = Number(s.replace(/,/g, "")); return s !== "" && Number.isFinite(n) ? n : null; };
 
+/** A Form 4 as INSC stores it: the shared reader (edgar/form4), non-derivative lines, symbols as BRK-B. */
 export function parseForm4(xml: string): Form4 {
-  const owners: Owner[] = [...xml.matchAll(/<reportingOwner>([\s\S]*?)<\/reportingOwner>/g)].map((m) => {
-    const id = tag(m[1], "reportingOwnerId"), rel = tag(m[1], "reportingOwnerRelationship");
-    return { cik: tag(id, "rptOwnerCik").replace(/^0+/, ""), name: tag(id, "rptOwnerName"), isDirector: yes(tag(rel, "isDirector")), isOfficer: yes(tag(rel, "isOfficer")), isTenPct: yes(tag(rel, "isTenPercentOwner")), title: tag(rel, "officerTitle") };
-  });
-  if (!owners.length) throw new Error("Not a Form 4: no reporting owner");
-  const issuer = tag(xml, "issuer");
-  const footnotes = [...xml.matchAll(/<footnote[^>]*>([\s\S]*?)<\/footnote>/g)].map((m) => m[1]).join(" ");
-  const plan = yes(tag(xml, "aff10b5One")) || /10b5-1/i.test(footnotes);
-  const lines: TxLine[] = [...xml.matchAll(/<nonDerivativeTransaction>([\s\S]*?)<\/nonDerivativeTransaction>/g)].map((m, i) => {
-    const t = m[1];
-    return {
-      line: i + 1, code: tag(tag(t, "transactionCoding"), "transactionCode"), acquired: val(t, "transactionAcquiredDisposedCode") !== "D",
-      shares: num(val(t, "transactionShares")) ?? 0, price: num(val(t, "transactionPricePerShare")), ownedAfter: num(val(t, "sharesOwnedFollowingTransaction")),
-      tradeDate: val(t, "transactionDate").slice(0, 10), security: val(t, "securityTitle"), direct: val(t, "directOrIndirectOwnership") !== "I",
-    };
-  });
-  return { form: tag(xml, "documentType") || "4", issuerCik: tag(issuer, "issuerCik").replace(/^0+/, ""), issuerName: tag(issuer, "issuerName"), symbol: tag(issuer, "issuerTradingSymbol").toUpperCase().replace(/\./g, "-"), period: tag(xml, "periodOfReport"), owner: owners[0], owners, plan10b51: plan, lines };
+  const d = parseForm4Doc(xml);
+  return {
+    form: d.form, issuerCik: d.issuerCik, issuerName: d.issuerName, symbol: d.symbol.replace(/\./g, "-"), period: d.period, owner: d.owner, owners: d.owners, plan10b51: d.plan10b51,
+    lines: d.lines.map((l) => ({ line: l.line, code: l.code, acquired: l.acquired, shares: l.shares ?? 0, price: l.price, ownedAfter: l.ownedAfter, tradeDate: l.tradeDate, security: l.security, direct: l.direct })),
+  };
 }
 
 export type FeedEntry = { accession: string; form: string; acceptedAt: string; indexUrl: string; cik: string; title: string };

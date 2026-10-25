@@ -4,7 +4,7 @@
  * with uncertainty set by how much its growth and margins moved before. Every figure is a synthetic
  * range with its recipe and seed, ready to go to Studio as a labeled sheet.
  */
-import { getCompanyFacts, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, normalize, type CompanyFacts, type Fact } from "@/lib/edgar/facts";
 import { resolveTicker } from "@/lib/edgar/tickers";
 import { mean, normals, quantile, rng, std } from "./stats";
 
@@ -36,7 +36,7 @@ const UNC = { low: 0.6, base: 1, high: 1.6 };
 export async function runCompany(spec: CompanySpec): Promise<CompanyResult> {
   const t = await resolveTicker(spec.ticker);
   if (!t) throw Object.assign(new Error(`No SEC filer has the ticker ${spec.ticker}.`), { status: 404 });
-  const cf = await getCompanyFacts(t.cik);
+  const cf = await getCompanyFactsFull(t.cik);
   const rev = annual(cf, ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenuesNetOfInterestExpense"]);
   const oi = annual(cf, ["OperatingIncomeLoss"]);
   const da = annual(cf, ["DepreciationDepletionAndAmortization", "DepreciationAndAmortization", "DepreciationAmortizationAndAccretionNet"]);

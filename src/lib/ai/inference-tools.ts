@@ -25,7 +25,7 @@ export const priceRiskTool = def({
       const run = await withProvenance(() => priceAnalytics(ticker.toUpperCase()));
       const p = run.value;
       // Name the feed that actually answered: FMP, or a backup (Nasdaq, with the S&P 500 tracked by SPY).
-      const feeds = run.providers.length ? run.providers.join(", ") : "Financial Modeling Prep";
+      const feeds = run.providers.length ? run.providers.join(", ") : "no feed noted";
       const src = ctx.addSource(`${p.ticker} daily prices to ${p.asOf} (${feeds}), YouBank risk models`, run.providers.includes("Nasdaq") && !run.providers.includes("FMP") ? `https://www.nasdaq.com/market-activity/stocks/${p.ticker.toLowerCase()}` : "https://financialmodelingprep.com/");
       return J({
         source: src, ticker: p.ticker, asOf: p.asOf, last: p.last, change: p.change, high52: p.high52, low52: p.low52, drawdownFromHigh: r(p.drawdownNow),
@@ -92,9 +92,12 @@ export const costOfCapitalTool = def({
   schema: z.object({ ticker: z.string(), erp: z.number().min(0.02).max(0.12).optional().describe("equity risk premium as a decimal"), beta: z.enum(["blume", "welch"]).optional() }),
   run: async ({ ticker, erp, beta }, ctx) => {
     try {
-      const { waccView } = await import("@/lib/terminal/wacc");
-      const w = await waccView(ticker.toUpperCase(), erp, beta ?? "blume");
-      const src = ctx.addSource(`${w.ticker} cost of capital: U.S. Treasury par curve ${w.riskFree.date ?? ""}, SEC XBRL, prices from Financial Modeling Prep`, "https://home.treasury.gov/resource-center/data-chart-center/interest-rates");
+      const [{ waccView }, { withProvenance }] = await Promise.all([import("@/lib/terminal/wacc"), import("@/lib/market/provenance")]);
+      const run = await withProvenance(() => waccView(ticker.toUpperCase(), erp, beta ?? "blume"));
+      const w = run.value;
+      // Name the price feeds that actually answered (FMP, or the Nasdaq backup), not a fixed vendor.
+      const feeds = run.providers.filter((p) => p !== "SEC EDGAR").join(", ") || "no price feed answered";
+      const src = ctx.addSource(`${w.ticker} cost of capital: U.S. Treasury par curve ${w.riskFree.date ?? ""}, SEC XBRL, prices from ${feeds}`, "https://home.treasury.gov/resource-center/data-chart-center/interest-rates");
       return J({ source: src, ...w, range: { p10: w.range.p10, p50: w.range.p50, p90: w.range.p90 } });
     } catch (e) { return fail(e); }
   },

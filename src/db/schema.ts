@@ -141,6 +141,37 @@ export const kvCache = pgTable("kv_cache", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (t) => [index("kv_cache_expires_idx").on(t.expiresAt)]);
 
+/**
+ * Per-minute rollups of upstream data-source calls (drizzle/0028_source_stats.sql, src/lib/market/stats.ts):
+ * counts, a latency histogram (b100 … b_inf, in ms) and failures by kind, per source and operation.
+ */
+export const sourceStats = pgTable("source_stats", {
+  minute: timestamp("minute", { withTimezone: true }).notNull(),
+  source: text("source").notNull(),
+  op: text("op").notNull(),
+  calls: integer("calls").notNull().default(0),
+  failures: integer("failures").notNull().default(0),
+  fallbacks: integer("fallbacks").notNull().default(0),
+  hedges: integer("hedges").notNull().default(0),
+  sumMs: bigint("sum_ms", { mode: "number" }).notNull().default(0),
+  maxMs: integer("max_ms").notNull().default(0),
+  b100: integer("b100").notNull().default(0),
+  b250: integer("b250").notNull().default(0),
+  b500: integer("b500").notNull().default(0),
+  b1000: integer("b1000").notNull().default(0),
+  b2500: integer("b2500").notNull().default(0),
+  b5000: integer("b5000").notNull().default(0),
+  b10000: integer("b10000").notNull().default(0),
+  bInf: integer("b_inf").notNull().default(0),
+  kTimeout: integer("k_timeout").notNull().default(0),
+  kNetwork: integer("k_network").notNull().default(0),
+  kHttp: integer("k_http").notNull().default(0),
+  kRateLimit: integer("k_rate_limit").notNull().default(0),
+  kSchema: integer("k_schema").notNull().default(0),
+  kEmpty: integer("k_empty").notNull().default(0),
+  kSkipped: integer("k_skipped").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.minute, t.source, t.op], name: "source_stats_minute_source_op_pk" }), index("source_stats_minute_idx").on(t.minute)]);
+
 /** Assembled company records, cached to avoid re-parsing multi-megabyte XBRL facts on every request. */
 export const companyCache = pgTable("company_cache", {
   ticker: text("ticker").primaryKey(),

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { CompanyData } from "../types";
+import type { SourcesHeader } from "../market/source-header";
 import { errorMessage, readError } from "./errors";
 
 /** Client-side company store: one batch request per set of unseen tickers, shared across every panel. */
-type Entry = { data?: CompanyData; error?: string };
+type Entry = { data?: CompanyData; error?: string; sources?: SourcesHeader };
 const store = new Map<string, Entry>();
 const inflight = new Set<string>();
 const listeners = new Set<() => void>();
@@ -14,6 +15,15 @@ const notify = () => listeners.forEach((l) => l());
 export function getCached(ticker: string): CompanyData | undefined {
   return store.get(ticker.toUpperCase())?.data;
 }
+
+/** The x-data-sources header of the batch that loaded a ticker (who answered, delayed minutes). */
+export function companySources(ticker: string): SourcesHeader | undefined {
+  return store.get(ticker.toUpperCase())?.sources;
+}
+
+const sourcesOf = (res: Response): SourcesHeader | undefined => {
+  try { const h = res.headers.get("x-data-sources"); return h ? (JSON.parse(h) as SourcesHeader) : undefined; } catch { return undefined; }
+};
 
 async function loadBatch(tickers: string[]) {
   const need = tickers.filter((t) => !store.has(t) && !inflight.has(t));
@@ -28,9 +38,10 @@ async function loadBatch(tickers: string[]) {
       return;
     }
     const json = (await res.json()) as Record<string, CompanyData | { error: string }>;
+    const sources = sourcesOf(res);
     for (const t of need) {
       const v = json[t];
-      store.set(t, v && !("error" in v) ? { data: v } : { error: (v as { error?: string })?.error ?? "Unavailable" });
+      store.set(t, v && !("error" in v) ? { data: v, sources } : { error: (v as { error?: string })?.error ?? "Unavailable" });
     }
   } catch (e) {
     for (const t of need) store.set(t, { error: errorMessage(e) });

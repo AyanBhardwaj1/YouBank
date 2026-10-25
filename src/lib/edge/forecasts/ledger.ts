@@ -15,7 +15,7 @@
 import { and, desc, eq, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import type { ForecastRule } from "@/db/schema";
-import { getCompanyFacts, rowsFor } from "@/lib/edgar/facts";
+import { getCompanyFactsFull, rowsFor } from "@/lib/edgar/facts";
 import { logError } from "@/lib/errors";
 import { resolveReturn } from "@/lib/quant/resolve";
 import { record } from "../provenance";
@@ -64,7 +64,7 @@ async function dealEvents(nodes: number[], since: string): Promise<DealEvent[]> 
  * depreciation and amortisation for the same period.
  */
 async function reportedValue(rule: Extract<ForecastRule, { type: "xbrl" }>): Promise<{ value: number; url: string } | null> {
-  const cf = await getCompanyFacts(rule.cik.padStart(10, "0"));
+  const cf = await getCompanyFactsFull(rule.cik.padStart(10, "0"));
   const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${rule.cik}&type=10-&dateb=&owner=include&count=40`;
   const one = (concept: string) => pickReported(rowsFor(cf, concept.includes(":") ? concept.split(":")[0] : "us-gaap", concept.split(":").pop()!, rule.unit ?? "USD"), rule);
   if (rule.concept === "derived:ebitda") {

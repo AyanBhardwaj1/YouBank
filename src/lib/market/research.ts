@@ -16,6 +16,7 @@ import { cacheJson } from "@/lib/cache";
 import { resolveAi } from "@/lib/ai/config";
 import { guardAi } from "@/lib/ai/limits";
 import { aiUser, recordUsage } from "@/lib/ai/usage";
+import { budget } from "./budgets";
 import { backupEnabled } from "./nasdaq";
 
 const RESEARCH_MODEL = () => process.env.MARKET_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
@@ -195,18 +196,20 @@ export function crossCheck(facts: Partial<Record<Field, Fact>>, ctx: Context): {
   return out;
 }
 
-async function ask(model: string, subject: string, fields: Field[], ctx: Context): Promise<{ facts: Partial<Record<Field, Fact>>; rejected: { field: string; reason: string }[]; searches: number }> {
+async function ask(model: string, subject: string, fields: Field[], ctx: Context, signal?: AbortSignal, deadline = Infinity): Promise<{ facts: Partial<Record<Field, Fact>>; rejected: { field: string; reason: string }[]; searches: number }> {
   const cfg = resolveAi(null, { model });
   if (cfg.provider !== "openai") throw new Error("AI research needs an OpenAI key");
   await guardAi(aiUser());
-  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 90_000, maxRetries: 1 });
+  // Within the research budget (budgets.ts): no retry that could not finish, and the abort below cuts the rest.
+  const left = Math.max(1, Math.min(90_000, deadline - Date.now()));
+  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: left, maxRetries: left >= 90_000 ? 1 : 0 });
   const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const res = await client.responses.create({
     model, reasoning: { effort: "low" }, tools: [{ type: "web_search" }], include: ["web_search_call.action.sources"],
     instructions: `You look up current, verifiable market facts with web search. Today is ${today}. For each field, read it from a reputable page (the company's investor relations site, the SEC, Nasdaq, NYSE, Reuters, the Wall Street Journal, Barron's, CNBC, MarketWatch, Yahoo Finance, Google Finance, Morningstar, Zacks, MarketBeat, TipRanks, Investing.com or the Financial Times) and report the value exactly as that page prints it, the date it applies to, the page's URL, and a short verbatim quote from the page that contains the value. If you cannot find a field on such a page, return null for it. Never estimate, convert, compute or recall a value from memory. Return one entry per field, using the field keys given.`,
     input: `Subject: ${subject}\nFields:\n${fields.map((f) => `- ${f}: ${FIELDS[f].label}`).join("\n")}`,
     text: { format: { type: "json_schema", name: "market_facts", schema: SCHEMA, strict: true } },
-  });
+  }, { signal });
   // Every page the search retrieved or opened, and every page the answer cites.
   const retrieved = new Set<string>();
   let searches = 0;
@@ -246,20 +249,44 @@ export async function research(subject: string, fields: Field[], ctx: Context = 
   const priceLike = fields.some((f) => ["price", "changePct", "marketCap", "high52", "low52", "dividendYield"].includes(f));
   const day = new Date().toISOString().slice(0, 10);
   const key = `research:v2:${subject}:${[...fields].sort().join(",")}:${day}`;
-  return cacheJson<Researched | null>(key, (priceLike ? 4 : 12) * 3_600_000, async () => {
-    const first = await ask(RESEARCH_MODEL(), subject, fields, ctx).catch(() => null);
-    let result = first ? { ...first, model: RESEARCH_MODEL() } : null;
-    const coverage = (r: typeof first) => (r ? Object.keys(r.facts).length / fields.length : 0);
-    if (coverage(first) < 0.5 && ESCALATION_MODEL() !== RESEARCH_MODEL()) {
-      const second = await ask(ESCALATION_MODEL(), subject, fields, ctx).catch(() => null);
-      if (second && coverage(second) > coverage(first)) {
-        const facts = { ...(first?.facts ?? {}), ...second.facts };
-        result = { facts, rejected: second.rejected.filter((x) => !(x.field in facts)), searches: (first?.searches ?? 0) + second.searches, model: `${RESEARCH_MODEL()} → ${ESCALATION_MODEL()}` };
-      }
+  // A hard budget for both lookups together, enforced with an abort: research runs on the request path,
+  // and a person should get the screen (with what the feeds had) inside the route's limit.
+  const budgetMs = budget().researchMs;
+  const run = cacheJson<Researched | null>(key, (priceLike ? 4 : 12) * 3_600_000, async () => {
+    const deadline = Date.now() + budgetMs;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(Object.assign(new Error("AI research ran out of time"), { name: "TimeoutError" })), budgetMs);
+    try {
+      return await researchWithin(subject, fields, ctx, ctrl.signal, deadline);
+    } finally {
+      clearTimeout(timer);
     }
-    if (!result || !Object.keys(result.facts).length) return null;
-    return { subject, facts: result.facts, model: result.model, researchedAt: new Date().toISOString(), searches: result.searches, rejected: result.rejected };
   });
+  // The budget holds even for a caller sharing a lookup another request started.
+  let cut: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => { cut = setTimeout(() => resolve(null), budgetMs + 250); });
+  try {
+    return await Promise.race([run.catch(() => null), late]);
+  } finally {
+    clearTimeout(cut);
+  }
+}
+
+async function researchWithin(subject: string, fields: Field[], ctx: Context, signal: AbortSignal, deadline: number): Promise<Researched | null> {
+  const first = await ask(RESEARCH_MODEL(), subject, fields, ctx, signal, deadline).catch(() => null);
+  // Out of time: nothing to keep, and not cached (a later request may try again).
+  if (signal.aborted && !first) throw signal.reason;
+  let result = first ? { ...first, model: RESEARCH_MODEL() } : null;
+  const coverage = (r: typeof first) => (r ? Object.keys(r.facts).length / fields.length : 0);
+  if (coverage(first) < 0.5 && ESCALATION_MODEL() !== RESEARCH_MODEL() && !signal.aborted) {
+    const second = await ask(ESCALATION_MODEL(), subject, fields, ctx, signal, deadline).catch(() => null);
+    if (second && coverage(second) > coverage(first)) {
+      const facts = { ...(first?.facts ?? {}), ...second.facts };
+      result = { facts, rejected: second.rejected.filter((x) => !(x.field in facts)), searches: (first?.searches ?? 0) + second.searches, model: `${RESEARCH_MODEL()} → ${ESCALATION_MODEL()}` };
+    }
+  }
+  if (!result || !Object.keys(result.facts).length) return null;
+  return { subject, facts: result.facts, model: result.model, researchedAt: new Date().toISOString(), searches: result.searches, rejected: result.rejected };
 }
 
 /** A researched number, or null. */

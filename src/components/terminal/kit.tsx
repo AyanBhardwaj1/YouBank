@@ -11,13 +11,20 @@ import type { Command } from "@/lib/functions";
 import type { Researched } from "@/lib/market/research";
 import type { Snapshot } from "@/lib/terminal/snapshot";
 import { errorMessage, messageFor } from "@/lib/client/errors";
+import type { SourcesHeader } from "@/lib/market/source-header";
+import { etClock } from "@/lib/market/units";
 
 /* ----------------------------------------------------------------------------------------------- */
 /* Data                                                                                             */
 /* ----------------------------------------------------------------------------------------------- */
 
-/** Where an answer's numbers came from (the data layer's fallbacks), from the x-data-sources header. */
-export type Sources = { providers: string[]; notes: string[] };
+/**
+ * Where an answer's numbers came from (the data layer's fallbacks), from the x-data-sources header
+ * (market/source-header): the providers that answered, their notes, the oldest as-of, and whether any
+ * value is stale or delayed. `sources`, when the data layer sends them, are the registry adapters that
+ * answered, whose labels name the sources for people.
+ */
+export type Sources = SourcesHeader;
 export type Result<T> = { data?: T; error?: string; planLimited?: boolean; sources?: Sources; snapshot?: Snapshot };
 const cache = new Map<string, { at: number; r: Result<unknown> }>();
 const inflight = new Map<string, Promise<Result<unknown>>>();
@@ -189,16 +196,60 @@ export function Frame<T>({ q, what, children }: { q: Q<T>; what: string; childre
   );
 }
 
-/** "Backup data" when the data layer fell back from FMP: which sources answered, with their notes on hover. */
+/**
+ * The names of the sources that answered, as people read them: each provider by the label of the registry
+ * adapter that answered for it when the data layer sends one ("Nasdaq.com"), else by its own name.
+ */
+export const answeredBy = (sources?: Pick<Sources, "providers" | "sources">): string[] => {
+  const labelOf = (p: string) => sources?.sources?.find((s) => s.provider === p)?.label ?? p;
+  return [...new Set((sources?.providers ?? []).map(labelOf))];
+};
+
+/** One small badge in the kit's style. */
+export function Chip({ tone: t = "muted", title, children }: { tone?: "muted" | "warn" | "info" | "ai"; title?: string; children: ReactNode }) {
+  const cls = t === "warn" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : t === "info" ? "border-info/30 bg-info/10 text-fg/90" : t === "ai" ? "border-chart-emphasis/40 bg-chart-emphasis/10 text-fg/90" : "border-line bg-elevated text-muted";
+  return <span title={title} className={`rounded border px-1.5 py-px text-[10px] ${cls}`}>{children}</span>;
+}
+
+/** "Delayed" / "Delayed 15 min" and "Stale · as of 10:42 ET" for an answer's timing. */
+export function TimingChips({ delayed, delayedMinutes, stale, asOf }: { delayed?: boolean; delayedMinutes?: number; stale?: boolean; asOf?: string }) {
+  const clock = asOf ? etClock(asOf) : "";
+  return (
+    <>
+      {delayed && <Chip tone="info" title="Prices from this feed are not real time">{delayedMinutes ? `Delayed ${delayedMinutes} min` : "Delayed"}</Chip>}
+      {stale && <Chip tone="warn" title={asOf ? `Last updated ${asOf.slice(0, 16).replace("T", " ")} UTC` : "Behind the market"}>{clock ? `Stale · as of ${clock}` : "Stale"}</Chip>}
+    </>
+  );
+}
+
+/**
+ * Where an answer came from: the source names that answered, "Backup source" when a backup stood in for
+ * FMP (with the reason and notes), "Delayed" and "Stale · as of HH:MM ET". Nothing when no source was noted.
+ */
 export function SourceBadge({ sources }: { sources?: Sources }) {
+  const names = answeredBy(sources);
+  if (!names.length) return null;
   const backups = (sources?.providers ?? []).filter((p) => BACKUPS.includes(p));
-  if (!backups.length) return null;
   const ai = backups.includes("AI research"), partly = sources?.providers.includes("FMP");
   return (
-    <div className={`mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border px-2.5 py-1 text-[10.5px] ${ai ? "border-chart-emphasis/40 bg-chart-emphasis/10" : "border-info/30 bg-info/10"}`} title={(sources?.notes ?? []).join("\n")}>
-      <span className="font-semibold text-fg/90">{ai ? "Backup data, partly researched by AI" : "Backup data"}</span>
-      <span className="text-muted">{partly ? "Some of this" : "This"} came from {backups.join(", ")} because FMP was unavailable.</span>
+    <div className={`mx-3 mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-md border px-2.5 py-1 text-[10.5px] ${ai ? "border-chart-emphasis/40 bg-chart-emphasis/10" : backups.length ? "border-info/30 bg-info/10" : "border-line"}`} title={(sources?.notes ?? []).join("\n")}>
+      <span className="text-muted">Source: <span className="font-semibold text-fg/90">{names.join(", ")}</span></span>
+      {backups.length > 0 && <Chip tone={ai ? "ai" : "info"} title={`${partly ? "Some of this" : "This"} came from ${backups.join(", ")} because FMP was unavailable`}>{ai ? "Backup source, partly researched by AI" : "Backup source"}</Chip>}
+      <TimingChips delayed={sources?.delayed} delayedMinutes={sources?.delayedMinutes} stale={sources?.stale} asOf={sources?.asOf} />
       {sources?.notes?.length ? <span className="text-faint">{sources.notes.slice(0, 2).join(" · ")}{sources.notes.length > 2 ? " …" : ""}</span> : null}
+    </div>
+  );
+}
+
+/** A company price's badges: the feed that answered, "Backup source" when it was not FMP, "Delayed", "Stale · as of". */
+export function PriceBadges({ price, delayedMinutes }: { price: { source?: string; asOf: string; stale?: boolean; delayed?: boolean } | null | undefined; delayedMinutes?: number }) {
+  if (!price?.source) return null;
+  const backup = BACKUPS.includes(price.source);
+  return (
+    <div className="mt-1 flex flex-wrap justify-end gap-1">
+      <Chip title={`Price as of ${price.asOf.slice(0, 16).replace("T", " ")} UTC`}>{price.source}</Chip>
+      {backup && <Chip tone="info" title="FMP did not answer, so a backup supplied the price">Backup source</Chip>}
+      <TimingChips delayed={price.delayed || !!delayedMinutes} delayedMinutes={delayedMinutes} stale={price.stale} asOf={price.asOf} />
     </div>
   );
 }

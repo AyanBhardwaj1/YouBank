@@ -15,6 +15,7 @@ import { prefetchFunction, recordSkill } from "./kit";
 import { useSubNav } from "@/lib/subnav";
 import { Sheet } from "@/components/ui/Sheet";
 import { Icon } from "@/components/ui/Icon";
+import { fmtChange } from "@/lib/market/units";
 
 export type OpenPanel = Command & { id: number; openedAt?: number };
 export type AiStatus = { configured: boolean; provider: string; model: string; reason?: string; label?: string };
@@ -124,7 +125,7 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
                 <span className="num text-fg">{active.price.last.toFixed(2)}</span>
                 {chg !== null && (
                   <span className={`num rounded px-1 py-px text-[10.5px] ${chg >= 0 ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg"}`}>
-                    {chg >= 0 ? "+" : ""}{chg.toFixed(2)}%
+                    {fmtChange(chg)}
                   </span>
                 )}
               </>

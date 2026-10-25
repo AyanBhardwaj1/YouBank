@@ -13,6 +13,8 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { cacheGet, cacheJson, cacheSet } from "@/lib/cache";
 import { logError } from "@/lib/errors";
+import { PULSE_STATE_CONCURRENCY } from "@/lib/market/budgets";
+import { mapLimit } from "@/lib/market/chain";
 import { boardMoved } from "../entities/crosswalk";
 import { idsOf, resolveEntity } from "../entities/resolve";
 import { boardsFromSite } from "../entities/sources/careers";
@@ -53,14 +55,16 @@ export async function loadWarn(): Promise<WarnNotice[]> {
     const status = (row?.state ?? {}) as WarnStatus;
     const since = new Date(Date.now() - 395 * DAY).toISOString().slice(0, 10);
     const all: WarnNotice[] = [];
-    for (const src of WARN_SOURCES) {
+    // States at once, a few at a time (market/budgets): six 30-second files in sequence outlasted the route.
+    const read = await mapLimit(WARN_SOURCES, PULSE_STATE_CONCURRENCY, async (src) => {
       const now = new Date().toISOString();
       try {
         const rows = (await readWarn(src)).filter((n) => n.date >= since);
-        all.push(...rows);
         status[src.state] = { ...status[src.state], lastTried: now, rows: rows.length, ...(rows.length ? { lastGood: now, error: undefined } : { error: "no rows: the format may have changed" }) };
-      } catch (e) { status[src.state] = { ...status[src.state], lastTried: now, error: (e as Error).message.slice(0, 160) }; }
-    }
+        return rows;
+      } catch (e) { status[src.state] = { ...status[src.state], lastTried: now, error: (e as Error).message.slice(0, 160) }; return []; }
+    });
+    for (const rows of read) all.push(...rows);
     await db.insert(schema.edgeJobState).values({ name: "pulse.warn", state: status }).onConflictDoUpdate({ target: schema.edgeJobState.name, set: { state: status, updatedAt: new Date() } });
     return all;
   });

@@ -7,6 +7,7 @@
  * screens use before it is cached, and cached for up to an hour: these figures move by the day.
  */
 import { arr, cachedJson, HOUR, num, str } from "./http";
+import { envelope, LLAMA } from "./schema";
 import { llamaPage, llamaProtocol, type Cite } from "./sources";
 
 const API = "https://api.llama.fi";
@@ -24,6 +25,7 @@ export type Protocol = {
 
 /** /protocols, normalised and sorted by TVL. Pure, for tests. */
 export function parseProtocols(raw: unknown): Protocol[] {
+  envelope(LLAMA.protocols, raw, "DefiLlama", "protocols");
   return arr<Record<string, unknown>>(raw).filter((p) => p && typeof p.name === "string").map((p) => ({
     name: str(p.name), slug: str(p.slug) || str(p.name).toLowerCase().replace(/\s+/g, "-"), symbol: str(p.symbol) === "-" ? "" : str(p.symbol),
     category: str(p.category), chains: arr<unknown>(p.chains).map(str).filter(Boolean), tvl: num(p.tvl), d1: pct(p.change_1d), d7: pct(p.change_7d),
@@ -37,11 +39,11 @@ export const protocols = () => cachedJson(`${API}/protocols`, { key: "crypto:lla
 export type ChainTvl = { name: string; tvl: number; symbol: string; geckoId: string | null };
 
 export const chainTvls = () => cachedJson(`${API}/v2/chains`, { key: "crypto:llama:chains:v1", ttlMs: HOUR, source: SRC }, (raw: unknown) =>
-  arr<Record<string, unknown>>(raw).map((c) => ({ name: str(c.name), tvl: num(c.tvl) ?? 0, symbol: str(c.tokenSymbol), geckoId: str(c.gecko_id) || null })).filter((c) => c.tvl > 0).sort((a, b) => b.tvl - a.tvl));
+  (envelope(LLAMA.list, raw, "DefiLlama", "v2/chains"), arr<Record<string, unknown>>(raw)).map((c) => ({ name: str(c.name), tvl: num(c.tvl) ?? 0, symbol: str(c.tokenSymbol), geckoId: str(c.gecko_id) || null })).filter((c) => c.tvl > 0).sort((a, b) => b.tvl - a.tvl));
 
 /** Total DeFi TVL by day (the last 365). */
 export const tvlHistory = () => cachedJson(`${API}/v2/historicalChainTvl`, { key: "crypto:llama:tvlhist:v1", ttlMs: HOUR, source: SRC }, (raw: unknown) =>
-  arr<Record<string, unknown>>(raw).map((d) => ({ date: new Date((num(d.date) ?? 0) * 1000).toISOString().slice(0, 10), tvl: num(d.tvl) ?? 0 })).slice(-365));
+  (envelope(LLAMA.list, raw, "DefiLlama", "v2/historicalChainTvl"), arr<Record<string, unknown>>(raw)).map((d) => ({ date: new Date((num(d.date) ?? 0) * 1000).toISOString().slice(0, 10), tvl: num(d.tvl) ?? 0 })).slice(-365));
 
 /** A protocol's TVL now and by day for a year. */
 export function protocolTvl(slug: string) {
@@ -93,6 +95,7 @@ const pegged = (v: unknown) => num((v as Record<string, unknown> | undefined)?.p
 
 /** /stablecoins, normalised: supply now and its change (the flows), largest chains. Pure, for tests. */
 export function parseStablecoins(raw: unknown): Stablecoin[] {
+  envelope(LLAMA.stablecoins, raw, "DefiLlama", "stablecoins");
   return arr<Record<string, unknown>>((raw as { peggedAssets?: unknown })?.peggedAssets).map((s) => {
     const supply = pegged(s.circulating);
     const chg = (k: string) => { const prev = pegged(s[k]); return prev > 0 ? supply / prev - 1 : null; };
@@ -113,6 +116,7 @@ export type Pool = { pool: string; project: string; chain: string; symbol: strin
 
 /** /pools, normalised: the largest pools by TVL, with APYs as decimals. Pure, for tests. */
 export function parsePools(raw: unknown, keep = 300): Pool[] {
+  envelope(LLAMA.pools, raw, "DefiLlama", "pools");
   return arr<Record<string, unknown>>((raw as { data?: unknown })?.data).map((p) => ({
     pool: str(p.pool), project: str(p.project), chain: str(p.chain), symbol: str(p.symbol), tvl: num(p.tvlUsd) ?? 0,
     apy: pct(p.apy), apyBase: pct(p.apyBase), apyReward: pct(p.apyReward), stable: p.stablecoin === true, ilRisk: str(p.ilRisk),
