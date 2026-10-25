@@ -20,6 +20,7 @@ const CalendarSettings = lazyPanel(() => import("@/components/calendar/CalendarS
 const PlanSettings = lazyPanel(() => import("@/components/billing/PlanSettings").then((m) => m.PlanSettings), TabLoading);
 const DesktopSettings = lazyPanel(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), TabLoading);
 const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
+const DataSourcesSettings = lazyPanel(() => import("@/components/settings/DataSourcesSettings").then((m) => m.DataSourcesSettings), TabLoading);
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -28,6 +29,7 @@ const TABS = [
   { id: "desk", label: "My desk", icon: "Layout" },
   { id: "calendar", label: "Calendar", icon: "Calendar" },
   { id: "plan", label: "Plan", icon: "CreditCard" },
+  { id: "sources", label: "Data sources", icon: "Server" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
   { id: "desktop", label: "Desktop app", icon: "Download" },
@@ -35,7 +37,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
-  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades]);
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
@@ -76,6 +78,7 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
 
         {tab === "plan" && <PlanSettings />}
         {tab === "desktop" && <DesktopSettings />}
+        {tab === "sources" && <DataSourcesSettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

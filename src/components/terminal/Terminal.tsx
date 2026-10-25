@@ -24,7 +24,8 @@ const MAX_PANELS = 4;
 /** Event-time helpers (kept outside the component: they read the clock). */
 const stamp = () => Date.now();
 const openedRecently = (openedAt?: number) => !!openedAt && Date.now() - openedAt < 4000;
-const sameCmd = (a: Command, b: Command) => a.ticker === b.ticker && a.fn === b.fn && (a.arg ?? "") === (b.arg ?? "");
+/** The same panel: ticker, function, words and data source (`AAPL GP @tiingo` opens beside `AAPL GP`, to compare). */
+const sameCmd = (a: Command, b: Command) => a.ticker === b.ticker && a.fn === b.fn && (a.arg ?? "") === (b.arg ?? "") && (a.source ?? "") === (b.source ?? "");
 
 export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string; arg?: string } }) {
   const { config, profile, edge } = useWorkspace();

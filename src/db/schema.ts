@@ -172,6 +172,21 @@ export const sourceStats = pgTable("source_stats", {
   kSkipped: integer("k_skipped").notNull().default(0),
 }, (t) => [primaryKey({ columns: [t.minute, t.source, t.op], name: "source_stats_minute_source_op_pk" }), index("source_stats_minute_idx").on(t.minute)]);
 
+/** Per-provider key facts the settings page shows without decrypting (drizzle/0029_data_sources.sql). */
+export type DataKeyMeta = { last4: string; plan: "individual" | "business"; addedAt: string; lastTest?: { ok: boolean; at: string; ms: number } };
+
+/**
+ * A person's data sources (drizzle/0029_data_sources.sql, src/lib/market/byo/store.ts): their order per
+ * dataset, and their own provider keys as one encrypted blob (never in the clear), with what may be shown.
+ */
+export const userDataSources = pgTable("user_data_sources", {
+  userId: text("user_id").primaryKey(),
+  prefs: jsonb("prefs").$type<{ order?: Record<string, string[]> }>().notNull().default({}),
+  keysEnc: text("keys_enc").notNull().default(""),
+  keyMeta: jsonb("key_meta").$type<Record<string, DataKeyMeta>>().notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("user_data_sources_updated_idx").on(t.updatedAt)]);
+
 /** Assembled company records, cached to avoid re-parsing multi-megabyte XBRL facts on every request. */
 export const companyCache = pgTable("company_cache", {
   ticker: text("ticker").primaryKey(),

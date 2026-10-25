@@ -15,6 +15,10 @@ export const PROXIES: Record<string, string> = {
   GCUSD: "GLD", SIUSD: "SLV", CLUSD: "USO", BZUSD: "BNO", NGUSD: "UNG", HGUSD: "CPER", ZCUSX: "CORN", ZWUSX: "WEAT",
 };
 
+/** Commodity symbols (FMP's spelling): their own dataset, with the EIA's spot prices and the World Bank's monthly averages as free sources. */
+export const COMMODITY_SYMBOLS: ReadonlySet<string> = new Set(["GCUSD", "SIUSD", "CLUSD", "BZUSD", "NGUSD", "HGUSD", "ZCUSX", "ZWUSX"]);
+export const isCommodity = (symbol: string) => COMMODITY_SYMBOLS.has(canonical(symbol));
+
 const CURRENCIES = new Set(["USD", "EUR", "JPY", "GBP", "CHF", "AUD", "CAD", "CNH", "CNY", "MXN", "INR", "NZD", "SEK", "NOK", "HKD", "SGD", "KRW", "BRL", "ZAR"]);
 export const isFxPair = (s: string) => /^[A-Z]{6}$/.test(s) && CURRENCIES.has(s.slice(0, 3)) && CURRENCIES.has(s.slice(3));
 

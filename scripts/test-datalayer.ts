@@ -304,7 +304,8 @@ async function testRegistry() {
   const { resolveChain, REGISTRY, fromChain } = await import("@/lib/market/registry");
   const ids = (d: Parameters<typeof resolveChain>[0], o?: Parameters<typeof resolveChain>[1]) => resolveChain(d, o).map((a) => a.id);
   check("registry: daily bars default order is FMP, then Nasdaq", JSON.stringify(ids("daily-bars")) === '["fmp","nasdaq"]', ids("daily-bars"));
-  check("registry: currencies FMP then the ECB; crypto FMP then CoinGecko", JSON.stringify(ids("fx")) === '["fmp","ecb"]' && JSON.stringify(ids("crypto")) === '["fmp","coingecko"]');
+  // Slice C added the Fed's H.10 after the ECB (free-first fallbacks); the order of the first two is unchanged.
+  check("registry: currencies FMP then the ECB; crypto FMP then CoinGecko", JSON.stringify(ids("fx").slice(0, 2)) === '["fmp","ecb"]' && JSON.stringify(ids("crypto")) === '["fmp","coingecko"]', ids("fx"));
   check("registry: a preferred order goes first, the rest follow in default order", JSON.stringify(ids("daily-bars", { prefer: ["nasdaq"] })) === '["nasdaq","fmp"]');
   check("registry: exclude removes a source; unknown ids are ignored", JSON.stringify(ids("daily-bars", { exclude: ["fmp"], prefer: ["nope"] })) === '["nasdaq"]');
   const every = Object.values(REGISTRY).flat();

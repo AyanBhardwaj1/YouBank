@@ -180,7 +180,7 @@ export function DvdScreen({ ticker, onRun }: Props) {
                 <DataTable rows={d.payments} rowKey={(r, i) => `${r.date}-${i}`} max={40}
                   columns={filings
                     ? [{ key: "d", label: "Quarter ended", align: "left", value: (r) => r.date }, { key: "a", label: "Per share", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }]
-                    : [{ key: "d", label: "Ex-date", align: "left", value: (r) => r.date }, { key: "a", label: "Amount", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }, { key: "p", label: "Paid", value: (r) => r.payDate }]} />
+                    : [{ key: "d", label: "Ex-date", align: "left", value: (r) => r.date }, { key: "a", label: "Amount", value: (r) => r.amount, render: (r) => fn(r.amount, 4) }, { key: "p", label: "Paid", value: (r) => r.payDate, render: (r) => r.payDate ?? "—" }]} />
               </Section>
             )}
           </div>

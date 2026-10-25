@@ -8,8 +8,6 @@
  * CoinGecko, movers to Nasdaq, sectors to the SPDR sector ETFs, deals to merger filings on SEC EDGAR, and
  * the few rows nothing else covers to AI research. A board's quotes and histories are fetched at once.
  */
-import { tickerMap } from "@/lib/edgar/tickers";
-import { fullTextSearch } from "@/lib/edgar/fulltext";
 import { returns, stdev } from "@/lib/inference/stats";
 import { SECT_DATE_CONCURRENCY } from "@/lib/market/budgets";
 import { mapLimit } from "@/lib/market/chain";
@@ -17,6 +15,7 @@ import { historyFrom, quotes } from "@/lib/market/data";
 import { MarketDataError, mergers, movers, sectorHistory, sectorSnapshot, type Deal, type Mover, type Quote } from "@/lib/market/fmp";
 import { backupEnabled, nasdaqHistory, nasdaqMovers, type NasdaqMover } from "@/lib/market/nasdaq";
 import { noteSource } from "@/lib/market/provenance";
+import type { Positioning } from "@/lib/market/cftc";
 import { fromChain, isEmptyAnswer, NoSourceError } from "@/lib/market/registry";
 import { latestTradingDay, marketDate, marketYear, previousTradingDay } from "@/lib/market/calendar";
 import { pctToFraction } from "@/lib/market/units";
@@ -29,6 +28,10 @@ export type AssetRow = {
   via?: string;
   /** For an ETF stand-in, what the level is ("S&P 500 via SPY"): the price is the ETF's, never the index level. */
   label?: string;
+  /** "monthly" when only monthly averages answered (the World Bank): no daily move, volatility or z-score is read from them. */
+  cadence?: "monthly";
+  /** Futures positioning from the CFTC's Commitments of Traders (CMDTY). */
+  positioning?: Positioning;
 };
 
 /** Boards refresh their quotes every ten minutes at most: each quote is one request against the plan's daily limit. */
@@ -43,6 +46,7 @@ async function rows(list: { symbol: string; name: string; region?: string }[]): 
   ]);
   const out = list.map((l, i): AssetRow => {
     const got = hist[i];
+    if (got?.via === MONTHLY_VIA) return monthlyRow(l, got.data, got.label);
     const h = got?.data ?? [];
     const c = h.map((x) => x.close);
     // A proxy ETF's own quote would be the ETF's price, so proxied rows use its last close.
@@ -75,6 +79,14 @@ async function rows(list: { symbol: string; name: string; region?: string }[]): 
   return out;
 }
 
+/** The World Bank's monthly averages (registry.ts): a row from them reads month on month, never as a day's move. */
+const MONTHLY_VIA = "World Bank monthly";
+function monthlyRow(l: { symbol: string; name: string; region?: string }, h: { date: string; close: number }[], label?: string): AssetRow {
+  const c = h.map((x) => x.close), last = c.at(-1) ?? null;
+  const ch = (n: number) => (c.length > n && last ? last / c[c.length - 1 - n] - 1 : null);
+  return { ...l, price: last, d1: null, w1: null, m1: ch(1), ytd: null, y1: ch(12), vol: null, z: null, spark: c.slice(-24), via: MONTHLY_VIA, cadence: "monthly", ...(label ? { label } : {}) };
+}
+
 export const INDICES = [
   { symbol: "^GSPC", name: "S&P 500", region: "Americas" }, { symbol: "^DJI", name: "Dow Jones Industrial", region: "Americas" }, { symbol: "^IXIC", name: "Nasdaq Composite", region: "Americas" },
   { symbol: "^RUT", name: "Russell 2000", region: "Americas" }, { symbol: "^GSPTSE", name: "S&P/TSX Composite", region: "Americas" }, { symbol: "^BVSP", name: "Bovespa", region: "Americas" },
@@ -93,7 +105,11 @@ export const COMMODITIES = [
 
 export const worldIndices = () => rows(INDICES);
 export const currencies = () => rows(FX);
-export const commodities = () => rows(COMMODITIES);
+/** CMDTY: the board, with the CFTC's latest positioning for each contract where it has one (public data; the board stands without it). */
+export async function commodities(): Promise<AssetRow[]> {
+  const [board, cot] = await Promise.all([rows(COMMODITIES), fromChain("cot", {}).catch(() => null)]);
+  return cot ? board.map((r) => (cot.data[r.symbol] ? { ...r, positioning: cot.data[r.symbol] } : r)) : board;
+}
 
 /* ---------------- Movers ---------------- */
 
@@ -199,43 +215,10 @@ export async function etfSectors(): Promise<SectorsView | null> {
 
 /* ---------------- Deals ---------------- */
 
-/** What each merger filing is, in words, for the backup's deal list. */
-const FORM_MEANING: Record<string, string> = {
-  "8-K": "8-K: merger agreement announced", DEFM14A: "DEFM14A: definitive merger proxy", PREM14A: "PREM14A: preliminary merger proxy",
-  "S-4": "S-4: shares registered for a merger", "SC TO-T": "SC TO-T: tender offer by a buyer", "SC 14D9": "SC 14D9: target's response to a tender offer",
-};
-
 /** FMP's latest deals, newest first, or null when it has none. FMP's failures are thrown (the chain falls back). */
 export async function fmpDeals(): Promise<Deal[] | null> {
   const deals = await mergers(0);
   return deals?.length ? deals.sort((a, b) => (a.acceptedDate < b.acceptedDate ? 1 : -1)).slice(0, 80) : null;
-}
-
-/**
- * Merger agreements and proxies filed on EDGAR in the last three weeks. The target is the filing's
- * subject, which EDGAR does not tag, so the filing's own description stands in for it.
- */
-export async function edgarDeals(): Promise<Deal[]> {
-  const from = new Date(Date.now() - 21 * 86_400_000).toISOString().slice(0, 10);
-  const [fts, tickers] = await Promise.all([
-    fullTextSearch({ q: "\"Agreement and Plan of Merger\"", forms: ["8-K", "DEFM14A", "PREM14A", "S-4", "SC TO-T", "SC 14D9"], from, limit: 100 }),
-    tickerMap(),
-  ]);
-  const byCik = new Map<string, string>();
-  for (const t of tickers.values()) { const c = String(Number(t.cik)); if (!byCik.has(c)) byCik.set(c, t.ticker); }
-  const seen = new Set<string>();
-  const rows: Deal[] = [];
-  for (const h of fts.hits.sort((a, b) => (a.filed < b.filed ? 1 : -1))) {
-    const key = `${h.cik}:${h.form}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push({
-      symbol: byCik.get(String(Number(h.cik))) ?? "", companyName: h.entity.replace(/\s*\(CIK \d+\)\s*$/, "").replace(/\s*\([A-Z.\-, ]+\)\s*$/, ""), cik: h.cik,
-      targetedCompanyName: FORM_MEANING[h.form.replace(/\/A$/, "")] ? `${FORM_MEANING[h.form.replace(/\/A$/, "")]}${h.form.endsWith("/A") ? " (amended)" : ""}` : h.form,
-      targetedCik: "", targetedSymbol: "", transactionDate: h.filed, acceptedDate: h.filed, link: h.url,
-    });
-  }
-  return rows.slice(0, 80);
 }
 
 /** FMP's deals, else (on any FMP failure, or when it is slow) merger filings on EDGAR. */

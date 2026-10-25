@@ -1,3 +1,4 @@
+import { forModel } from "@/lib/market/user-context";
 import { z } from "zod";
 import { getCompanyData, getCompanies } from "../company";
 import { derive, fmtMoney, fmtPct, fmtX } from "../metrics";
@@ -267,7 +268,8 @@ export async function runTool(name: string, rawInput: unknown, ctx: ToolCtx, def
   const parsed = tool.schema.safeParse(rawInput);
   if (!parsed.success) return { output: JSON.stringify({ INVALID_INPUT: parsed.error.issues.map((i) => i.message) }), isError: true };
   try {
-    return { output: await tool.run(parsed.data, ctx), isError: false };
+    // Whatever a tool reads is for a model: public sources only, none whose terms bar AI use (FRED).
+    return { output: await forModel(() => tool.run(parsed.data, ctx)), isError: false };
   } catch (e) {
     return { output: JSON.stringify({ error: toolError(e) }), isError: true };
   }

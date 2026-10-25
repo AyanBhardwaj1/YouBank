@@ -12,11 +12,23 @@ type Props = { onRun?: (c: Command) => void; ticker?: string };
 
 const px = (v: number | null) => (v === null ? "—" : Math.abs(v) >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 0 }) : v >= 10 ? v.toFixed(2) : v.toFixed(4));
 
+/** What each stand-in source is, for its "via" tag. */
+const VIA_TITLE: Record<string, string> = {
+  "AI research": "Latest level researched on the web; no history", "ECB fixing": "The ECB's daily reference rate", "Fed H.10": "The Fed's noon buying rate in New York (H.10)",
+  "EIA spot": "The EIA's daily spot price (not the futures price)", "World Bank monthly": "The World Bank's monthly average price: no daily move is shown",
+};
+
+/** The CFTC's large-speculator net position and its weekly change (CMDTY). */
+const cotColumn: Column<AssetRow> = {
+  key: "cot", label: "Spec net (COT)", title: "Non-commercial net futures position, contracts, as of the CFTC's latest Tuesday report, with the week's change", value: (r) => r.positioning?.net ?? null,
+  render: (r) => (r.positioning ? <span title={`${r.positioning.market}, as of ${r.positioning.date}`}>{r.positioning.net.toLocaleString("en-US")} <span className={`text-[9.5px] ${tone(r.positioning.netChange)}`}>{r.positioning.netChange === null ? "" : `${r.positioning.netChange >= 0 ? "+" : ""}${r.positioning.netChange.toLocaleString("en-US")}`}</span></span> : "—"),
+};
+
 /** The columns every cross-asset board shares: level, moves over five horizons as heat, volatility and the day's move in standard deviations. */
 function assetColumns(extra: Column<AssetRow>[] = []): Column<AssetRow>[] {
   return [
     ...extra,
-    { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span><span className="text-fg">{r.name}</span> <span className="num text-[10px] text-faint">{r.symbol}</span>{r.via && <span className="ml-1 rounded border border-line px-1 text-[9.5px] text-muted" title={r.via === "AI research" ? "Latest level researched on the web; no history" : r.via === "ECB fixing" ? "The ECB's daily reference rate" : `Returns of the ${r.via} ETF, which tracks it; the level shown is the ETF's`}>via {r.via}</span>}</span> },
+    { key: "name", label: "Name", align: "left", value: (r) => r.name, render: (r) => <span><span className="text-fg">{r.name}</span> <span className="num text-[10px] text-faint">{r.symbol}</span>{r.via && <span className="ml-1 rounded border border-line px-1 text-[9.5px] text-muted" title={VIA_TITLE[r.via] ?? `Returns of the ${r.via} ETF, which tracks it; the level shown is the ETF's`}>via {r.via}</span>}</span> },
     // An ETF standing in for an index or commodity: its level is the ETF's, so the label says so beside it.
     { key: "price", label: "Last", value: (r) => r.price, render: (r) => (r.price === null ? NA : r.label ? <span title={`${r.label}: the ETF's price, not the ${r.name} level`}>{px(r.price)} <span className="text-[9.5px] text-faint">{r.label}</span></span> : px(r.price)) },
     { key: "d1", label: "1D", value: (r) => r.d1, render: (r) => <Heat v={r.d1} scale={0.02} /> },
@@ -48,10 +60,10 @@ function Board({ fn: key, what, skill, hint, onRun, group }: { fn: "indices" | "
             <Hint skill={skill}>{hint}</Hint>
             {regions.map((region) => (
               <Section key={region || "all"} title={region || what}>
-                <DataTable rows={rows.filter((r) => !group || r.region === region)} rowKey={(r) => r.symbol} columns={assetColumns()} />
+                <DataTable rows={rows.filter((r) => !group || r.region === region)} rowKey={(r) => r.symbol} columns={key === "commodities" ? [...assetColumns(), cotColumn] : assetColumns()} />
               </Section>
             ))}
-            <Why items={[["Moves in σ", "The day's return divided by the asset's standard deviation of daily returns over the last year. A 3% day is routine for bitcoin and a shock for the yen; the σ column puts them on one scale."]]} sources={["Quotes and history: Financial Modeling Prep"]} />
+            <Why items={[["Moves in σ", "The day's return divided by the asset's standard deviation of daily returns over the last year. A 3% day is routine for bitcoin and a shock for the yen; the σ column puts them on one scale."], ...(key === "commodities" ? [["Positioning", "The CFTC's Commitments of Traders: large speculators' net futures position as of Tuesday, released Friday. Public data."] as [string, string]] : [])]} sources={["The sources that answered are named above each board"]} />
           </div>
         );
       }}

@@ -13,6 +13,8 @@
 import { gunzipSync, gzipSync } from "node:zlib";
 import { getBytes, putObject, r2Ready } from "@/lib/edge/infra/r2";
 import { historyFrom } from "@/lib/market/data";
+import { NOT_CACHEABLE } from "@/lib/market/registry";
+import { publicOnly } from "@/lib/market/user-context";
 import { canonical } from "@/lib/market/symbols";
 import type { Provider } from "@/lib/market/provenance";
 
@@ -91,7 +93,7 @@ export async function loadBars(symbol: string, from: string): Promise<Loaded | n
   if (s && s.d.length && s.d[0] <= from) return { bars: sliceBars(s, from), from: "store", provider: s.source };
   // One request: each feed spells the symbol its own way at its boundary (market/symbols).
   try {
-    const r = await historyFrom(canonical(symbol), from);
+    const r = await publicOnly(() => historyFrom(canonical(symbol), from));
     if (r.data.length) return { bars: mergeBars(null, r.data, symbol, r.source), from: "live", provider: r.source };
   } catch { /* no source has it */ }
   return s ? { bars: sliceBars(s, from), from: "store", provider: s.source } : null;
@@ -105,8 +107,9 @@ export async function refreshBars(symbol: string, backfillFrom: string): Promise
   const old = await storedBars(symbol);
   const from = old?.d.length ? new Date(Date.parse(`${old.d[old.d.length - 1]}T00:00:00Z`) - 14 * 86_400_000).toISOString().slice(0, 10) : backfillFrom;
   try {
-    const r = await historyFrom(canonical(symbol), from);
-    if (r.data.length) {
+    const r = await publicOnly(() => historyFrom(canonical(symbol), from));
+    // A series FRED answered (the Fed's H.10 via FRED) is never stored: FRED's terms bar caching it.
+    if (r.data.length && !NOT_CACHEABLE.has(r.by?.id ?? "")) {
       const merged = mergeBars(rebaseBars(old, r.data), r.data, symbol, r.source);
       await putBars(merged);
       return merged.d.length;
