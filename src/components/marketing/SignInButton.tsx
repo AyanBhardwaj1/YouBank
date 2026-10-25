@@ -46,7 +46,7 @@ export function SignInButton({ label = GOOGLE_LABEL, next = "/app", newUser = "/
       <div className={className}>
         <Link href={next === "/app" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`}
           className="inline-flex items-center gap-3 rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white">
-          {label === GOOGLE_LABEL ? "Sign in" : label}
+          {label === GOOGLE_LABEL ? "Sign in" : label.replace(/ with Google$/, "")}
         </Link>
       </div>
     );
