@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { DesktopDownload } from "@/components/desktop/DesktopDownload";
+import { currentUser } from "@/lib/auth/user";
 import { latestDesktopRelease, RELEASES_URL } from "@/lib/desktop/release";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,8 @@ export const metadata = {
 
 /** Public: the installers for the latest desktop release, picked for the visitor's system. */
 export default async function DownloadPage() {
-  const release = await latestDesktopRelease();
+  // Signed-out visitors get the plan names without a plan request (it would only answer 401).
+  const [release, user] = await Promise.all([latestDesktopRelease(), currentUser().catch(() => null)]);
   return (
     <main className="min-h-dvh">
       <header className="border-b border-line">
@@ -20,7 +22,7 @@ export default async function DownloadPage() {
           <Link href="/app" className="text-[12px] text-muted hover:text-fg">Open YouBank →</Link>
         </div>
       </header>
-      <DesktopDownload release={release} releasesUrl={RELEASES_URL} />
+      <DesktopDownload release={release} releasesUrl={RELEASES_URL} signedIn={!!user} />
     </main>
   );
 }

@@ -53,7 +53,7 @@ const PERMISSIONS: [string, string, string][] = [
 ];
 
 /** The download page: the right installer for this computer first, then what the app does and may touch. */
-export function DesktopDownload({ release, releasesUrl }: { release: DesktopRelease | null; releasesUrl: string }) {
+export function DesktopDownload({ release, releasesUrl, signedIn = true }: { release: DesktopRelease | null; releasesUrl: string; signedIn?: boolean }) {
   const [os, setOs] = useState<Os>("other");
   const [inApp, setInApp] = useState<DesktopInfo | null>(null);
   useEffect(() => {
@@ -126,7 +126,7 @@ export function DesktopDownload({ release, releasesUrl }: { release: DesktopRele
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {FEATURES.map((f) => (
             <div key={f.title} className="ctl border border-line bg-panel p-4">
-              <p className="flex items-center gap-2 text-[13px] font-semibold"><Icon name={f.icon} className="h-4 w-4 text-accent" />{f.title}{f.premium && <PremiumBadge feature={f.premium} />}</p>
+              <p className="flex items-center gap-2 text-[13px] font-semibold"><Icon name={f.icon} className="h-4 w-4 text-accent" />{f.title}{f.premium && <PremiumBadge feature={f.premium} signedIn={signedIn} />}</p>
               <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{f.body}</p>
             </div>
           ))}

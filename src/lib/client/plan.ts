@@ -20,19 +20,23 @@ export function refreshPlan() {
   pending = null;
 }
 
-/** This person's plan, or null while loading or when signed out. */
-export function usePlan(): ClientEntitlements | null {
+/**
+ * This person's plan, or null while loading or when signed out. `enabled: false` (a public page for a
+ * visitor who is not signed in) skips the request, which would only answer 401.
+ */
+export function usePlan(enabled = true): ClientEntitlements | null {
   const [e, setE] = useState<ClientEntitlements | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let live = true;
     void load().then((v) => { if (live) setE(v); });
     return () => { live = false; };
-  }, []);
+  }, [enabled]);
   return e;
 }
 
 /** Whether a premium feature is unlocked: true, false, or null while loading. */
-export function useFeature(featureId: string): boolean | null {
-  const e = usePlan();
+export function useFeature(featureId: string, enabled = true): boolean | null {
+  const e = usePlan(enabled);
   return e ? e.features.includes(featureId) : null;
 }

@@ -34,7 +34,8 @@ export function DataSourcesSettings() {
       </div>
       {error && <p className="text-[12px] text-neg" role="alert">{error}</p>}
       {!view && !error && <div className="shimmer h-48 ctl" aria-busy="true" />}
-      {view && <KeysPanel view={view} />}
+      {view?.setupPending && <p role="note" className="ctl max-w-[80ch] border border-line bg-elevated px-3 py-2 text-[12px] text-muted">Saving your own order and keys is not switched on for this site yet. Below is the order every screen uses now, and Test shows which source answers.</p>}
+      {view && !view.setupPending && <KeysPanel view={view} />}
       {view && <OrderPanel view={view} />}
     </section>
   );
@@ -115,7 +116,7 @@ function OrderPanel({ view }: { view: SettingsView }) {
     <div className="panel p-4">
       <h3 className="text-[13px] font-semibold">Order per dataset</h3>
       <p className="mt-1 max-w-[80ch] text-[11.5px] text-muted">The first source that can answer does; when it leaves a field empty, the next one that has it fills it, and the screen says which. A source that cannot answer for you (no key, switched off) is skipped, with the reason.</p>
-      <div className="mt-3 space-y-2">{configurable.map((d) => <DatasetOrder key={d.id} d={d} open={open === d.id} onToggle={() => setOpen(open === d.id ? null : d.id)} />)}</div>
+      <div className="mt-3 space-y-2">{configurable.map((d) => <DatasetOrder key={d.id} d={d} readOnly={!!view.setupPending} open={open === d.id} onToggle={() => setOpen(open === d.id ? null : d.id)} />)}</div>
       <details className="mt-4"><summary className="cursor-pointer text-[12px] text-muted">Fixed sources ({fixed.length})</summary>
         <ul className="mt-2 space-y-1.5 text-[11.5px]">{fixed.map((d) => <li key={d.id}><span className="font-semibold">{d.label}</span>: {d.sources.map((s) => s.label).join(" → ") || "none"}{d.noFreeSource ? <span className="block text-muted">{d.noFreeSource}</span> : null}</li>)}</ul>
       </details>
@@ -123,7 +124,7 @@ function OrderPanel({ view }: { view: SettingsView }) {
   );
 }
 
-function DatasetOrder({ d, open, onToggle }: { d: DatasetView; open: boolean; onToggle: () => void }) {
+function DatasetOrder({ d, open, onToggle, readOnly = false }: { d: DatasetView; open: boolean; onToggle: () => void; readOnly?: boolean }) {
   // The order being edited; the saved one (d.sources) until the person moves something.
   const [draft, setDraft] = useState<SourceRow[] | null>(null);
   const rows = draft ?? d.sources;
@@ -143,10 +144,10 @@ function DatasetOrder({ d, open, onToggle }: { d: DatasetView; open: boolean; on
       </button>
       {open && <div className="border-t border-line px-3 py-2">
         {d.noFreeSource && <p className="mb-2 text-[11px] text-muted">{d.noFreeSource}</p>}
-        <ol className="space-y-1">{rows.map((s, i) => <SourceItem key={s.id} s={s} i={i} last={i === rows.length - 1} onMove={move} />)}</ol>
+        <ol className="space-y-1">{rows.map((s, i) => <SourceItem key={s.id} s={s} i={i} last={i === rows.length - 1} onMove={move} readOnly={readOnly} />)}</ol>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" className={btn} disabled={!dirty || state.busy} onClick={() => void persist(rows.map((r) => r.id))}>Save order</button>
-          <button type="button" className={btn} disabled={state.busy || !d.customized} onClick={() => void persist([])}>Reset to default</button>
+          {!readOnly && <button type="button" className={btn} disabled={!dirty || state.busy} onClick={() => void persist(rows.map((r) => r.id))}>Save order</button>}
+          {!readOnly && <button type="button" className={btn} disabled={state.busy || !d.customized} onClick={() => void persist([])}>Reset to default</button>}
           <button type="button" className={btn} disabled={state.busy} onClick={() => void test()}>Test</button>
           {state.saved && <span role="status" className="text-[11px] text-pos">Saved</span>}
           {state.error && <span role="alert" className="text-[11px] text-neg">{state.error}</span>}
@@ -157,7 +158,7 @@ function DatasetOrder({ d, open, onToggle }: { d: DatasetView; open: boolean; on
   );
 }
 
-function SourceItem({ s, i, last, onMove }: { s: SourceRow; i: number; last: boolean; onMove: (i: number, by: -1 | 1) => void }) {
+function SourceItem({ s, i, last, onMove, readOnly = false }: { s: SourceRow; i: number; last: boolean; onMove: (i: number, by: -1 | 1) => void; readOnly?: boolean }) {
   return (
     <li className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded px-1.5 py-1 text-[12px] ${s.eligible ? "" : "opacity-60"}`}>
       <span className="num w-4 text-right text-faint">{i + 1}</span>
@@ -165,11 +166,11 @@ function SourceItem({ s, i, last, onMove }: { s: SourceRow; i: number; last: boo
       <span className={`rounded border px-1.5 text-[10px] ${BADGE[s.licence]}`} title={s.attribution}>{s.licenceLabel}</span>
       <span className="text-[10.5px] text-muted">{s.freshness}</span>
       {!s.eligible && <span className="rounded border border-line px-1.5 text-[10px] text-muted" title={s.reason}>{s.needsKey ? "Needs key" : "Unavailable"}</span>}
-      <span className="ml-auto flex gap-1">
+      {!readOnly && <span className="ml-auto flex gap-1">
         {/* aria-disabled, not disabled: a button that becomes disabled under the keyboard drops focus to the page. */}
         <button type="button" className={`${btn} aria-disabled:opacity-40`} aria-disabled={i === 0} onClick={() => onMove(i, -1)} aria-label={`Move ${s.label} up`}>↑</button>
         <button type="button" className={`${btn} aria-disabled:opacity-40`} aria-disabled={last} onClick={() => onMove(i, 1)} aria-label={`Move ${s.label} down`}>↓</button>
-      </span>
+      </span>}
       {!s.eligible && s.reason && <span className="w-full pl-6 text-[10.5px] text-muted">{s.reason}</span>}
     </li>
   );

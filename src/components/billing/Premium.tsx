@@ -7,9 +7,12 @@ import { featureById } from "@/lib/billing/features";
 import { PLANS } from "@/lib/billing/plans";
 import { useFeature } from "@/lib/client/plan";
 
-/** A small "Pro" (or other plan) badge with a lock while the feature is locked for this person. */
-export function PremiumBadge({ feature }: { feature: string }) {
-  const unlocked = useFeature(feature);
+/**
+ * A small "Pro" (or other plan) badge with a lock while the feature is locked for this person.
+ * `signedIn={false}` on a public page shows the plan name without asking for a plan.
+ */
+export function PremiumBadge({ feature, signedIn = true }: { feature: string; signedIn?: boolean }) {
+  const unlocked = useFeature(feature, signedIn);
   const f = featureById(feature);
   if (!f) return null;
   return (

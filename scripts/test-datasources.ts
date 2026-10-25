@@ -811,6 +811,25 @@ async function testMerge() {
 
 /* ---------------- Main ---------------- */
 
+/** Before migration 0029 runs on a deployment: the tab shows the default order read-only, Test still runs. */
+async function testBeforeMigration() {
+  const { settingsView, testChain } = await import("@/lib/market/byo/settings");
+  const { db } = await import("@/db");
+  const { sql } = await import("drizzle-orm");
+  const carol = `carol-${uid()}`;
+  await db!.execute(sql`alter table user_data_sources rename to user_data_sources_hidden`);
+  try {
+    const view = await settingsView(carol).then((v) => v, (e: unknown) => e as Error);
+    const ok = !(view instanceof Error);
+    check("setup: without the user_data_sources table the settings view still answers, flagged setupPending", ok && view.setupPending === true, ok ? { setupPending: view.setupPending } : String(view));
+    check("setup: the defaults are listed (every configurable dataset, the default chain first)", ok && view.datasets.length > 0 && view.datasets.every((d) => !d.customized) && view.keys.length === 0);
+    const t = await testChain(carol, "daily-bars").then((v) => v, (e: unknown) => e as Error);
+    check("setup: Test still runs the public chain", !(t instanceof Error) && t.ok && t.answeredBy?.id === "fmp", t instanceof Error ? String(t) : t);
+  } finally {
+    await db!.execute(sql`alter table user_data_sources_hidden rename to user_data_sources`);
+  }
+}
+
 async function main() {
   const { overrideBudgets } = await import("@/lib/market/budgets");
   overrideBudgets("interactive", { hedgeDelayMs: 200, fmpTimeoutMs: 600, nasdaqTimeoutMs: 600, freeTimeoutMs: 600, secTimeoutMs: 600, macroTimeoutMs: 600, fmpSlotTries: 2, researchMs: 300 });
@@ -846,6 +865,7 @@ async function main() {
   await section("C4 key and chain tests", testKeyAndChainTests);
   if (localDb()) await section("C4 storage: encrypted keys, prefs, purge (Postgres)", testStoreDb);
   if (localDb()) await section("C4 the settings route: 400s, owner-only, keys never returned", testRouteDb);
+  if (localDb()) await section("Before 0029: the tab degrades to the defaults, read-only", testBeforeMigration);
   if (localDb()) await section("C3 review: pasted-key checks are capped per person per day and per address", testKeyCheckLimits);
   if (localDb()) await section("C3 review: key storage under concurrency, and a purge during a fetch", testStoreRaces);
   if (localDb()) await section("C1 review: answers that used FRED are not cached by the browser", testFredNotBrowserCached);
