@@ -3,7 +3,7 @@
  * risk factors with the previous one of the kind and posts what was added, dropped and reworded, with
  * the filing's own words. Each filing is looked at once for everyone watching the company.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { getSubmissions, listFilings } from "@/lib/edgar/submissions";
@@ -11,7 +11,6 @@ import { resolveTicker } from "@/lib/edgar/tickers";
 import { logError } from "@/lib/errors";
 import { EDGE_SMALL_MODEL } from "../models";
 import { record } from "../provenance";
-import { BETA_ON } from "../watches";
 import { changeRadar, type Radar } from "./changes";
 
 const DAY = 86_400_000;
@@ -34,7 +33,7 @@ export async function scanFilings(deadline: number): Promise<number[]> {
   const db = requireDb();
   const rows = await db.selectDistinct({ ticker: sql<string>`${schema.edgeWatches.target}->>'ticker'` }).from(schema.edgeWatches)
     .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId))
-    .where(and(BETA_ON, eq(schema.edgeWatches.kind, "company"))).limit(300);
+    .where(eq(schema.edgeWatches.kind, "company")).limit(300);
   const found: number[] = [];
   for (const { ticker } of rows) {
     if (!ticker || Date.now() > deadline - 30_000) break;

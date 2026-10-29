@@ -1,15 +1,18 @@
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/user";
 import { edgeProfile } from "@/lib/edge/access";
-import { EdgeIntro } from "@/components/edge/BetaToggle";
 import { EdgeWorkspace, type EdgeView } from "@/components/edge/EdgeWorkspace";
 import { whatIfFrom } from "@/lib/edge/links";
 import { edgeFeed } from "@/lib/edge/feed";
+import { onboardEdge } from "@/lib/edge/onboard";
 import { edgeState } from "@/lib/edge/state";
 import type { EdgeState, FeedData } from "@/components/edge/client";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Edge" };
+// The first visit's canvas and watch checks run after the response, inside this budget.
+export const maxDuration = 60;
 
 const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "scenarios", "map", "whatif", "deals", "pulse", "radar", "calls", "theses", "track"]);
 
@@ -18,14 +21,16 @@ const VIEWS = new Set<EdgeView>(["feed", "canvases", "documents", "networks", "s
  * Radar and Call Desk open a company with &ticker=; Scenarios opens the LBO Stress Lab with &tab=lbo(&ticker=);
  * Theses opens one with &thesis=ID. Documents also opens a saved answer
  * (&answer=ID) or a company's change radar (&radar=TICKER&form=10-K|10-Q); Networks opens a company
- * (&company=TICKER); the what-if starts drawn for a deal (&parties=ET,TRGP&place=permian). Before the
- * beta is on, the page explains Edge and offers the switch.
+ * (&company=TICKER); the what-if starts drawn for a deal (&parties=ET,TRGP&place=permian). The first
+ * visit pins the tab and seeds starter watches; the first canvas and checks run after the response.
  */
 export default async function EdgePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
   const p = await edgeProfile(user.id);
-  if (!p?.prefs.beta) return <EdgeIntro />;
+  if (!p) redirect("/onboarding");
+  const rest = await onboardEdge(user).catch(() => null);
+  if (rest) after(rest);
   const q = await searchParams;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
   const view = one(q.view);

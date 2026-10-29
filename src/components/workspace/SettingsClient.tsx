@@ -11,7 +11,6 @@ import { ROLES } from "@/lib/roles";
 import { type AiPrefs } from "@/lib/ai/models";
 import { Icon } from "@/components/ui/Icon";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
-import { BetaToggle } from "@/components/edge/BetaToggle";
 
 // Each tab's panel loads when the tab is opened; the page itself carries only the default (style) tab.
 const TabLoading = () => <div className="mt-5 shimmer h-48 ctl" />;
@@ -36,7 +35,7 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
 
-export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { email: string; prefs: AiPrefs; initialTab?: string; edgeOn?: boolean }) {
+export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
   useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
@@ -134,13 +133,12 @@ export function SettingsClient({ email, prefs, initialTab, edgeOn = false }: { e
             </div>
             <div className="panel flex flex-wrap items-start justify-between gap-4 p-4">
               <div className="min-w-0 max-w-[62ch]">
-                <div className="flex items-center gap-2 text-[13.5px] font-semibold">Edge <span className="rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-accent">Beta</span>{edgeOn && <span className="text-[11px] font-normal text-pos">On</span>}</div>
+                <div className="flex items-center gap-2 text-[13.5px] font-semibold">Edge <span className="rounded-full border border-accent/40 bg-accent-soft px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wider text-accent">Beta</span><span className="text-[11px] font-normal text-pos">On for everyone</span></div>
                 <p className="mt-1 text-[12px] leading-relaxed text-muted">An alternative-data tab: satellite change and flaring at the plants and pipelines you watch, deal what-ifs drawn on the map with the counties a regulator would look at, cited answers across filings, calls and data rooms, the relationship graph with likely buyers and targets, and labeled synthetic scenarios, all in one feed of what changed, each finding with its sources and an audit trail. Up to five watches each; its AI use counts toward your plan&apos;s AI allowance.</p>
-                {edgeOn && <Link href="/app/edge" className="mt-2 inline-block text-[12px] text-accent hover:underline">Open Edge</Link>}
+                <Link href="/app/edge" className="mt-2 inline-block text-[12px] text-accent hover:underline">Open Edge</Link>
               </div>
-              <BetaToggle on={edgeOn} />
             </div>
-            {edgeOn && <EdgeUpgrades />}
+            <EdgeUpgrades />
           </section>
         )}
 

@@ -8,7 +8,7 @@ import { AiRead, AskAi, BarList, DataTable, fbig, fn, fp, Frame, fsp, Hint, Mete
 
 type Props = { ticker: string; onRun?: (c: Command) => void };
 
-// Call Desk's promises ledger (Edge beta), loaded on demand and shown only when it answers.
+// Call Desk's promises ledger (Edge), loaded on demand and shown only when it answers.
 const PromisesKeptLazy = dynamic(() => import("./SignalScreens").then((m) => m.PromisesKept), { ssr: false, loading: () => null });
 
 /** A beat-rate tile's figures; with no quarters on record the posterior is only its prior, so say so. */

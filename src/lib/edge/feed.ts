@@ -84,11 +84,11 @@ async function candidates(userId: string, watches: Watch[]): Promise<Light[]> {
     .orderBy(sql`${schema.edgeDetections.detectedAt} desc`).limit(300);
 }
 
-/** What everyone with the beta on watches, as counts only (who watches what is never shown). Shared for five minutes. */
+/** What everyone watches, as counts only (who watches what is never shown). Shared for five minutes. */
 const watchCounts = () => memo("edge:watch-counts", 5 * 60_000, async () => {
   const rows = await requireDb().execute(sql`
     select w.kind, w.target, count(distinct w.user_id)::int as people from edge_watches w join profiles p on p.user_id = w.user_id
-    where p.extra->'edge'->>'beta' = 'true' group by w.kind, w.target`);
+    group by w.kind, w.target`);
   return (rows.rows as { kind: string; target: Watch["target"]; people: number }[]);
 });
 

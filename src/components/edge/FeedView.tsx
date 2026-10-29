@@ -34,7 +34,7 @@ export function FeedView({ state, initial, onMap, onOpenDeal, onOpenRadar, onOpe
   const [scope, setScope] = useState<Scope | "all">("all");
   const [kind, setKind] = useState<string | null>(null);
   const [tuning, setTuning] = useState(false);
-  // An empty feed is looked at again sooner while the first checks land (right after the beta is turned on or a watch is added).
+  // An empty feed is looked at again sooner while the first checks land (right after the first visit or a watch is added).
   const [quiet, setQuiet] = useState(false);
   const query = `scope=${scope}${kind ? `&kind=${kind}` : ""}`;
   // The first page may have come with the page itself (only for the opening scope).

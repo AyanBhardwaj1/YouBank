@@ -4,12 +4,11 @@
  * plus any company someone on Edge watches. The model trains on this universe; watched companies from
  * other industries are mapped for their own findings.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { edgarFetch } from "@/lib/edgar/client";
 import { tickerMap } from "@/lib/edgar/tickers";
-import { BETA_ON } from "../watches";
 
 export const ENERGY_SICS: Record<string, string> = {
   "1311": "Crude petroleum and natural gas", "1381": "Drilling oil and gas wells", "1382": "Oil and gas field exploration services", "1389": "Oil and gas field services",
@@ -47,10 +46,10 @@ export async function energyUniverse(): Promise<Member[]> {
   return list;
 }
 
-/** Companies people with the beta on watch, as CIKs (any industry). */
+/** Companies people watch, as CIKs (any industry). */
 export async function watchedCompanies(): Promise<Member[]> {
   const rows = await requireDb().selectDistinct({ ticker: sql<string>`${schema.edgeWatches.target}->>'ticker'` }).from(schema.edgeWatches)
-    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(and(BETA_ON, eq(schema.edgeWatches.kind, "company")));
+    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(eq(schema.edgeWatches.kind, "company"));
   const map = await tickerMap();
   return rows.map((r) => map.get(String(r.ticker ?? "").toUpperCase())).filter((t): t is NonNullable<typeof t> => !!t).map((t) => ({ cik: t.cik.replace(/^0+/, ""), ticker: t.ticker, sic: "" }));
 }

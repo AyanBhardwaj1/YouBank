@@ -135,7 +135,7 @@ export function BriefBlock({ data, sparks, now, onOpen, onSave, compact = false 
 export function DealTracker({ data, onOpenCluster, limit }: { data: DealsData; onOpenCluster: (id: number) => void; limit?: number }) {
   const { edge } = useWorkspace();
   const rows = limit ? data.deals.slice(0, limit) : data.deals;
-  // With the Edge beta on, a merger opens straight into the deal what-if (both sides on the map).
+  // With Edge available, a merger opens straight into the deal what-if (both sides on the map).
   const whatIf = (d: DealsData["deals"][number]) => {
     const sides = [d.acquirerTicker || d.acquirer, d.targetTicker || d.target].filter(Boolean);
     return edge && MERGERS.has(d.kind) && sides.length === 2 ? whatIfUrl(sides) : null;

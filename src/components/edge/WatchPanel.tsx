@@ -2,7 +2,7 @@
 
 /**
  * What this person watches in Edge: companies (their plants and pipelines) and places. Add one, look at
- * one again now, or drop it; the beta allows five each, and the team's shared watches show below.
+ * one again now, or drop it; Edge allows five each, and the team's shared watches show below.
  */
 import { Building2, ChevronDown, Map as MapIcon, Plus, RefreshCw, X } from "lucide-react";
 import { useState } from "react";

@@ -1,6 +1,6 @@
 /**
  * Checks for Edge: satellite change detection on synthetic scenes, the deal screen, party matching,
- * watches, feed ranking, the audit trail, the beta gate, the canvas, the free tiers, and Documents
+ * watches, feed ranking, the audit trail, Edge in the nav, the canvas, the free tiers, and Documents
  * (quote checking, highlighting, diffs, chunking, retrieval fusion, topics, tone). No network, no database.
  *   pnpm exec tsx scripts/test-edge.ts
  */
@@ -201,7 +201,7 @@ async function main() {
   const starters = starterWatches({ firmTicker: "KMI", watchlist: ["AAPL", "ET", "MSFT"] });
   check("starter watches: the Permian, then the firm and watchlist names with maps", JSON.stringify(starters) === JSON.stringify([{ kind: "place", place: "permian" }, { kind: "company", ticker: "KMI" }, { kind: "company", ticker: "ET" }]), starters);
   check("with no mapped names, starters fall back to the big Permian operators", JSON.stringify(starterWatches({ firmTicker: "", watchlist: ["AAPL"] }).slice(1)) === JSON.stringify([{ kind: "company", ticker: "ET" }, { kind: "company", ticker: "KMI" }]));
-  check("Edge is off until turned on", edgePrefs({}, "banker").beta === false && edgePrefs({ edge: { beta: true } }, "banker").beta === true);
+  check("Edge is on for everyone, whatever an old switch stored", edgePrefs({}, "banker").beta === true && edgePrefs({ edge: { beta: false } }, "banker").beta === true);
   check("stored blend values are clamped, missing ones take the role's", edgePrefs({ edge: { blend: { relevance: 3, size: -1 } } }, "markets").blend.relevance === 1 && edgePrefs({ edge: { blend: { relevance: 3, size: -1 } } }, "markets").blend.size === 0 && edgePrefs({}, "markets").blend.novelty === defaultBlend("markets").novelty);
 
   console.log("feed ranking");
@@ -223,9 +223,9 @@ async function main() {
   const csv = trailCsv([{ subject: "detection:1", sourceName: "EIA, plants", sourceUrl: "https://x", license: "Public domain", method: 'said "hi"', modelVersion: "", retrievedAt: new Date("2026-09-30T00:00:00Z") }]);
   check("the audit CSV has a header and quotes commas and quotes", csv.split("\n")[0] === "subject,source,url,license,method,model_version,retrieved_at" && csv.includes('"EIA, plants"') && csv.includes('"said ""hi"""'), csv);
 
-  console.log("beta gate");
-  check("Edge is not in the nav until turned on", !featuresFor("banker").some((f) => f.id === "edge") && featuresFor("banker", { edge: true }).some((f) => f.id === "edge"));
-  check("a pinned Edge tab drops out when the beta is off", !normalizeNavPrefs({ pinned: ["home", "edge"] }, "banker").pinned.includes("edge") && normalizeNavPrefs({ pinned: ["home", "edge"] }, "banker", { edge: true }).pinned.includes("edge"));
+  console.log("Edge in the nav");
+  check("Edge is in everyone's nav", (["banker", "markets", "pe", "vc", "student"] as const).every((r) => featuresFor(r).some((f) => f.id === "edge")));
+  check("a pinned Edge tab stays pinned", normalizeNavPrefs({ pinned: ["home", "edge"] }, "banker").pinned.includes("edge"));
 
   console.log("canvas");
   const all = new Set(["source.companies", "earth.watch", "earth.proforma", "out.memo", "out.signal", "out.export"]);

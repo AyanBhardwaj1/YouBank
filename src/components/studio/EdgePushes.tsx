@@ -14,7 +14,7 @@ import { errorMessage } from "@/lib/client/errors";
 type Pending = { id: number; title: string; kind: string; source: string; createdAt: string; mine: boolean; text: string; sheets: string[]; slides: string[] };
 
 export function EdgePushes({ docId, onAccepted }: { docId: number; onAccepted?: (label: string) => void }) {
-  // People with the Edge beta check every minute; teammates without it see what is waiting when they open the model.
+  // Inside the app this checks every minute; elsewhere it shows what is waiting when the model opens.
   const { edge } = useWorkspace();
   const { data, reload } = useApi<{ pushes: Pending[] }>(`/api/edge/pushes?doc=${docId}`, edge ? 60_000 : 0);
   const [busy, setBusy] = useState<number | null>(null);

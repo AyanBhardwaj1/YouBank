@@ -2,8 +2,8 @@
 
 /**
  * A startup's Pulse strip in /app/vc (E3): its hiring, attention and other free signals as sparklines, with
- * any tells, from the same store as Edge's Pulse. Shown to people with the Edge beta on; for everyone else
- * the strip stays out of the way.
+ * any tells, from the same store as Edge's Pulse. When the store cannot answer, the strip
+ * stays out of the way.
  */
 import { Loader2 } from "lucide-react";
 import { useState } from "react";

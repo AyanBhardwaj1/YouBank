@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Edge's next signals in the Terminal, with the beta on. PULSE: a company's alternative data (hiring,
+ * Edge's next signals in the Terminal. PULSE: a company's alternative data (hiring,
  * attention, federal awards, layoffs, patents) with each series' change probability and the tells. ODDS:
  * the Deal Radar's model probability of a sale announcement within 12 months, with its interval, the
  * sector base rate and the reasons; ODDS alone is the board of watched companies and the week's movers.
@@ -20,7 +20,7 @@ const fmt = (v: number) => (Math.abs(v) >= 1e9 ? `${(v / 1e9).toFixed(1)}bn` : M
 const pct = (v: number | null | undefined, dp = 0) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(dp)}%`);
 
 function Wait({ error, what }: { error: string | null; what: string }) {
-  if (error) return <div className="p-4 text-[11.5px] text-muted">{/beta/i.test(error) ? "This is part of Edge (beta). Switch Edge on in Settings, under Labs." : error}</div>;
+  if (error) return <div className="p-4 text-[11.5px] text-muted">{error}</div>;
   return <div className="flex flex-col gap-2 p-3" aria-busy="true" aria-label={`Loading ${what}`}>{[1, 2, 3, 4].map((i) => <div key={i} className="shimmer h-5 ctl" />)}</div>;
 }
 

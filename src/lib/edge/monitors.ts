@@ -48,7 +48,7 @@ export async function tickMonitors(deadline: number): Promise<{ started: number;
   const reaped = await reapStuckRuns();
   const due = await db.select({ m: schema.edgeMonitors, owner: schema.profiles.email, name: schema.profiles.name, extra: schema.profiles.extra })
     .from(schema.edgeMonitors).innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeMonitors.ownerId))
-    .where(and(eq(schema.edgeMonitors.active, true), lte(schema.edgeMonitors.nextRunAt, new Date()), sql`${schema.profiles.extra}->'edge'->>'beta' = 'true'`))
+    .where(and(eq(schema.edgeMonitors.active, true), lte(schema.edgeMonitors.nextRunAt, new Date())))
     .orderBy(asc(schema.edgeMonitors.nextRunAt)).limit(20);
   let started = 0;
   for (const { m, owner, name } of due) {

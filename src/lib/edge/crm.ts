@@ -14,7 +14,6 @@ import { memo } from "@/lib/memo";
 import { normCompany, type NetworkPerson } from "@/lib/news/rank";
 import { networkOf } from "@/lib/news/reader";
 import { appOrigin } from "./alerts";
-import { BETA_ON } from "./watches";
 
 type Detection = typeof schema.edgeDetections.$inferSelect;
 
@@ -41,7 +40,7 @@ export function peopleAt(network: Map<string, NetworkPerson[]>, companies: strin
 
 export async function noteFindingsForNetworks(found: Detection[], big: (d: Detection) => boolean): Promise<number> {
   if (!found.length) return 0;
-  const users = (await requireDb().execute(sql`select profiles.user_id from profiles where ${BETA_ON} and exists (select 1 from crm_contacts c where c.user_id = profiles.user_id and c.company <> '') limit 500`)).rows as { user_id: string }[];
+  const users = (await requireDb().execute(sql`select profiles.user_id from profiles where exists (select 1 from crm_contacts c where c.user_id = profiles.user_id and c.company <> '') limit 500`)).rows as { user_id: string }[];
   if (!users.length) return 0;
   const companies = new Map<number, string[]>();
   for (const d of found) companies.set(d.id, await companiesOf(d));

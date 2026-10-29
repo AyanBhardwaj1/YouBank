@@ -4,7 +4,7 @@
  * away through the person's alert channels; everything else waits for their daily digest. Each person
  * hears about a finding once. Findings also go onto the contacts who work at the companies in them.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { logError } from "@/lib/errors";
 import { alertLater, alertNow } from "./alerts";
@@ -12,7 +12,6 @@ import { noteFindingsForNetworks } from "./crm";
 import { matches } from "./feed";
 import { pulseIsBig } from "./pulse/findings";
 import type { Bbox } from "./sources/eia";
-import { BETA_ON } from "./watches";
 
 type Detection = typeof schema.edgeDetections.$inferSelect;
 
@@ -51,7 +50,7 @@ export async function notifyWatchers(detectionIds: number[]): Promise<{ now: num
   const found = await db.select().from(schema.edgeDetections).where(inArray(schema.edgeDetections.id, [...new Set(detectionIds)].slice(0, 500)));
   if (!found.length) return out;
   const watches = await db.select({ userId: schema.edgeWatches.userId, kind: schema.edgeWatches.kind, label: schema.edgeWatches.label, target: schema.edgeWatches.target })
-    .from(schema.edgeWatches).innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(and(BETA_ON));
+    .from(schema.edgeWatches).innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId));
   for (const d of found) {
     const byUser = new Map<string, string>();
     for (const w of watches) {
