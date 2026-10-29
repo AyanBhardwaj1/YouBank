@@ -33,7 +33,6 @@ import { getBytes } from "../infra/r2";
 import { mlReady, mlRun } from "../infra/ml";
 import { upgradeOn } from "../premium";
 import { record } from "../provenance";
-import { BETA_ON } from "../watches";
 import { pooled, probRose, ratePosterior, roseSentence } from "./calibrate";
 import { CONCEPTS, daysWindow, extractCommitments, guidanceQuestion, guidanceRule, hitProbability, METRIC_LABEL, outcomeOf, periodEnd, withdrawsGuidance, type Commitment } from "./commitments";
 import { classifyPair, ensemble, evasionModel, scorecardLine, topicOf, type Scored } from "./evasion";
@@ -331,7 +330,7 @@ export async function callsDaily(deadline: number): Promise<{ read: number; due:
   let read = 0;
   // Filed releases and transcripts (8-K Item 2.02 or 7.01 exhibits) of watched companies, a few a day.
   const watched = await db.selectDistinct({ ticker: sql<string>`${schema.edgeWatches.target}->>'ticker'` }).from(schema.edgeWatches)
-    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(and(BETA_ON, eq(schema.edgeWatches.kind, "company"))).limit(200);
+    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(eq(schema.edgeWatches.kind, "company")).limit(200);
   for (const { ticker } of watched) {
     if (!ticker || Date.now() > deadline - 40_000 || read >= 4) break;
     try {

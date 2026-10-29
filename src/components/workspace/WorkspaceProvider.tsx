@@ -5,7 +5,7 @@ import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
 import type { ToolMeta } from "@/lib/workflows/catalog";
 
 type Workspace = {
-  profile: Profile; config: WorkspaceConfig; /** Whether the person has the Edge beta on. */ edge: boolean;
+  profile: Profile; config: WorkspaceConfig; /** Whether Edge is available here (always, inside the app; not on public pages). */ edge: boolean;
   /**
    * The tools for this person (catalogFor(profile)), worked out on the server by the workspace layout, so the
    * full catalog of every role stays out of the JavaScript every signed-in page loads.

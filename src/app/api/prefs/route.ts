@@ -5,7 +5,6 @@ import { guarded } from "@/lib/auth/user";
 import { isThemeId } from "@/lib/themes";
 import { MODELS, normalizePrefs } from "@/lib/ai/models";
 import { normalizeNavPrefs } from "@/lib/nav";
-import { edgePrefs } from "@/lib/edge/access";
 import type { RoleId } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +32,7 @@ export async function POST(req: Request) {
     }
     if (body.nav !== undefined) {
       const role = (row?.role ?? "banker") as RoleId;
-      extra.nav = normalizeNavPrefs(body.nav, role, { edge: edgePrefs(extra, role).beta });
+      extra.nav = normalizeNavPrefs(body.nav, role);
     }
     if (!row) {
       // Preferences before onboarding completes: create a stub profile row.

@@ -15,7 +15,7 @@ export const maxDuration = 300;
  * The person's library: their uploads and recordings, workspace items, filings already read for them, and
  * their quota. It is checked every few seconds while documents are read, so it reads only the columns the
  * list shows (meta can hold a call's whole transcript; just its ticker and form come back) and sends its
- * reads together, with the beta check alongside (nothing is returned unless it passes).
+ * reads together, with the profile check alongside (nothing is returned unless it passes).
  */
 export async function GET() {
   return guarded(async (user) => {

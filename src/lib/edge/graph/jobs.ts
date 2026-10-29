@@ -9,7 +9,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { logError } from "@/lib/errors";
 import { record } from "../provenance";
-import { BETA_ON } from "../watches";
 import { sendJob } from "../infra/jobs";
 import { notifyWatchers } from "../notify";
 import { dealsSince, newsroomDeals } from "./deals";
@@ -19,10 +18,10 @@ import { companyByTicker, nodesById } from "./store";
 import { latestModels, scorecardText, withBaselines } from "./train";
 import { watchedCompanies } from "./universe";
 
-/** Tickers people with the beta on watch. */
+/** Tickers people watch. */
 async function watchedTickers(): Promise<string[]> {
   const rows = await requireDb().selectDistinct({ ticker: sql<string>`${schema.edgeWatches.target}->>'ticker'` }).from(schema.edgeWatches)
-    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(and(BETA_ON, eq(schema.edgeWatches.kind, "company")));
+    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(eq(schema.edgeWatches.kind, "company"));
   return rows.map((r) => String(r.ticker ?? "").toUpperCase()).filter(Boolean);
 }
 

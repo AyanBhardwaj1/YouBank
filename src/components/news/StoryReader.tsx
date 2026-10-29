@@ -5,7 +5,7 @@
  * full page share one body. What happened, its chart (the price reaction, the deal, the key figures or
  * how coverage spread), the key numbers, why it matters, and why it matters to you (what it touches in
  * your own YouBank, free; an AI note on request, premium), deal terms with the premium and implied
- * multiples (and, with the Edge beta on, the deal on Edge's map), the timeline, the relationship map,
+ * multiples (and the deal on Edge's map), the timeline, the relationship map,
  * every source with a link to its publisher, the companies in it (straight into the terminal), and
  * related stories. Follow it to hear when it moves; share its public page.
  */

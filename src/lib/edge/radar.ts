@@ -20,7 +20,6 @@ import { EIA_PLANTS, type Bbox } from "./sources/eia";
 import { radarScenes, radarUrl, readPass, S1, type RadarPass, type RadarScene } from "./sources/s1";
 import { boxAround } from "./sources/sentinel";
 import { components, pool } from "./terrain";
-import { BETA_ON } from "./watches";
 
 export const RADAR_VERSION = "radar v1";
 const SITE_KM = 2.5;
@@ -290,7 +289,7 @@ export async function watchedPlants(): Promise<Plant[]> {
     join edge_watches w on (w.kind = 'company' and w.target->>'ticker' = a.ticker)
       or (w.kind = 'place' and jsonb_typeof(w.target->'bbox') = 'array' and a.geom && ST_MakeEnvelope((w.target->'bbox'->>0)::float, (w.target->'bbox'->>1)::float, (w.target->'bbox'->>2)::float, (w.target->'bbox'->>3)::float, 4326))
     join profiles on profiles.user_id = w.user_id
-    where a.kind = 'processing_plant' and a.owner_id is null and ${BETA_ON}`);
+    where a.kind = 'processing_plant' and a.owner_id is null`);
   return (rows.rows as { id: number; name: string; company: string | null; ticker: string | null; lon: number; lat: number; cap: number }[])
     .map((r) => ({ id: Number(r.id), name: r.name, company: r.company ?? "", ticker: r.ticker ?? "", lon: Number(r.lon), lat: Number(r.lat), cap: Number(r.cap) || 0 }));
 }

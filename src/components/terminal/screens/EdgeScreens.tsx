@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Edge in the Terminal, with the beta on. EDGE: one company across Edge (what was found about it, the
+ * Edge in the Terminal. EDGE: one company across Edge (what was found about it, the
  * deal model's buyers and targets, red flags, what of it is on the map). GEO: its plants and pipelines
  * with what satellites saw change there. NET: its relationships from SEC filings and what the graph
  * finds. SIM: a stress of its stock. ASK: a question over its filings and the person's documents,

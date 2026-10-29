@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * A Newsroom deal drawn on Edge's map, inside the story (with the Edge beta on): both sides' plants and
+ * A Newsroom deal drawn on Edge's map, inside the story: both sides' plants and
  * pipelines in their colours, the counties where the combination screens high, and the headline numbers,
  * with the full what-if a click away. A deal whose sides own nothing mapped offers the what-if alone.
  */

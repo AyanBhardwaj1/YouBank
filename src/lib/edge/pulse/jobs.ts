@@ -15,7 +15,6 @@ import { logError } from "@/lib/errors";
 import { companyNode, privateNode } from "../entities/resolve";
 import { placeboRate } from "../series/change";
 import { seriesFor } from "../series/store";
-import { BETA_ON } from "../watches";
 import { loadWarn, refreshCompany } from "./ingest";
 
 const DAY = 86_400_000;
@@ -44,11 +43,11 @@ async function nodesFor(tickers: string[]): Promise<number[]> {
 /** The daily pass's part: daily lists (plan re-checked), then watched companies not read for a week, within the deadline. */
 export async function pulseDaily(deadline: number): Promise<{ refreshed: number; created: number[]; skipped: number }> {
   const db = requireDb();
-  const people = (await db.execute(sql`select user_id, extra from profiles where ${BETA_ON} and extra->'edge' ? 'pulseDaily' limit 500`)).rows as { user_id: string; extra: unknown }[];
+  const people = (await db.execute(sql`select user_id, extra from profiles where extra->'edge' ? 'pulseDaily' limit 500`)).rows as { user_id: string; extra: unknown }[];
   const daily: string[] = [];
   for (const p of people) if (await canUseById(p.user_id, "edge.pulse-daily").catch(() => false)) daily.push(...dailyListOf(p.extra));
   const watched = (await db.selectDistinct({ ticker: sql<string>`${schema.edgeWatches.target}->>'ticker'` }).from(schema.edgeWatches)
-    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(and(BETA_ON, eq(schema.edgeWatches.kind, "company"))).limit(400)).map((r) => r.ticker).filter(Boolean);
+    .innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId)).where(eq(schema.edgeWatches.kind, "company")).limit(400)).map((r) => r.ticker).filter(Boolean);
   const dailyNodes = await nodesFor(daily);
   const watchedNodes = (await nodesFor(watched)).filter((n) => !dailyNodes.includes(n));
   const stale = watchedNodes.length ? (await db.select({ id: schema.edgeNodes.id, attrs: schema.edgeNodes.attrs }).from(schema.edgeNodes).where(inArray(schema.edgeNodes.id, watchedNodes)))

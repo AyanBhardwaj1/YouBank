@@ -13,8 +13,7 @@ export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" |
  */
 export type NavLink = { label: string; href: string; hint?: string; event?: { path: string; value: string } };
 
-/** `beta` features show only to people who turned them on (see NavOpts). */
-export type NavFeature = { id: NavId; href: string; label: string; icon: string; blurb: string; roles?: RoleId[]; beta?: boolean; links?: NavLink[] };
+export type NavFeature = { id: NavId; href: string; label: string; icon: string; blurb: string; roles?: RoleId[]; links?: NavLink[] };
 
 const fn = (code: string, label: string): NavLink => ({ label, hint: code, href: `/app/terminal?fn=${code}`, event: { path: "/app/terminal", value: code } });
 const tab = (path: string, param: string, value: string, label: string, isDefault = false): NavLink =>
@@ -33,7 +32,7 @@ export const FEATURES: NavFeature[] = [
   { id: "tools", href: "/app/tools", label: "Tools", icon: "Wand2", blurb: "Calculators and AI workflows" },
   { id: "studio", href: "/app/studio", label: "Studio", icon: "FileSpreadsheet", blurb: "Models and decks the agent builds with you" },
   {
-    id: "edge", href: "/app/edge", label: "Edge", icon: "Radar", blurb: "Alternative data: what satellites, networks and documents show", beta: true,
+    id: "edge", href: "/app/edge", label: "Edge", icon: "Radar", blurb: "Alternative data: what satellites, networks and documents show",
     links: [tab("/app/edge", "view", "feed", "Feed", true), tab("/app/edge", "view", "canvases", "Canvases"), tab("/app/edge", "view", "documents", "Documents"), tab("/app/edge", "view", "networks", "Networks"), tab("/app/edge", "view", "scenarios", "Scenarios"), tab("/app/edge", "view", "map", "Map"), tab("/app/edge", "view", "whatif", "Deal what-if"), tab("/app/edge", "view", "deals", "Deals"), tab("/app/edge", "view", "pulse", "Pulse"), tab("/app/edge", "view", "radar", "Deal Radar"), tab("/app/edge", "view", "calls", "Call Desk"), tab("/app/edge", "view", "theses", "Theses"), tab("/app/edge", "view", "track", "Track record")],
   },
   {
@@ -81,10 +80,7 @@ export const FEATURES: NavFeature[] = [
   },
 ];
 
-/** Which beta features this person turned on. */
-export type NavOpts = { edge?: boolean };
-
-export const featuresFor = (role: RoleId, opts: NavOpts = {}) => FEATURES.filter((f) => (!f.roles || f.roles.includes(role)) && (!f.beta || (f.id === "edge" && opts.edge === true)));
+export const featuresFor = (role: RoleId) => FEATURES.filter((f) => !f.roles || f.roles.includes(role));
 
 export type NavLabels = "full" | "icons";
 export type NavPrefs = {
@@ -101,11 +97,11 @@ export function defaultPinned(role: RoleId): NavId[] {
 
 export const defaultNavPrefs = (role: RoleId): NavPrefs => ({ pinned: defaultPinned(role), labels: "full", dock: false });
 
-/** Stored preferences, cleaned: unknown, role-gated or switched-off beta features drop out; malformed values fall back. */
-export function normalizeNavPrefs(raw: unknown, role: RoleId, opts: NavOpts = {}): NavPrefs {
+/** Stored preferences, cleaned: unknown or role-gated features drop out; malformed values fall back. */
+export function normalizeNavPrefs(raw: unknown, role: RoleId): NavPrefs {
   const d = defaultNavPrefs(role);
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const valid = new Set<string>(featuresFor(role, opts).map((f) => f.id));
+  const valid = new Set<string>(featuresFor(role).map((f) => f.id));
   const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned;
   return { pinned, labels: r.labels === "icons" ? "icons" : "full", dock: r.dock === true };
 }

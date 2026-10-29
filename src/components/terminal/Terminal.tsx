@@ -29,7 +29,7 @@ const sameCmd = (a: Command, b: Command) => a.ticker === b.ticker && a.fn === b.
 
 export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string; arg?: string } }) {
   const { config, profile, edge } = useWorkspace();
-  // With the Edge beta on, EDGE joins the strip just before the AI.
+  // With Edge available, EDGE joins the strip just before the AI.
   const base = functionsForProfile(profile);
   const fns: FunctionCode[] = edge ? (base.includes("AI") ? base.flatMap((f) => (f === "AI" ? ["EDGE" as const, f] : [f])) : [...base, "EDGE"]) : base;
   const startTicker = initial?.ticker || config.initialPanels[0]?.ticker || config.watchlist[0] || "SNOW";

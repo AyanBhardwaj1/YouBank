@@ -10,7 +10,6 @@ import { logError } from "@/lib/errors";
 import { emailSelf, pushToUser, slackPost } from "@/lib/news/deliver";
 import { readerFor } from "@/lib/news/reader";
 import { appOrigin } from "./alerts";
-import { BETA_ON } from "./watches";
 
 type Detection = typeof schema.edgeDetections.$inferSelect;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -73,12 +72,12 @@ ${found.some((d) => d.kind === "thesis_update") ? `<h2 style="margin:18px 0 4px;
   return { subject: `Edge: ${found.length} finding${found.length === 1 ? "" : "s"} at what you watch`, text, html };
 }
 
-/** People with the beta on and findings kept for their digest in the last three days that have not gone out yet. */
+/** People with findings kept for their digest in the last three days that have not gone out yet. */
 export async function pendingDigests(limit = 500): Promise<{ user_id: string; subjects: string[] }[]> {
   const since = new Date(Date.now() - 3 * 86_400_000);
   return (await requireDb().execute(sql`
     select a.user_id, array_agg(a.subject) as subjects from edge_alerts a join profiles on profiles.user_id = a.user_id
-    where a.kind = 'digest' and a.created_at >= ${since.toISOString()}::timestamptz and ${BETA_ON}
+    where a.kind = 'digest' and a.created_at >= ${since.toISOString()}::timestamptz
       and not exists (select 1 from edge_alerts d where d.user_id = a.user_id and d.subject = a.subject and d.kind = 'digested')
     group by a.user_id limit ${limit}`)).rows as { user_id: string; subjects: string[] }[];
 }

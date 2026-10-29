@@ -94,7 +94,7 @@ export function isFunctionCode(s: string): s is FunctionCode {
 }
 
 /**
- * Edge's functions exist only for people with the Edge beta on. Without it their codes stay plain
+ * Edge's functions exist only where Edge is available (inside the app). Elsewhere their codes stay plain
  * tickers (GEO and NET are listed companies), as PG, AI and MA do when a function follows them.
  */
 export const EDGE_CODES: ReadonlySet<string> = new Set(FUNCTION_CODES.filter((f) => (FUNCTIONS[f] as FnDef).group === "edge"));

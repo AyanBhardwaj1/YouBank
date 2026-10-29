@@ -10,8 +10,7 @@ export const metadata = { title: "Edge canvas" };
 export default async function CanvasPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
-  const p = await edgeProfile(user.id);
-  if (!p?.prefs.beta) redirect("/app/edge");
+  if (!(await edgeProfile(user.id))) redirect("/onboarding");
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) redirect("/app/edge?view=canvases");
   return <CanvasEditor id={id} />;

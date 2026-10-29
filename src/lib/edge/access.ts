@@ -1,9 +1,9 @@
 /**
- * Who can use Edge and how they like it. Edge is an opt-in beta ("Try Edge beta" in Settings), free
- * during the beta and bounded by the AI caps and the beta limits below. Each person's switch, when they
- * turned it on and how they rank their feed live in profiles.extra.edge.
+ * Who can use Edge and how they like it. Edge is on for everyone with a profile, bounded by the AI caps
+ * and the limits below. When each person first opened it, whether their starter watches were seeded and
+ * how they rank their feed live in profiles.extra.edge.
  */
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { defaultNavPrefs } from "@/lib/nav";
 import type { RoleId } from "@/lib/roles";
@@ -13,7 +13,8 @@ export const MONITOR_LIMIT = 3;
 
 /** How the feed weighs its four signals, each 0 to 1. */
 export type Blend = { relevance: number; size: number; novelty: number; confidence: number };
-export type EdgePrefs = { beta: boolean; since: string | null; blend: Blend; seeded: boolean; poolContacts: boolean };
+/** `beta` is always true: Edge used to be an opt-in beta, and the field stays so callers and the API keep their shape. */
+export type EdgePrefs = { beta: true; since: string | null; blend: Blend; seeded: boolean; poolContacts: boolean };
 
 /** Each role's starting balance: markets people want what is not in the news yet; bankers want their names. */
 const ROLE_BLEND: Partial<Record<RoleId, Blend>> = {
@@ -32,7 +33,7 @@ export function edgePrefs(extra: unknown, role: RoleId): EdgePrefs {
   const d = defaultBlend(role);
   const b = (e.blend ?? {}) as Record<string, unknown>;
   return {
-    beta: e.beta === true,
+    beta: true,
     since: typeof e.since === "string" ? e.since : null,
     seeded: e.seeded === true,
     poolContacts: e.poolContacts === true,
@@ -50,22 +51,33 @@ export async function edgeProfile(userId: string): Promise<EdgeProfile | null> {
   return { role, firmTicker: p.firmTicker, sectors: p.sectors, specialty: p.specialty, extra: p.extra ?? {}, prefs: edgePrefs(p.extra, role) };
 }
 
-export const NOT_IN_BETA = "Edge is in beta. Turn it on in Settings, under Labs, to use it.";
-
-/** The person's Edge profile, or a 403 that tells them where the switch is. */
+/** The person's Edge profile, or a 400 when they have not finished setting up their profile. */
 export async function requireEdge(userId: string): Promise<EdgeProfile> {
   const p = await edgeProfile(userId);
-  if (!p?.prefs.beta) throw Object.assign(new Error(NOT_IN_BETA), { status: 403 });
+  if (!p) throw Object.assign(new Error("Finish setting up your profile first."), { status: 400 });
   return p;
 }
 
-/** Save changes to profiles.extra.edge (and, when turning the beta on, pin the tab). */
-export async function saveEdge(userId: string, patch: Partial<Omit<EdgePrefs, "blend">> & { blend?: Partial<Blend> }, opts: { pin?: boolean } = {}): Promise<EdgePrefs> {
+/**
+ * Claim the person's first-visit setup: marks them seeded (and when they started) in one statement, so
+ * two tabs opening Edge at once seed only once. True for the caller that should do the seeding.
+ */
+export async function claimEdgeSeed(userId: string): Promise<boolean> {
+  const rows = (await requireDb().execute(sql`
+    update profiles set extra = jsonb_set(coalesce(extra, '{}'::jsonb), '{edge}',
+      coalesce(extra->'edge', '{}'::jsonb) || jsonb_build_object('seeded', true, 'since', coalesce(extra->'edge'->>'since', ${new Date().toISOString()})), true),
+      updated_at = now()
+    where user_id = ${userId} and coalesce(extra->'edge'->>'seeded', 'false') <> 'true'
+    returning user_id`)).rows;
+  return rows.length > 0;
+}
+
+/** Save changes to profiles.extra.edge (and, with `pin`, pin the tab). */
+export async function saveEdge(userId: string, patch: Partial<Omit<EdgePrefs, "blend" | "beta">> & { blend?: Partial<Blend> }, opts: { pin?: boolean } = {}): Promise<EdgePrefs> {
   const p = await edgeProfile(userId);
   if (!p) throw Object.assign(new Error("Finish setting up your profile first."), { status: 400 });
   const cur = (p.extra.edge ?? {}) as Record<string, unknown>;
   const next: Record<string, unknown> = { ...cur };
-  if (patch.beta !== undefined) { next.beta = patch.beta; if (patch.beta && !cur.since) next.since = new Date().toISOString(); }
   if (patch.seeded !== undefined) next.seeded = patch.seeded;
   if (patch.poolContacts !== undefined) next.poolContacts = patch.poolContacts;
   if (patch.blend) {

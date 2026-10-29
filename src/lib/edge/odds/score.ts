@@ -20,7 +20,6 @@ import { mlRun } from "../infra/ml";
 import { record } from "../provenance";
 import { weekOf } from "../series/change";
 import { putPoints, seriesFor } from "../series/store";
-import { BETA_ON } from "../watches";
 import { cardReason, oddsCard, oddsQuestion, type OddsScore } from "./cards";
 import { loadUniverse, refreshRaw, rawKey } from "./data";
 import { evidenceFor, FEATURE, featureRow, newSignals, type RawCompany } from "./features";
@@ -115,7 +114,7 @@ export async function scoreSlice(cursor: number, deadline: number, opts: { refre
 
 /** Watched companies' CIKs (with the beta on). */
 async function watchedCiks(): Promise<{ cik: string; nodeId: number; ticker: string }[]> {
-  const rows = (await requireDb().execute(sql`select distinct n.id, n.cik, n.ticker from edge_watches w join profiles p on p.user_id = w.user_id join edge_nodes n on n.kind = 'company' and n.ticker = w.target->>'ticker' where ${BETA_ON} and w.kind = 'company' and n.cik <> '' limit 400`)).rows as { id: number; cik: string; ticker: string }[];
+  const rows = (await requireDb().execute(sql`select distinct n.id, n.cik, n.ticker from edge_watches w join profiles p on p.user_id = w.user_id join edge_nodes n on n.kind = 'company' and n.ticker = w.target->>'ticker' where w.kind = 'company' and n.cik <> '' limit 400`)).rows as { id: number; cik: string; ticker: string }[];
   return rows.map((r) => ({ cik: r.cik.replace(/^0+/, ""), nodeId: Number(r.id), ticker: r.ticker }));
 }
 

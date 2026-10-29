@@ -1,6 +1,6 @@
 /**
  * What people follow in Edge: companies (and the assets under them) and places. Each person has up to
- * five during the beta; their team's watches show in their feed too. Turning Edge on seeds three from
+ * five; their team's watches show in their feed too. Opening Edge the first time seeds three from
  * the person's desk (their firm and watchlist names with mapped assets, and the Permian) and checks them
  * straight away, so the feed has something on day one.
  */
@@ -20,9 +20,6 @@ export { COVERED };
 
 export type WatchKind = "company" | "place";
 export type Watch = { id: number; kind: WatchKind; label: string; target: EdgeWatchTarget; mine: boolean; teamId: number | null; createdAt: string; lastCheckedAt: string | null };
-
-/** Profiles (joined as schema.profiles) that have the Edge beta on. */
-export const BETA_ON = sql`${schema.profiles.extra}->'edge'->>'beta' = 'true'`;
 
 const toWatch = (r: typeof schema.edgeWatches.$inferSelect, userId: string): Watch => ({
   id: r.id, kind: r.kind as WatchKind, label: r.label, target: r.target, mine: r.userId === userId, teamId: r.teamId,
@@ -130,7 +127,7 @@ export async function checkDue(deadline: number, maxSites = 3): Promise<{ target
   await ensureMaps();
   const rows = await db.select({ id: schema.edgeWatches.id, kind: schema.edgeWatches.kind, target: schema.edgeWatches.target, last: schema.edgeWatches.lastCheckedAt })
     .from(schema.edgeWatches).innerJoin(schema.profiles, eq(schema.profiles.userId, schema.edgeWatches.userId))
-    .where(and(BETA_ON, or(isNull(schema.edgeWatches.lastCheckedAt), sql`${schema.edgeWatches.lastCheckedAt} < now() - interval '20 hours'`)))
+    .where(and(or(isNull(schema.edgeWatches.lastCheckedAt), sql`${schema.edgeWatches.lastCheckedAt} < now() - interval '20 hours'`)))
     .orderBy(sql`${schema.edgeWatches.lastCheckedAt} asc nulls first`).limit(2000);
   const byTarget = new Map<string, { kind: WatchKind; target: EdgeWatchTarget; ids: number[] }>();
   for (const r of rows) {
