@@ -8,10 +8,10 @@ Revision 2 addresses the plan review (`traces/plan/round1_response.md`, memory i
 | # | Claim YouBank will make | Block | Falsifying result |
 |---|---|---|---|
 | G0 | *(internal launch gate, not a public claim)* Known legal exposures in email, meetings, data licensing and auth are closed before charging | M0 | Any M0 item open at paid launch |
-| K1 | "We measure our answers' accuracy and run-to-run reliability on a reproducible, period-pinned finance test set, every night, against a raw frontier model with a free EDGAR connector." | B1 | (a) The harness can't separate the default model from the routed small model or detect run-to-run instability (pass^3 vs pass@1 gap); or (b) YouBank does not beat the frontier model + free EDGAR MCP baseline on the figure-level tasks |
-| K2 | "Every figure in an answer that comes from structured data is bound to the field it states; we show how many were checked. Figures from filing text are marked 'cited, not checked'." | B2 | On the real-answer audit set: recall of wrong-field/period, scale and perturbed figures (each reported separately) below thresholds fixed after the audit (§B0); or a checked rate that rises with payload size |
-| K3 | "The agent sends on its own only after a certificate earned from your own approvals, with a stated error bound." | B3 | B3-0 shows the median active autopilot stratum can't reach the pre-registered n within 30 days; or the false-certification rate in replay exceeds δ |
-| K4 | *(distribution experiment)* "YouBank's Form D × precedents × Deal Radar tools inside Claude and ChatGPT." | B4 | < 50 attributed sign-ups in 30 days after listing → stop |
+| K1 | "We measure our answers' accuracy and run-to-run reliability on a reproducible, period-pinned finance test set, every night, against a raw frontier model with a free EDGAR connector." | B1 | (a) Two identical nightly runs differ by more than binomial noise (about ±6 pts at n≈200), so the harness can't be trusted; or it can't separate the default model from the routed small model; or (b) YouBank does not beat the frontier model + free EDGAR MCP baseline on the figure-level tasks |
+| K2 | "Every figure from structured data is shown from the source value, with the field and period it cites; you can see which ones. Figures from filing text are marked 'cited, not checked'." (Not "correct": choosing the right field and period stays the model's job.) | B2 | Recall on *injected* errors below thresholds fixed **before** building (wrong-id citations ≥ 0.6 caught by the field/period chip review set, retyped-digit and scale errors ≥ 0.95 prevented by rendering from the store, fallback matcher false accept ≤ 0.10 on perturbations), measured on fresh answers, not on B0; or a checked rate that rises with payload size |
+| K3 | "The agent sends on its own only after a certificate earned from your own approvals, with a stated error bound (on drafts you reviewed; discarded drafts are not counted)." | B3 | B3-0 says no-go (below); or the false-certification rate exceeds δ in replay **and** in a simulation with a known bad rate |
+| K4 | *(distribution experiment)* "YouBank's Form D × precedents × Deal Radar tools inside Claude and ChatGPT." | B4 | < 50 attributed sign-ups in the 30 days after the first public install path (not directory listing) → stop |
 
 ## Week 1, day 1–2 — the two most informative checks (before building anything)
 - **B0. Real-answer audit (1–2 days, in the owner's environment, with tool payloads logged).** Take 30–50 real chat answers from the default model on typical questions (comps, a company's LTM, a margin, EV/revenue, growth). Label every figure:
@@ -19,12 +19,15 @@ Revision 2 addresses the plan review (`traces/plan/round1_response.md`, memory i
   - error type: perturbed, wrong field/period, scale, arithmetic, or filing-text misread;
   - origin: a payload value, a `calc` result, a free derivation, or filing text.
 
-  Output: the natural error rate and error mix. These set K2's thresholds and decide whether B2 leans on prevention (field-bound references) or detection. Store it as `scripts/fixtures/eval-agent/audit-v1.json`.
+  Output: the natural error rate and error mix, with confidence intervals (expect only ~10–20 natural errors, so treat the mix as rough). It decides B2's *emphasis*: wrong-field/period errors call for the field-and-period chip and reviewable citations; retyped-digit and scale errors call for rendering from the store. B0 does **not** set or test K2's thresholds; those are fixed in advance on injected errors (see the claim map). Store it as `scripts/fixtures/eval-agent/audit-v1.json`.
 - **B3-0. Label-volume check (½ day, from `crm_learning_events` in production).**
   - Per active autopilot user and stratum, report per week: approve-unchanged, edited (any edit >5% counts as bad), rejected, and discarded (discards are not labels).
-  - Pre-register α (the target bad-send rate, e.g. 5%), δ (the false-certification rate, e.g. 5%) and the required n. At these α and δ, the plan reviewer's rough figures are n ≈ 22 at a 0% observed bad rate, ≈ 65 at 3% and ≈ 140 at 5%; recompute exactly with the chosen test before the check.
+  - Pre-register α = 10% (matches today's code) and δ = 5%. Exact one-sided binomial test (certify when P(X ≤ observed bad | p = α) ≤ δ) needs n = 29 labels at a 0% observed bad rate, 29 at 3% and 76 at 5% (computed in this run). At α = δ = 5% it needs 59 / 260 / never, so almost no stratum would certify. The plan reviewer's earlier "22 / 65 / 140" were at α = δ = 10% by its own method. An anytime-valid test will need somewhat more; recompute with the chosen test before the check.
+  - Go needs both enough volume and an observed bad rate clearly below α, in at least 3 strata across at least 5 users.
   - State whether certification counts the 90-day decayed counts or raw counts.
   - **Go/no-go:** go if the median active stratum reaches n within 30 days. Otherwise stop B3 at email and document the negative.
+
+**Cut line, if time runs short:** drop B4 first, then B3's second action type. B2 on chat comes before anything in B3 beyond email. Inside B2, ship the fixed fallback matcher (and its "matches a number in the cited source" label) before rendering from the store.
 
 ## M0 — internal launch gate (weeks 1–3, in parallel with B1)
 **Day 1:**
@@ -62,7 +65,7 @@ Revision 2 addresses the plan review (`traces/plan/round1_response.md`, memory i
 - **Positioning:** we found no vendor reporting pass^k; vendors self-report one-shot subsets (Fintool, Rogo).
 
 ## B2 — Field-bound figures (weeks 3–5) → K2
-P1 v2 (`runs/probe-verify-v2.json`, synthetic_proxy, 5 companies in context) shows how much each variant catches:
+P1 v2 (`runs/probe-verify-v2.json`, synthetic_proxy, 5 companies in context) shows how much each variant catches. The true-accept rate for correct figures is 0.990 / 1.000 / 1.000 by row (high by construction):
 
 | Variant | Wrong field/period accepted | Perturbed accepted | Scale error accepted | Correct accepted |
 |---|---|---|---|---|
@@ -70,9 +73,16 @@ P1 v2 (`runs/probe-verify-v2.json`, synthetic_proxy, 5 companies in context) sho
 | Entity-scoped + typed | **1.000** | 0.037 | 0.008 | — |
 | Bound to the claimed field | **0.031** | 0.023 | 0.003 | 1.000 |
 
-So the design is prevention, not just matching:
+**How to read this honestly:**
+- The field_bound row is true by construction: the probe hands the verifier the correct field from its own answer key (`probe-verify-v2.ts:69`).
+- In the real design the model chooses the field id. A wrong-field error then becomes the model citing `prior_ltm_revenue` under the words "LTM revenue", which binding accepts every time, exactly like `entity_typed`.
+- What the table does show: post-hoc matching cannot catch wrong-field errors at all, and binding plus rendering from the store removes retyped-digit and scale errors.
+- `entity_typed`'s good scale result comes from the probe writing money as "$… million" (typed payloads), not from a verifier fix.
+- The 0.526 scale figure in the pool row hides an asymmetry: writing "million" for "billion" is accepted about 100% of the time (per the reviewer's breakdown, not re-run here).
+
+So the design is prevention for what prevention can fix, and a visible field-and-period chip for what it can't:
 1. **Structured tool results carry a figure registry.** Each value has an id like `S3.revenue@FY2026Q2` with its unit, its scale and the entity it belongs to. Bind by tool result and company, not by the `addSource` id, which today is issued before the payload exists and merges FMP sources by URL.
-2. **Answers cite figures by id.** The renderer shows the value from the registry, not the model's retyped digits. Derived figures come from `calc` with id references, so `calc` needs to resolve `S3.revenue` and return a citable result id.
+2. **Answers cite figures by id.** The renderer shows the value from the registry, not the model's retyped digits, and every chip shows the field name and period ("Revenue, LTM to Jun 2026"), so a wrong-field choice is visible to the reader. Derived figures come from `calc` with id references, so `calc` needs to resolve `S3.revenue` and return a citable result id.
 3. **Fallback detection for figures without an id:** entity-scoped matching on unit-typed values (money only against money at its declared scale). Before reuse, fix four verifier bugs in `src/lib/edge/claims/numbers.ts`:
    - payload values 1900–2099 masked as years (`:26`);
    - "1.2B" not parsed as money;
@@ -81,7 +91,11 @@ So the design is prevention, not just matching:
 
    The UI says "matches a number in the cited source" for these figures, not "verified".
 4. **v1 scope:** chat answers citing structured tools. Figures from filing text are shown as "cited, not checked".
-5. **Validation:** recall per error type on the B0 audit set plus injected errors. Report precision only on natural figures, with the base rate stated: precision is base-rate dependent, so no fixed 85% target.
+5. **Validation:**
+   - Pre-registered recall thresholds (claim map K2) are measured on injected errors in fresh answers: wrong-id citations, retyped digits and scale slips.
+   - Natural errors are counted on fresh answers, not on B0.
+   - Precision is reported only on natural figures, with the base rate stated.
+   - The "checked rate" for id-cited figures will read about 100% by construction, so the UI must not present it as accuracy.
 6. **Calibration data.** Replace Edge's synthetic fixture (`src/lib/edge/claims/model.json`, 468 template claims) with B0 and B2 labels.
 
 Positioning vs Kepler (Claude-based; "every number validated", Business Wire 21 May 2026): figure-level binding at $59 with a numeric checked rate, carried into outreach and Studio.

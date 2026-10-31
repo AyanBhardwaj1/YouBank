@@ -54,29 +54,41 @@
     },
     {
       "name": "plan",
-      "status": "running",
-      "accepted": false,
-      "at": "2026-10-31T09:15:43+00:00"
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:29:55+00:00",
+      "artifact": "sleep-research/EXPERIMENT_PLAN.md",
+      "verdict": "sleep-research/traces/plan/round2_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:29:55+00:00"
     },
     {
       "name": "implement",
-      "status": "pending",
-      "accepted": false
+      "status": "skipped",
+      "accepted": false,
+      "at": "2026-10-31T09:29:55+00:00"
     },
     {
       "name": "audit",
-      "status": "pending",
-      "accepted": false
+      "status": "skipped",
+      "accepted": false,
+      "at": "2026-10-31T09:29:55+00:00"
     },
     {
       "name": "review",
-      "status": "pending",
-      "accepted": false
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:29:55+00:00",
+      "artifact": "sleep-research/AUTO_REVIEW.md",
+      "verdict": "sleep-research/traces/plan/round2_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:29:55+00:00"
     },
     {
       "name": "claims",
-      "status": "pending",
-      "accepted": false
+      "status": "running",
+      "accepted": false,
+      "at": "2026-10-31T09:29:55+00:00"
     },
     {
       "name": "report",
@@ -84,5 +96,5 @@
       "accepted": false
     }
   ],
-  "updated": "2026-10-31T09:15:43+00:00"
+  "updated": "2026-10-31T09:29:55+00:00"
 }
