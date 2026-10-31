@@ -1,3 +1,3 @@
-alpha=0.1 delta=0.1 n_at_bad_rate_0%=22 n_at_3%=22 n_at_5%=38
-alpha=0.05 delta=0.05 n_at_bad_rate_0%=59 n_at_3%=260 n_at_5%=None
-alpha=0.1 delta=0.05 n_at_bad_rate_0%=29 n_at_3%=29 n_at_5%=76
+alpha=0.1 delta=0.1 n_at_bad_rate_0%=22 n_at_3%=52 n_at_5%=78
+alpha=0.05 delta=0.05 n_at_bad_rate_0%=59 n_at_3%=361 n_at_5%=None
+alpha=0.1 delta=0.05 n_at_bad_rate_0%=29 n_at_3%=61 n_at_5%=116

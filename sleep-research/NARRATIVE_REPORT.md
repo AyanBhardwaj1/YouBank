@@ -13,52 +13,57 @@ General finance research is being commoditised by the AI labs and by data vendor
 
 ## Results, with evidence per claim
 
-**R1. Reusing Edge's number checker as-is on chat answers would pass many wrong figures.**
-On synthetic chat-style payloads, wrong figures perturbed by 3–30% were accepted 52.3% of the time with 5 companies in context. Wrong-field figures were accepted 98.7% and 1000× scale errors 52.6%. Correct figures were accepted 99.0%.
-- Evidence: `runs/probe-verify-v2.json` → `results.pool`.
-- v1 shows the false-accept rate rising with payload size: mean 0.369 → 0.521 → 0.543 at 1 / 5 / 15 companies (`runs/probe-verify-pool.json`).
-- Eval type synthetic_proxy, N = 300 trials per setting, one seed.
+**R1. In a synthetic probe, Edge's number checker reused as-is on chat-style payloads accepts many wrong figures. Most of the leak is its pairwise arithmetic step.**
+- **Rates:** with 5 companies in context, figures perturbed by 3–30% were accepted 52.3% of the time and 1000× scale errors 52.6%. Correct figures were accepted 99.0% (`runs/probe-verify-v2.json` → `results.pool`).
+- **Wrong-field errors (98.7%) are true by design, not a measurement.** The probe always puts the wrong field's value in the payload, so any value-matching check accepts it.
+- **Payload size matters less than the arithmetic step.** The mean false-accept rate is 0.369 → 0.521 → 0.543 at 1 / 5 / 15 companies (`runs/probe-verify-pool.json`): it rises from 1 to 5 companies and barely moves after that. Restricting to the cited company alone leaves ~36% (`runs/probe-verify-entity.json`); removing the arithmetic step drops it to ~3–4% (`runs/probe-verify-entity_direct.json`).
+- **Scope:** synthetic_proxy, generated payloads shaped like `get_company_financials`, 300 trials per setting, one seed. This shows the mechanism, not a natural error rate.
 
-**R2. Post-hoc number matching cannot catch wrong-field or wrong-period errors. Typed, entity-scoped payloads fix perturbation and scale errors.**
-- `entity_typed`: wrong-field accepted 1.000; perturbed 0.037; scale 0.008.
-- `field_bound` reaches wrong-field 0.031, but only because the probe supplies the correct field. It shows that binding plus rendering from the source removes retyped-digit and scale errors, not that wrong-field choices are caught.
-- Evidence: `runs/probe-verify-v2.json`; the honesty note is in `EXPERIMENT_PLAN.md` §B2.
+**R2. Matching numbers after the fact can't tell which field a value came from. When the wrong value is present in the cited payload (as it was in every wrong-field case tested), the check accepts it.**
+- **Entity-scoped, unit-typed payloads with the arithmetic step off** (`entity_typed`) accept 1.000 of wrong-field errors, 0.037 of perturbed figures and 0.008 of scale errors.
+- **Most of that gain comes from turning the arithmetic step off.** That has an untested cost: correct computed figures in real answers would be rejected unless they come from `calc`.
+- **The 0.037 overstates the leak.** Of the 78 accepted perturbed figures, 45 printed identically to the true figure after rounding (`traces/claims/audit-v2-identical.ts`), so the real residual is about 1.6%.
+- **Wrong-period was tested with a single swap** (prior-year revenue).
+- **`field_bound`'s 0.031 is true by construction,** because the probe supplies the correct field. It shows that binding plus rendering from the source removes retyped-digit and scale errors, not that wrong-field choices are caught.
+- **Evidence:** `runs/probe-verify-v2.json`; the honesty note is in `EXPERIMENT_PLAN.md` §B2.
 
-**R3. Four bugs in the existing verifier, reproduced** (`src/lib/edge/claims/numbers.ts`):
-- payload values 1900–2099 are masked as years;
-- "1.2B" is not parsed as money;
-- a SIC code "7372" backs a false "$7.4 billion";
-- a 1000× scale error is accepted.
+**R3. Four bugs in the existing verifier, reproduced** (`src/lib/edge/claims/numbers.ts`; `runs/verifier-bugs.txt` from `code/verifier-bugs.ts`):
+1. Payload values 1900–2099 are masked as years.
+2. "1.2B" is not parsed as money. The code documents this as intended (`numbers.ts:41`).
+3. SIC code "7372" backs a false "$7.4 billion". This is realistic, because real payloads carry `sic`.
+4. A 1000× scale error is accepted.
 
-Evidence: `runs/verifier-bugs.txt` (from `code/verifier-bugs.ts`).
+Bugs 1–2 wrongly reject correct figures, which is the safe direction. Bugs 3–4 accept wrong ones.
 
-**R4. Liabilities in the shipped code** (checked by the triage reviewer and re-checked by the executor):
-- The autopilot trust gate fails open on error (`src/lib/crm/autopilot.ts:101`).
-- The only send path adds no unsubscribe header or footer (`src/lib/crm/send.ts:95`; the only List-Unsubscribe code reads inbound mail at `autopilot-rules.ts:174`).
-- Auth uses only `nextCookies()` (`src/lib/auth/server.ts:51`).
-- The Nasdaq.com scrape is on by default and shares a switch with the CoinGecko backup and the earnings calendar (`src/lib/market/nasdaq.ts:35`, `free.ts:29`, `news/calendar.ts:48`).
-- Edge's claim calibration was fitted on 468 template-generated claims (`src/lib/edge/claims/model.json`).
-- Landing copy promises figure-level sourcing and earned sending (`Landing.tsx:110,168`) beyond what the code enforces.
+**R4. Liabilities in the shipped code** (checked by the triage reviewer, the executor and the claims auditor):
+- **Autopilot fails open.** The trust gate lets a draft through when its own check errors (`src/lib/crm/autopilot.ts:101`).
+- **No unsubscribe on CRM mail.** The CRM send path adds no unsubscribe header or footer (`src/lib/crm/send.ts:94`). The only List-Unsubscribe code reads inbound mail (`autopilot-rules.ts:174`). Opt-outs are honoured once recorded. `news/deliver.ts:29` also sends mail, but only to the user's own address.
+- **No second factor.** Auth configures only `nextCookies()` (`src/lib/auth/server.ts:51`): no 2FA, passkeys, organizations or SSO, on accounts that can hold Gmail send and broker tokens.
+- **Unlicensed scrape on by default.** The Nasdaq.com scrape is on by default and shares a switch with the CoinGecko backup and the earnings calendar (`src/lib/market/nasdaq.ts:35`, `free.ts:29`, `news/calendar.ts:48`).
+- **Synthetic calibration.** Edge's claim calibration was fitted on 468 template-generated claims (`src/lib/edge/claims/model.json`).
+- **Landing copy overpromises.** It promises figure-level sourcing and earned sending (`Landing.tsx:110,168`) beyond what the code enforces.
 
 **R5. Market position.** The labs and data vendors now sell finance agents and MCP data:
 - Anthropic finance agents, 5 May 2026;
 - ChatGPT for Financial Services, 10 Sep 2026;
-- FactSet, LSEG, PitchBook, Daloopa, S&P on MCP.
+- FactSet, LSEG, PitchBook, Daloopa and S&P on MCP.
 
-Published prices split into ~$0–359 a month and ~$10K+ a seat a year, with almost nothing in between. Evidence: `research/market.md`; several prices are tagged [UNVERIFIED] there.
+Published list prices cluster at ~$0–359 a month (Koyfin, TIKR, Perplexity) and at an estimated ~$10K+ a seat a year (AlphaSense, Grata, Bloomberg). **Every price in the enterprise band is tagged [UNVERIFIED] in `research/market.md`.** The same file lists estimates in between, such as Rogo at ~$3.3K a seat a year (Sacra estimate) and Axial at $5–15K. So "a gap in published prices" is the defensible reading, not "nothing in between".
 
-**R6. Novelty of the chosen bets** (`traces/novelty/round1_response.md`, ~20 searches; "not found" ≠ "doesn't exist"):
-- **Verify every figure: LOW.** Kepler already sells "every number validated".
-- **Eval harness: LOW internally, MEDIUM if published with pass^k.** No vendor reporting pass^k was found.
+**R6. Novelty of the chosen bets** (`traces/novelty/round1_response.md`; ~20 searches across all four bets; "not found" ≠ "doesn't exist"):
+- **Verify every figure: LOW.** Kepler markets that every number is validated and unverifiable values are removed (the novelty file's paraphrase of its materials).
+- **Eval harness: LOW internally.** MEDIUM only as a *fully reproducible* public page; no vendor reporting pass^k was found.
 - **MCP connector: LOW.** A hosted keyless EDGAR MCP server exists.
-- **Earned autonomy: HIGH as a product.** No shipping product was found that gates agent actions on statistical guarantees from user labels. The closest research is arXiv 2605.20270.
+- **Earned autonomy: HIGH as a shipped product only.** The method is published (closest: arXiv 2605.20270). The product rating rests on about 4 searches, and Lindy, Fyxer, Superhuman and Agentforce were not checked, so it needs confirming before it is used in marketing.
 
-**R7. Certification sample sizes** (exact one-sided binomial; `code/certification-n.py` → `runs/certification-n.txt`). The number of reviewed drafts a stratum needs before certification:
+**R7. Certification sample sizes.** α is the target bad-send rate and δ the chance of wrongly certifying a stratum that misses it. The table gives the reviewed drafts a stratum needs under a single-look exact one-sided binomial test, with the bad count rounded up so a stratum really runs at that rate (`code/certification-n.py` → `runs/certification-n.txt`):
 
-| α | δ | at 0% observed bad | at 3% | at 5% |
+| α | δ | 0 bad | stratum at 3% bad | stratum at 5% bad |
 |---|---|---|---|---|
-| 10% | 5% | 29 | 29 | 76 |
-| 5% | 5% | 59 | 260 | never |
+| 10% | 5% | 29 | 61 | 116 |
+| 5% | 5% | 59 | 361 | never |
+
+The plan requires an anytime-valid test, which needs more labels at non-zero bad rates. These are lower bounds.
 
 ## Figure and table inventory
 - **Exists:**
