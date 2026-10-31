@@ -1,99 +1,140 @@
-# Implementation plan (claim-first)
-Problem anchor: see `PROBLEM_ANCHOR.md`. In short: make the numbers provably right and the autonomy provably earned, and measure both.
-Capacity assumed: one engineer with an AI coding agent, about 8 weeks. Each block names the claim it lets YouBank make, how it's tested, and the result that would falsify it.
+# Implementation plan (claim-first), revision 2
+Problem anchor: `PROBLEM_ANCHOR.md`. Make the numbers provably right and the autonomy provably earned, and measure both.
+Capacity assumed: one engineer with an AI coding agent, about 8 weeks.
+Revision 2 addresses the plan review (`traces/plan/round1_response.md`, memory in `REVIEWER_MEMORY.md`) and pilot P1 v2 (`runs/probe-verify-v2.json`).
 
 ## Claim map
 
-| # | Claim YouBank will be able to make | Block | Falsifying result |
+| # | Claim YouBank will make | Block | Falsifying result |
 |---|---|---|---|
-| K0 | "Nothing YouBank does with your email, meetings or data creates legal exposure we know about." | M0 must-dos | Any must-do item still open at paid launch |
-| K1 | "We measure our answers' accuracy and reliability on a reproducible finance test set, every night." | B1 eval harness | The harness can't tell the current model from a deliberately degraded one (pass^k gap < 10 pts) |
-| K2 | "Every figure in an answer is checked against the source it cites; we show how many were verified." | B2 verify every figure | On the labelled set: < 85% precision on "unverified" flags, or < 70% recall of injected wrong numbers, or a verified rate that rises with payload size |
-| K3 | "The agent only acts on its own after it has earned it from your own approvals, with a stated error bound." | B3 earned autonomy | The median active autopilot user can't reach certification within 30 days at current label volumes, or the bound is violated in replay |
-| K4 | "Use YouBank's cited regulatory data inside Claude and ChatGPT." (distribution experiment) | B4 MCP connector | < 50 attributed sign-ups in 30 days after listing → stop investing |
+| G0 | *(internal launch gate, not a public claim)* Known legal exposures in email, meetings, data licensing and auth are closed before charging | M0 | Any M0 item open at paid launch |
+| K1 | "We measure our answers' accuracy and run-to-run reliability on a reproducible, period-pinned finance test set, every night, against a raw frontier model with a free EDGAR connector." | B1 | (a) The harness can't separate the default model from the routed small model or detect run-to-run instability (pass^3 vs pass@1 gap); or (b) YouBank does not beat the frontier model + free EDGAR MCP baseline on the figure-level tasks |
+| K2 | "Every figure in an answer that comes from structured data is bound to the field it states; we show how many were checked. Figures from filing text are marked 'cited, not checked'." | B2 | On the real-answer audit set: recall of wrong-field/period, scale and perturbed figures (each reported separately) below thresholds fixed after the audit (§B0); or a checked rate that rises with payload size |
+| K3 | "The agent sends on its own only after a certificate earned from your own approvals, with a stated error bound." | B3 | B3-0 shows the median active autopilot stratum can't reach the pre-registered n within 30 days; or the false-certification rate in replay exceeds δ |
+| K4 | *(distribution experiment)* "YouBank's Form D × precedents × Deal Radar tools inside Claude and ChatGPT." | B4 | < 50 attributed sign-ups in 30 days after listing → stop |
 
-## M0 — must-dos (week 1–1.5, ship regardless)
-Each is small and was confirmed against code by the triage reviewer and re-checked in this run:
-1. **Campaign email compliance.** `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), a visible unsubscribe line and a postal address on campaign and nurture mail, opt-outs honoured within two days, and SPF/DKIM/DMARC pre-checks. The only send path is `src/lib/crm/send.ts:95`; today the only list-unsubscribe code reads inbound mail (`autopilot-rules.ts:174`).
-2. **Autopilot trust gate fails closed.** `src/lib/crm/autopilot.ts:101` `.catch(() => null)` becomes a hold with a reason. Add a unit test in the existing `scripts/test-crm*.ts` style.
-3. **Meeting consent by default.** All participants get notice by default and consent is stored per participant (`src/lib/meetings/pipeline.ts:68-76`). Auto-start does not skip the prompt. Recording stops when someone objects.
-4. **Two-factor auth.** Enable the installed Better Auth `twoFactor` plugin (`src/lib/auth/server.ts:51`); require it for broker connections, live trading and Gmail send.
-5. **Turn off the unlicensed Nasdaq.com scrape in production** (`src/lib/market/nasdaq.ts:34-35` defaults on). Evaluate IEX delayed TOPS as the licensed delayed backup.
-6. **Make landing claims true or reword them** until B2/B3 ship (`Landing.tsx:110` "source link on every figure", `:168` "earns the right to send on its own").
-7. **Decisions for the owner (not code):** Gmail OAuth scope strategy before 100 OAuth users (`gmail.readonly` is restricted → CASA, or send-only + IMAP path); move Vercel to Pro before charging (Hobby bans commercial use); FMP display licence with AI-use rights; counsel on copy and algo trading (publisher's exclusion vs RIA partner).
-8. **Product analytics view.** A SQL view over existing tables (workflow_runs, ai_usage, crm_drafts, studio_runs, signups) for activation, D7/D30 and per-module use, so later blocks have metrics. The triage reviewer noted none exists.
-9. **Fix PatentsView** (`src/lib/edge/pulse/sources/patentsview.ts:25` calls `search.patentsview.org`, which USPTO paused and migrated on 20 Mar 2026). Test live first; this sandbox could not reach it.
+## Week 1, day 1–2 — the two most informative checks (before building anything)
+- **B0. Real-answer audit (1–2 days, in the owner's environment, with tool payloads logged).** Take 30–50 real chat answers from the default model on typical questions (comps, a company's LTM, a margin, EV/revenue, growth). Label every figure:
+  - correct or wrong;
+  - error type: perturbed, wrong field/period, scale, arithmetic, or filing-text misread;
+  - origin: a payload value, a `calc` result, a free derivation, or filing text.
 
-## B1 — Finance eval harness (weeks 1.5–3) → K1
-- **Golden set**, built only from data where the right answer is computable:
-  - (a) XBRL-recomputable figures, e.g. LTM revenue or margin for 40 tickers, computed by `src/lib/company.ts` itself at freeze time and stored with filing accession numbers;
-  - (b) filing lookups (8-K items, Form 4 counts);
-  - (c) time-sensitive quotes with an as-of tolerance;
-  - (d) 10 Studio build/debug tasks with checkable cells.
+  Output: the natural error rate and error mix. These set K2's thresholds and decide whether B2 leans on prevention (field-bound references) or detection. Store it as `scripts/fixtures/eval-agent/audit-v1.json`.
+- **B3-0. Label-volume check (½ day, from `crm_learning_events` in production).**
+  - Per active autopilot user and stratum, report per week: approve-unchanged, edited (any edit >5% counts as bad), rejected, and discarded (discards are not labels).
+  - Pre-register α (the target bad-send rate, e.g. 5%), δ (the false-certification rate, e.g. 5%) and the required n. At these α and δ, the plan reviewer's rough figures are n ≈ 22 at a 0% observed bad rate, ≈ 65 at 3% and ≈ 140 at 5%; recompute exactly with the chosen test before the check.
+  - State whether certification counts the 90-day decayed counts or raw counts.
+  - **Go/no-go:** go if the median active stratum reaches n within 30 days. Otherwise stop B3 at email and document the negative.
 
-  Freeze it in `scripts/fixtures/eval-agent/` with the snapshot date. No answer is graded by an LLM alone.
-- **Runner** `scripts/eval-agent.ts`: drives `runChat`/workflows, k=3 repeats, scores pass@1 and pass^3, verified-figure rate (after B2), tokens and cost from the usage ledger. Runs nightly where keys exist (this sandbox has no SEC or OpenAI reach), via Batch API where possible.
-- **Baselines:** the current default model; the routed small models; a deliberately degraded run (tools withheld) as the sanity floor.
-- **Output:** `/accuracy` page (C7) only after 4 weeks of stable numbers, every figure linking to its run file.
-- **Positioning:** vendors self-report one-shot scores (Fintool 90% on the Vals public subset; Rogo BigFinanceBench subset). We found no vendor reporting pass^k. That reporting, plus reproducibility, is the difference.
+## M0 — internal launch gate (weeks 1–3, in parallel with B1)
+**Day 1:**
+- **Fail-closed trust gate.** `src/lib/crm/autopilot.ts:101` `trustGate(...).catch(() => null)` becomes a hold with a reason. Add a test beside the existing ones in `scripts/test-autopilot.ts` / `scripts/test-learning.ts`.
+- **Landing copy.** Reword `src/components/marketing/Landing.tsx:110` ("source link on every figure" → e.g. "a source on every figure; structured figures checked" once B2 ships; until then "cited to the filing") and `:168` ("earns the right to send on its own" → describe today's probation, spot check and hold accurately).
 
-## B2 — Verify every figure, redesigned per pilot P1 (weeks 3–5) → K2
-Pilot P1 (`runs/probe-verify-*.json`, synthetic_proxy) showed that reusing Edge's check as-is accepts wrong figures 37–54% of the time on average, rising with payload size, mostly through its pairwise arithmetic step. The variant that worked accepted correct figures ~99% of the time and wrong ones ~5%. It has three parts:
-1. **Bind each figure to the cited entity's payload.** Record raw payloads per source id in `ToolCtx.addSource` (`src/lib/ai/tools.ts`), and check a figure only against the payload of the [Sx] it cites.
-2. **Typed payloads.** Ratio fields carry units: serialise `gross_margin` etc. as "67.3%" and multiples as "2.5x" in `summarize()` (`tools.ts:42-61`), or attach a unit map.
-3. **No free pairwise derivations.** A derived figure must come from a `calc` call with references (A2: `calc` already supports variables, `tools.ts:238-246`); the verifier re-runs that calc.
+**Weeks 1–3:**
+1. **Campaign and nurture email compliance.** RFC 8058 `List-Unsubscribe` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, a visible unsubscribe line and a postal address, opt-outs within two days, SPF/DKIM/DMARC pre-checks. Single send path: `src/lib/crm/send.ts:95`.
+2. **Meeting notice.** A mandatory participant notice (bot announcement or a posted notice) plus the host's attestation, stored per meeting. Auto-start can no longer skip it (`src/lib/meetings/pipeline.ts:68-76`). Per-participant consent has no mechanism in desktop capture, so this is the feasible bar. Counsel reviews speaker labelling (BIPA).
+3. **Two-factor auth** with the installed Better Auth `twoFactor` plugin (`src/lib/auth/server.ts:51`), required for broker connections, live trading and Gmail send.
+4. **A separate switch for the Nasdaq.com scrape.** Today `MARKET_BACKUP` (`src/lib/market/nasdaq.ts:35`) also gates the CoinGecko backup (`free.ts:29`) and the earnings calendar (`news/calendar.ts:48`). Split it, turn the Nasdaq scrape off in production, and evaluate IEX delayed TOPS.
+5. **Product analytics view** (SQL over workflow_runs, ai_usage, crm_drafts, studio_runs and sign-ups): activation, D7/D30, per-module use.
+6. **Owner decisions, not code:**
+   - Gmail OAuth scope before 100 OAuth users (`gmail.readonly` is restricted, so it needs CASA; or go send-only plus IMAP).
+   - Vercel Pro before charging.
+   - FMP display licence with AI-use rights.
+   - Counsel on copy and algo trading (publisher's exclusion vs RIA partner).
 
-Plus:
-- **UI:** "N of M figures verified", unverified ones underlined with the reason.
-- **Surfaces:** chat first, then workflow outputs, memos and Studio tie-out.
-- **Validation (real_gt):** 200 hand-labelled figures from real answers on the B1 golden set, plus injected wrong numbers. This also replaces Edge's synthetic calibration fixture (`src/lib/edge/claims/model.json`, 468 template claims) with real labels.
-- **Positioning vs Kepler** (Claude-based; "every number validated", removes unverifiable values, Business Wire 21 May 2026): Kepler is an enterprise research platform. YouBank does this at $59, shows a numeric verified rate per answer (not found elsewhere), and carries verification into outreach and Studio.
+## B1 — Finance eval harness (weeks 1–3) → K1
+- **Ground truth that is not the agent's own code path:**
+  - (a) **Hand-checked slice.** 40 figures for 10 tickers, pinned to a named fiscal period and filing accession, checked by a person against the filing.
+  - (b) **Machine slice.** 200+ figures read from SEC XBRL company facts *by accession and period*, not via `getCompanyData` (which has no as-of date and is the agent's own tool path).
+  - (c) **Filing lookups.** 8-K items, Form 4 counts.
+  - (d) **Studio tasks.** 10 build or debug tasks with checkable cells.
+  - (e) **The B0 audit set.**
 
-## B3 — Earned autonomy, made real (weeks 5–7) → K3 (the high-upside slot)
-Novelty check: HIGH as a shipped product. No product found that gates agent actions on a statistical guarantee from the user's own approvals. The closest research is Conformal Selective Acting (arXiv 2605.20270, May 2026). The triage reviewer found today's version is weaker than the marketing:
+  Every question names its period. Freeze in `scripts/fixtures/eval-agent/` with the snapshot date.
+- **Runner** `scripts/eval-agent.ts`: runs the chat agent and workflows with k = 3 repeats; reports pass@1, pass^3, figure-level accuracy by error type, and tokens and cost from the usage ledger. Runs nightly where keys and network exist (this sandbox has neither).
+- **Comparators:**
+  - the default model;
+  - the routed small model (A5's gate);
+  - **the raw frontier model with only a free EDGAR MCP server**, the baseline a buyer will ask about;
+  - run-to-run stability, as the pass@1 vs pass^3 gap.
+- **Publishing:** the `/accuracy` page comes only after 4 weeks of stable numbers, each linked to its run file.
+- **Positioning:** we found no vendor reporting pass^k; vendors self-report one-shot subsets (Fintool, Rogo).
+
+## B2 — Field-bound figures (weeks 3–5) → K2
+P1 v2 (`runs/probe-verify-v2.json`, synthetic_proxy, 5 companies in context) shows how much each variant catches:
+
+| Variant | Wrong field/period accepted | Perturbed accepted | Scale error accepted | Correct accepted |
+|---|---|---|---|---|
+| Edge check as-is | 0.987 | 0.523 | 0.526 | — |
+| Entity-scoped + typed | **1.000** | 0.037 | 0.008 | — |
+| Bound to the claimed field | **0.031** | 0.023 | 0.003 | 1.000 |
+
+So the design is prevention, not just matching:
+1. **Structured tool results carry a figure registry.** Each value has an id like `S3.revenue@FY2026Q2` with its unit, its scale and the entity it belongs to. Bind by tool result and company, not by the `addSource` id, which today is issued before the payload exists and merges FMP sources by URL.
+2. **Answers cite figures by id.** The renderer shows the value from the registry, not the model's retyped digits. Derived figures come from `calc` with id references, so `calc` needs to resolve `S3.revenue` and return a citable result id.
+3. **Fallback detection for figures without an id:** entity-scoped matching on unit-typed values (money only against money at its declared scale). Before reuse, fix four verifier bugs in `src/lib/edge/claims/numbers.ts`:
+   - payload values 1900–2099 masked as years (`:26`);
+   - "1.2B" not parsed as money;
+   - SIC-code collisions;
+   - the 1000× scale tries in `sameNumber` (`:66`).
+
+   The UI says "matches a number in the cited source" for these figures, not "verified".
+4. **v1 scope:** chat answers citing structured tools. Figures from filing text are shown as "cited, not checked".
+5. **Validation:** recall per error type on the B0 audit set plus injected errors. Report precision only on natural figures, with the base rate stated: precision is base-rate dependent, so no fixed 85% target.
+6. **Calibration data.** Replace Edge's synthetic fixture (`src/lib/edge/claims/model.json`, 468 template claims) with B0 and B2 labels.
+
+Positioning vs Kepler (Claude-based; "every number validated", Business Wire 21 May 2026): figure-level binding at $59 with a numeric checked rate, carried into outreach and Studio.
+
+## B3 — Earned autonomy, made real (weeks 5–7, only if B3-0 says go) → K3
+Today, per the triage review:
 - the e-process only demotes (`engine-rules.ts:118-133`);
-- certification is a Bayesian 90% bound re-checked on every label (not anytime-valid);
-- it only offers autopilot rather than gating it (`engine.ts:393`).
+- certification is a Bayesian 90% bound re-checked on every label;
+- it only offers autopilot, it doesn't gate it (`engine.ts:393`).
 
 Steps:
-1. **Label-volume check first** (one day, from `crm_learning_events` in production): per active user and stratum, how many approve/edit/reject labels arrive per week? If the median user reaches the required n within 30 days, proceed. If not, stop at email and record it as a documented negative.
-2. **Make certification gate auto-send for email.** Auto requires a current certificate. Certification uses an anytime-valid test (e.g. a betting e-process for "error rate ≤ α"), keeping the existing demotion.
-3. **Generalise to one more action type only:** Studio writes to a shared workbook, or campaign sends, through a shared `src/lib/ai/policy.ts` modelled on `src/lib/algo/agent-gate.ts`. Trading stays on its existing gates and counsel's decision.
-4. **Validation (simulation_only, then real):** replay historical labels; the realised error rate of auto-sent drafts must stay ≤ α at every stopping time in replay.
+1. **Auto-send requires a current certificate** from an anytime-valid test of "bad rate ≤ α" at level δ, as pre-registered in B3-0. Keep the existing demotion.
+2. **Generalise to one more action type,** shared Studio workbook writes or campaign sends, through `src/lib/ai/policy.ts`, modelled on `src/lib/algo/agent-gate.ts`. Trading keeps its own gates.
+3. **Replay validation:** the false-certification rate across users and strata at any stopping time must stay ≤ δ.
 
-## B4 — MCP connector as a bounded distribution experiment (weeks 7–8, optional) → K4
-Novelty is LOW. Free EDGAR MCP servers already exist, including a hosted keyless one (secedgar.caseyjhand.com/mcp, cyanheads/secedgar-mcp-server), plus an "SEC Funding Tracker" Form D server and paid SEC-API.io. Scope is therefore narrow:
-- read-only Form D × precedents × Deal Radar tools that no free server has;
+Novelty: HIGH as a product. Closest research: Conformal Selective Acting (arXiv 2605.20270).
+
+## B4 — MCP connector, bounded (weeks 7–8, optional) → K4
+Novelty is LOW. A hosted keyless EDGAR MCP server exists (cyanheads/secedgar-mcp-server), plus open-source ones, SEC-API.io and an "SEC Funding Tracker" Form D server.
+
+**Scope:**
+- read-only Form D × precedents × Deal Radar tools;
 - deep links into YouBank;
-- no licensed prices.
+- no licensed prices;
+- B2's guarantee does not apply, because the host model writes the answer.
 
-Build:
-- **Server:** `mcp-handler` 2.3.0 (2026-07-28 spec, stateless, legacy fallback) on `@modelcontextprotocol/server` ^2.
-- **Auth:** Better Auth OAuth provider. Pilot P2: the 1.6.33 provider is a patch bump; CIMD support is unconfirmed.
+**Build:** `mcp-handler` 2.3.0 (2026-07-28 spec plus legacy fallback) on `@modelcontextprotocol/server` ^2. Auth through Better Auth's OAuth provider. CIMD support is unconfirmed (P2), so check it before starting.
 
-Kill criterion: < 50 attributed sign-ups in 30 days. B2's guarantee does not apply here, since the host model writes the answer.
-
-## Deferred (backlog, ranked by the triage reviewer)
-In priority order:
-1. D2 onboarding to first value
-2. A5 cheaper models behind B1
-3. A8 inspect-before-write (verify-after-write already exists in `studio/agent.ts:200-211`)
-4. D3 narrow the front door / Labs
+## Deferred backlog (triage ranking)
+In order:
+1. D2 onboarding
+2. A5 cheaper models (behind B1)
+3. A8 inspect-before-write
+4. D3 Labs / narrow front door
 5. D1 desk inbox
 6. C4 email-the-desk
 7. D4 PWA + push
-8. A3 tool search (weakened: the 230 workflows add no data reach beyond the 39 tools)
-9. E7 data hygiene
-10. E1–E6 quant items
-11. F3 platform items (React Compiler, OTel, Cache Components)
+8. A3 tool search (weakened: the 230 workflows add no data reach)
+9. E7 data hygiene, including PatentsView (only runs with `PATENTSVIEW_API_KEY`, so low impact)
+10. E1–E6 quant
+11. F3 platform
 
-Not recommended: TSFM daily-return signals; LLM-emitted credit or M&A probabilities without trees and calibration; a shared cross-customer prospect database (GDPR and data-broker exposure).
+Not recommended:
+- TSFM daily-return signals;
+- LLM-emitted credit or M&A probabilities without trees and calibration;
+- a shared cross-customer prospect database;
+- naive reuse of Edge's number check (P1).
 
-## Run order and milestones
-M0 must-dos → M1 B1 harness with baselines → M2 B2 verified figures on chat → M3 B3 label check, then the gate → M4 B4 if capacity remains.
+## Run order
+B0 + B3-0 (week 1) → M0 day-1 items → B1 + M0 rest (weeks 1–3) → B2 (weeks 3–5) → B3 if go (weeks 5–7) → B4 if capacity remains.
 
 ## Risks
-- Golden sets rot. Re-freeze quarterly, keep old sets for trend.
-- B2 can still pass a wrong number that falls within the written rounding: about 5% in P1, worst for 1-decimal multiples. Show the tolerance.
-- B3 label scarcity. The day-1 check decides whether to proceed.
-- Sandbox limits: SEC, LLM and npm-provider docs were unreachable from here. Every live check above is marked for the owner's environment.
+- Golden sets rot: re-freeze quarterly.
+- B0 may show figures are mostly right already. Then B2 is mainly a trust surface, and its UI claim stays "checked", not "correct".
+- B3 label scarcity: decided by B3-0.
+- Sandbox limits: SEC, LLM APIs and some npm docs were unreachable here, so every live check is flagged for the owner's environment.
