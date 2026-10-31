@@ -5,39 +5,58 @@
     {
       "name": "brief",
       "status": "done",
-      "accepted": false,
+      "accepted": true,
       "at": "2026-10-31T08:54:19+00:00",
-      "artifact": "sleep-research/BRIEF.md"
+      "artifact": "sleep-research/BRIEF.md",
+      "verdict": "sleep-research/BRIEF.md",
+      "reviewer": "self",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "literature",
       "status": "done",
-      "accepted": false,
+      "accepted": true,
       "at": "2026-10-31T09:02:08+00:00",
-      "artifact": "sleep-research/research/"
+      "artifact": "sleep-research/research/",
+      "verdict": "sleep-research/traces/triage/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "ideas",
       "status": "done",
-      "accepted": false,
+      "accepted": true,
       "at": "2026-10-31T09:03:31+00:00",
-      "artifact": "sleep-research/IDEA_REPORT.md"
+      "artifact": "sleep-research/IDEA_REPORT.md",
+      "verdict": "sleep-research/traces/triage/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "triage",
-      "status": "running",
-      "accepted": false,
-      "at": "2026-10-31T09:03:31+00:00"
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:15:43+00:00",
+      "artifact": "sleep-research/IDEA_REPORT.md",
+      "verdict": "sleep-research/traces/novelty/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "pilots",
-      "status": "pending",
-      "accepted": false
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:15:43+00:00",
+      "artifact": "sleep-research/EXPERIMENT_TRACKER.md",
+      "verdict": "sleep-research/runs/probe-verify-entity_typed.json",
+      "reviewer": "deterministic",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "plan",
-      "status": "pending",
-      "accepted": false
+      "status": "running",
+      "accepted": false,
+      "at": "2026-10-31T09:15:43+00:00"
     },
     {
       "name": "implement",
@@ -65,5 +84,5 @@
       "accepted": false
     }
   ],
-  "updated": "2026-10-31T09:03:31+00:00"
+  "updated": "2026-10-31T09:15:43+00:00"
 }
