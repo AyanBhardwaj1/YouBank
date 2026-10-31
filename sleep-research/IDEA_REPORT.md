@@ -84,14 +84,55 @@ Format: **ID. Title** — lens/source · prior_work · so_what · effort_note
 - **F2. Gmail scope strategy (send-only sensitive scope or a CASA budget); meeting-bot consent by default; copy/algo kept impersonal until counsel decides.** *data-reg (b)2,3,6* · effort: S–M.
 - **F3. Platform: React Compiler, OTel spans per model/tool call, Vercel Pro + retire Neon relays, Cache Components phase 1, Playwright CI.** *platform #1,5,6,8,9* · effort: S→L.
 
-## Triage (reviewer)
-See `traces/triage/round1.md`. Filled in after the review.
+## Triage (reviewer: fresh same-family subagent, provisional)
+Trace: `traces/triage/round1.md` (prompt) and `traces/triage/round1_response.md` (verbatim response). The reviewer counted 38 IDs, not 34; it is right, and all 38 were ranked.
 
-## Novelty
-See `traces/novelty/`. Filled in after the review.
+Ranked order: F1 > B5 > F2 > A4 > A1 > D2 > B3 > A5 > A2 > E7 > A8 > C1 > D3 > C7 > D1 > C4 > D4 > A3 > E4 > A9 > D6 > C3 > E1 > B4 > F3 > D5 > C6 > A6 > B1 > E2 > A7 > B2 > C5 > E5 > C2 > D7 > E3 > E6.
 
-## Pilots (feasibility probes)
-Filled in after triage.
+Flagship picks: **A4** eval harness, **A1** verify every figure, **C1** MCP connector (high-upside slot).
+
+The reviewer's corrections, accepted:
+- Edge's claim calibration was fitted on 468 *synthetic* template claims (`src/lib/edge/claims/model.json:9`).
+- The e-process only demotes; certification is advisory (`engine-rules.ts:118-133`, `engine.ts:393`).
+- The 328 "tools" are 230 prompt workflows plus 99 calculators over the same 39 data tools, which weakens A3.
+- Studio verify-after-write already exists (`studio/agent.ts:200-211`), and so does a 5-minute autopilot hold (`autopilot.ts:127`).
+- The 21.1% retention figure is for mobile subscription apps.
+- `pricing.ts` already prices Opus 5.5 and Sonnet 5.5.
+
+New defect found: the autopilot trust gate fails open on error (`src/lib/crm/autopilot.ts:101`, re-verified by the executor).
+
+Missed items it added: product analytics (no metric for activation today); licensed prices must not leak into MCP or public pages; the MCP host model writes the final answer, so A1 can't apply there.
+
+## Novelty (reviewer: fresh same-family subagent, provisional; ~20 searches)
+Trace: `traces/novelty/round1_response.md`.
+- **A1: LOW.** Kepler (Claude-based finance research; Business Wire 21 May 2026) already sells "every number validated, unverifiable removed, click to filing line". The difference: post-hoc checking of chat text at the $59 tier, plus a numeric "N of M verified" rate, which was not found elsewhere. The "Perplexity auditable financials" prior could not be confirmed.
+- **A4: LOW internally, MEDIUM if published.** Vendors self-report one-shot scores (Fintool 90% on the Vals public subset; Rogo BigFinanceBench subset). pass^k comes from τ-bench; arXiv 2601.15322 argues for consistency in finance. No vendor was found reporting pass^k.
+- **C1: LOW.** A hosted keyless EDGAR MCP server exists (cyanheads/secedgar-mcp-server), along with open-source ones (stefanoamorelli/sec-edgar-mcp), paid SEC-API.io, and an "SEC Funding Tracker" Form D server. The real opening is narrow: Form D × precedents × Deal Radar plus deep links.
+- **B2: HIGH as a product.** No product was found gating agent actions with statistical guarantees from user labels; Claude Code auto mode uses a fixed classifier, and email tools use plain thresholds. The closest research is Conformal Selective Acting (arXiv 2605.20270). The risk is label scarcity, not novelty.
+
+Effect: C1 drops from flagship to a bounded distribution experiment with a kill criterion. B2 (earned autonomy) takes the high-upside slot, gated by a one-day label-volume check.
+
+## Pilots (feasibility probes; `EXPERIMENT_TRACKER.md`)
+| Idea | Setup | Runtime | Result | Class |
+|---|---|---|---|---|
+| A1 | `code/probe-verify.ts`: Edge `checkNumbers` on synthetic chat-style payloads (shape of `get_company_financials`), 300 trials × 7 figure kinds × {1, 5, 15} companies, wrong figures ±3–30%, seed 20261031 | ~2 min | As-is: wrong figures accepted 37–54% on average (max 71%), rising with payload size, mostly via pairwise derivations. Entity-scoped + typed units + no free derivations: true accept ~0.99, false accept ~0.05 (max 0.10) | **Informative negative** for naive reuse; **positive** for the redesign (synthetic_proxy only) |
+| C1 | npm registry probe | ~2 min | `mcp-handler` 2.3.0 serves the 2026-07-28 spec plus legacy fallback; the spec deprecates DCR for CIMD; Better Auth OAuth provider 1.6.33 is a patch bump. CIMD support unconfirmed | Feasible, one open question |
+| A4 | Network probe | ~1 min | SEC and OpenAI unreachable from the sandbox, no keys | Must run in the owner's environment |
 
 ## Chosen roadmap
-Filled in after triage and probes.
+Full plan in `EXPERIMENT_PLAN.md`:
+1. **M0 must-dos:** email compliance, fail-closed trust gate, meeting consent, 2FA, Nasdaq scrape off, honest landing claims, analytics view, PatentsView fix, owner decisions.
+2. **B1 eval harness (A4).**
+3. **B2 verify every figure (A1, redesigned per P1, with A2 calc-by-reference).**
+4. **B3 earned autonomy made real (B2 idea).** High upside; it starts with a label-volume check.
+5. **B4 MCP connector (C1)**, narrowed, with a kill criterion.
+
+Why this order: B1 measures everything after it; B2 makes the core product claim true; B3 is the one place the novelty check found no shipping competitor.
+
+## Backups and eliminated
+- **Backups:** all other IDs, in the triage ranking order (see `EXPERIMENT_PLAN.md` "Deferred").
+- **Eliminated (evidence):**
+  - TSFM daily-return signals (R² < 0 in zero-shot studies).
+  - LLM-emitted credit and M&A probabilities without trees and calibration (2511.16375).
+  - A shared cross-customer prospect database (Garante EUR 2M precedent; California data-broker rules).
+  - Naive reuse of Edge's number check for chat (pilot P1).
