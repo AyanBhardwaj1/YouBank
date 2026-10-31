@@ -1,0 +1,282 @@
+{
+  "probe": "P1 verify-every-figure on chat-style payloads",
+  "mode": "entity_direct",
+  "evalType": "synthetic_proxy",
+  "seed": 20261031,
+  "trialsPerSize": 300,
+  "results": {
+    "companies_1": {
+      "numbersInPayload": 30,
+      "trueAccept": {
+        "usd: revenue": {
+          "rate": 0.973,
+          "direct": 292,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.98,
+          "direct": 294,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.987,
+          "direct": 296,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 0.99,
+          "direct": 297,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      },
+      "falseAccept": {
+        "usd: revenue": {
+          "rate": 0.07,
+          "direct": 21,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.067,
+          "direct": 20,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.057,
+          "direct": 17,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 0.02,
+          "direct": 6,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      }
+    },
+    "companies_5": {
+      "numbersInPayload": 30,
+      "trueAccept": {
+        "usd: revenue": {
+          "rate": 0.983,
+          "direct": 295,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.983,
+          "direct": 295,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.987,
+          "direct": 296,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 0.997,
+          "direct": 299,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      },
+      "falseAccept": {
+        "usd: revenue": {
+          "rate": 0.087,
+          "direct": 26,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.093,
+          "direct": 28,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.08,
+          "direct": 24,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 0.027,
+          "direct": 8,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      }
+    },
+    "companies_15": {
+      "numbersInPayload": 30,
+      "trueAccept": {
+        "usd: revenue": {
+          "rate": 0.977,
+          "direct": 293,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.983,
+          "direct": 295,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.987,
+          "direct": 296,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 1,
+          "direct": 300,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      },
+      "falseAccept": {
+        "usd: revenue": {
+          "rate": 0.073,
+          "direct": 22,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: operating income": {
+          "rate": 0.063,
+          "direct": 19,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: free cash flow": {
+          "rate": 0.067,
+          "direct": 20,
+          "derived": 0,
+          "n": 300
+        },
+        "usd: enterprise value": {
+          "rate": 0.02,
+          "direct": 6,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: gross margin": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "pct: revenue growth": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        },
+        "x: EV/revenue": {
+          "rate": 0,
+          "direct": 0,
+          "derived": 0,
+          "n": 300
+        }
+      }
+    }
+  }
+}
