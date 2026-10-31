@@ -11,19 +11,23 @@
     },
     {
       "name": "literature",
-      "status": "running",
+      "status": "done",
       "accepted": false,
-      "at": "2026-10-31T08:54:19+00:00"
+      "at": "2026-10-31T09:02:08+00:00",
+      "artifact": "sleep-research/research/"
     },
     {
       "name": "ideas",
-      "status": "pending",
-      "accepted": false
+      "status": "done",
+      "accepted": false,
+      "at": "2026-10-31T09:03:31+00:00",
+      "artifact": "sleep-research/IDEA_REPORT.md"
     },
     {
       "name": "triage",
-      "status": "pending",
-      "accepted": false
+      "status": "running",
+      "accepted": false,
+      "at": "2026-10-31T09:03:31+00:00"
     },
     {
       "name": "pilots",
@@ -61,5 +65,5 @@
       "accepted": false
     }
   ],
-  "updated": "2026-10-31T08:54:19+00:00"
+  "updated": "2026-10-31T09:03:31+00:00"
 }
