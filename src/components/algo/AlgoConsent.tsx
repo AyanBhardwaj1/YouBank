@@ -11,6 +11,7 @@ import { Modal } from "@/components/copy/Consent";
 import { Icon } from "@/components/ui/Icon";
 import { CONSENTS } from "@/lib/algo/disclosures";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { ensureStepUp } from "@/lib/client/step-up";
 import { json } from "./client";
 
 type Kind = "terms" | "live";
@@ -28,8 +29,11 @@ export function AlgoConsentProvider({ children }: { children: ReactNode }) {
   const accept = async () => {
     if (!kind) return;
     setBusy(true); setError(null);
-    try { await fetchJson("/api/algo/consent", json("POST", { kind })); close(true); }
-    catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+    try {
+      // Agreeing to live trading needs a fresh authenticator code (lib/client/step-up); cancelling keeps this open.
+      if (kind === "live" && !(await ensureStepUp())) return;
+      await fetchJson("/api/algo/consent", json("POST", { kind })); close(true);
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const c = kind ? CONSENTS[kind] : null;
   return (

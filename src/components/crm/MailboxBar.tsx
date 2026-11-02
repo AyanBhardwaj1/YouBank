@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { safeText } from "@/lib/client/errors";
+import { ensureStepUp } from "@/lib/client/step-up";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
@@ -15,6 +16,7 @@ export type MailboxInfo = {
 };
 type SyncResult = { fetched: number; triaged: number; skipped: number; drafted: number; scheduled: number; sent: number; youReplied: number; errors: string[] };
 
+const GMAIL_CONNECT = "/api/crm/gmail/connect";
 const BLANK = { preset: "gmail", email: "", password: "", name: "", imapHost: "", imapPort: "993", smtpHost: "", smtpPort: "465" };
 
 /**
@@ -27,8 +29,10 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
   const accounts = info?.accounts ?? [];
   const preset = connecting && info?.presets[connecting.preset];
 
+  // Connecting a mailbox gives send rights, so it needs a fresh authenticator code first (lib/client/step-up).
   const connect = () => ctx.run("connect", async () => {
     if (!connecting) return;
+    if (!(await ensureStepUp())) return;
     const body = connecting.preset === "custom"
       ? { ...connecting, preset: undefined, imapPort: Number(connecting.imapPort), smtpPort: Number(connecting.smtpPort) }
       : { preset: connecting.preset, email: connecting.email, password: connecting.password, name: connecting.name };
@@ -37,6 +41,14 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
     ctx.say(`Connected ${a.address}. Signed in to both mail servers. ${autoSync ? "The agent reads new mail every few minutes; press Sync to start now." : "Press Sync to read it."}`);
     ctx.refresh();
   });
+  // Google sign-in is a page change: the code is asked for here first, then the browser goes on. (A link
+  // opened another way reaches the server without one and comes back with its message.)
+  const google = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    // A full navigation to the API route (it redirects on to Google), not a client-side route change.
+    if (await ensureStepUp()) window.location.assign(new URL(GMAIL_CONNECT, window.location.href));
+  };
   const sync = (id: number) => ctx.run("sync", async () => {
     const r = await api<SyncResult>("/api/crm/gmail/sync", { method: "POST", body: JSON.stringify({ accountId: id, max: 15 }) });
     ctx.say([
@@ -79,7 +91,7 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
                 {a.status === "needs_reauth"
                   ? (a.provider === "imap"
                     ? <button type="button" onClick={() => setConnecting({ ...BLANK, email: a.address })} className={btn.primary}>Reconnect</button>
-                    : <a href="/api/crm/gmail/connect" className={btn.primary}>Reconnect</a>)
+                    : <a href={GMAIL_CONNECT} onClick={google} className={btn.primary}>Reconnect</a>)
                   : <button type="button" onClick={() => sync(a.id)} disabled={!!ctx.busy} className={btn.primary}>{ctx.busy === "sync" ? "Reading…" : "Sync now"}</button>}
                 <button type="button" onClick={() => disconnect(a)} disabled={!!ctx.busy} className={btn.danger}>Disconnect</button>
               </span>
@@ -87,7 +99,7 @@ export function MailboxBar({ ctx, info, autoSync }: { ctx: PanelCtx; info: Mailb
           </div>
         )}
         <span className="flex items-center gap-2">
-          {info?.oauth && <a href="/api/crm/gmail/connect" className={btn.ghost}>Sign in with Google</a>}
+          {info?.oauth && <a href={GMAIL_CONNECT} onClick={google} className={btn.ghost}>Sign in with Google</a>}
           {info?.configurable
             ? <span className="flex items-center gap-1.5"><button type="button" onClick={() => setConnecting(connecting ? null : BLANK)} className={accounts.length ? btn.ghost : btn.primary}>{accounts.length ? "Add a mailbox" : "Connect a mailbox"}</button>{accounts.length > 0 && <PremiumBadge feature="relationships.extra-mailboxes" />}</span>
             : <span className="text-[11px] text-muted">Connecting a mailbox is not switched on yet. You can still paste in any email for the agent to read.</span>}

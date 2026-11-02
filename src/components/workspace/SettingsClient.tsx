@@ -20,6 +20,7 @@ const PlanSettings = lazyPanel(() => import("@/components/billing/PlanSettings")
 const DesktopSettings = lazyPanel(() => import("@/components/desktop/DesktopConnect").then((m) => m.DesktopSettings), TabLoading);
 const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
 const DataSourcesSettings = lazyPanel(() => import("@/components/settings/DataSourcesSettings").then((m) => m.DataSourcesSettings), TabLoading);
+const SecuritySettings = lazyPanel(() => import("@/components/settings/SecuritySettings").then((m) => m.SecuritySettings), TabLoading);
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -29,6 +30,7 @@ const TABS = [
   { id: "calendar", label: "Calendar", icon: "Calendar" },
   { id: "plan", label: "Plan", icon: "CreditCard" },
   { id: "sources", label: "Data sources", icon: "Server" },
+  { id: "security", label: "Security", icon: "Shield" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
   { id: "desktop", label: "Desktop app", icon: "Download" },
@@ -36,7 +38,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
-  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings]);
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings, SecuritySettings]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
@@ -78,6 +80,7 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
         {tab === "plan" && <PlanSettings />}
         {tab === "desktop" && <DesktopSettings />}
         {tab === "sources" && <DataSourcesSettings />}
+        {tab === "security" && <SecuritySettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

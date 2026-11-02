@@ -12,6 +12,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { ensureStepUp } from "@/lib/client/step-up";
 import { NOT_ADVICE_SHORT, TIMING } from "@/lib/copytrade/disclosures";
 import type { CuratedFund } from "@/lib/copytrade/funds";
 import { useSubNav, useViewInUrl } from "@/lib/subnav";
@@ -177,8 +178,11 @@ function Broker({ hub, connected, reload }: { hub: Hub | null; connected?: boole
   useEffect(() => { void load(); }, [load]);
   const connect = async () => {
     setBusy(true); setError(null);
-    try { const r = await call<{ url: string }>("/api/copy/broker", json("POST", {}), consent); window.location.href = r.url; }
-    catch (e) { setError(errorMessage(e)); setBusy(false); }
+    try {
+      // A brokerage connection needs a fresh authenticator code first (lib/client/step-up).
+      if (!(await ensureStepUp())) { setBusy(false); return; }
+      const r = await call<{ url: string }>("/api/copy/broker", json("POST", {}), consent); window.location.href = r.url;
+    } catch (e) { setError(errorMessage(e)); setBusy(false); }
   };
   const disconnect = async () => {
     if (!(await confirmDialog({ title: "Disconnect your brokers?", body: "Every brokerage connection is removed and your live copies are paused. Orders already sent stay with your broker; your shares stay where they are.", tone: "danger", confirmLabel: "Disconnect" }))) return;

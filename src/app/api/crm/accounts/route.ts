@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { requireRecentTwoFactor } from "@/lib/auth/step-up";
 import { listAccounts, saveImapAccount, toSafe } from "@/lib/crm/accounts";
 import { encryptionReady } from "@/lib/crm/crypto";
 import { MAIL_PRESETS } from "@/lib/crm/imap";
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
       imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number; username?: string;
     } | null;
     if (!body?.email || !body.password) return NextResponse.json({ error: "Email and app password are required" }, { status: 400 });
+    // An app password gives send rights on the mailbox: it needs a fresh authenticator code.
+    await requireRecentTwoFactor(user);
     await rateLimit(`mail-connect:${user.id}`, 10, 3_600_000, "Too many connection attempts this hour. Check the settings and try again later.");
     // A second mailbox is premium (relationships.extra-mailboxes); a plan without it gets a 402 to show in line.
     await requireMailboxRoom(user, body.email);
