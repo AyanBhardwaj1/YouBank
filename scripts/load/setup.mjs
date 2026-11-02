@@ -267,13 +267,15 @@ function seedCompanies(tx) {
     data: {
       ticker, name, cik: String(320193 + i).padStart(10, "0"), sic: "3571", sicLabel: "Seeded industry", exchange: "NASDAQ", hq: "Somewhere, CA", fye: "Sep 30", fyeMMDD: "0930",
       description: "A seeded company record for the load test. ".repeat(10), industry: "Seeded", website: "https://loadtest.invalid",
-      price: { last: 100 + i, change: 1, changePct: 1, marketCap: 1e6, low52: 80, high52: 140, asOf: new Date().toISOString() },
+      price: { last: 100 + i, change: 1, changePct: 0.01, marketCap: 1e6, low52: 80, high52: 140, asOf: new Date().toISOString() },
       ltm: { periodEnd: "2026-06-30", revenue: 100000, priorRevenue: 90000, grossProfit: 45000, operatingIncome: 30000, da: 3000, sbc: 2000, ebitda: 33000, adjEbitda: 35000, operatingCashFlow: 32000, capex: 4000, netIncome: 25000 },
-      balance: { asOf: "2026-06-30", cash: 50000, debt: 40000, sharesOut: 15000 },
+      balance: { asOf: "2026-06-30", cash: 50000, debt: 40000, sharesOut: 15000, shareClasses: 1 },
       estimates: { ntmRevenue: null, ntmEbitda: null, source: null },
       quarters: Array.from({ length: 8 }, (_, q) => ({ end: `2026-0${(q % 4) + 1}-30`, revenue: 25000 + q, label: `Q${(q % 4) + 1}` })),
-      filings: Array.from({ length: 40 }, (_, f) => ({ form: f % 4 ? "8-K" : "10-Q", filed: "2026-05-01", accession: `0000320193-26-${String(f).padStart(6, "0")}`, url: "https://loadtest.invalid/filing", description: "Seeded filing" })),
+      filings: Array.from({ length: 40 }, (_, f) => ({ form: f % 4 ? "8-K" : "10-Q", filed: "2026-05-01", period: "2026-03-31", title: "Seeded filing", url: "https://loadtest.invalid/filing" })),
       sources: { concepts: {}, notes: ["Seeded for the load test."], factsUrl: "https://loadtest.invalid", submissionsUrl: "https://loadtest.invalid" },
+      // company.ts RECORD_VERSION: an older record is rebuilt from SEC, which the sandbox refuses.
+      recordVersion: 2,
     },
   }));
   return Promise.all(rows.map((r) => tx`insert into company_cache (ticker, data, fetched_at) values (${r.ticker}, ${tx.json(r.data)}, now() + interval '30 days')
