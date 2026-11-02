@@ -871,11 +871,28 @@ async function main() {
   if (localDb()) await section("C1 review: answers that used FRED are not cached by the browser", testFredNotBrowserCached);
   await section("C1 review: BEA's core PCE line", testBeaCorePce);
   await section("C5 field-level fallthrough and badges", testMerge);
+  await section("Nasdaq.com scrape has its own switch", testNasdaqSwitch);
   if (!localDb()) console.log("database checks skipped (set DATABASE_URL to a local database to run them)");
   console.log(`\n${pass} passed, ${fail} failed`);
   const { pgClient } = await import("@/db");
   await pgClient?.end({ timeout: 1 }).catch(() => undefined);
   process.exit(fail ? 1 : 0);
+}
+
+async function testNasdaqSwitch() {
+  const { eligibility, NASDAQ_OFF } = await import("@/lib/market/registry");
+  const { nasdaqEnabled, backupEnabled } = await import("@/lib/market/nasdaq");
+  const nasdaq = { licence: "unverified" as const, backup: true, source: "nasdaq" };
+  const coingecko = { licence: "unverified" as const, backup: true, source: "coingecko" };
+  try {
+    process.env.MARKET_NASDAQ = "off";
+    check("MARKET_NASDAQ=off turns the scrape off", !nasdaqEnabled());
+    check("other backups stay on", backupEnabled() && eligibility(coingecko as never).ok);
+    const e = eligibility(nasdaq as never);
+    check("the Nasdaq adapter says why it is skipped", !e.ok && e.reason === NASDAQ_OFF, e);
+    process.env.MARKET_NASDAQ = "on";
+    check("on by default (or on)", nasdaqEnabled() && eligibility(nasdaq as never).ok);
+  } finally { delete process.env.MARKET_NASDAQ; }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

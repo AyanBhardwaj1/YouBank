@@ -1693,6 +1693,7 @@ bash scripts/preflight.sh                                         # everything t
 | `OPENAI_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_REASONING_EFFORT`, `ANTHROPIC_MODEL` | no | Defaults: `gpt-6-astra`, `gpt-5.4-mini`, `medium`, `claude-opus-5` |
 | `FMP_API_KEY` | yes | Prices and market caps |
 | `MARKET_BACKUP` | no | `off` turns off the market-data backups (Nasdaq, the ECB rates, CoinGecko, AI research); on by default |
+| `MARKET_NASDAQ` | no | `off` turns off only the Nasdaq.com scrape (not a licensed feed), keeping the other backups and the earnings calendar's fallbacks as they are; on by default. Set it to `off` once a licensed price plan (FMP Starter with its display licence) covers every ticker |
 | `MARKET_RESEARCH_MODEL`, `MARKET_RESEARCH_ESCALATION_MODEL` | no | The models AI research uses; defaults `gpt-5.6-luna`, retrying with `gpt-5.4-mini` |
 | `EDGAR_USER_AGENT` | yes | The SEC asks for a descriptive User-Agent with a contact email |
 | `CRON_SECRET` | yes | Bearer token for Vercel Cron (`/api/cron/sync`, `/api/cron/agent`) |
