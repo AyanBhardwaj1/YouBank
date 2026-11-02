@@ -1626,6 +1626,10 @@ All tables are in `src/db/schema.ts`.
   - `0023_copytrade`
   - `0024_seat_cooldown`
   - `0026_quant`
+  - `0030_mail_compliance`
+  - `0031_two_factor` (`auth_users.two_factor_enabled` and `auth_two_factor`). Apply it **before** the
+    deploy that ships two-factor: Better Auth reads the new column with every session, so sign-in fails
+    until it exists.
 - After applying them, `drizzle-kit push --strict` should propose nothing (answer "No" to anything it
   proposes). Never run `drizzle-kit push` without `--strict` (or with `--force`) against an existing
   database: indexes the SQL files create are not all in `schema.ts`, and push would drop them.
@@ -1640,7 +1644,7 @@ All tables are in `src/db/schema.ts`.
 | Styling | Tailwind CSS v4 with design tokens, 14 generated themes, motion, lucide-react icons |
 | Database | Neon Postgres (free plan) through `postgres` (postgres.js) and the pooler; portable to Supabase (`scripts/db-setup.mts`) |
 | ORM | Drizzle ORM 0.45, drizzle-kit |
-| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications` |
+| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; two-factor with an authenticator app (see Security); no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications`, `auth_two_factor` |
 | AI | OpenAI Responses API (`openai` 7), Anthropic Messages API (`@anthropic-ai/sdk`), zod 4 for structured output |
 | Mail | imapflow (IMAP), nodemailer (SMTP), mailparser (MIME), Gmail REST API |
 | Data | SEC EDGAR (submissions, XBRL company facts, full-text search), Financial Modeling Prep, Y Combinator, a16z, Thiel Fellows, Show HN |
@@ -1684,7 +1688,7 @@ bash scripts/preflight.sh                                         # everything t
 |---|---|---|
 | `DATABASE_URL` | yes | Pooled connection string (Neon's `-pooler` host, or Supabase's transaction pooler); no `channel_binding` parameter |
 | `DATABASE_URL_UNPOOLED` | for schema pushes | Direct connection (Neon) or Supabase's session pooler; `drizzle-kit push` and `scripts/db-setup.mts` need it |
-| `BETTER_AUTH_SECRET` | yes | Signs session cookies and encrypts stored OAuth tokens (`openssl rand -base64 48`) |
+| `BETTER_AUTH_SECRET` | yes | Signs session cookies, encrypts stored OAuth tokens and two-factor secrets, and keys the step-up cookie (`openssl rand -base64 48`). Changing it makes every stored authenticator secret and backup code unreadable: people with two-factor on then need an admin to clear it (`auth_users.two_factor_enabled`, `auth_two_factor`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_SIGNIN=1` | no | Google sign-in alongside email and password: an OAuth client (Web) with redirect URI `<site>/api/auth/callback/google`; all three or none |
 | `BETTER_AUTH_URL` | no | Sign-in's base address when it is not `NEXT_PUBLIC_SITE_URL` (local development) |
 | `AUTH_SESSION_DATA_TTL` | no | Seconds the session cookie is trusted before a database read (default 900) |
@@ -1817,6 +1821,7 @@ limits.
 The Vercel project is connected to this repository: every push to `main` (a merged pull request) deploys
 to production, and pull requests get preview deployments. Apply new migrations before or right after the
 deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays every `drizzle/*.sql`).
+`drizzle/0031_two_factor.sql` must go first: sign-in reads its column, so it fails until it is applied.
 
 1. **Environment.** Set the variables above in the Vercel project, not in `.env.local`.
 2. **Database.** Apply any new migration to production, then check for drift:
@@ -1928,6 +1933,24 @@ production.
 ---
 
 ## Security, privacy and compliance
+
+**Two-factor.**
+- Settings → Security turns on an authenticator app (TOTP, Better Auth's `twoFactor` plugin): an
+  `otpauth://` link and the same key to type by hand (no QR code), the first code to finish, and ten
+  backup codes shown once. The secret and backup codes are encrypted with `BETTER_AUTH_SECRET`
+  (`drizzle/0031_two_factor.sql`).
+- Password sign-in with it on stops at `/sign-in/two-factor` for a code or a backup code, with "trust this
+  device for 30 days". The plugin locks that step after 10 wrong codes for 15 minutes.
+- Google sign-in is not challenged by the plugin, so risky actions ask for a fresh code themselves
+  (`src/lib/auth/step-up.ts`), whatever the sign-in: saving broker API keys and connecting Alpaca, live
+  trading consent, the SnapTrade connection and real-money copy consent, and connecting a mailbox (Gmail
+  or an app password). A code is checked at `POST /api/security/step-up` (8 tries per person per 15
+  minutes, as the plugin counts nothing there) and unlocks these for ten minutes on that browser, in
+  `yb-stepup`: an httpOnly cookie with the person's id and expiry, HMAC-SHA256-signed under a key
+  derived from `BETTER_AUTH_SECRET`. Without it the routes answer 403 `two_factor_required`, and the
+  page asks for the code (or, with 2FA off, says to turn it on).
+- While 2FA is on, turning it off, reading the secret again, new backup codes or re-enrolling also need a
+  fresh code, so a stolen session cannot swap in its own authenticator.
 
 **Credentials.**
 - Mailbox passwords and refresh tokens are encrypted with AES-256-GCM before storage, and decrypted only to

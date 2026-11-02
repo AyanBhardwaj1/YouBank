@@ -2,6 +2,7 @@
 
 /** Shared helpers for the copy-trading screens: formatting, API calls and the consent step. */
 import { ApiError, fetchJson } from "@/lib/client/errors";
+import { retryAfterStepUp } from "@/lib/client/step-up";
 
 export const usd = (v: number | null | undefined, compact = true) => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -16,7 +17,10 @@ export const shortCik = (cik: string) => String(Number(cik));
 
 export const json = (method: string, body?: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
 
-/** An API call; a 428 means a consent is missing, and `onConsent` is asked for it before one retry. */
+/**
+ * An API call; a 428 means a consent is missing, and `onConsent` is asked for it before one retry. A 403
+ * `two_factor_required` (an authenticator code is due) asks for the code before one retry.
+ */
 export async function call<T>(url: string, init: RequestInit | undefined, onConsent: (kind: "terms" | "trading") => Promise<boolean>): Promise<T> {
   try {
     return await fetchJson<T>(url, init);
@@ -25,6 +29,7 @@ export async function call<T>(url: string, init: RequestInit | undefined, onCons
       const kind = /real orders/i.test(e.message) ? "trading" : "terms";
       if (await onConsent(kind)) return fetchJson<T>(url, init);
     }
+    if (await retryAfterStepUp(e)) return fetchJson<T>(url, init);
     throw e;
   }
 }

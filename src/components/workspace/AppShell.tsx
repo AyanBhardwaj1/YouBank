@@ -18,6 +18,7 @@ import { Sidebar } from "./Sidebar";
 import { MobileTabBar } from "./MobileTabBar";
 import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
+import { StepUpHost } from "@/components/security/StepUpHost";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -66,6 +67,8 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
           <div className="min-h-0 min-w-0 flex-1 px-safe">{children}</div>
         </div>
         <MobileTabBar />
+        {/* The authenticator-code dialog before risky actions (src/lib/client/step-up). */}
+        <StepUpHost />
       </div>
     </NavCtx.Provider>
   );

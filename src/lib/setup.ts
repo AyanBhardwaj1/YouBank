@@ -46,10 +46,14 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0028_source_stats", ["source_stats"], "source_stats_minute_idx"],
   ["0029_data_sources", ["user_data_sources"], "user_data_sources_updated_idx"],
   ["0030_mail_compliance", [], ""],
+  ["0031_two_factor", ["auth_two_factor"], "auth_two_factor_user_idx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
-const COLUMNS: [string, string, string][] = [["0010_contact_knowledge", "crm_messages", "topics"], ["0030_mail_compliance", "crm_settings", "postal_address"]];
+const COLUMNS: [string, string, string][] = [
+  ["0010_contact_knowledge", "crm_messages", "topics"], ["0030_mail_compliance", "crm_settings", "postal_address"],
+  ["0031_two_factor", "auth_users", "two_factor_enabled"],
+];
 
 export type SchemaStatus = { core: string[]; migrations: { name: string; missing: string[] }[] };
 

@@ -123,10 +123,20 @@ export function isPendingMigration(e: unknown): boolean {
   return false;
 }
 
+/**
+ * A machine-readable reason the browser may act on (`two_factor_required` opens the code dialog): only
+ * our own lower_snake codes on a refusal below 500, never a driver's or the system's ("42P01", "ECONNRESET").
+ */
+const publicCode = (e: unknown, status: number): string | null => {
+  const c = (e as { code?: unknown } | null)?.code;
+  return status < 500 && typeof c === "string" && /^[a-z][a-z0-9_]{2,40}$/.test(c) ? c : null;
+};
+
 /** The JSON response for an error (see describeFailure). */
 export function errorResponse(e: unknown, fallbackStatus = 500, extra: Record<string, unknown> = {}): Response {
   const f = describeFailure(e, fallbackStatus);
-  return Response.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), ...extra }, { status: f.status });
+  const code = publicCode(e, f.status);
+  return Response.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), ...(code ? { code } : {}), ...extra }, { status: f.status });
 }
 
 /**

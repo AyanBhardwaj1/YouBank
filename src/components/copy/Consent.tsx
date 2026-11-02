@@ -9,6 +9,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { ensureStepUp } from "@/lib/client/step-up";
 import { CONSENTS, type ConsentKind } from "@/lib/copytrade/disclosures";
 import { json } from "./client";
 
@@ -70,8 +71,11 @@ export function ConsentProvider({ children }: { children: ReactNode }) {
   const accept = async () => {
     if (!kind) return;
     setBusy(true); setError(null);
-    try { await fetchJson("/api/copy/consent", json("POST", { kind })); close(true); }
-    catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+    try {
+      // Agreeing to real-money trading needs a fresh authenticator code (lib/client/step-up); cancelling keeps this open.
+      if (kind === "trading" && !(await ensureStepUp())) return;
+      await fetchJson("/api/copy/consent", json("POST", { kind })); close(true);
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const c = kind ? CONSENTS[kind] : null;
   return (

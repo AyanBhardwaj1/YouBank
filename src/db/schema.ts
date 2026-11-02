@@ -14,6 +14,8 @@ export const authUsers = pgTable("auth_users", {
   image: text("image"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Set by Better Auth's twoFactor plugin once the first authenticator code is verified (drizzle/0031). */
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
 });
 
 export const authSessions = pgTable("auth_sessions", {
@@ -53,6 +55,21 @@ export const authVerifications = pgTable("auth_verifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("auth_verifications_identifier_idx").on(t.identifier)]);
+
+/**
+ * Two-factor (Better Auth's twoFactor plugin, drizzle/0031): the authenticator (TOTP) secret and the
+ * backup codes, both encrypted with BETTER_AUTH_SECRET. `verified` is false until the first code is
+ * entered; the failure count and lock are the plugin's own sign-in lockout.
+ */
+export const authTwoFactor = pgTable("auth_two_factor", {
+  id: text("id").primaryKey(),
+  secret: text("secret").notNull(),
+  backupCodes: text("backup_codes").notNull(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  verified: boolean("verified").default(true),
+  failedVerificationCount: integer("failed_verification_count").default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+}, (t) => [index("auth_two_factor_user_idx").on(t.userId)]);
 
 /** Saved peer groups (user-created or saved from an AI proposal). */
 export const peerGroups = pgTable("peer_groups", {
