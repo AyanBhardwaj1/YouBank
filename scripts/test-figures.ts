@@ -74,6 +74,10 @@ const ctx = { addSource: () => "S9", value: (ref: string) => resolveRef([acme], 
 const out = JSON.parse(await calcTool.run({ script: "S2.valuation_usd_mm.enterprise_value / S1.ltm_usd_mm.revenue" }, ctx)) as { results: { value: number }[]; refs: Record<string, number> };
 ok("calc evaluates with referenced values", Math.round(out.results[0].value * 1000) / 1000, 9.974);
 ok("calc reports the values it used", out.refs, { "S2.valuation_usd_mm.enterprise_value": 54210.4, "S1.ltm_usd_mm.revenue": 5435.2 });
+const tiny = rec("x", JSON.stringify({ source: "S7", yield_pct: 1e-7, big_usd: 3e21 }), ["S7"]);
+const tctx = { addSource: () => "S9", value: (ref: string) => resolveRef([tiny], ref) };
+const small = JSON.parse(await calcTool.run({ script: "S7.yield_pct * 100\nS7.big_usd / 1e0" .replace("1e0", "1") }, tctx)) as { results?: { value: number }[]; error?: string };
+ok("very small and very large referenced values still evaluate", [small.error, small.results?.[0].value, small.results?.[1].value], [undefined, 0.00001, 3e21]);
 ok("a bad reference is an error the model can act on", /is not a number in an earlier tool result/.test(await calcTool.run({ script: "S1.ltm_usd_mm.nope * 2" }, ctx)), true);
 const nineteen = rec("get_company_financials", company("OLD", "S1", "S2", { rev: 1950.3, prior: 1700, gp: 900, oi: 200, fcf: 150, ev: 5000, mcap: 5200 }), ["S1", "S2"]);
 ok("a figure starting 19xx is not taken for a year", checkFigures("Revenue was $1950.3 million [S1].", [nineteen]).figures.map((f) => f.status), ["matched"]);

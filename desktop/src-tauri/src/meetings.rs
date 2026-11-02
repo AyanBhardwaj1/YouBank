@@ -497,16 +497,18 @@ async fn look(app: &AppHandle, sys: &mut sysinfo::System) {
         if let Some(d) = &found {
             in_call.insert(d.app.to_string(), now);
         }
-        // A call that ended a minute ago: its "not now" is forgotten, and a stale offer goes.
+        // A call that ended a minute ago: its "not now" is forgotten, and a stale offer or recording
+        // confirmation for it goes (left open, it would also stop the next call from being noticed).
         let ended: Vec<String> = in_call.iter().filter(|(_, t)| now.duration_since(**t) > Duration::from_secs(60)).map(|(k, _)| k.clone()).collect();
         for app_id in ended {
             in_call.remove(&app_id);
             state.meetings.dismissed.lock().unwrap().remove(&app_id);
             let mut prompt = state.meetings.prompt.lock().unwrap();
-            if prompt.as_ref().is_some_and(|p| p.kind == "offer" && p.app == app_id) {
+            if prompt.as_ref().is_some_and(|p| (p.kind == "offer" || p.kind == "consent") && p.app == app_id) {
                 *prompt = None;
                 drop(prompt);
                 windows::hide_pill(app);
+                changed(app);
             }
         }
     }

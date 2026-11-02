@@ -79,7 +79,8 @@ export async function optOutAddress(userId: string, email: string): Promise<void
       inArray(schema.crmCampaignLeads.status, ["sourced", "review", "qualified", "active"])));
 }
 
-export type SenderAuth = { domain: string; spf: boolean; dmarc: boolean; dkim: boolean | null; hosted: boolean };
+/** `unchecked`: a lookup failed (a timeout, a resolver error) rather than finding no record, so nothing is known. */
+export type SenderAuth = { domain: string; spf: boolean; dmarc: boolean; dkim: boolean | null; hosted: boolean; unchecked?: boolean };
 type Resolver = { resolveTxt: (name: string) => Promise<string[][]> };
 
 /** DKIM selectors the big hosts use; a domain with none of these may still sign under another one. */
@@ -89,10 +90,15 @@ const DKIM_SELECTORS = ["google", "selector1", "selector2", "k1", "default", "s1
  * Whether a sending domain publishes SPF, DMARC and (as far as common selectors show) DKIM. A public
  * mailbox domain (gmail.com, outlook.com) is the provider's to authenticate, so it counts as hosted.
  */
-export async function senderAuth(address: string, resolver: Resolver = dnsPromises): Promise<SenderAuth> {
+export async function senderAuth(address: string, resolver: Resolver = boundedResolver()): Promise<SenderAuth> {
   const domain = (address.split("@")[1] ?? "").toLowerCase();
   if (!domain || PUBLIC_EMAIL_DOMAINS.has(domain)) return { domain, spf: true, dmarc: true, dkim: true, hosted: true };
-  const txt = async (name: string) => (await resolver.resolveTxt(name).catch(() => [] as string[][])).map((r) => r.join(""));
+  let failed = false;
+  // "No such name" and "no records" mean absent; anything else (a timeout, SERVFAIL) means we do not know.
+  const txt = async (name: string) => (await resolver.resolveTxt(name).catch((e: { code?: string }) => {
+    if (e?.code !== "ENOTFOUND" && e?.code !== "ENODATA") failed = true;
+    return [] as string[][];
+  })).map((r) => r.join(""));
   const [root, dmarc, ...dkim] = await Promise.all([txt(domain), txt(`_dmarc.${domain}`), ...DKIM_SELECTORS.map((s) => txt(`${s}._domainkey.${domain}`))]);
   return {
     domain,
@@ -100,7 +106,14 @@ export async function senderAuth(address: string, resolver: Resolver = dnsPromis
     dmarc: dmarc.some((r) => /^v=DMARC1\b/i.test(r)),
     dkim: dkim.some((rs) => rs.some((r) => /v=DKIM1|k=rsa|p=/i.test(r))) ? true : null,
     hosted: false,
+    ...(failed ? { unchecked: true } : {}),
   };
+}
+
+/** Two seconds a lookup, one try: a launch never waits on a slow resolver for long. */
+function boundedResolver(): Resolver {
+  const r = new dnsPromises.Resolver({ timeout: 2_000, tries: 1 });
+  return { resolveTxt: (name) => r.resolveTxt(name) };
 }
 
 /**
@@ -111,6 +124,10 @@ export async function senderAuth(address: string, resolver: Resolver = dnsPromis
 export function launchChecks(auth: SenderAuth[]): { blockers: string[]; warnings: string[] } {
   const blockers: string[] = [], warnings: string[] = [];
   for (const a of auth.filter((x) => !x.hosted)) {
+    if (a.unchecked && !a.spf) {
+      warnings.push(`${a.domain}'s DNS could not be checked just now, so its SPF, DKIM and DMARC records are unconfirmed. Check them before sending at volume.`);
+      continue;
+    }
     if (!a.spf && a.dkim !== true) blockers.push(`${a.domain} publishes no SPF record and no DKIM key we could find, so receivers will likely reject campaign mail from it. Add SPF (and DKIM) in your DNS first.`);
     else if (!a.spf) warnings.push(`${a.domain} has no SPF record; add one so receivers can check mail from it.`);
     if (!a.dmarc) warnings.push(`${a.domain} has no DMARC record. Gmail, Yahoo and Microsoft require one of bulk senders; add "v=DMARC1; p=none" at _dmarc.${a.domain} to start.`);

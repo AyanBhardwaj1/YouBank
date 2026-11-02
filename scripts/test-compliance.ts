@@ -43,6 +43,10 @@ void (async () => {
   const bare = await senderAuth("me@new.co", dns({ "new.co": [["google-site-verification=abc"]] }));
   ok("nothing published", [bare.spf, bare.dmarc, bare.dkim], [false, false, null]);
   ok("no SPF and no DKIM blocks the launch", launchChecks([bare]).blockers.length, 1);
+  const flaky = { resolveTxt: async () => { throw Object.assign(new Error("timeout"), { code: "ETIMEOUT" }); } };
+  const unknown = await senderAuth("me@slow.co", flaky);
+  ok("a DNS timeout is unknown, not absent", unknown.unchecked, true);
+  ok("an unknown domain warns but does not block", [launchChecks([unknown]).blockers.length, launchChecks([unknown]).warnings.length], [0, 1]);
   const noDmarc = await senderAuth("me@ok.co", dns({ "ok.co": [["v=spf1 -all"]] }));
   ok("no DMARC only warns", [launchChecks([noDmarc]).blockers.length, launchChecks([noDmarc]).warnings.length], [0, 1]);
 

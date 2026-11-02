@@ -10,6 +10,7 @@ let st = null; // meeting_state
 let step = null; // "consent" once Start was chosen on an offer, "stopping" while confirming Stop
 let copied = false;
 let attested = false; // "Everyone on this call knows it is being recorded", required to start
+let promptKey = ""; // the call the confirmation is for: a different call starts unticked
 let tick = null;
 
 const LABEL = { zoom: "Zoom", teams: "Microsoft Teams", meet: "Google Meet", webex: "Webex", slack: "Slack huddle" };
@@ -67,6 +68,8 @@ function recording(s) {
 function render() {
   if (!st) return;
   const p = st.prompt;
+  const key = p ? `${p.app}\u0000${p.title}` : "";
+  if (key !== promptKey) { promptKey = key; attested = false; copied = false; }
   let body;
   if (st.session) body = recording(st.session);
   else if (p && p.kind === "offer" && step !== "consent") {

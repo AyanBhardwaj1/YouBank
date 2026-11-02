@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getSessionCookie } from "better-auth/cookies";
 import { requireDb, schema } from "@/db";
 import { auth } from "@/lib/auth/server";
-import { stepUpState, stepUpVerdict, TWO_FACTOR_REQUIRED } from "@/lib/auth/step-up";
+import { STEP_UP_ATTEMPTS, STEP_UP_WINDOW_MS, stepUpState, stepUpVerdict, twoFactorEnabled, TWO_FACTOR_REQUIRED } from "@/lib/auth/step-up";
+import { withinRate } from "@/lib/locks";
 import { currentUser, noteSessionChange, type SessionChange } from "@/lib/auth/user";
 import { errorResponse } from "@/lib/errors";
 
@@ -28,6 +29,16 @@ const ROTATES = new Set(["two-factor/disable", "two-factor/verify-totp"]);
  * new backup codes or re-enrol their own authenticator, and then pass every step-up check.
  */
 const NEEDS_STEP_UP = new Set(["two-factor/enable", "two-factor/disable", "two-factor/get-totp-uri", "two-factor/generate-backup-codes"]);
+
+/**
+ * Code checks made with a session (finishing enrolment, or a guess with a stolen cookie). The plugin
+ * counts no attempts for these, so with 2FA already on they share the step-up route's budget per person;
+ * otherwise a stolen session could find a valid code here and then pass /api/security/step-up with it.
+ */
+const SIGNED_IN_VERIFY = new Set(["two-factor/verify-totp", "two-factor/verify-backup-code"]);
+
+/** Turning 2FA on without a password needs a sign-in this recent, so an old stolen cookie cannot enrol its own authenticator. */
+const FRESH_SIGN_IN_MS = 15 * 60_000;
 
 /**
  * The session this request's cookie names, read before Better Auth changes it: the token from the cookie
@@ -56,6 +67,30 @@ function setsOtherSession(setCookies: string[], token: string): boolean {
   });
 }
 
+/** With 2FA already on, a signed-in code check counts against the person's step-up budget; a 429 once it is spent. */
+async function verifyBudget(req: Request): Promise<Response | null> {
+  const s = await sessionOf(req);
+  if (!s?.userId || !(await twoFactorEnabled(s.userId))) return null;
+  if (await withinRate(`step-up:${s.userId}`, STEP_UP_ATTEMPTS, STEP_UP_WINDOW_MS)) return null;
+  return Response.json({ error: "Too many codes tried. Wait 15 minutes and try again." }, { status: 429 });
+}
+
+/**
+ * Turning 2FA on for an account with no password: the session must come from a sign-in in the last 15
+ * minutes (an account with a password proves itself with it instead). A 403 `reauth_required` otherwise.
+ */
+async function staleEnrolment(req: Request): Promise<Response | null> {
+  const s = await sessionOf(req);
+  if (!s?.userId) return null;
+  const db = requireDb();
+  const [cred] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
+    .where(and(eq(schema.authAccounts.userId, s.userId), eq(schema.authAccounts.providerId, "credential"))).limit(1);
+  if (cred) return null;
+  const [row] = await db.select({ createdAt: schema.authSessions.createdAt }).from(schema.authSessions).where(eq(schema.authSessions.token, s.token)).limit(1);
+  if (row && Date.now() - row.createdAt.getTime() <= FRESH_SIGN_IN_MS) return null;
+  return Response.json({ error: "For your security, sign out and sign in again, then turn on two-factor within 15 minutes.", code: "reauth_required" }, { status: 403 });
+}
+
 /** A 403 the settings page reads like any gated route's (`code: "two_factor_required"`), or null to go ahead. */
 async function stepUpRefusal(): Promise<Response | null> {
   const user = await currentUser();
@@ -79,6 +114,14 @@ async function post(req: Request): Promise<Response> {
     // A check that fails (the database not answering) refuses: it never waves the change through.
     const refusal = await stepUpRefusal().catch((e: unknown) => errorResponse(e));
     if (refusal) return refusal;
+    if (name === "two-factor/enable") {
+      const stale = await staleEnrolment(req).catch((e: unknown) => errorResponse(e));
+      if (stale) return stale;
+    }
+  }
+  if (SIGNED_IN_VERIFY.has(name)) {
+    const limited = await verifyBudget(req).catch((e: unknown) => errorResponse(e));
+    if (limited) return limited;
   }
   if (ROTATES.has(name)) {
     const session = await sessionOf(req);

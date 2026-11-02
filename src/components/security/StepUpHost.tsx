@@ -18,12 +18,14 @@ type Open = { enabled: boolean; resolve: (ok: boolean) => void };
 export function StepUpHost() {
   const [open, setOpen] = useState<Open | null>(null);
   const [code, setCode] = useState("");
+  // A backup code, for someone without their phone: one use each.
+  const [backup, setBackup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => registerStepUp((s: StepUpState) => new Promise<boolean>((resolve) => {
-    setCode(""); setError(null); setBusy(false);
+    setCode(""); setError(null); setBusy(false); setBackup(false);
     // A second request while one is open answers the first as cancelled.
     setOpen((prev) => { prev?.resolve(false); return { enabled: s.enabled, resolve }; });
   })), []);
@@ -39,7 +41,8 @@ export function StepUpHost() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const c = code.replace(/\s+/g, "");
-    if (!/^\d{6}$/.test(c)) { setError("Enter the 6-digit code from your authenticator app."); return; }
+    if (!backup && !/^\d{6}$/.test(c)) { setError("Enter the 6-digit code from your authenticator app."); return; }
+    if (backup && !c) { setError("Enter one of your backup codes."); return; }
     setBusy(true); setError(null);
     try {
       await fetchJson("/api/security/step-up", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: c }) });
@@ -72,10 +75,13 @@ export function StepUpHost() {
         </div>
         {open.enabled ? (
           <form onSubmit={submit} className="space-y-2.5">
-            <p className="text-[12.5px] leading-relaxed text-muted">Enter your authenticator code to continue. One code covers risky changes on this browser for ten minutes.</p>
-            <input className="ctl num w-full border border-line bg-panel px-3 py-2 text-[15px] tracking-[0.3em] text-fg outline-none focus:border-accent"
-              inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} autoFocus placeholder="123456" aria-label="Authenticator code"
+            <p className="text-[12.5px] leading-relaxed text-muted">{backup ? "Enter one of your backup codes. Each works once." : "Enter your authenticator code to continue."} One code covers risky changes on this browser for ten minutes.</p>
+            <input key={backup ? "backup" : "totp"} className="ctl num w-full border border-line bg-panel px-3 py-2 text-[15px] tracking-[0.3em] text-fg outline-none focus:border-accent"
+              inputMode={backup ? "text" : "numeric"} autoComplete="one-time-code" maxLength={backup ? 24 : 7} autoFocus placeholder={backup ? "Backup code" : "123456"} aria-label={backup ? "Backup code" : "Authenticator code"}
               value={code} onChange={(e) => setCode(e.target.value)} />
+            <button type="button" onClick={() => { setBackup(!backup); setCode(""); setError(null); }} className="text-[11.5px] text-muted hover:text-fg">
+              {backup ? "Use the authenticator app instead" : "No phone? Use a backup code"}
+            </button>
             {error && <p role="alert" className="text-[12px] text-neg">{error}</p>}
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => close(false)} className="ctl border border-line px-3 py-2 text-[12.5px] text-muted hover:text-fg">Cancel</button>

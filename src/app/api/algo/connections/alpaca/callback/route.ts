@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/user";
-import { requireRecentTwoFactor } from "@/lib/auth/step-up";
 import { requestMeta } from "@/lib/algo/access";
 import { alpacaCallback } from "@/lib/algo/connections";
 import { describeFailure } from "@/lib/errors";
@@ -11,8 +10,10 @@ export const maxDuration = 60;
 
 /**
  * GET ?code&state — Alpaca sends the person back here. A top-level navigation from Alpaca, so it is not a
- * JSON request; it is protected by the signed state (this person, ten minutes) instead. Back to the page
- * either way, with a plain message on failure (an authenticator code more than ten minutes old is one).
+ * JSON request; it is protected by the signed state (this person, ten minutes) instead. The start route
+ * issues that state only after a fresh authenticator code, so the code is not asked again here: the person
+ * may well spend minutes at Alpaca, and a refusal would waste their authorization. Back to the page either
+ * way, with a plain message on failure.
  */
 export async function GET(req: Request) {
   const u = new URL(req.url);
@@ -21,8 +22,6 @@ export async function GET(req: Request) {
   const back = (q: string) => NextResponse.redirect(siteLink(`/app/algo?tab=brokers&${q}`));
   if (u.searchParams.get("error")) return back("connected=0");
   try {
-    // Completing the connection needs the code entered before leaving for Alpaca to still be fresh.
-    await requireRecentTwoFactor(user);
     await alpacaCallback(user, u.searchParams.get("code") ?? "", u.searchParams.get("state") ?? "", requestMeta(req));
     return back("connected=1");
   } catch (e) {

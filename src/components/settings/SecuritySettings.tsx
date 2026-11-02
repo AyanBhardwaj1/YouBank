@@ -28,7 +28,7 @@ const ghost = "ctl border border-line px-3 py-2 text-[12.5px] text-muted hover:t
 function failure(e: AuthFailure): string {
   if (e?.code === "INVALID_PASSWORD") return "That password is not right.";
   if (e?.code === "INVALID_CODE") return "That code did not match. Check the time on your phone and try a new code.";
-  if (e?.code === "two_factor_required" && e.error) return e.error;
+  if ((e?.code === "two_factor_required" || e?.code === "reauth_required") && e.error) return e.error;
   if (e?.status === 429) return "Too many tries. Wait a few seconds and try again.";
   return signInError(e);
 }

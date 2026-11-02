@@ -59,3 +59,36 @@ DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0030_mail_complianc
 - **Edge claims eval:** unchanged (AUROC 0.948).
 - **Production build:** passes, with `NODE_OPTIONS=--max-old-space-size=6144` because the sandbox runs out of memory without it.
 - **Migrations:** 0030–0032 apply twice cleanly to a local Postgres.
+
+## Load test and hardening (2026-11-02)
+
+**Setup:**
+- a local production build on Postgres 16 under the offline sandbox (`scripts/load`), with 220 seeded users;
+- the mixed load now includes the new endpoints: CRM settings and page, the Security tab, step-up and two-factor state, and both unsubscribe paths;
+- it counts any response carrying raw error text.
+
+**Results:**
+
+| Run | Requests | Errors | p95 | Raw error text | Server errors logged |
+|---|---|---|---|---|---|
+| 100 users, 60 s | 2,914 | 0.00% | 68 ms | none | 0 |
+| 200 users, 60 s | 5,723 | 0.00% | 244 ms | none | 0 |
+| 150 users, expired session cookies, 30 s | 2,192 | 0.00% | 130 ms | none | 0 |
+
+At 200 users, one local process used 85% of a core. Vercel runs many instances.
+
+**Other checks:**
+- **Browser sweep:** no page errors on 23 signed-in pages and 12 public pages. The only 503 was the dashboard watchlist under a simulated SEC outage, and it shows a calm message.
+- **Two-factor in a real browser:** setup, backup codes, the sign-in challenge, wrong-code text and landing in the app all worked.
+
+**Fixes from an independent review**, all re-tested:
+1. Signed-in code checks now share the step-up attempt budget per person: 8 per 15 minutes across addresses.
+2. Backup codes pass step-up, once each.
+3. Turning 2FA on without a password needs a sign-in from the last 15 minutes.
+4. DNS lookups have a 2-second timeout, and a failed lookup warns instead of blocking a launch.
+5. An unanswered desktop recording confirmation no longer stops call detection, and the tick resets for each call.
+6. The analytics views count only what people did themselves.
+7. calc references handle very small and very large values.
+8. The Alpaca callback no longer re-asks for a code.
+9. A deploy ahead of migrations 0030 and 0031 shows "being set up" instead of breaking sign-in.
+10. The unsubscribe page never returns a bare 500.

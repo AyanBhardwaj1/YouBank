@@ -251,7 +251,8 @@ export const calcTool = def({
         const v = ctx.value?.(ref) ?? null;
         if (v === null) throw new Error(`${ref} is not a number in an earlier tool result. Check the source id and the field path.`);
         refs[ref] = v;
-        return `(${v})`;
+        // Plain digits: calc reads no exponents, and 1e-7 or 1e21 would print as one.
+        return `(${v.toLocaleString("en-US", { useGrouping: false, maximumSignificantDigits: 17 })})`;
       });
       const r = evaluateScript(resolved);
       return JSON.stringify({ results: r.results.map((x) => ({ line: x.line, value: Number.isFinite(x.value) ? Number(x.value.toPrecision(12)) : String(x.value) })), ...(Object.keys(refs).length ? { refs } : {}) });

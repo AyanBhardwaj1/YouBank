@@ -1719,7 +1719,7 @@ bash scripts/preflight.sh                                         # everything t
 | `MARKET_RESEARCH_MODEL`, `MARKET_RESEARCH_ESCALATION_MODEL` | no | The models AI research uses; defaults `gpt-5.6-luna`, retrying with `gpt-5.4-mini` |
 | `EDGAR_USER_AGENT` | yes | The SEC asks for a descriptive User-Agent with a contact email |
 | `CRON_SECRET` | yes | Bearer token for Vercel Cron (`/api/cron/sync`, `/api/cron/agent`) |
-| `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`) |
+| `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`), and signs the unsubscribe links in campaign mail. Do not rotate it casually: stored mailbox credentials stop decrypting, and unsubscribe links already sent stop working (the law expects them to work for 30 days) |
 | `AUTOPILOT_SECRET` | for autopilot | Bearer token the heartbeat sends to `/api/cron/autopilot` (`CRON_SECRET` is also accepted) |
 | `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI` | no | Google Calendar via OAuth; without them the Gmail client below is used. The redirect defaults to `<site>/api/calendar/oauth/google/callback` |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT`, `MICROSOFT_REDIRECT_URI` | no | Microsoft 365 and Outlook.com calendars via Graph; tenant `common` by default |
