@@ -17,7 +17,7 @@ const display = Instrument_Serif({ variable: "--font-display-serif", subsets: ["
 
 export const metadata: Metadata = {
   title: { default: "YouBank · The AI deal desk that learns how you work", template: "%s · YouBank" },
-  description: "Cited analysis from SEC filings, and an email agent that tracks every thread, asks you what it cannot answer, remembers, and earns the right to send on its own. For boutique advisors, emerging managers, founders and students.",
+  description: "Cited analysis from SEC filings, and an email agent that tracks every thread, asks you what it cannot answer, remembers, and sends on its own only what you allow. For boutique advisors, emerging managers, founders and students.",
   metadataBase: new URL(siteUrl()),
   applicationName: "YouBank",
   openGraph: {

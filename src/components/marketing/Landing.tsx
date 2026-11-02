@@ -107,7 +107,7 @@ const FAQ = [
   { q: "Is it suitable for a FINRA-registered firm?", a: "Regulated mode is built for it: autopilot cannot be switched on, every email is sent by a person from their own mailbox (so the firm's archive captures it), and every AI draft can be exported for supervision. Your compliance team decides; we give them the controls and the log." },
   { q: "Can it build my models and decks?", a: "Yes, in Studio. Describe what you need, or start from a DCF, LBO, comps, merger or cap table template filled from SEC filings, and watch the agent build the workbook and the slides. Slides stay linked to the model, every run is audited and can be undone, and it all exports to Excel and PowerPoint. You can also upload your own workbook." },
   { q: "Does it work in my own Excel and PowerPoint?", a: "Yes. Install the YouBank add-in (Excel and PowerPoint on the web, Windows or Mac, with Microsoft 365 or Office 2021 and later) and connect it with a code. Link a workbook and the agent writes into it cell by cell while you watch; your edits sync back to YouBank; decks in PowerPoint refresh from the model. An IT admin can deploy it to a whole team." },
-  { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API, with the source link on every figure. Anything from the web is cited. If a number is derived, the method is stated next to it." },
+  { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API. The assistant cites the filing or price feed behind its figures and links to it, anything from the web is cited too, and a derived number states its method. Check the figures that matter before they go out." },
   { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an agent that produces the deliverable and does the follow-through." },
   { q: "What does it cost?", a: `There is a Free plan, Campus is free with a .edu address, and Pro is ${usd(PLANS.pro.monthlyUsd ?? 0)} a month (${usd(PLANS.pro.yearlyMonthlyUsd ?? 0)} billed yearly). Each plan includes a monthly AI allowance that resets on your billing date. When it runs out, an AI credit pack (from $10) keeps AI going; otherwise AI pauses until it resets and everything else keeps working. Beta accounts will be told well before anything is billed.` },
 ];
@@ -165,7 +165,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             </Reveal>
             <Reveal eager delay={120}>
               <p className="mt-4 max-w-[58ch] text-[14.5px] leading-relaxed text-muted">
-                Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and earns the right to send on its own. For boutique advisors, emerging managers, founders, and the students who will join them.
+                Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and sends on its own only the kinds of email you put on autopilot, after a hold, with spot checks and a probation rule that hands it back to you when drafts slip. For boutique advisors, emerging managers, founders, and the students who will join them.
               </p>
             </Reveal>
             <Reveal eager delay={180}>
@@ -394,7 +394,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
                   {[
                     "Chooses tools, not vibes: XBRL facts, the comps engine, filing text, full-text search, Form D, the web.",
                     "Computes with an exact calculator so multiples and IRRs are not guessed.",
-                    "Cites every figure with a source id you can click through to the filing.",
+                    "Cites its figures with a source id you can click through to the filing.",
                     "States the limits: fiscal-year mismatches, reported versus adjusted EBITDA, missing estimates.",
                   ].map((t, i) => (
                     <li key={i} className="flex gap-2"><span className="num grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent">{i + 1}</span><span>{t}</span></li>

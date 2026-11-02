@@ -226,6 +226,17 @@ export function autoSendVerdict(c: SendCheck): { ok: boolean; reasons: string[] 
   return { ok: reasons.length === 0, reasons };
 }
 
+/** The hold reason when the earned-autonomy check itself cannot run. */
+export const TRUST_UNAVAILABLE = "Its track record could not be checked just now, so it waits for you";
+
+/**
+ * A gate that fails closed: if the check throws (a database timeout on a cron relay, say), the draft
+ * waits with a reason instead of going out as if the check had passed.
+ */
+export async function holdOnError(check: Promise<string | null>, onError?: (e: unknown) => void): Promise<string | null> {
+  try { return await check; } catch (e) { onError?.(e); return TRUST_UNAVAILABLE; }
+}
+
 /** Rolling-day count of automatic sends against the cap. */
 export function capReached(sentTimes: Date[], now: Date, cap: number): boolean {
   return sentTimes.filter((t) => now.getTime() - t.getTime() < DAY_MS).length >= cap;

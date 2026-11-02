@@ -3,7 +3,7 @@ import { requireDb, schema } from "@/db";
 import { listAccounts, type AccountRow } from "./accounts";
 import { approveAction, scanFollowUps } from "./actions";
 import {
-  audienceOf, autoSendVerdict, capReached, insideWindow, levelFor, nextSendTime,
+  audienceOf, autoSendVerdict, capReached, holdOnError, insideWindow, levelFor, nextSendTime,
   type AutonomyScope,
 } from "./autopilot-rules";
 import { prepareCampaign } from "./campaigns";
@@ -15,7 +15,7 @@ import { openMailbox, type Mailbox } from "./mailbox";
 import { sendDraft } from "./send";
 import { claimLock, getSettings, internalDomains, releaseLock, type SettingsRow } from "./settings";
 import { syncAccount, type SyncResult } from "./sync";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError } from "@/lib/errors";
 import { AUTOPILOT, CAMPAIGNS, planAllows } from "./plan";
 import { PLANS } from "@/lib/billing/plans";
 
@@ -98,7 +98,7 @@ async function checkDraft(draft: DraftRow, settings: SettingsRow) {
     const foreign = unapprovedDetails(`${draft.subject}\n${draft.body}`, approved);
     if (foreign.length) return { level, ok: false, reasons: [`It contains ${foreign.length === 1 ? "a link or detail" : "links or details"} you have not approved (${foreign.slice(0, 2).join(", ")})`] };
     // Earned autonomy: probation, or a spot check that keeps the person's labels coming.
-    const hold = await trustGate(draft.userId, draft).catch(() => null);
+    const hold = await holdOnError(trustGate(draft.userId, draft), (e) => logError(e, { where: "autopilot-trust-gate" }));
     if (hold) return { level, ok: false, reasons: [hold] };
   }
   return { level, ...verdict };

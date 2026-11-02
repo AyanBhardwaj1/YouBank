@@ -1,8 +1,8 @@
 /** Autopilot rule checks: pnpm exec tsx scripts/test-autopilot.ts */
 import { simpleParser } from "mailparser";
 import {
-  audienceOf, autoSendVerdict, capReached, hasPlaceholder, insideWindow, isAutomatedAddress, isAutomatedMessage,
-  levelFor, nextSendTime, normalizeAutopilot, selectPlaybook, type SendCheck,
+  audienceOf, autoSendVerdict, capReached, hasPlaceholder, holdOnError, insideWindow, isAutomatedAddress, isAutomatedMessage,
+  levelFor, nextSendTime, normalizeAutopilot, selectPlaybook, TRUST_UNAVAILABLE, type SendCheck,
 } from "@/lib/crm/autopilot-rules";
 import { buildRaw } from "@/lib/crm/gmail";
 import { toIncoming } from "@/lib/crm/imap";
@@ -26,6 +26,14 @@ void (async () => {
   ok("valid zone kept", normalizeAutopilot({ window: { tz: "America/Los_Angeles" } }).window.tz, "America/Los_Angeles");
   ok("campaign override wins", levelFor(normalizeAutopilot({ autonomy: { campaigns: "approve" } }), "campaigns", "auto"), "auto");
   ok("default override follows the setting", levelFor(normalizeAutopilot({ autonomy: { campaigns: "auto" } }), "campaigns", "default"), "auto");
+
+  console.log("earned-autonomy gate fails closed");
+  ok("a failed check holds the draft", await holdOnError(Promise.reject(new Error("timeout"))), TRUST_UNAVAILABLE);
+  ok("a passing check lets it through", await holdOnError(Promise.resolve(null)), null);
+  ok("a hold reason is kept", await holdOnError(Promise.resolve("On probation")), "On probation");
+  let logged = 0;
+  await holdOnError(Promise.reject(new Error("x")), () => { logged++; });
+  ok("the failure is reported", logged, 1);
 
   console.log("sending hours");
   const ny = { tz: "America/New_York", start: 9, end: 17, weekdays: true };
