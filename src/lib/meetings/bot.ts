@@ -32,7 +32,8 @@ export type BotEvent = { botId: string; code: string; event: string };
 export interface MeetingBotProvider {
   id: string;
   ready(): boolean;
-  createBot(input: { meetingUrl: string; botName: string; meetingId: number }): Promise<{ botId: string; code: string }>;
+  /** `notice` is posted to everyone in the meeting chat when the bot joins, so no one is recorded unaware. */
+  createBot(input: { meetingUrl: string; botName: string; meetingId: number; notice: string }): Promise<{ botId: string; code: string }>;
   getBot(botId: string): Promise<BotState>;
   leave(botId: string): Promise<void>;
   fetchTranscript(state: BotState): Promise<{ segments: Segment[]; participants: Person[] }>;
@@ -166,11 +167,12 @@ export function recallProvider(env: Record<string, string | undefined> = process
   return {
     id: "recall",
     ready: () => !!key,
-    async createBot({ meetingUrl, botName, meetingId }) {
+    async createBot({ meetingUrl, botName, meetingId, notice }) {
       const bot = await call<RecallBot>("/bot/", {
         method: "POST",
         body: JSON.stringify({
           meeting_url: meetingUrl, bot_name: botName,
+          chat: { on_bot_join: { send_to: "everyone", message: notice } },
           recording_config: { transcript: { provider: { recallai_streaming: { mode: "prioritize_accuracy" } } }, participant_events: {} },
           metadata: { youbank_meeting: String(meetingId) },
         }),

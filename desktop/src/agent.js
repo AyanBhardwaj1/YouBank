@@ -383,7 +383,7 @@ function meetings() {
     h("div", null, h("div", null, "Never record"), checks("neverApps")),
     h("div", null, h("div", null, "Never record meetings that mention (separated by commas)"),
       h("input", { type: "text", style: "width: 100%; margin-top: 4px", value: (d.neverKeywords ?? []).join(", "), oninput: (e) => { d.neverKeywords = e.target.value.split(",").map((x) => x.trim()).filter(Boolean); } })),
-    h("div", null, h("div", null, "Start without asking for"), h("p", { class: "small muted" }, "Off by default. The red dot and the Stop button still show. Only where you always have consent."), checks("autoStartApps", d.neverApps ?? [])),
+    h("div", null, h("div", null, "Ask right away for"), h("p", { class: "small muted" }, "Skips the “call detected” offer and shows the recording confirmation at once. Every recording still needs you to confirm everyone knows."), checks("autoStartApps", d.neverApps ?? [])),
     h("div", { class: "row" }, h("button", { class: "btn primary", onclick: async () => { const r = await run("meeting_server_settings", { settings: d }, "Saved for all your computers."); if (r) { meetDraft = null; await loadMeetings(false); } } }, "Save"),
       h("span", { class: "small muted" }, "These apply on every computer. Retention, notes and the notetaker are set on the site, in Relationships → Meetings."))));
 

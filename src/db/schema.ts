@@ -1898,7 +1898,7 @@ export const meetings = pgTable("meetings", {
   bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string; hours?: number; costUsd?: number }>().notNull().default({}),
   context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
   participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
-  consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
+  consent: jsonb("consent").$type<{ at?: string; by?: string; attested?: boolean; noticeCopied?: boolean; noticePosted?: boolean; auto?: boolean }>().notNull().default({}),
   live: jsonb("live").$type<{ on?: boolean; since?: string; minutes?: number; lastAt?: string; brief?: unknown }>().notNull().default({}),
   notes: jsonb("notes").$type<Record<string, unknown>>(),
   notesAt: ts("notes_at"),

@@ -150,6 +150,8 @@ pub struct StartArgs {
     pub app_title: String,
     pub title: String,
     pub notice_copied: bool,
+    /// The person confirmed everyone on the call knows it is recorded. The server refuses a start without it.
+    pub attested: bool,
     pub auto: bool,
     pub contact_ids: Vec<i64>,
     pub deal_ids: Vec<i64>,
@@ -184,7 +186,7 @@ pub async fn start(app: &AppHandle, args: StartArgs) -> Result<Session, String> 
     }
     let body = serde_json::json!({
         "platform": args.platform, "appTitle": args.app_title, "title": args.title,
-        "consent": { "noticeCopied": args.notice_copied, "auto": args.auto },
+        "consent": { "noticeCopied": args.notice_copied, "attested": args.attested, "auto": args.auto },
         "contactIds": args.contact_ids, "dealIds": args.deal_ids,
         // For due dates in the notes: "Friday" means this computer's Friday.
         "utcOffsetMin": chrono::Local::now().offset().local_minus_utc() / 60,
@@ -517,26 +519,20 @@ async fn look(app: &AppHandle, sys: &mut sysinfo::System) {
         return;
     }
     if server.auto_start_apps().iter().any(|a| a == d.app) {
-        // The rule may have changed on the site since the last refresh: check it again before
-        // recording without asking (the server refuses a stale one too).
+        // "Ask right away": skip the offer and show the recording confirmation at once. Recording
+        // never starts without the person confirming everyone on the call knows. The rule may have
+        // changed on the site since the last refresh, so check it again first.
         let fresh = refresh(app).await.unwrap_or(server);
-        if fresh.auto_start_apps().iter().any(|a| a == d.app) && refused(&fresh.never_apps(), &fresh.never_keywords(), d.app, &d.title).is_none() {
-            let args = StartArgs { platform: d.app.into(), app_title: d.title.clone(), auto: true, ..Default::default() };
-            match start(app, args).await {
-                Ok(_) => alerts::show(
-                    app,
-                    "Meeting copilot started",
-                    &format!("Recording this {} call, as you set. Stop it from the pill or the tray.", app_label(d.app)),
-                ),
-                Err(e) => {
-                    // Not again for this call (a refusal would otherwise repeat every 15 seconds).
-                    state.meetings.dismissed.lock().unwrap().insert(d.app.to_string(), Instant::now());
-                    alerts::show_error(app, "Meeting copilot", &e);
-                }
-            }
+        if refused(&fresh.never_apps(), &fresh.never_keywords(), d.app, &d.title).is_some() {
             return;
         }
-        if refused(&fresh.never_apps(), &fresh.never_keywords(), d.app, &d.title).is_some() {
+        if fresh.auto_start_apps().iter().any(|a| a == d.app) {
+            alerts::show(
+                app,
+                &format!("{} call detected", app_label(d.app)),
+                "Confirm everyone on the call knows it is being recorded, then start, in the small YouBank window.",
+            );
+            ask_consent(app, Some((d.app.into(), d.title.clone())));
             return;
         }
     }
