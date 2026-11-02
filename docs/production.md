@@ -227,6 +227,20 @@ or on Pro a log drain (Vercel → Settings → Log Drains) to Better Stack, Axio
 
 ---
 
+## Product metrics
+
+`drizzle/0032_analytics.sql` adds three read-only views over tables the app already writes. Nothing new is
+collected and no analytics vendor is involved.
+
+| View | What it holds |
+|---|---|
+| `analytics_activity` | One row per person, UTC day and module used: any AI call (module from its feature name), a saved tool run, a Studio agent run, an email they sent or discarded, a meeting |
+| `analytics_cohorts` | Per sign-up week: sign-ups; activated (a saved tool run or Studio run within 24 hours of sign-up); active again in days 7–13 (D7) and days 30–36 (D30), out of those old enough to count |
+| `analytics_modules` | Per week and module: distinct people |
+
+Print them with `pnpm exec tsx --env-file=.env.local scripts/analytics.mts [weeks]`. Autopilot sends are not
+counted as activity: only what a person did.
+
 ## When something is down
 
 | What | What people see | What to do |
