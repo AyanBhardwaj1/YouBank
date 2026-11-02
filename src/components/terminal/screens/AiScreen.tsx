@@ -9,9 +9,40 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { apiError, errorMessage, safeText } from "@/lib/client/errors";
+import type { FigureReport } from "@/lib/ai/figures";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
-type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; error?: string; streaming?: boolean };
+type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; figures?: FigureReport; error?: string; streaming?: boolean };
+
+/**
+ * Which figures match a number in the source they cite. "Matches" is all it claims: a matched figure can
+ * still be the wrong field to quote, so each one shows the field and period it matched.
+ */
+function FigureCheck({ r }: { r: FigureReport }) {
+  if (!r.figures.length) return null;
+  const sumUp = [
+    r.checkable ? `${r.matched + r.computed} of ${r.checkable} figures from data match the cited source` : "",
+    r.noMatch ? `${r.noMatch} not found there` : "",
+    r.textOnly ? `${r.textOnly} cited from text, not checked` : "",
+    r.uncited ? `${r.uncited} without a citation` : "",
+  ].filter(Boolean).join(" · ");
+  const tone = r.noMatch || r.uncited ? "text-neg" : "text-muted";
+  const what: Record<string, string> = { matched: "matches", computed: "computed with calc", no_match: "not found in the cited source", text_only: "cited from text, not checked", uncited: "no citation" };
+  return (
+    <details className="mt-2 border-t border-line pt-1.5 text-[10.5px]">
+      <summary className={`cursor-pointer select-none ${tone}`}>{sumUp}</summary>
+      <ul className="mt-1 space-y-0.5 text-muted">
+        {r.figures.map((f, k) => (
+          <li key={k} className="flex flex-wrap gap-x-1.5">
+            <span className={`num ${f.status === "no_match" || f.status === "uncited" ? "text-neg" : "text-fg"}`}>{f.raw}</span>
+            {f.cites.length > 0 && <span className="num text-accent">{f.cites.join(", ")}</span>}
+            <span>{what[f.status]}{f.field ? `: ${f.field}${f.period ? `, to ${f.period}` : ""}` : ""}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, question }: { ticker: string; company?: CompanyData; ai: AiStatus | null; openPanels: OpenPanel[]; onRun?: (c: Command) => void; subject?: string; prompts?: string[]; /** A question handed over from another screen ("Ask AI"), ready to send. */ question?: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -64,6 +95,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               return { ...m, tools };
             });
             else if (ev.type === "sources") patchLast((m) => ({ ...m, sources: ev.sources }));
+            else if (ev.type === "figures") patchLast((m) => ({ ...m, figures: ev.report }));
             else if (ev.type === "error") patchLast((m) => ({ ...m, error: safeText(ev.message) }));
           }
         }
@@ -98,7 +130,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               <div className="min-w-0 max-w-[560px] rounded-md border border-line bg-elevated/60 px-3 py-2 text-[12px] leading-relaxed">
                 {subject
                   ? "I can search the startup directory, SEC Form D private-offering filings, public company financials, and the web. Ask about a company's funding history, how to reach its founders, competitors, or which companies in a space look fundable. Every claim cites its source."
-                  : "I read the same SEC filings and XBRL facts this terminal runs on, plus FMP prices. Ask for a peer set, a footnote, an outlier explanation, or a number from a 10-K. Every figure cites its source, and I can search filing text for items outside XBRL such as net retention or customer counts."}
+                  : "I read the same SEC filings and XBRL facts this terminal runs on, plus FMP prices. Ask for a peer set, a footnote, an outlier explanation, or a number from a 10-K. Figures cite their source, and figures from filed data are checked against it; I can also search filing text for items outside XBRL such as net retention or customer counts."}
               </div>
             </div>
             <div className="pl-8 max-md:pl-0">
@@ -127,6 +159,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               )}
               {m.role === "user" ? <span>{m.content}</span> : <Markdown text={m.content || (m.streaming ? "…" : "")} sources={m.sources ?? []} />}
               {m.error && <PlanNotice error={m.error} className="mt-1 text-[11px]" />}
+              {m.figures && !m.streaming && <FigureCheck r={m.figures} />}
               {m.sources && m.sources.length > 0 && (
                 <div className="mt-2 border-t border-line pt-1.5 text-[10.5px] text-muted">
                   <div className="mb-0.5 uppercase tracking-wider">Sources</div>

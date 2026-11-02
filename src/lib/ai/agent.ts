@@ -17,6 +17,7 @@ import { routeFor, type AiTask } from "./route";
 import { aiUser, recordUsage } from "./usage";
 import { describeFailure, logError } from "@/lib/errors";
 import { fitToSchema } from "./fit";
+import { checkFigures, type FigureReport, type ToolRecord } from "./figures";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AgentEvent =
@@ -24,6 +25,8 @@ export type AgentEvent =
   | { type: "thinking"; text: string }
   | { type: "tool"; name: string; status: "start" | "end"; summary?: string }
   | { type: "sources"; sources: Source[] }
+  /** Which figures in the answer match a number in the source they cite (figures.ts). */
+  | { type: "figures"; report: FigureReport }
   | { type: "status"; text: string }
   | { type: "error"; message: string }
   | { type: "done"; provider: string; model: string; effort?: string; text: string };
@@ -65,7 +68,7 @@ const OVERDUE_NUDGE = "Your time budget is spent. Produce the final answer now, 
 
 const summarizeInput = (input: unknown) => { try { return JSON.stringify(input).slice(0, 140); } catch { return ""; } };
 
-function makeCtx(): { ctx: ToolCtx; sources: Source[] } {
+function makeCtx(): { ctx: ToolCtx; sources: Source[]; records: ToolRecord[] } {
   const sources: Source[] = [];
   const ctx: ToolCtx = {
     addSource: (label, url) => {
@@ -76,11 +79,14 @@ function makeCtx(): { ctx: ToolCtx; sources: Source[] } {
       return id;
     },
   };
-  return { ctx, sources };
+  return { ctx, sources, records: [] };
 }
 
-/** Run one assistant turn (with tool calls) and stream events. Resolves with the final text. */
-export async function runChat(opts: RunOptions): Promise<{ text: string; sources: Source[] }> {
+/**
+ * Run one assistant turn (with tool calls) and stream events. Resolves with the final text, its sources,
+ * every tool call's raw output (for checking figures and for audits) and the figure report.
+ */
+export async function runChat(opts: RunOptions): Promise<{ text: string; sources: Source[]; records?: ToolRecord[]; figures?: FigureReport }> {
   const cfg = resolveAi(opts.prefs, opts.override);
   if (cfg.provider === "none") { opts.emit({ type: "error", message: cfg.reason }); return { text: "", sources: [] }; }
   const userId = aiUser();
@@ -90,13 +96,13 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   if (typeof release === "string") { opts.emit({ type: "error", message: release }); return { text: "", sources: [] }; }
   const system = opts.system ?? systemPrompt();
   const volatile = opts.volatile ?? (opts.system ? undefined : contextBlock(opts.context));
-  const { ctx, sources } = makeCtx();
+  const { ctx, sources, records } = makeCtx();
   const tools = [...(opts.tools ? CHAT_TOOLS.filter((t) => opts.tools!.includes(t.name)) : opts.extraTools ? [] : CHAT_TOOLS), ...(opts.extraTools ?? [])];
   let text = "";
   const usage = { total: emptyUsage() };
   // The run's cost is recorded once at the end, so between turns the limits count it as pending.
   const budget = () => aiBlocked(userId, costOf(cfg.model, usage.total) ?? 0);
-  const run: LoopArgs = { cfg, system, volatile, history: opts.messages, toolDefs: tools, ctx, emit: opts.emit, json: opts.json, maxTurns: opts.maxTurns ?? 10, deadline: opts.deadline, signal: opts.signal, parallel: !!opts.parallelTools, usage, budget };
+  const run: LoopArgs = { cfg, system, volatile, history: opts.messages, toolDefs: tools, ctx, emit: opts.emit, json: opts.json, maxTurns: opts.maxTurns ?? 10, deadline: opts.deadline, signal: opts.signal, parallel: !!opts.parallelTools, usage, budget, records };
   try {
     text = cfg.provider === "openai" ? await runOpenAI(run) : await runAnthropic(run);
   } catch (e) {
@@ -108,8 +114,11 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   }
   recordUsage({ feature: opts.feature ?? "chat", provider: cfg.provider, model: cfg.model, effort: cfg.effort, usage: usage.total });
   opts.emit({ type: "sources", sources });
+  // Prose answers only: a workflow's JSON is checked where it is rendered, not here.
+  const figures = text && !opts.json ? checkFigures(text, records, sources) : undefined;
+  if (figures?.figures.length) opts.emit({ type: "figures", report: figures });
   opts.emit({ type: "done", provider: cfg.provider, model: cfg.model, effort: cfg.effort, text });
-  return { text, sources };
+  return { text, sources, records, figures };
 }
 
 /** A failed run as the person sees it: provider errors by kind, anything internal as a logged reference. */
@@ -145,6 +154,8 @@ type LoopArgs = {
   json: JsonFormat | undefined; maxTurns: number; deadline?: number; signal?: AbortSignal; parallel: boolean; usage: { total: Usage };
   /** Why the run must stop before its next turn (a spend limit), or null. */
   budget?: () => Promise<string | null>;
+  /** Every tool call, with its output and the source ids it issued. */
+  records?: ToolRecord[];
 };
 
 /** Checked before every turn after the first: a run that crosses a spend limit ends with what it has. */
@@ -155,10 +166,14 @@ async function overBudget(a: LoopArgs, turn: number): Promise<boolean> {
 }
 
 /** Run a turn's tool calls, concurrently when the tools are read-only, emitting start and end events. */
-async function runCalls<T extends { name: string; input: unknown }>(calls: T[], a: Pick<LoopArgs, "ctx" | "toolDefs" | "emit" | "parallel">): Promise<{ output: string; isError: boolean }[]> {
+async function runCalls<T extends { name: string; input: unknown }>(calls: T[], a: Pick<LoopArgs, "ctx" | "toolDefs" | "emit" | "parallel" | "records">): Promise<{ output: string; isError: boolean }[]> {
   const one = async (c: T) => {
     a.emit({ type: "tool", name: c.name, status: "start", summary: summarizeInput(c.input) });
-    const r = await runTool(c.name, c.input, a.ctx, a.toolDefs);
+    // Each call gets its own view of the source list, so the ids it issued are known even when calls run at once.
+    const sourceIds: string[] = [];
+    const ctx: ToolCtx = { ...a.ctx, addSource: (label, url) => { const id = a.ctx.addSource(label, url); if (!sourceIds.includes(id)) sourceIds.push(id); return id; } };
+    const r = await runTool(c.name, c.input, ctx, a.toolDefs);
+    a.records?.push({ tool: c.name, input: c.input, output: r.output, isError: r.isError, sourceIds });
     a.emit({ type: "tool", name: c.name, status: "end", summary: summarizeInput(c.input) });
     return r;
   };
