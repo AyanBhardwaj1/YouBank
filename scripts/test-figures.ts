@@ -6,7 +6,8 @@
  * pre-registered threshold for the fallback matcher (sleep-research/EXPERIMENT_PLAN.md, K2): at most 10% of
  * perturbed figures (3–30% off) and of 1000x scale slips may match. Seeded; synthetic, not live answers.
  */
-import { checkFigures, leavesOf, type ToolRecord } from "@/lib/ai/figures";
+import { checkFigures, leavesOf, resolveRef, type ToolRecord } from "@/lib/ai/figures";
+import { calcTool } from "@/lib/ai/tools";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -25,6 +26,7 @@ const company = (ticker: string, src: string, px: string, r: { rev: number; prio
 });
 const rec = (tool: string, output: string, sourceIds: string[]): ToolRecord => ({ tool, input: {}, output, isError: false, sourceIds });
 
+void (async () => {
 console.log("leaves are typed by their field names");
 const acme = rec("get_company_financials", company("ACME", "S1", "S2", { rev: 5435.2, prior: 4520.1, gp: 3660.7, oi: 701.3, fcf: 1122.9, ev: 54210.4, mcap: 54610.9 }), ["S1", "S2"]);
 const leaves = leavesOf(acme);
@@ -63,6 +65,19 @@ const filing = checkFigures("Management says revenue grew 21% [S3]. About 4,000 
 ok("figures citing only filing text are cited, not checked", filing.figures.map((f) => f.status), ["text_only", "text_only", "text_only"]);
 ok("an uncited money figure is reported as uncited", checkFigures("Revenue was about $5.4 billion.", [acme]).figures.map((f) => f.status), ["uncited"]);
 ok("an uncited plain count is not a claim", checkFigures("There are 3 reasons.", [acme]).figures.length, 0);
+
+console.log("calc by reference and figures near 19xx/20xx");
+ok("a reference resolves to the tool's own number", resolveRef([acme], "S1.ltm_usd_mm.revenue"), 5435.2);
+ok("a valuation path resolves under the price source", resolveRef([acme], "S2.valuation_usd_mm.enterprise_value"), 54210.4);
+ok("an unknown path is null", resolveRef([acme], "S1.ltm_usd_mm.nope"), null);
+const ctx = { addSource: () => "S9", value: (ref: string) => resolveRef([acme], ref) };
+const out = JSON.parse(await calcTool.run({ script: "S2.valuation_usd_mm.enterprise_value / S1.ltm_usd_mm.revenue" }, ctx)) as { results: { value: number }[]; refs: Record<string, number> };
+ok("calc evaluates with referenced values", Math.round(out.results[0].value * 1000) / 1000, 9.974);
+ok("calc reports the values it used", out.refs, { "S2.valuation_usd_mm.enterprise_value": 54210.4, "S1.ltm_usd_mm.revenue": 5435.2 });
+ok("a bad reference is an error the model can act on", /is not a number in an earlier tool result/.test(await calcTool.run({ script: "S1.ltm_usd_mm.nope * 2" }, ctx)), true);
+const nineteen = rec("get_company_financials", company("OLD", "S1", "S2", { rev: 1950.3, prior: 1700, gp: 900, oi: 200, fcf: 150, ev: 5000, mcap: 5200 }), ["S1", "S2"]);
+ok("a figure starting 19xx is not taken for a year", checkFigures("Revenue was $1950.3 million [S1].", [nineteen]).figures.map((f) => f.status), ["matched"]);
+ok("a year is still not a figure", checkFigures("In 2025 revenue rose [S1].", [nineteen]).figures.length, 0);
 
 console.log("comps grid: each row is its own company");
 const comps = rec("get_trading_comps", JSON.stringify({ group: "Infra", rows: [
@@ -108,3 +123,4 @@ check("scale slips match at most 10%", rate(tally.scale) <= 0.10, tally.scale);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+})();

@@ -23,7 +23,8 @@ export function extractNumbers(text: string): Num[] {
     .replace(new RegExp(`\\b(?:${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,\\s*(?:19|20)\\d{2})?`, "gi"), (m) => " ".repeat(m.length))
     .replace(/\b(?:q[1-4]|h[12]|fy|fiscal(?: year)?|cy)\s*'?\d{2,4}\b/gi, (m) => " ".repeat(m.length))
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, (m) => " ".repeat(m.length))
-    .replace(/\b(?:19|20)\d{2}(?!\s*(?:%|percent|bps|basis|x\b|times|million|billion|thousand|mm|bn))\b/gi, (m) => " ".repeat(m.length))
+    // A year, but not a figure that happens to start 19xx or 20xx ("$1950.3 million", "2,045", "1,975.2").
+    .replace(/(?<![$\d,.])\b(?:19|20)\d{2}(?![.,]\d)(?!\s*(?:%|percent|bps|basis|x\b|times|million|billion|thousand|mm|bn))\b/gi, (m) => " ".repeat(m.length))
     .replace(/\b\d+(?:st|nd|rd|th)\b/gi, (m) => " ".repeat(m.length));
   const re = /(\$|usd\s*|us\$)?\s?(-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?)\s*(%|percent\b|per cent\b|bps\b|basis points?\b|x\b|times\b|thousand\b|million\b|billion\b|trillion\b|mm\b|mn\b|bn\b|tn\b|k\b|m\b|b\b)?/gi;
   for (const m of masked.matchAll(re)) {

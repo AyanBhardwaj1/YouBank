@@ -17,7 +17,7 @@ import { routeFor, type AiTask } from "./route";
 import { aiUser, recordUsage } from "./usage";
 import { describeFailure, logError } from "@/lib/errors";
 import { fitToSchema } from "./fit";
-import { checkFigures, type FigureReport, type ToolRecord } from "./figures";
+import { checkFigures, resolveRef, type FigureReport, type ToolRecord } from "./figures";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export type AgentEvent =
@@ -171,7 +171,11 @@ async function runCalls<T extends { name: string; input: unknown }>(calls: T[], 
     a.emit({ type: "tool", name: c.name, status: "start", summary: summarizeInput(c.input) });
     // Each call gets its own view of the source list, so the ids it issued are known even when calls run at once.
     const sourceIds: string[] = [];
-    const ctx: ToolCtx = { ...a.ctx, addSource: (label, url) => { const id = a.ctx.addSource(label, url); if (!sourceIds.includes(id)) sourceIds.push(id); return id; } };
+    const ctx: ToolCtx = {
+      ...a.ctx,
+      addSource: (label, url) => { const id = a.ctx.addSource(label, url); if (!sourceIds.includes(id)) sourceIds.push(id); return id; },
+      value: (ref) => resolveRef(a.records ?? [], ref),
+    };
     const r = await runTool(c.name, c.input, ctx, a.toolDefs);
     a.records?.push({ tool: c.name, input: c.input, output: r.output, isError: r.isError, sourceIds });
     a.emit({ type: "tool", name: c.name, status: "end", summary: summarizeInput(c.input) });

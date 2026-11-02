@@ -100,6 +100,44 @@ export function leavesOf(rec: ToolRecord): Leaf[] {
   return out;
 }
 
+/**
+ * The value at `S3.ltm_usd_mm.revenue`: the field path under the object that carries source S3 (or, for a
+ * `valuation*` path, its price_source), as the tool returned it. Numbers only, in the payload's own units
+ * (USD millions stay millions); "2.5x" reads as 2.5 and "34%" as 0.34. Null when there is no such value.
+ */
+export function resolveRef(records: ToolRecord[], ref: string): number | null {
+  const m = /^(S\d+)\.([A-Za-z0-9_.]+)$/.exec(ref.trim());
+  if (!m) return null;
+  const [, id, path] = m;
+  const keys = path.split(".");
+  const follow = (o: unknown): number | null => {
+    let v: unknown = o;
+    for (const k of keys) { if (!v || typeof v !== "object") return null; v = (v as Record<string, unknown>)[k]; }
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const x = /^(-?\d+(?:\.\d+)?)\s*x$/i.exec(v.trim()); if (x) return Number(x[1]);
+      const p = /^([+-]?\d+(?:\.\d+)?)\s*%$/.exec(v.trim()); if (p) return Number(p[1]) / 100;
+    }
+    return null;
+  };
+  for (const r of records) {
+    if (r.isError || !r.sourceIds.includes(id)) continue;
+    let data: unknown;
+    try { data = JSON.parse(r.output); } catch { continue; }
+    if (r.sourceIds.length === 1) { const v = follow(data); if (v !== null) return v; }
+    const stack: unknown[] = [data];
+    while (stack.length) {
+      const o = stack.pop();
+      if (Array.isArray(o)) { stack.push(...o); continue; }
+      if (!o || typeof o !== "object") continue;
+      const rec = o as Record<string, unknown>;
+      if (rec.source === id || (rec.price_source === id && keys[0].startsWith("valuation"))) { const v = follow(rec); if (v !== null) return v; }
+      stack.push(...Object.values(rec));
+    }
+  }
+  return null;
+}
+
 /** Results of `calc` calls in the run: derived figures count only when they were computed there. */
 function calcValues(records: ToolRecord[]): number[] {
   const out: number[] = [];

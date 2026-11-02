@@ -20,7 +20,11 @@ import { siteLink } from "@/lib/site";
 import { fmtChange } from "@/lib/market/units";
 
 export type Source = { id: string; label: string; url: string };
-export type ToolCtx = { addSource: (label: string, url: string) => string };
+export type ToolCtx = {
+  addSource: (label: string, url: string) => string;
+  /** A value from an earlier tool result in this run, by source id and field path (calc's `S1.ltm_usd_mm.revenue`). */
+  value?: (ref: string) => number | null;
+};
 export type ToolDef<T = unknown> = {
   name: string;
   description: string;
@@ -237,10 +241,21 @@ export const insiderTool = def({
 
 export const calcTool = def({
   name: "calc",
-  description: "Exact arithmetic. One expression per line; 'name = expr' defines a variable for later lines. Supports + - * / ^, parentheses, k/m/b/% suffixes (2.5b, 40%), and sqrt ln log exp abs min max round pow npv(rate, cf1, cf2, ...) irr(cf0, cf1, ...) pmt(rate, n, pv). Use it for every multiple, growth rate, margin, IRR, or bridge.",
-  schema: z.object({ script: z.string().describe("e.g. 'ev = 45.2b + 2.1b - 3.9b\nev / 5.43b'") }),
-  run: async ({ script }) => {
-    try { const r = evaluateScript(script); return JSON.stringify({ results: r.results.map((x) => ({ line: x.line, value: Number.isFinite(x.value) ? Number(x.value.toPrecision(12)) : String(x.value) })) }); }
+  description: "Exact arithmetic. One expression per line; 'name = expr' defines a variable for later lines. Supports + - * / ^, parentheses, k/m/b/% suffixes (2.5b, 40%), and sqrt ln log exp abs min max round pow npv(rate, cf1, cf2, ...) irr(cf0, cf1, ...) pmt(rate, n, pv). Reference a figure from an earlier tool result by its source id and field path instead of retyping it, e.g. 'S1.valuation_usd_mm.enterprise_value / S1.ltm_usd_mm.revenue' (values in the tool's own units: USD millions stay millions; '34%' reads as 0.34). Use it for every multiple, growth rate, margin, IRR, or bridge.",
+  schema: z.object({ script: z.string().describe("e.g. 'ev = S1.valuation_usd_mm.enterprise_value\nev / S1.ltm_usd_mm.revenue'") }),
+  run: async ({ script }, ctx) => {
+    try {
+      // Source references become the tool's own numbers before evaluation, so nothing is retyped.
+      const refs: Record<string, number> = {};
+      const resolved = script.replace(/\bS\d+(?:\.[A-Za-z_][A-Za-z0-9_]*)+/g, (ref) => {
+        const v = ctx.value?.(ref) ?? null;
+        if (v === null) throw new Error(`${ref} is not a number in an earlier tool result. Check the source id and the field path.`);
+        refs[ref] = v;
+        return `(${v})`;
+      });
+      const r = evaluateScript(resolved);
+      return JSON.stringify({ results: r.results.map((x) => ({ line: x.line, value: Number.isFinite(x.value) ? Number(x.value.toPrecision(12)) : String(x.value) })), ...(Object.keys(refs).length ? { refs } : {}) });
+    }
     catch (e) { return JSON.stringify({ error: toolError(e) }); }
   },
 });
