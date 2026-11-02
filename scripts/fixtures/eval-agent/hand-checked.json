@@ -1,0 +1,4 @@
+{
+  "about": "Hand-checked slice of the finance eval set (B1). A person reads each figure from the named filing and records it here; nothing in this file is computed by YouBank. Same shape as the xbrl-*.json sets: {id, kind: 'hand', ticker, period, question, expected: [{label, value, unit: 'usd'|'pct'|'x'|'count', tol?}], provenance: 'hand:<accession> by <initials> on <date>'}.",
+  "questions": []
+}

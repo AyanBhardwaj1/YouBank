@@ -1,0 +1,56 @@
+# The finance eval harness, nightly (sleep-research/EXPERIMENT_PLAN.md, B1): the chat agent answers the
+# latest frozen XBRL question set three times, and the results are kept as a build artifact.
+#
+# Off until the owner opts in, because every run spends model money:
+#   - repository variable EVAL_NIGHTLY = on
+#   - secrets DATABASE_URL (for the usage ledger and limits) and OPENAI_API_KEY and/or ANTHROPIC_API_KEY
+#   - optional variable EVAL_LIMIT (questions per night, default 40) and EVAL_MODEL
+# Manually: Actions → Eval agent → Run workflow.
+
+name: Eval agent
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-agent
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    if: ${{ vars.EVAL_NIGHTLY == 'on' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EDGAR_USER_AGENT: ${{ vars.EDGAR_USER_AGENT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check the secrets are set
+        run: |
+          if [ -z "$DATABASE_URL" ] || { [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; }; then
+            echo "Set DATABASE_URL and a model key as repository secrets first." >&2; exit 1
+          fi
+      - name: Run the latest frozen set
+        run: |
+          set_file=$(ls scripts/fixtures/eval-agent/xbrl-*.json 2>/dev/null | sort | tail -1)
+          if [ -z "$set_file" ]; then echo "No frozen set yet: run scripts/eval-agent-build.mts and commit it." >&2; exit 1; fi
+          pnpm exec tsx scripts/eval-agent.mts "$set_file" --k 3 --limit "${{ vars.EVAL_LIMIT || 40 }}" ${{ vars.EVAL_MODEL && format('--model {0}', vars.EVAL_MODEL) || '' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-agent-${{ github.run_id }}
+          path: scripts/fixtures/eval-agent/results/
