@@ -171,8 +171,8 @@ function CampaignDetail({ id, ctx, onBack, onDrafted }: { id: number; ctx: Panel
     ctx.say(done(r)); ctx.refresh();
   });
   const patch = (body: Record<string, unknown>, message: string) => ctx.run("patch-campaign", async () => {
-    await api(`/api/crm/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) });
-    setEditing(null); ctx.say(message); ctx.refresh();
+    const r = await api<{ warnings?: string[] }>(`/api/crm/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+    setEditing(null); ctx.say([message, ...(r.warnings ?? [])].join(" ")); ctx.refresh();
   });
   const patchLead = (leadId: number, body: Record<string, unknown>, message: string) => ctx.run(`lead-${leadId}`, async () => {
     await api(`/api/crm/leads/${leadId}`, { method: "PATCH", body: JSON.stringify(body) });

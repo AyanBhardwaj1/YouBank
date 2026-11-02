@@ -1937,6 +1937,14 @@ production.
 - There is one sending function, `sendDraft()`.
 - A single-use claim means a draft cannot go twice.
 - The live thread is re-read before every automatic send.
+- If the earned-autonomy check itself fails (a database timeout, say), the draft waits for the person.
+- Campaign and nurture mail (`src/lib/crm/compliance.ts`):
+  - carries the sender's postal address and an unsubscribe line;
+  - sends RFC 8058 one-click `List-Unsubscribe` headers; the link is signed per sender and recipient and
+    opts out at once (`/api/unsubscribe/[token]`: GET only asks, POST unsubscribes);
+  - is refused, or held by autopilot, until a postal address is set (`drizzle/0030_mail_compliance.sql`);
+  - cannot launch from a domain with neither SPF nor a findable DKIM key, and a missing DMARC record is
+    flagged at launch.
 
 **Prompt injection.**
 - The security veto holds any automatic email containing a link, address or account number the person did
@@ -2096,10 +2104,6 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 ## Roadmap
 
-- **Compliance for cold email:**
-  - a postal address and an unsubscribe line in campaign emails;
-  - a `List-Unsubscribe` one-click header;
-  - opt-outs honoured within 48 hours.
 - **A YouBank connector inside Claude and ChatGPT:** a remote MCP server exposing Form D × directory × XBRL.
   - It would follow the stateless 2026-07-28 MCP specification, with MCP Apps for rendered results.
   - On Vercel it would use `mcp-handler`, which needs its own OAuth 2.1 authorisation server.

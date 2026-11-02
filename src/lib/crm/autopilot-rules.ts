@@ -201,6 +201,8 @@ export type SendCheck = {
   replyingToAutomated: boolean;
   /** How many emails autopilot already sent in this conversation in the last day. */
   autoSentInThread: number;
+  /** Commercial mail (campaign, nurture) with no postal address set to put in it. */
+  postalAddressMissing?: boolean;
 };
 
 /**
@@ -223,6 +225,7 @@ export function autoSendVerdict(c: SendCheck): { ok: boolean; reasons: string[] 
   if (c.recipientOptedOut && c.kind !== "reply") reasons.push("The recipient asked not to be contacted");
   if (c.replyingToAutomated) reasons.push("It answers an automated message");
   if (c.autoSentInThread >= 2) reasons.push("Autopilot already sent twice in this conversation today");
+  if (c.postalAddressMissing) reasons.push("Outreach needs your postal address, which is not set (Relationships settings)");
   return { ok: reasons.length === 0, reasons };
 }
 

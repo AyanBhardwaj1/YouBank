@@ -12,7 +12,7 @@ export type SettingsRow = Omit<SettingsRecord, "autopilot" | "mode"> & { mode: M
 
 export const DEFAULT_SETTINGS = {
   instructions: "", knowledge: "", voice: "", followUpDays: 5, staleDealDays: 21, nightly: true,
-  about: "", signature: "", internalDomains: [] as string[],
+  about: "", signature: "", postalAddress: "", internalDomains: [] as string[],
 };
 
 /** Investors and PE get deal flow by default; everyone else, founders included, gets business development. */
@@ -55,6 +55,7 @@ export async function saveSettings(userId: string, fields: Partial<typeof DEFAUL
     mode: fields.mode !== undefined ? (isMode(fields.mode) ? fields.mode : "") : current.modeChosen ? current.mode : "",
     about: fields.about !== undefined ? String(fields.about).slice(0, 3000) : current.about,
     signature: fields.signature !== undefined ? String(fields.signature).slice(0, 1000) : current.signature,
+    postalAddress: fields.postalAddress !== undefined ? String(fields.postalAddress).trim().slice(0, 300) : current.postalAddress,
     internalDomains: fields.internalDomains !== undefined ? domains(fields.internalDomains) : current.internalDomains,
     autopilot: fields.autopilot !== undefined ? normalizeAutopilot(fields.autopilot) : current.autopilot,
     instructions: fields.instructions !== undefined ? String(fields.instructions).slice(0, 4000) : current.instructions,

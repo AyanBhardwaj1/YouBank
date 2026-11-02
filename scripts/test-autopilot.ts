@@ -91,6 +91,7 @@ void (async () => {
   ok("loop guard", autoSendVerdict({ ...good, autoSentInThread: 2 }).ok, false);
   ok("opted out: a reply is still allowed", autoSendVerdict({ ...good, recipientOptedOut: true }).ok, true);
   ok("opted out: outreach is not", autoSendVerdict({ ...good, kind: "campaign", recipientOptedOut: true }).ok, false);
+  ok("outreach without a postal address waits", autoSendVerdict({ ...good, kind: "campaign", postalAddressMissing: true }).reasons, ["Outreach needs your postal address, which is not set (Relationships settings)"]);
   ok("every reason is listed", autoSendVerdict({ ...good, enabled: false, confidence: "low", sensitive: true }).reasons.length, 3);
   const now = new Date("2026-09-28T15:00:00Z");
   ok("cap counts the last 24 hours", capReached([new Date("2026-09-28T01:00:00Z"), new Date("2026-09-27T14:00:00Z")], now, 2), false);

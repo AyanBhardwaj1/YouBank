@@ -4,6 +4,9 @@ import { considerDraft } from "@/lib/crm/autopilot";
 import { rateLimit } from "@/lib/locks";
 import { requireFeature } from "@/lib/billing/entitlements";
 import { CAMPAIGNS } from "@/lib/crm/plan";
+import { listAccounts } from "@/lib/crm/accounts";
+import { launchChecks, POSTAL_ADDRESS_NEEDED, senderAuth } from "@/lib/crm/compliance";
+import { getSettings } from "@/lib/crm/settings";
 import {
   addLeads, deleteCampaign, getCampaign, parseLeadList, prepareCampaign, qualifyCampaign, updateCampaign, type LeadInput,
 } from "@/lib/crm/campaigns";
@@ -27,8 +30,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!id) return NextResponse.json({ error: "That link is not valid. Check it, or go back and open the item again." }, { status: 400 });
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     // Launching (or resuming) a campaign is premium; pausing, editing and archiving stay open.
-    if (body?.status === "active") await requireFeature(user, CAMPAIGNS);
-    return NextResponse.json(await updateCampaign(user.id, id, body ?? {}));
+    let warnings: string[] = [];
+    if (body?.status === "active") {
+      await requireFeature(user, CAMPAIGNS);
+      // Outreach needs a postal address, and a sending domain receivers can authenticate.
+      if (!(await getSettings(user.id)).postalAddress.trim()) return NextResponse.json({ error: POSTAL_ADDRESS_NEEDED }, { status: 409 });
+      const checks = launchChecks(await Promise.all((await listAccounts(user.id)).map((a) => senderAuth(a.address))));
+      if (checks.blockers.length) return NextResponse.json({ error: checks.blockers.join(" ") }, { status: 409 });
+      warnings = checks.warnings;
+    }
+    return NextResponse.json({ ...(await updateCampaign(user.id, id, body ?? {})), warnings });
   });
 }
 

@@ -615,6 +615,8 @@ export const crmSettings = pgTable("crm_settings", {
   about: text("about").notNull().default(""),
   /** Added to every email sent from YouBank. Mail sent through an API gets no client signature. */
   signature: text("signature").notNull().default(""),
+  /** The sender's postal address, required in campaign and nurture mail (drizzle/0030_mail_compliance.sql). */
+  postalAddress: text("postal_address").notNull().default(""),
   /** Email domains that count as coworkers. Empty means the connected mailbox's own domain. */
   internalDomains: jsonb("internal_domains").$type<string[]>().notNull().default([]),
   /** See AutopilotSettings. Normalized on every read. */

@@ -14,7 +14,7 @@ import { Field, ago, api, btn, input, type PanelCtx } from "./shared";
 import { Select } from "@/components/ui/Select";
 
 type Settings = {
-  mode: Mode; modeChosen: boolean; about: string; signature: string; internalDomains: string[]; effectiveInternalDomains: string[];
+  mode: Mode; modeChosen: boolean; about: string; signature: string; postalAddress: string; internalDomains: string[]; effectiveInternalDomains: string[];
   instructions: string; knowledge: string; voice: string; followUpDays: number; staleDealDays: number; nightly: boolean;
   lastRunAt: string | null; autopilot: AutopilotSettings;
 };
@@ -103,6 +103,9 @@ export function AgentSettings({ ctx }: { ctx: PanelCtx }) {
           </Field>
           <Field label="Signature" hint="Added to every email sent from YouBank. Mail sent through Gmail's API or SMTP gets no signature otherwise.">
             <textarea value={s.signature} onChange={(e) => setS({ ...s, signature: e.target.value })} rows={4} className={input} placeholder={"Ayan Bhardwaj\nFounder, Ledgerline\nledgerline.io"} />
+          </Field>
+          <Field label="Postal address" hint="Required in every campaign and nurture email (CAN-SPAM). It goes under the signature with an unsubscribe link; replies and introductions are sent as written.">
+            <textarea value={s.postalAddress} onChange={(e) => setS({ ...s, postalAddress: e.target.value })} rows={2} className={input} placeholder={"Ledgerline Inc., 548 Market St #12345, San Francisco, CA 94104"} />
           </Field>
         </div>
       </Section>

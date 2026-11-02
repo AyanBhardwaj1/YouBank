@@ -7,6 +7,7 @@ import {
   type AutonomyScope,
 } from "./autopilot-rules";
 import { prepareCampaign } from "./campaigns";
+import { isCommercial } from "./compliance";
 import { createDraft, ingestThreadDelta, mailboxAddresses, processThread, supersedeReplies, type DraftRow } from "./db";
 import { chooseArm, formatVariant, parseVariant, slotWindow, trustGate, unapprovedDetails } from "./engine";
 import { listPlaybook } from "./knowledge";
@@ -86,6 +87,7 @@ async function checkDraft(draft: DraftRow, settings: SettingsRow) {
     openQuestions: draft.citations.length, needsInput: questions.length, body: draft.body, subject: draft.subject,
     recipients: draft.toAddresses.map((a) => a.address), recipientOptedOut: !!contact?.optedOutAt,
     replyingToAutomated: !!answering?.automated, autoSentInThread: autoSent,
+    postalAddressMissing: isCommercial(draft.kind) && !settings.postalAddress.trim(),
   });
   // The person switched Autopilot on, so "Autopilot is off" would mislead: say it is the plan.
   const verdict = settings.autopilot.enabled && !planOk
