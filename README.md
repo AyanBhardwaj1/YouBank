@@ -502,6 +502,24 @@ names the model behind each number and gives a range. The crypto tools read free
 (CoinGecko, DefiLlama, mempool.space, SEC XBRL, public nodes) and return source ids for every figure;
 `token_valuation` does fee-multiple, discounted token cash flow and staking-yield arithmetic exactly.
 
+**Figures checked against their source** (`src/lib/ai/figures.ts`).
+- Every tool call in a chat run is kept with its raw output and the source ids it issued.
+- After the answer, each figure is checked only against the values of the source it cites, typed by unit from
+  the payload's field names. There is no free arithmetic between payload numbers.
+- A derived figure counts only when `calc` produced it. `calc` takes source references
+  (`S1.ltm_usd_mm.revenue`), so inputs are never retyped.
+- The terminal's AI screen shows how many figures from data match their cited source, with the field and period
+  each matched, and lists the ones not found, the ones cited only to text and the uncited ones. It says
+  "matches the source", never "correct": choosing the right field is still the model's job.
+- `scripts/test-figures.ts` checks the matcher on generated payloads with injected errors. It is a synthetic
+  test, not a measure of live answers.
+
+**Measuring answers.**
+- `scripts/eval-agent.mts` runs a frozen, period-pinned question set from SEC XBRL k times and reports pass@1
+  and pass^k.
+- `scripts/audit-answers.mts` writes a worksheet for labelling real answers figure by figure.
+- How to run both: `scripts/fixtures/eval-agent/README.md`.
+
 **Cost.** Classification, extraction and summaries route to a small model (GPT-5.6 Luna or Claude Haiku
 4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
