@@ -29,7 +29,8 @@ export async function runQuestion(q: Pick<Question, "id" | "ticker" | "question"
     ...(opts.tools ? { tools: opts.tools } : {}),
     parallelTools: true, feature: "eval-agent", maxTurns: 12,
     deadline: Date.now() + (opts.deadlineMs ?? 240_000),
-    emit: (e) => { if (e.type === "error") errors.push(e.message); if (e.type === "done") model = e.model; },
+    // Agent error events are already written for people (describeError), so they are kept as sent.
+    emit: (ev) => { if (ev.type === "error") errors.push(ev.message); if (ev.type === "done") model = ev.model; },
   });
   return { id: q.id, text: r.text, sources: r.sources, records: r.records ?? [], figures: r.figures ?? null, errors, ms: Date.now() - t0, model };
 }

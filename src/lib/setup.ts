@@ -47,6 +47,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0029_data_sources", ["user_data_sources"], "user_data_sources_updated_idx"],
   ["0030_mail_compliance", [], ""],
   ["0031_two_factor", ["auth_two_factor"], "auth_two_factor_user_idx"],
+  ["0032_analytics", ["analytics_activity", "analytics_cohorts", "analytics_modules"], ""],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
