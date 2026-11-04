@@ -95,6 +95,20 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
     return () => window.clearTimeout(t);
   }, [initial?.ticker, initial?.fn, initial?.arg]);
 
+  // The command palette, while the terminal is open, hands its command over directly.
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ ticker?: string; fn?: string; arg?: string }>).detail ?? {};
+      const fn = d.fn && isFunctionCode(d.fn.toUpperCase()) ? (d.fn.toUpperCase() as FunctionCode) : "DES";
+      const ticker = (d.ticker ?? "").toUpperCase();
+      if (ticker && !/^[A-Z][A-Z0-9.-]{0,9}$/.test(ticker)) return;
+      seen.current = `${ticker}|${d.fn ?? ""}|${d.arg ?? ""}`;
+      runRef.current({ ticker, fn, arg: d.arg, via: "click" });
+    };
+    window.addEventListener("yb:terminal-run", on);
+    return () => window.removeEventListener("yb:terminal-run", on);
+  }, []);
+
   // The sidebar's terminal workflows open here as panels, beside the ones already open.
   useSubNav("/app/terminal", (code) => { if (isFunctionCode(code)) run({ ticker: "", fn: code, via: "click" }); });
 

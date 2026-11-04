@@ -128,7 +128,13 @@ export function Palette({ onClose }: { onClose: () => void }) {
     if (c.run) { c.run(); return; }
     if (!c.href) return;
     if (c.event && path === c.event.path) emitSubNav(c.event);
-    else router.push(c.href);
+    // Already in the terminal: hand it the command (a ticker, the AI with a question) and keep the URL in
+    // step, so it opens even when the URL would not change (the same ticker after its panel was closed).
+    else if (path === "/app/terminal" && c.href.startsWith("/app/terminal?")) {
+      const q = new URLSearchParams(c.href.slice("/app/terminal?".length));
+      window.dispatchEvent(new CustomEvent("yb:terminal-run", { detail: { ticker: q.get("ticker") ?? "", fn: q.get("fn") ?? "", arg: q.get("arg") ?? undefined } }));
+      window.history.replaceState(window.history.state, "", c.href);
+    } else router.push(c.href);
   }, [recent, onClose, path, router]);
 
   const onKey = (e: React.KeyboardEvent) => {
