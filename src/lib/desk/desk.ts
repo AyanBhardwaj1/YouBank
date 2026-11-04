@@ -10,6 +10,7 @@
  */
 import { FEATURES, defaultPinned, type NavId } from "@/lib/nav";
 import type { RoleId } from "@/lib/roles";
+import { isThemeId, type ThemeId } from "@/lib/themes";
 
 /* ---------------- Home ---------------- */
 
@@ -206,14 +207,17 @@ export const SCALES = [0.9, 1, 1.1, 1.25] as const;
 export const RADII = ["theme", "square", "soft", "round"] as const;
 export const FONTS = ["sans", "serif", "mono", "system"] as const;
 export const BACKGROUNDS = ["theme", "plain", "mesh", "grid", "dots"] as const;
-/** Accent swatches people can pick instead of the theme's own. */
+/** Accent swatches people can pick instead of the theme's own (any other #rrggbb is allowed too). */
 export const ACCENTS = ["theme", "#f5a623", "#4f8cff", "#a78bfa", "#2dd4bf", "#34d399", "#fb7185", "#f472b6", "#facc15", "#38bdf8", "#e879f9"] as const;
+/** "theme" or a plain six-digit hex colour, lower case: nothing else ever reaches a style attribute. */
+export type Accent = "theme" | `#${string}`;
+export const asAccent = (v: unknown): Accent | null => (v === "theme" ? "theme" : typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v) ? (v.toLowerCase() as Accent) : null);
 
 export type LookPrefs = {
   scale: (typeof SCALES)[number];
   radius: (typeof RADII)[number];
   font: (typeof FONTS)[number];
-  accent: (typeof ACCENTS)[number];
+  accent: Accent;
   background: (typeof BACKGROUNDS)[number];
   motion: "full" | "reduced";
   contrast: "normal" | "high";
@@ -230,7 +234,7 @@ export function normalizeLook(raw: unknown): LookPrefs {
     scale: oneOf(SCALES, typeof r.scale === "string" ? Number(r.scale) : r.scale, DEFAULT_LOOK.scale),
     radius: oneOf(RADII, r.radius, DEFAULT_LOOK.radius),
     font: oneOf(FONTS, r.font, DEFAULT_LOOK.font),
-    accent: oneOf(ACCENTS, r.accent, DEFAULT_LOOK.accent),
+    accent: asAccent(r.accent) ?? DEFAULT_LOOK.accent,
     background: oneOf(BACKGROUNDS, r.background, DEFAULT_LOOK.background),
     motion: r.motion === "reduced" ? "reduced" : "full",
     contrast: r.contrast === "high" ? "high" : "normal",
@@ -267,6 +271,57 @@ export function lookAttrs(l: LookPrefs): { attrs: Record<string, string>; vars: 
   if (l.motion === "reduced") attrs["data-motion"] = "reduced";
   if (l.contrast === "high") attrs["data-contrast"] = "high";
   return { attrs, vars };
+}
+
+/* ---------------- Saved looks ---------------- */
+
+/** A style and a look together, under a name: built in, saved by the person, or pasted from a code. */
+export type LookPreset = { name: string; theme: ThemeId; look: LookPrefs };
+export const PRESETS_MAX = 12;
+
+/** Looks that come with YouBank, to start from. */
+export const BUILTIN_LOOKS: LookPreset[] = [
+  { name: "Night trader", theme: "terminal", look: { ...DEFAULT_LOOK, scale: 0.9, radius: "square", font: "mono", background: "grid" } },
+  { name: "Calm paper", theme: "paper", look: { ...DEFAULT_LOOK, scale: 1.1, radius: "round", font: "serif", background: "plain" } },
+  { name: "Big and clear", theme: "daylight", look: { ...DEFAULT_LOOK, scale: 1.25, contrast: "high", motion: "reduced", background: "plain" } },
+  { name: "Neon", theme: "aurora", look: { ...DEFAULT_LOOK, accent: "#e879f9", radius: "round", background: "mesh" } },
+  { name: "Forest desk", theme: "evergreen", look: { ...DEFAULT_LOOK, accent: "#34d399", radius: "soft", background: "dots" } },
+  { name: "Ocean", theme: "ocean", look: { ...DEFAULT_LOOK, accent: "#38bdf8", radius: "round", background: "mesh", scale: 1.1 } },
+];
+
+export function normalizePreset(raw: unknown): LookPreset | null {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const name = typeof r.name === "string" ? r.name.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+  if (!name || typeof r.theme !== "string" || !isThemeId(r.theme)) return null;
+  return { name, theme: r.theme, look: normalizeLook(r.look) };
+}
+
+/** Saved looks, cleaned: valid ones only, one per name (the later wins), at most PRESETS_MAX. */
+export function normalizePresets(raw: unknown): LookPreset[] {
+  if (!Array.isArray(raw)) return [];
+  const byName = new Map<string, LookPreset>();
+  for (const p of raw.map(normalizePreset)) if (p) { byName.delete(p.name.toLowerCase()); byName.set(p.name.toLowerCase(), p); }
+  return [...byName.values()].slice(-PRESETS_MAX);
+}
+
+/** A look as a code to paste elsewhere ("yb1." and base64url JSON, only what differs from the default). */
+export function lookCode(p: LookPreset): string {
+  const diff = Object.fromEntries(Object.entries(p.look).filter(([k, v]) => DEFAULT_LOOK[k as keyof LookPrefs] !== v));
+  const json = JSON.stringify({ n: p.name, t: p.theme, l: diff });
+  const b64 = typeof btoa === "function" ? btoa(unescape(encodeURIComponent(json))) : Buffer.from(json, "utf8").toString("base64");
+  return `yb1.${b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
+/** The look in a pasted code, or null when it is not one. */
+export function readLookCode(code: string): LookPreset | null {
+  const m = /^yb1\.([A-Za-z0-9_-]{4,2000})$/.exec(code.trim());
+  if (!m) return null;
+  try {
+    const b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = typeof atob === "function" ? decodeURIComponent(escape(atob(b64))) : Buffer.from(b64, "base64").toString("utf8");
+    const o = JSON.parse(json) as { n?: unknown; t?: unknown; l?: unknown };
+    return normalizePreset({ name: o.n, theme: o.t, look: o.l });
+  } catch { return null; }
 }
 
 /** Black or white text on an accent, whichever reads better (WCAG relative luminance). */

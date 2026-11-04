@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { updateExtra } from "@/lib/prefs/extra";
 import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
@@ -21,17 +22,19 @@ export async function POST(req: Request) {
     await rateLimit(`desk-setup:${user.id}`, 10, 3_600_000, "The desk has been set up many times this hour. Try again later.");
     const body = (await req.json().catch(() => ({}))) as { words?: unknown };
     const db = requireDb();
-    const [row] = await db.select({ role: schema.profiles.role, goals: schema.profiles.goals, specialty: schema.profiles.specialty, extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
+    const [row] = await db.select({ role: schema.profiles.role, goals: schema.profiles.goals, specialty: schema.profiles.specialty }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
     if (!row) return NextResponse.json({ error: "Finish setting up your profile first." }, { status: 400 });
     const role = row.role as RoleId;
     const words = typeof body.words === "string" ? body.words.slice(0, 1500) : "";
     const r = await setupFromWords(role, words || [row.specialty, row.goals].filter(Boolean).join(". "));
-    const extra: Record<string, unknown> = { ...(row.extra ?? {}) };
-    const before = normalizeDesk(extra.desk, role);
-    const desk = { ...r.desk, notes: before.notes, source: words ? r.desk.source : "auto" };
-    extra.desk = desk;
-    extra.nav = { ...normalizeNavPrefs(extra.nav, role, desk.hidden), pinned: r.pinned };
-    await db.update(schema.profiles).set({ extra, updatedAt: new Date() }).where(eq(schema.profiles.userId, user.id));
+    // Merged into what is stored now, not what was read before the model answered: notes typed meanwhile stay.
+    let desk = { ...r.desk, notes: "", source: words ? r.desk.source : ("auto" as const) };
+    await updateExtra(user.id, (extra) => {
+      desk = { ...desk, notes: normalizeDesk(extra.desk, role).notes };
+      extra.desk = desk;
+      extra.nav = { ...normalizeNavPrefs(extra.nav, role, desk.hidden), pinned: r.pinned };
+      return extra;
+    });
     return NextResponse.json({ desk, pinned: r.pinned, reasons: r.reasons, via: r.via });
   });
 }

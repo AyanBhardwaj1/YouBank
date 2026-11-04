@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
 import type { ToolMeta } from "@/lib/workflows/catalog";
-import { DEFAULT_LOOK, LOOK_COOKIE, defaultDesk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, type DeskPrefs, type LookPrefs } from "@/lib/desk/desk";
+import { DEFAULT_LOOK, LOOK_COOKIE, defaultDesk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, normalizePresets, type DeskPrefs, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
 type Workspace = {
   profile: Profile; config: WorkspaceConfig; /** Whether Edge is available here (always, inside the app; not on public pages). */ edge: boolean;
@@ -19,6 +19,9 @@ type Workspace = {
   /** How the app looks beyond the theme (Settings → Style). */
   look: LookPrefs;
   setLook: (patch: Partial<LookPrefs>) => void;
+  /** Looks the person saved (Settings → Style), each a style and a look under a name. */
+  looks: LookPreset[];
+  setLooks: (list: LookPreset[]) => void;
 };
 const Ctx = createContext<Workspace | null>(null);
 
@@ -41,11 +44,12 @@ export function applyLook(l: LookPrefs) {
   try { document.cookie = `${LOOK_COOKIE}=${lookCookie(l)}; path=/; max-age=31536000; samesite=lax`; } catch { /* ignore */ }
 }
 
-export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, children }: {
-  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; children: React.ReactNode;
+export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, looks: initialLooks, children }: {
+  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; looks?: unknown; children: React.ReactNode;
 }) {
   const [desk, setDeskState] = useState<DeskPrefs>(() => (initialDesk === undefined ? defaultDesk(profile.role) : normalizeDesk(initialDesk, profile.role)));
   const [look, setLookState] = useState<LookPrefs>(() => (initialLook === undefined ? DEFAULT_LOOK : normalizeLook(initialLook)));
+  const [looks, setLooksState] = useState<LookPreset[]>(() => normalizePresets(initialLooks));
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setDesk = useCallback((patch: Partial<DeskPrefs>) => {
@@ -65,7 +69,13 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
     save({ look: patch });
   }, []);
 
-  const value = useMemo(() => ({ profile, config: workspaceFor(profile), edge, tools, desk, setDesk, look, setLook }), [profile, edge, tools, desk, setDesk, look, setLook]);
+  const setLooks = useCallback((list: LookPreset[]) => {
+    const next = normalizePresets(list);
+    setLooksState(next);
+    save({ looks: next });
+  }, []);
+
+  const value = useMemo(() => ({ profile, config: workspaceFor(profile), edge, tools, desk, setDesk, look, setLook, looks, setLooks }), [profile, edge, tools, desk, setDesk, look, setLook, looks, setLooks]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -74,5 +84,5 @@ const FALLBACK: Profile = { role: "banker", specialty: "Technology M&A", seniori
 /** Workspace config for the signed-in user's role. Falls back to a tech banker when used outside the provider. */
 export function useWorkspace(): Workspace {
   const v = useContext(Ctx);
-  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined };
+  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined, looks: [], setLooks: () => undefined };
 }

@@ -3,11 +3,17 @@
 /**
  * Settings → Style, below the themes: the appearance studio. Size, corners, typeface, accent, background,
  * motion and contrast, each on top of whichever theme is chosen, applied at once and saved to the account
- * (and to a cookie, so the next page's first paint already has it).
+ * (and to a cookie, so the next page's first paint already has it). Above them, saved looks: a style and
+ * all of these together under a name, built in or the person's own, applied in one click and shared as a
+ * short code anyone can paste.
  */
+import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
+import { useTheme } from "@/components/theme/ThemeProvider";
 import { Icon } from "@/components/ui/Icon";
-import { ACCENTS, BACKGROUNDS, DEFAULT_LOOK, FONTS, RADII, SCALES, type LookPrefs } from "@/lib/desk/desk";
+import { promptDialog } from "@/components/ui/Dialog";
+import { themeById } from "@/lib/themes";
+import { ACCENTS, BACKGROUNDS, BUILTIN_LOOKS, DEFAULT_LOOK, FONTS, RADII, SCALES, asAccent, lookCode, readLookCode, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
 const SCALE_LABEL: Record<number, string> = { 0.9: "Compact", 1: "Standard", 1.1: "Large", 1.25: "Larger" };
 const RADIUS_LABEL: Record<string, string> = { theme: "Theme's own", square: "Square", soft: "Soft", round: "Round" };
@@ -35,7 +41,100 @@ function Choice({ on, onClick, children, label }: { on: boolean; onClick: () => 
   );
 }
 
+/** Any colour: the browser's picker, applied after a short pause so dragging through colours saves once. */
+function CustomAccent({ value, onPick }: { value: string; onPick: (hex: `#${string}`) => void }) {
+  const custom = value !== "theme" && !(ACCENTS as readonly string[]).includes(value);
+  const [hex, setHex] = useState(custom ? value : "#ff7a59");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return (
+    <label title="Any colour" className={`relative grid h-7 cursor-pointer place-items-center rounded-full border px-2 text-[10.5px] transition ${custom ? "border-fg text-fg" : "border-line text-muted hover:border-fg/60"}`}>
+      <span className="flex items-center gap-1"><span className="h-3.5 w-3.5 rounded-full" style={{ background: custom ? value : "conic-gradient(#f87171,#facc15,#4ade80,#38bdf8,#a78bfa,#f472b6,#f87171)" }} />Custom</span>
+      <input type="color" value={hex} aria-label="Pick any accent colour" className="absolute inset-0 cursor-pointer opacity-0"
+        onChange={(e) => {
+          const v = asAccent(e.target.value);
+          if (!v || v === "theme") return;
+          setHex(v);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => onPick(v), 250);
+        }} />
+    </label>
+  );
+}
+
+function PresetCard({ p, on, onApply, onDelete }: { p: LookPreset; on: boolean; onApply: () => void; onDelete?: () => void }) {
+  const t = themeById(p.theme).vars;
+  const accent = p.look.accent === "theme" ? t.accent : p.look.accent;
+  return (
+    <div className={`group relative ctl border transition ${on ? "border-accent" : "border-line hover:border-accent/50"}`}>
+      <button type="button" onClick={onApply} className="block w-full p-1.5 text-left" aria-label={`Use the look ${p.name}`}>
+        <div className="flex h-12 gap-1 overflow-hidden rounded-[6px] p-1.5" style={{ background: t.bg, backgroundImage: p.look.background === "theme" ? t.bgImage : "none" }}>
+          <div className="w-1/3 rounded-[3px]" style={{ background: t.panel, border: `1px solid ${t.line}` }} />
+          <div className="flex flex-1 flex-col justify-between rounded-[3px] p-1" style={{ background: t.panel, border: `1px solid ${t.line}` }}>
+            <div className="h-1.5 w-2/3 rounded-full" style={{ background: t.muted, opacity: 0.6 }} />
+            <div className="h-2.5 w-1/2 rounded-sm" style={{ background: accent }} />
+          </div>
+        </div>
+        <div className="truncate px-0.5 pt-1 text-[11.5px] font-medium">{p.name}</div>
+      </button>
+      {onDelete && <button type="button" onClick={onDelete} aria-label={`Delete the look ${p.name}`} className="absolute right-1 top-1 hidden h-5 w-5 place-items-center rounded-full bg-raised text-muted hover:text-neg group-hover:grid group-focus-within:grid"><Icon name="X" className="h-3 w-3" /></button>}
+    </div>
+  );
+}
+
+function SavedLooks() {
+  const { look, setLook, looks, setLooks } = useWorkspace();
+  const { themeId, setTheme } = useTheme();
+  const [note, setNote] = useState<string | null>(null);
+  const same = (p: LookPreset) => p.theme === themeId && JSON.stringify(p.look) === JSON.stringify(look);
+  const apply = (p: LookPreset) => { setTheme(p.theme); setLook(p.look); setNote(null); };
+  const save = async () => {
+    const name = await promptDialog({ title: "Save this look", label: "Name", placeholder: "e.g. Late nights", confirmLabel: "Save" });
+    if (!name?.trim()) return;
+    setLooks([...looks.filter((x) => x.name.toLowerCase() !== name.trim().toLowerCase()), { name: name.trim().slice(0, 40), theme: themeId, look }]);
+    setNote(`Saved as “${name.trim().slice(0, 40)}”.`);
+  };
+  const copy = async () => {
+    const code = lookCode({ name: "Shared look", theme: themeId, look });
+    try { await navigator.clipboard.writeText(code); setNote("Code copied. Anyone can paste it here to get this look."); }
+    catch { await promptDialog({ title: "Copy this code", body: "Your browser did not allow copying. Select the code and copy it.", defaultValue: code, confirmLabel: "Done" }); }
+  };
+  const paste = async () => {
+    const code = await promptDialog({ title: "Paste a look code", label: "Code", placeholder: "yb1.…", confirmLabel: "Use it" });
+    if (!code) return;
+    const p = readLookCode(code);
+    if (!p) { setNote("That is not a look code. They start with yb1."); return; }
+    apply(p);
+    setLooks([...looks.filter((x) => x.name.toLowerCase() !== p.name.toLowerCase()), p]);
+    setNote(`Using “${p.name}”, and saved it to your looks.`);
+  };
+  return (
+    <div className="panel mt-5 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-[13.5px] font-semibold">Looks</h3>
+          <p className="mt-0.5 text-[12px] text-muted">A style and every setting below, in one click. Save your own and share it as a code.</p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={save} className="ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-accent-fg">Save this look</button>
+          <button type="button" onClick={copy} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Copy code</button>
+          <button type="button" onClick={paste} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Paste a code</button>
+        </div>
+      </div>
+      {note && <p role="status" className="mt-2 text-[11.5px] text-muted">{note}</p>}
+      {looks.length > 0 && <div className="mt-3 text-[10.5px] uppercase tracking-wider text-muted">Yours</div>}
+      {looks.length > 0 && <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">{looks.map((p) => <PresetCard key={p.name} p={p} on={same(p)} onApply={() => apply(p)} onDelete={() => setLooks(looks.filter((x) => x !== p))} />)}</div>}
+      <div className="mt-3 text-[10.5px] uppercase tracking-wider text-muted">To start from</div>
+      <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">{BUILTIN_LOOKS.map((p) => <PresetCard key={p.name} p={p} on={same(p)} onApply={() => apply(p)} />)}</div>
+    </div>
+  );
+}
+
 export function LookSettings() {
+  return <><SavedLooks /><LookStudio /></>;
+}
+
+function LookStudio() {
   const { look, setLook } = useWorkspace();
   const set = (p: Partial<LookPrefs>) => setLook(p);
   const changed = (Object.keys(DEFAULT_LOOK) as (keyof LookPrefs)[]).some((k) => look[k] !== DEFAULT_LOOK[k]);
@@ -65,6 +164,7 @@ export function LookSettings() {
               {a === "theme" ? <span className="text-[10px] text-muted">A</span> : <span className="h-5 w-5 rounded-full" style={{ background: a }} />}
             </button>
           ))}
+          <CustomAccent value={look.accent} onPick={(hex) => set({ accent: hex })} />
         </Row>
         <Row icon="Image" label="Background">
           {BACKGROUNDS.map((b) => <Choice key={b} on={look.background === b} onClick={() => set({ background: b })}>{BG_LABEL[b]}</Choice>)}

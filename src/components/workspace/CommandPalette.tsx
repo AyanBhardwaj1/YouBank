@@ -15,7 +15,7 @@ import { THEMES } from "@/lib/themes";
 import { FEATURES } from "@/lib/nav";
 import { emitSubNav } from "@/lib/subnav";
 import { asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
-import { BACKGROUNDS, CORE_FEATURES, FONTS, LAYOUTS, SCALES } from "@/lib/desk/desk";
+import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES } from "@/lib/desk/desk";
 import { useNav } from "./NavContext";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -68,7 +68,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const path = usePathname();
   const nav = useNav();
-  const { tools, desk, setDesk, look, setLook, config, profile } = useWorkspace();
+  const { tools, desk, setDesk, look, setLook, looks, config, profile } = useWorkspace();
   const { themeId, setTheme } = useTheme();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -92,6 +92,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     }
     for (const t of tools) c.push({ id: `tool:${t.id}`, label: t.title, group: "Tools", icon: t.icon, hint: t.kind === "ai" ? "AI workflow" : "Calculator", keywords: `${t.tagline} ${(t.tags ?? []).join(" ")} ${t.category}`, href: `/app/tools/${t.id}` });
     for (const l of LAYOUTS) c.push({ id: `layout:${l}`, label: `Home layout: ${LAYOUT_NAME[l]}`, group: "Home", icon: l === "focus" ? "Focus" : l === "home" ? "Sofa" : "LayoutGrid", on: desk.layout === l, keywords: "dashboard view switch", run: () => { setDesk({ layout: l }); if (path !== "/app") router.push("/app"); } });
+    for (const p of [...looks, ...BUILTIN_LOOKS]) c.push({ id: `look:${p.name}`, label: `Look: ${p.name}`, group: "Style", icon: "Paintbrush", hint: looks.includes(p) ? "yours" : "built in", keywords: `preset ${p.theme}`, run: () => { setTheme(p.theme); setLook(p.look); } });
     for (const t of THEMES) c.push({ id: `theme:${t.id}`, label: `Style: ${t.name}`, group: "Style", icon: "Palette", hint: t.mode, keywords: `theme ${t.tagline} ${t.family}`, on: themeId === t.id, run: () => setTheme(t.id) });
     for (const s of SCALES) c.push({ id: `scale:${s}`, label: `Size: ${SCALE_NAME[s]}`, group: "Look", icon: "Maximize2", keywords: "zoom text bigger smaller scale", on: look.scale === s, run: () => setLook({ scale: s }) });
     for (const f of FONTS) c.push({ id: `font:${f}`, label: `Typeface: ${FONT_NAME[f]}`, group: "Look", icon: "Type", keywords: "font", on: look.font === f, run: () => setLook({ font: f }) });
@@ -108,7 +109,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     c.push({ id: "app:bar", label: "Customize the top bar", group: "App", icon: "SlidersHorizontal", keywords: "pin reorder", run: () => nav.customize() });
     c.push({ id: "app:setup", label: "Set up my desk for me", group: "App", icon: "Wand2", keywords: "personalize auto recommend", href: "/app/settings?tab=desk", event: { path: "/app/settings", value: "desk" } });
     return c;
-  }, [nav, tools, desk, setDesk, look, setLook, themeId, setTheme, path, router, profile.role]);
+  }, [nav, tools, desk, setDesk, look, setLook, looks, themeId, setTheme, path, router, profile.role]);
 
   const results = useMemo<Command[]>(() => {
     const query = q.trim();

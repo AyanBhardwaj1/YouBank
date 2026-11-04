@@ -1,5 +1,5 @@
 /** Workspace setup and appearance (src/lib/desk/desk.ts): pnpm exec tsx scripts/test-desk.ts */
-import { moveWidget, nudgeWidget, toggleWidget, isWide, type WidgetPref } from "@/lib/desk/desk";
+import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS, lookCode, readLookCode, normalizePresets, PRESETS_MAX, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
 
@@ -52,7 +52,7 @@ ok("…nor pinned", normalizeNavPrefs({ pinned: ["home", "studio", "crm"] }, "ba
 ok("…nor in the default pins", normalizeNavPrefs(undefined, "banker", ["studio"]).pinned.includes("studio"), false);
 
 console.log("how it looks");
-ok("unknown look values take the defaults", normalizeLook({ scale: 3, radius: "blob", font: "comic", accent: "#123456", background: "lava", motion: "fast", contrast: "max" }), DEFAULT_LOOK);
+ok("unknown look values take the defaults", normalizeLook({ scale: 3, radius: "blob", font: "comic", accent: "#12345g", background: "lava", motion: "fast", contrast: "max" }), DEFAULT_LOOK);
 ok("the scale is read from a cookie string", normalizeLook({ scale: "1.25" }).scale, 1.25);
 const look = normalizeLook({ scale: 1.1, radius: "round", font: "serif", accent: "#a78bfa", background: "mesh", motion: "reduced", contrast: "high" });
 ok("cookie round trip", readLookCookie(lookCookie(look)), look);
@@ -80,6 +80,25 @@ console.log("arranging Home");
   const n = normalizeDesk({ widgets: [{ id: "notes", on: true, size: "wide" }, { id: "brief", size: "huge" }] }, "banker");
   ok("a stored width is kept; a bad one dropped", [n.widgets[0], n.widgets[1]], [{ id: "notes", on: true, size: "wide" }, { id: "brief", on: true }]);
 }
+
+console.log("any accent, saved looks and look codes");
+ok("any six-digit hex is an accent, lower-cased", [asAccent("#FF7A59"), asAccent("theme")], ["#ff7a59", "theme"]);
+ok("nothing else reaches a style attribute", [asAccent("#fff"), asAccent("red"), asAccent("#ff7a59;background:url(x)"), asAccent(42)], [null, null, null, null]);
+ok("a custom accent survives normalizing", normalizeLook({ accent: "#123ABC" }).accent, "#123abc");
+ok("…and becomes the accent variable", lookAttrs(normalizeLook({ accent: "#123abc" })).vars["--accent"], "#123abc");
+for (const p of BUILTIN_LOOKS) ok(`built-in look “${p.name}” is valid`, normalizePresets([p])[0], p);
+const code = lookCode(BUILTIN_LOOKS[3]);
+ok("a code starts yb1. and is URL-safe", /^yb1\.[A-Za-z0-9_-]+$/.test(code), true);
+ok("a code reads back to the same look", readLookCode(code), BUILTIN_LOOKS[3]);
+ok("a name with any characters round-trips", readLookCode(lookCode({ ...BUILTIN_LOOKS[0], name: "Café · 夜" }))?.name, "Café · 夜");
+ok("junk is not a code", [readLookCode("hello"), readLookCode("yb1.!!!!"), readLookCode("yb1.e30")], [null, null, null]);
+ok("a code with an unknown theme is refused", readLookCode(`yb1.${Buffer.from(JSON.stringify({ n: "x", t: "nope", l: {} })).toString("base64url")}`), null);
+ok("a code cannot smuggle a bad accent", readLookCode(`yb1.${Buffer.from(JSON.stringify({ n: "x", t: "paper", l: { accent: "url(x)" } })).toString("base64url")}`)?.look.accent, "theme");
+const many = Array.from({ length: 20 }, (_, i) => ({ name: `L${i}`, theme: "paper", look: {} }));
+ok("saved looks are capped, newest kept", normalizePresets(many).map((p) => p.name).slice(-1)[0], "L19");
+ok("…at the cap", normalizePresets(many).length, PRESETS_MAX);
+ok("one look per name, the later wins", normalizePresets([{ name: "A", theme: "paper", look: {} }, { name: "a", theme: "ocean", look: {} }]).map((p) => p.theme), ["ocean"]);
+ok("a look without a name is dropped", normalizePresets([{ name: "  ", theme: "paper" }, "x", null]), []);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
