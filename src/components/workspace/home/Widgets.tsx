@@ -114,14 +114,23 @@ export function NotesWidget({ roomy }: Props) {
 export function WatchlistWidget({ roomy }: Props) {
   const { config } = useWorkspace();
   const { data, errors, loading } = useCompanies(config.watchlist);
-  const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
+  const [order, setOrder] = useState<"yours" | "move" | "name">("yours");
+  const loaded = config.watchlist.map((t) => data[t]).filter(Boolean);
+  // Sorted for viewing only: "your order" is the list as arranged in Edit.
+  const rows = order === "yours" ? loaded
+    : order === "name" ? [...loaded].sort((a, b) => a.ticker.localeCompare(b.ticker))
+    : [...loaded].sort((a, b) => Math.abs(b.price?.changePct ?? 0) - Math.abs(a.price?.changePct ?? 0));
+  const sorter = loaded.length > 1 && (
+    <button type="button" onClick={() => setOrder((o) => (o === "yours" ? "move" : o === "move" ? "name" : "yours"))} title="Sort the list"
+      className="text-[11px] text-muted hover:text-fg">{order === "yours" ? "Your order" : order === "move" ? "Biggest move" : "A to Z"}</button>
+  );
   const [editing, setEditing] = useState(false);
   const edit = <button type="button" onClick={() => setEditing((e) => !e)} aria-pressed={editing} className={`text-[11px] ${editing ? "text-accent" : "text-muted hover:text-fg"}`}>Edit</button>;
   const editor = editing && <div className="mb-2.5"><WatchlistEditor onDone={() => setEditing(false)} /></div>;
   if (roomy) {
     return (
       <section className={box(roomy)}>
-        <H roomy right={<span className="flex items-baseline gap-3">{edit}<Link href="/app/terminal" className="text-[11px] text-muted hover:text-fg">terminal →</Link></span>}>{WIDGET_LABEL.watchlist}</H>
+        <H roomy right={<span className="flex items-baseline gap-3">{sorter}{edit}<Link href="/app/terminal" className="text-[11px] text-muted hover:text-fg">terminal →</Link></span>}>{WIDGET_LABEL.watchlist}</H>
         {editor}
         {rows.length === 0 && loading && <div className="shimmer h-24 ctl" />}
         {rows.length === 0 && !loading && <p className="text-[13px] text-muted">{config.watchlist.length === 0 ? "No names yet. Edit to add some." : `${Object.values(errors)[0] ?? "Prices could not be loaded right now."} Your names will fill in when they are back.`}</p>}
@@ -144,7 +153,7 @@ export function WatchlistWidget({ roomy }: Props) {
     <section className="panel p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
-        <span className="flex items-baseline gap-3"><span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>{edit}</span>
+        <span className="flex items-baseline gap-3"><span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>{sorter}{edit}</span>
       </div>
       {editor}
       <div className="table-scroll overflow-auto">
