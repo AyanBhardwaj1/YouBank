@@ -80,7 +80,14 @@ export async function recordQuestions(userId: string, draftId: number, threadId:
   }
   const clean = items.map((q) => ({ question: q.question.trim().slice(0, 500), context: q.context.trim().slice(0, 1000) })).filter((q) => q.question).slice(0, 5);
   if (clean.length === 0) return [];
-  return db.insert(schema.crmQuestions).values(clean.map((q) => ({ userId, draftId, threadId, ...q }))).returning();
+  const rows = await db.insert(schema.crmQuestions).values(clean.map((q) => ({ userId, draftId, threadId, ...q }))).returning();
+  // In the bell too, so a question is seen from any page, not only on Home (one per draft; best effort).
+  await db.insert(schema.newsNotifications).values({
+    userId, key: `crm:questions:${draftId}`, kind: "agent", url: "/app",
+    title: clean.length === 1 ? "The email agent has a question" : `The email agent has ${clean.length} questions`,
+    body: clean[0].question.slice(0, 600), urgent: false,
+  }).onConflictDoNothing().catch(() => undefined);
+  return rows;
 }
 
 export async function listOpenQuestions(userId: string) {

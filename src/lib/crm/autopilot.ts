@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { listAccounts, type AccountRow } from "./accounts";
 import { approveAction, scanFollowUps } from "./actions";
@@ -182,6 +182,7 @@ export async function answerQuestion(userId: string, questionId: number, answer:
   if (!q.draftId) return { question: q, draft: null, scheduled: false, remaining: 0 };
   const remaining = await openQuestionsFor(q.draftId);
   if (remaining.length) return { question: q, draft: null, scheduled: false, remaining: remaining.length };
+  await settleQuestionNotice(userId, q.draftId);
 
   const [old] = await db.select().from(schema.crmDrafts).where(eq(schema.crmDrafts.id, q.draftId));
   if (!old || old.status !== "pending" || !old.threadId) return { question: q, draft: null, scheduled: false, remaining: 0 };
@@ -198,8 +199,16 @@ export async function answerQuestion(userId: string, questionId: number, answer:
 }
 
 export async function dismissQuestion(userId: string, questionId: number): Promise<void> {
-  await requireDb().update(schema.crmQuestions).set({ status: "dismissed" })
-    .where(and(eq(schema.crmQuestions.id, questionId), eq(schema.crmQuestions.userId, userId)));
+  const [q] = await requireDb().update(schema.crmQuestions).set({ status: "dismissed" })
+    .where(and(eq(schema.crmQuestions.id, questionId), eq(schema.crmQuestions.userId, userId))).returning({ draftId: schema.crmQuestions.draftId });
+  if (q?.draftId && !(await openQuestionsFor(q.draftId)).length) await settleQuestionNotice(userId, q.draftId);
+}
+
+/** Once a draft has no open questions, its bell notice (src/lib/crm/knowledge.ts recordQuestions) reads as done. */
+async function settleQuestionNotice(userId: string, draftId: number): Promise<void> {
+  await requireDb().update(schema.newsNotifications).set({ readAt: new Date() })
+    .where(and(eq(schema.newsNotifications.userId, userId), eq(schema.newsNotifications.key, `crm:questions:${draftId}`), isNull(schema.newsNotifications.readAt)))
+    .catch(() => undefined);
 }
 
 /* ---------------- The send queue ---------------- */

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull, ne } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { inboxOrder, type InboxItem } from "@/lib/desk/inbox";
@@ -41,12 +41,12 @@ export async function GET(req: Request) {
       safe(db.select({ id: a.id, kind: a.kind, title: a.title, reasoning: a.reasoning, payload: a.payload, createdAt: a.createdAt })
         .from(a).where(and(eq(a.userId, user.id), eq(a.status, "pending"))).orderBy(desc(a.createdAt)).limit(PER_KIND)),
       safe(db.select({ id: nt.id, kind: nt.kind, title: nt.title, body: nt.body, url: nt.url, urgent: nt.urgent, createdAt: nt.createdAt })
-        .from(nt).where(and(eq(nt.userId, user.id), isNull(nt.readAt))).orderBy(desc(nt.createdAt)).limit(5)),
+        .from(nt).where(and(eq(nt.userId, user.id), isNull(nt.readAt), ne(nt.kind, "agent"))).orderBy(desc(nt.createdAt)).limit(5)),
       Promise.all([
         n(db.select({ n: count() }).from(d).where(and(eq(d.userId, user.id), eq(d.status, "pending")))),
         n(db.select({ n: count() }).from(qn).where(and(eq(qn.userId, user.id), eq(qn.status, "open")))),
         n(db.select({ n: count() }).from(a).where(and(eq(a.userId, user.id), eq(a.status, "pending")))),
-        n(db.select({ n: count() }).from(nt).where(and(eq(nt.userId, user.id), isNull(nt.readAt)))),
+        n(db.select({ n: count() }).from(nt).where(and(eq(nt.userId, user.id), isNull(nt.readAt), ne(nt.kind, "agent")))),
       ]),
     ]);
     const items: InboxItem[] = [
