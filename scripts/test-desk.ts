@@ -1,5 +1,6 @@
 /** Workspace setup and appearance (src/lib/desk/desk.ts): pnpm exec tsx scripts/test-desk.ts */
 import { checklist, hasStyled, STEPS } from "@/lib/desk/checklist";
+import { readSetupCode, setupCode } from "@/lib/desk/desk";
 import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS, lookCode, readLookCode, normalizePresets, PRESETS_MAX, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
@@ -118,5 +119,17 @@ console.log("getting started");
   ok("existing desks get it switched off, not pushed on them", normalizeDesk({ widgets: [{ id: "brief", on: true }] }, "banker").widgets.find((w) => w.id === "checklist"), { id: "checklist", on: false });
 }
 
+console.log("sharing a setup");
+{
+  const desk = normalizeDesk({ layout: "home", widgets: [{ id: "agenda", on: true, size: "wide" }, { id: "notes", on: true }, { id: "brief", on: false }], hidden: ["crypto", "algo"], notes: "secret notes" }, "banker");
+  const code = setupCode({ desk, theme: "ocean", look: { ...DEFAULT_LOOK, wallpaper: "dusk", accent: "#123abc" } });
+  const back = readSetupCode(code, "banker")!;
+  ok("a setup code is URL-safe and starts yb2.", /^yb2\.[A-Za-z0-9_-]+$/.test(code), true);
+  ok("it never carries the notes", code.includes("secret") || JSON.stringify(back).includes("secret"), false);
+  ok("layout, shown widgets in order with widths, hidden features, style and look come back", [back.desk.layout, back.desk.widgets.filter((w) => w.on), back.desk.hidden, back.theme, back.look.wallpaper, back.look.accent], ["home", [{ id: "agenda", on: true, size: "wide" }, { id: "notes", on: true }], ["crypto", "algo"], "ocean", "dusk", "#123abc"]);
+  ok("widgets it does not list are off", back.desk.widgets.find((w) => w.id === "brief")?.on, false);
+  ok("junk, a look code or a bad style is refused", [readSetupCode("nope", "banker"), readSetupCode("yb1.abcd", "banker"), readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "home", w: [], t: "nope" })).toString("base64url")}`, "banker")], [null, null, null]);
+  ok("a feature the role does not have stays out", readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "desk", w: ["brief"], h: ["home", "bogus"], t: "paper" })).toString("base64url")}`, "banker")?.desk.hidden, []);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

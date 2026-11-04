@@ -10,9 +10,48 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { useNav } from "@/components/workspace/NavContext";
 import { Icon } from "@/components/ui/Icon";
 import { FEATURES, type NavId } from "@/lib/nav";
-import { CORE_FEATURES, LAYOUTS, WIDGET_HINT, WIDGET_LABEL, type DeskPrefs } from "@/lib/desk/desk";
+import { CORE_FEATURES, LAYOUTS, WIDGET_HINT, WIDGET_LABEL, readSetupCode, setupCode, type DeskPrefs } from "@/lib/desk/desk";
+import { useTheme } from "@/components/theme/ThemeProvider";
+import { promptDialog } from "@/components/ui/Dialog";
 import { LAYOUT_INFO, LayoutSketch } from "@/components/workspace/home/LayoutSketch";
 import { errorMessage } from "@/lib/client/errors";
+
+/** Hand the whole setup to a teammate, or take theirs: Home, the features shown, the style and the look (never the notes). */
+function ShareSetup() {
+  const { desk, setDesk, look, setLook, profile } = useWorkspace();
+  const { themeId, setTheme } = useTheme();
+  const [note, setNote] = useState<string | null>(null);
+  const copy = async () => {
+    const code = setupCode({ desk, theme: themeId, look });
+    try { await navigator.clipboard.writeText(code); setNote("Copied. A teammate pastes it here to get the same desk and look."); }
+    catch { await promptDialog({ title: "Copy this code", body: "Your browser did not allow copying. Select the code and copy it.", defaultValue: code, confirmLabel: "Done" }); }
+  };
+  const paste = async () => {
+    const code = await promptDialog({ title: "Use a setup code", label: "Code", placeholder: "yb2.…", confirmLabel: "Use it", body: "Your Home, features, style and look change to the ones in the code. Your notes stay." });
+    if (!code) return;
+    const s = readSetupCode(code, profile.role);
+    if (!s) { setNote("That is not a setup code. They start with yb2."); return; }
+    setDesk({ ...s.desk });
+    setTheme(s.theme);
+    setLook(s.look);
+    setNote("Done: this is now your setup. Change anything below.");
+  };
+  return (
+    <div className="panel p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-[13.5px] font-semibold">Share your setup</h3>
+          <p className="mt-0.5 text-[12px] text-muted">Give a teammate your Home, features, style and look as a code, or use theirs. Notes are never included.</p>
+        </div>
+        <div className="flex gap-1.5">
+          <button type="button" onClick={copy} className="ctl bg-accent px-2.5 py-1 text-[11.5px] font-semibold text-accent-fg">Copy my setup</button>
+          <button type="button" onClick={paste} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Use a code</button>
+        </div>
+      </div>
+      {note && <p role="status" className="mt-2 text-[11.5px] text-muted">{note}</p>}
+    </div>
+  );
+}
 
 export function DeskSettings() {
   const { profile, desk, setDesk } = useWorkspace();
@@ -116,6 +155,7 @@ export function DeskSettings() {
           ))}
         </ul>
       </div>
+      <ShareSetup />
     </div>
   );
 }

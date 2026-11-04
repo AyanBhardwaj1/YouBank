@@ -340,6 +340,37 @@ export function readLookCode(code: string): LookPreset | null {
   } catch { return null; }
 }
 
+/* ---------------- Sharing a whole setup ---------------- */
+
+const toB64Url = (json: string) => (typeof btoa === "function" ? btoa(unescape(encodeURIComponent(json))) : Buffer.from(json, "utf8").toString("base64")).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const fromB64Url = (s: string) => { const b64 = s.replace(/-/g, "+").replace(/_/g, "/"); return typeof atob === "function" ? decodeURIComponent(escape(atob(b64))) : Buffer.from(b64, "base64").toString("utf8"); };
+
+/** A whole workspace to hand to a teammate: Home (layout, widgets and widths), the features shown, the style and the look. Never the notes. */
+export type SetupShare = { desk: Pick<DeskPrefs, "layout" | "widgets" | "hidden">; theme: ThemeId; look: LookPrefs };
+
+export function setupCode(s: SetupShare): string {
+  const look = Object.fromEntries(Object.entries(s.look).filter(([k, v]) => DEFAULT_LOOK[k as keyof LookPrefs] !== v));
+  const widgets = s.desk.widgets.filter((w) => w.on).map((w) => (w.size ? `${w.id}:${w.size[0]}` : w.id));
+  return `yb2.${toB64Url(JSON.stringify({ l: s.desk.layout, w: widgets, h: s.desk.hidden, t: s.theme, k: look }))}`;
+}
+
+/** The setup in a pasted code, cleaned for this person's role, or null when it is not one. */
+export function readSetupCode(code: string, role: RoleId): SetupShare | null {
+  const m = /^yb2\.([A-Za-z0-9_-]{4,4000})$/.exec(code.trim());
+  if (!m) return null;
+  try {
+    const o = JSON.parse(fromB64Url(m[1])) as { l?: unknown; w?: unknown; h?: unknown; t?: unknown; k?: unknown };
+    if (typeof o.t !== "string" || !isThemeId(o.t) || !Array.isArray(o.w)) return null;
+    const widgets = o.w.flatMap((x) => {
+      if (typeof x !== "string") return [];
+      const [id, size] = x.split(":");
+      return [{ id, on: true, ...(size === "w" ? { size: "wide" } : size === "n" ? { size: "narrow" } : {}) }];
+    });
+    const desk = normalizeDesk({ layout: o.l, widgets, hidden: o.h }, role);
+    return { desk: { layout: desk.layout, widgets: desk.widgets, hidden: desk.hidden }, theme: o.t, look: normalizeLook(o.k) };
+  } catch { return null; }
+}
+
 /** Black or white text on an accent, whichever reads better (WCAG relative luminance). */
 export function accentInk(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
