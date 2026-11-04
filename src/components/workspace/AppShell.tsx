@@ -26,6 +26,7 @@ import { WhatsNew } from "./WhatsNew";
 import { SystemTheme } from "@/components/theme/SystemTheme";
 import { listenForInstall } from "@/lib/client/install";
 import { recordVisit, visitFor } from "@/lib/client/recent";
+import { claimAiHistory } from "@/lib/client/ai-history";
 import { usePathname, useSearchParams } from "next/navigation";
 
 const persist = (nav: NavPrefs) => {
@@ -56,6 +57,9 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
     const v = visitFor(path, search ? `?${search}` : "", features, tools, Date.now());
     if (v) recordVisit(v);
   }, [path, search, features, tools]);
+
+  // Kept AI conversations belong to the account signed in here (src/lib/client/ai-history.ts).
+  useEffect(() => { if (email) claimAiHistory(email); }, [email]);
 
   // The browser's offer to install the app can come before Home's checklist is there to show it.
   useEffect(() => listenForInstall(), []);

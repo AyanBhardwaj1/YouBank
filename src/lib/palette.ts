@@ -72,9 +72,13 @@ export function asTicker(q: string): string | null {
  * else, including a single ticker or a sentence.
  */
 export function asComparison(q: string): string[] | null {
-  const parts = q.trim().split(/\s*(?:\bvs\.?|\bversus\b|,|&|\band\b)\s*/i).filter(Boolean);
+  // Separators need spaces around them ("M&A", "S&P", "AT&T" are names, not comparisons); a comma needs none.
+  const text = q.trim();
+  const saidVs = /\s(vs\.?|versus)\s/i.test(` ${text} `);
+  const parts = text.split(/\s+(?:vs\.?|versus|and|&)\s+|\s*,\s*/i).filter(Boolean);
   if (parts.length < 2 || parts.length > 4) return null;
-  const tickers = parts.map((p) => (/^[A-Za-z]{1,5}([.-][A-Za-z]{1,2})?$/.test(p) ? p.toUpperCase() : null));
+  // Without "vs", every name needs two letters, so "pros and cons" or "a, b" do not read as tickers.
+  const tickers = parts.map((p) => (/^[A-Za-z]{1,5}([.-][A-Za-z]{1,2})?$/.test(p) && (saidVs || p.replace(/[.-]/g, "").length >= 2) && !/^(pros|cons|and|or|the)$/i.test(p) ? p.toUpperCase() : null));
   if (tickers.some((t) => t === null)) return null;
   const unique = [...new Set(tickers as string[])];
   return unique.length >= 2 ? unique : null;

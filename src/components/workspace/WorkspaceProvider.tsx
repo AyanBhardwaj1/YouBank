@@ -83,8 +83,9 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
   // with keepalive so the request outlives the page.
   const pendingNotes = useRef<string | null>(null);
   useEffect(() => {
-    const flush = () => {
-      if (pendingNotes.current === null || document.visibilityState === "visible") return;
+    // On pagehide the page may still count as visible, so that event flushes whatever the visibility.
+    const flush = (e?: Event) => {
+      if (pendingNotes.current === null || (e?.type !== "pagehide" && document.visibilityState === "visible")) return;
       if (notesTimer.current) clearTimeout(notesTimer.current);
       const notes = pendingNotes.current;
       pendingNotes.current = null;

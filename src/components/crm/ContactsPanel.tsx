@@ -1,5 +1,6 @@
 "use client";
 
+import { CRM_SEARCH_EVENT, takeCrmSearch } from "@/lib/client/crm-query";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { CONTACT_KINDS, KIND_LABEL, type ContactKind } from "@/lib/crm/model";
@@ -20,6 +21,13 @@ const BLANK = { email: "", name: "", company: "", kind: "unknown", notes: "" };
 export function ContactsPanel({ ctx, initialQuery = "" }: { ctx: PanelCtx; initialQuery?: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [q, setQ] = useState(initialQuery);
+  // A search the command palette asked for while this page was already open (src/lib/client/crm-query.ts).
+  useEffect(() => {
+    const on = () => { const v = takeCrmSearch(); if (v !== null) setQ(v); };
+    window.addEventListener(CRM_SEARCH_EVENT, on);
+    const t = window.setTimeout(on, 0);
+    return () => { window.removeEventListener(CRM_SEARCH_EVENT, on); window.clearTimeout(t); };
+  }, []);
   const [adding, setAdding] = useState<typeof BLANK | null>(null);
   const [notes, setNotes] = useState<{ id: number; text: string } | null>(null);
   const meetings = useMeetingSummaries(ctx.tick);

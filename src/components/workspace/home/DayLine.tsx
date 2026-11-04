@@ -16,15 +16,20 @@ export function DayLine({ className = "" }: { className?: string }) {
   const { config } = useWorkspace();
   const waiting = useWaiting();
   const now = useNow();
-  const [next, setNext] = useState<DayFacts["next"]>(null);
+  const [meeting, setMeeting] = useState<{ title: string; start: string; end: string } | null>(null);
   useEffect(() => {
     let live = true;
-    fetch("/api/calendar/upcoming?hours=12&limit=1&ongoing=1")
+    // Again every five minutes while visible, so it moves on to the next meeting when one ends.
+    const load = () => fetch("/api/calendar/upcoming?hours=12&limit=1&ongoing=1")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { meetings?: { title: string; start: string }[] } | null) => { if (live && d?.meetings?.[0]) setNext({ title: d.meetings[0].title, start: d.meetings[0].start }); })
+      .then((d: { meetings?: { title: string; start: string; end: string }[] } | null) => { if (live && d) setMeeting(d.meetings?.[0] ?? null); })
       .catch(() => undefined);
-    return () => { live = false; };
+    void load();
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 300_000);
+    return () => { live = false; window.clearInterval(id); };
   }, []);
+  // A meeting that has ended is not "now", even before the next refresh.
+  const next: DayFacts["next"] = meeting && now !== null && Date.parse(meeting.end) > now ? { title: meeting.title, start: meeting.start } : null;
   const { data } = useCompanies(config.watchlist);
   const mover = useMemo(() => biggestMover(config.watchlist.map((t) => ({ ticker: t, changePct: data[t]?.price?.changePct }))), [config.watchlist, data]);
   if (now === null) return null;

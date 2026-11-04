@@ -8,6 +8,7 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import { THEMES } from "@/lib/themes";
 import { FEATURES } from "@/lib/nav";
 import { emitSubNav } from "@/lib/subnav";
+import { requestCrmSearch } from "@/lib/client/crm-query";
 import { asComparison, asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
 import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES, WALLPAPERS } from "@/lib/desk/desk";
 import { useNav } from "./NavContext";
@@ -137,14 +138,19 @@ export function Palette({ onClose }: { onClose: () => void }) {
     }
     // People and deals, only for the query they were fetched for (an older answer never shows under a newer query).
     if (crm && crm.q === query) {
-      for (const p of crm.contacts) out.push({ id: `person:${p.id}`, label: p.name || p.email, group: "People", icon: "Users", hint: [p.company, p.name ? p.email : ""].filter(Boolean).join(" · "), href: `/app/crm?tab=contacts&q=${encodeURIComponent(p.email || p.name)}` });
-      for (const d of crm.deals) out.push({ id: `deal:${d.id}`, label: d.name, group: "Deals", icon: "Handshake", hint: d.stage, href: `/app/crm?tab=pipeline` });
+      for (const p of crm.contacts) {
+        const term = p.email || p.name;
+        // Already in Relationships: switch to Contacts and search there (the page reads ?q= only on first render).
+        const run = path === "/app/crm" ? () => { requestCrmSearch(term); emitSubNav({ path: "/app/crm", value: "contacts" }); } : undefined;
+        out.push({ id: `person:${p.id}`, label: p.name || p.email, group: "People", icon: "Users", hint: [p.company, p.name ? p.email : ""].filter(Boolean).join(" · "), href: `/app/crm?tab=contacts&q=${encodeURIComponent(term)}`, run });
+      }
+      for (const d of crm.deals) out.push({ id: `deal:${d.id}`, label: d.name, group: "Deals", icon: "Handshake", hint: d.stage, href: `/app/crm?tab=pipeline`, event: { path: "/app/crm", value: "pipeline" } });
     }
     const ask: Command = { id: "ask", label: `Ask: “${query.length > 70 ? `${query.slice(0, 70)}…` : query}”`, group: "Ask", icon: "Sparkles", hint: "AI, with sources", href: `/app/terminal?ticker=${encodeURIComponent(t ?? first)}&fn=AI&arg=${encodeURIComponent(query)}` };
     // A question goes to the AI first; a word or two that matches something goes there first.
     if (query.split(/\s+/).length >= 4 || /\?$/.test(query) || (ranked.length === 0 && !t)) out.unshift(ask); else out.push(ask);
     return out;
-  }, [q, commands, recent, first, config.watchlist, setWatchlist, crm]);
+  }, [q, commands, recent, first, config.watchlist, setWatchlist, crm, path]);
 
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
 
@@ -159,7 +165,8 @@ export function Palette({ onClose }: { onClose: () => void }) {
     else if (path === "/app/terminal" && c.href.startsWith("/app/terminal?")) {
       const q = new URLSearchParams(c.href.slice("/app/terminal?".length));
       window.dispatchEvent(new CustomEvent("yb:terminal-run", { detail: { ticker: q.get("ticker") ?? "", fn: q.get("fn") ?? "", arg: q.get("arg") ?? undefined } }));
-      window.history.replaceState(window.history.state, "", c.href);
+      // null state, so Next takes the address as its own (src/lib/subnav.ts says why).
+      window.history.replaceState(null, "", c.href);
     } else router.push(c.href);
   }, [recent, onClose, path, router]);
 

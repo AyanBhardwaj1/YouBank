@@ -39,6 +39,24 @@ export function saveAiHistory(scope: string, messages: StoredMsg[]): void {
     else localStorage.removeItem(keyOf(scope));
   } catch { /* storage full or refused: the conversation just is not kept */ }
 }
+const OWNER_KEY = "yb-ai-owner";
+/** A short non-reversible tag for the account, so the browser never stores the address itself. */
+const tag = (s: string) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+
+/**
+ * When the app opens for an account: kept conversations belong to whoever signed in on this browser
+ * last. A different account (after a sign-out, an expired session, or one revoked elsewhere) starts with
+ * none. Also drops conversations past their week, so old tickers do not fill the browser's storage.
+ */
+export function claimAiHistory(account: string): void {
+  try {
+    const me = tag(account.trim().toLowerCase());
+    if (localStorage.getItem(OWNER_KEY) !== me) { clearAiHistory(); localStorage.setItem(OWNER_KEY, me); return; }
+    const now = Date.now();
+    for (const k of Object.keys(localStorage)) if (k.startsWith(AI_HISTORY_PREFIX) && !parseStored(localStorage.getItem(k), now).length) localStorage.removeItem(k);
+  } catch { /* storage refused: nothing kept anyway */ }
+}
+
 /** On sign-out: no one else on this browser sees what was asked. */
 export function clearAiHistory(): void {
   try { for (const k of Object.keys(localStorage)) if (k.startsWith(AI_HISTORY_PREFIX)) localStorage.removeItem(k); } catch { /* fine */ }

@@ -43,6 +43,9 @@ ok("commas and and", asComparison("SNOW, MDB and DDOG"), ["SNOW", "MDB", "DDOG"]
 ok("ampersand and versus", [asComparison("nvda & amd"), asComparison("KO versus PEP")], [["NVDA", "AMD"], ["KO", "PEP"]]);
 ok("one ticker, a sentence, or too many are not comparisons", [asComparison("snow"), asComparison("what is snow vs mdb growth"), asComparison("a,b,c,d,e")], [null, null, null]);
 ok("the same ticker twice is not a comparison", asComparison("snow vs SNOW"), null);
+ok("names with & are not comparisons", [asComparison("M&A"), asComparison("S&P"), asComparison("AT&T"), asComparison("R&D"), asComparison("P&L")], [null, null, null, null, null]);
+ok("phrases are not comparisons", [asComparison("pros and cons"), asComparison("a, b")], [null, null]);
+ok("one-letter tickers when vs is said", asComparison("F vs GM"), ["F", "GM"]);
 console.log("recent");
 ok("newest first, no repeats", pushRecent(["a", "b", "c"], "b"), ["b", "a", "c"]);
 ok("at most the cap", pushRecent(["a", "b", "c"], "d", 3), ["d", "a", "b"]);

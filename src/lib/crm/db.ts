@@ -1,3 +1,4 @@
+import { settleQuestionNotices } from "./question-notice";
 import { and, desc, eq, getTableColumns, inArray, ne, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { afterCursor, cursorTime, pageOf, type Cursor } from "@/lib/cursor";
@@ -311,6 +312,7 @@ export async function supersedeReplies(userId: string, threadId: number, reason:
   if (rows.length) {
     await db.update(schema.crmQuestions).set({ status: "dismissed" })
       .where(and(eq(schema.crmQuestions.userId, userId), inArray(schema.crmQuestions.draftId, rows.map((r) => r.id)), eq(schema.crmQuestions.status, "open")));
+    await settleQuestionNotices(userId, rows.map((r) => r.id));
   }
   return rows.length;
 }
@@ -487,6 +489,7 @@ export async function discardDraft(userId: string, draftId: number): Promise<voi
   if (draft) {
     await db.update(schema.crmQuestions).set({ status: "dismissed" })
       .where(and(eq(schema.crmQuestions.draftId, draft.id), eq(schema.crmQuestions.status, "open")));
+    await settleQuestionNotices(userId, [draft.id]);
   }
   if (draft?.campaignLeadId) {
     const [lead] = await db.select().from(schema.crmCampaignLeads).where(eq(schema.crmCampaignLeads.id, draft.campaignLeadId));
