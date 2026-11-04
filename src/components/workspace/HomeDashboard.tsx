@@ -21,6 +21,7 @@ import type { BriefSeed } from "@/components/news/HomeBrief";
 import { LAYOUTS, isWide, type HomeLayout } from "@/lib/desk/desk";
 import { Widget, type HomeFacts } from "./home/Widgets";
 import { ArrangeBar, ArrangeProvider, Slot } from "./home/Arrange";
+import { DayLine } from "./home/DayLine";
 
 /** By the browser's clock; "Hello" until the page is live, so the server's time zone never shows. */
 const greeting = (now: number | null) => { if (now === null) return "Hello"; const h = new Date(now).getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
@@ -99,6 +100,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
             <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span>{sw}</div>
             <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
             <p className="mt-1 text-[13px] text-muted">What do you need?</p>
+            <DayLine className="mt-1" />
             <div className="mt-5"><AskBox big /></div>
             <Suggestions />
           </Reveal>
@@ -123,6 +125,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
                   <div className="text-[12px] text-muted">{today}</div>
                   <h1 className="mt-1 text-[30px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
                   <p className="mt-1 text-[13px] text-muted">{ROLES[profile.role].label}{profile.firmName ? ` · ${profile.firmName}` : ""}. Here is your day.</p>
+                  <DayLine className="mt-1 text-fg/80" />
                 </div>
                 {sw}
               </div>
@@ -149,6 +152,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
             <div>
               <h1 className="text-[22px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
               <p className="mt-1 text-[12.5px] text-muted">{ROLES[profile.role].label}{profile.specialty ? ` · ${profile.specialty}` : ""}{profile.firmName ? ` · ${profile.firmName}` : ""}{profile.seniority ? ` · ${profile.seniority}` : ""} · <Link href="/app/profile" className="hover:text-fg">change</Link></p>
+              <DayLine className="mt-0.5" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {sw}
