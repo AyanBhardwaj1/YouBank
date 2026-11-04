@@ -8,9 +8,10 @@ import { ALL_TOOLS, runTool, type Source, type ToolCtx, type ToolDef } from "./t
 import { CRYPTO_TOOLS } from "@/lib/crypto/ai-tools";
 import { QUANT_TOOLS } from "@/lib/quant/ai-tools";
 import { findToolsTool } from "./catalog-tool";
+import { filingChangesTool } from "./filing-changes-tool";
 
-/** Research tools plus the terminal's models (risk, credit, quality, forecasts, cost of capital, macro, screener), crypto data, Quant Edge, and search over YouBank's own tool catalogue. */
-const CHAT_TOOLS = [...ALL_TOOLS, ...INFERENCE_TOOLS, ...CRYPTO_TOOLS, ...QUANT_TOOLS, findToolsTool];
+/** Research tools plus the terminal's models (risk, credit, quality, forecasts, cost of capital, macro, screener), crypto data, Quant Edge, search over YouBank's own tool catalogue, and what changed between filings. */
+const CHAT_TOOLS = [...ALL_TOOLS, ...INFERENCE_TOOLS, ...CRYPTO_TOOLS, ...QUANT_TOOLS, findToolsTool, filingChangesTool];
 import { contextBlock, systemPrompt, type PromptContext } from "./prompts";
 import { aiBlocked, guardAi, takeRunSlot } from "./limits";
 import { addUsage, costOf, emptyUsage, type Usage } from "./pricing";

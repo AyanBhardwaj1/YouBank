@@ -61,6 +61,7 @@ const NEXT: [RegExp, (t: string) => string[]][] = [
   [/^get_company_financials$|^get_xbrl_series$/, (t) => [`How does ${t} compare with its closest peers on growth and margins?`, `Show ${t}'s last eight quarters of revenue and operating margin as a table.`]],
   [/^get_trading_comps$/, (t) => [`Which of ${t}'s peers looks cheapest on EV/EBITDA, and why might that be?`, `What would ${t} be worth at the peer median multiple?`]],
   [/^search_filing$|^read_filing$|^read_document$/, (t) => [`Quote the exact passage from the filing behind that.`, `What risks does ${t}'s latest 10-K flag that changed from last year?`]],
+  [/^filing_changes$/, (t) => [`Which of ${t}'s new or reworded risk factors matter most, and why?`, `What changed in ${t}'s MD&A between the last two 10-Qs?`]],
   [/^edgar_fulltext_search$/, () => [`Which of those filings matter most, and what do they say?`]],
   [/^get_recent_filings$/, (t) => [`Summarize ${t}'s most recent 8-K and why it matters.`]],
   [/^get_insider_transactions$/, (t) => [`Are ${t}'s insiders net buyers or sellers over the last year, in dollars?`]],
