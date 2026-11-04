@@ -4,7 +4,10 @@
  * Two Home widgets that need nothing from a server: World markets (which exchanges trade now, and when
  * that changes in the person's own time) and Quick calc (the calc engine the AI uses, in a box).
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
+import { Icon } from "@/components/ui/Icon";
+import { RECENT_KEY, readVisits } from "@/lib/client/recent";
 import { useNow } from "@/components/ui/useNow";
 import { WIDGET_LABEL } from "@/lib/desk/desk";
 import { EXCHANGES, marketStatus, until } from "@/lib/desk/markets";
@@ -69,6 +72,34 @@ export function CalcWidget({ roomy }: { roomy?: boolean }) {
         {out && !out.ok && <span className="text-[11.5px] text-muted">{out.msg}</span>}
         {last && <><span className="truncate text-[11px] text-muted">{out?.ok && out.results.length > 1 ? `${out.results.length} lines` : "="}</span><span className="num text-[16px] font-semibold text-fg">{fmtNum(last.value)}</span></>}
       </div>
+    </section>
+  );
+}
+
+/* Jump back in: read from this browser after hydration (the server has no idea), updated when another tab writes. */
+const subscribeStorage = (on: () => void) => { window.addEventListener("storage", on); return () => window.removeEventListener("storage", on); };
+const storedVisits = () => { try { return localStorage.getItem(RECENT_KEY) ?? "[]"; } catch { return "[]"; } };
+
+export function RecentWidget({ roomy }: { roomy?: boolean }) {
+  const raw = useSyncExternalStore(subscribeStorage, storedVisits, () => null);
+  // readVisits re-reads and cleans; `raw` only says when to.
+  const visits = useMemo(() => (raw === null ? null : readVisits()), [raw]);
+  return (
+    <section className={box(roomy)} aria-label={WIDGET_LABEL.recent}>
+      <H roomy={roomy}>{WIDGET_LABEL.recent}</H>
+      {visits === null ? <div className="shimmer h-16 ctl" /> : visits.length === 0 ? (
+        <p className={`${roomy ? "text-[13px]" : "text-[11.5px]"} text-muted`}>The pages, tools and tickers you open will be here, one click away.</p>
+      ) : (
+        <ul className={`grid gap-1 ${roomy ? "sm:grid-cols-2" : ""}`}>
+          {visits.slice(0, roomy ? 8 : 6).map((v) => (
+            <li key={v.href}>
+              <Link href={v.href} className={`flex items-center gap-2 ctl px-2 py-1.5 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[12px]"}`}>
+                <Icon name={v.icon} className="h-3.5 w-3.5 shrink-0 text-muted" /><span className="min-w-0 flex-1 truncate">{v.label}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

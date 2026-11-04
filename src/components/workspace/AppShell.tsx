@@ -24,6 +24,8 @@ import { CommandPalette } from "./CommandPalette";
 import { Shortcuts } from "./Shortcuts";
 import { SystemTheme } from "@/components/theme/SystemTheme";
 import { listenForInstall } from "@/lib/client/install";
+import { recordVisit, visitFor } from "@/lib/client/recent";
+import { usePathname } from "next/navigation";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -44,6 +46,14 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
   const isOpen = phone ? sheet : open;
 
   const setOpen = (o: boolean) => { if (phone) setSheet(o); else setOpenState(o); if (!o) setCustomizing(false); };
+
+  // Home's "Jump back in": each page, tool or ticker opened, kept in this browser.
+  const path = usePathname();
+  const { tools } = useWorkspace();
+  useEffect(() => {
+    const v = visitFor(path, window.location.search, features, tools, Date.now());
+    if (v) recordVisit(v);
+  }, [path, features, tools]);
 
   // The browser's offer to install the app can come before Home's checklist is there to show it.
   useEffect(() => listenForInstall(), []);

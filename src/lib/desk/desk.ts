@@ -18,19 +18,19 @@ import { isThemeId, type ThemeId } from "@/lib/themes";
 export const LAYOUTS = ["focus", "home", "desk"] as const;
 export type HomeLayout = (typeof LAYOUTS)[number];
 
-export const WIDGETS = ["checklist", "brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved", "markets", "calc"] as const;
+export const WIDGETS = ["checklist", "brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved", "markets", "calc", "recent"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
 
 export const WIDGET_LABEL: Record<WidgetId, string> = {
   checklist: "Getting started", brief: "Today's brief", agenda: "Coming up", waiting: "Waiting for you", watchlist: "Watchlist", movers: "Movers",
-  start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work", markets: "World markets", calc: "Quick calc",
+  start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work", markets: "World markets", calc: "Quick calc", recent: "Jump back in",
 };
 export const WIDGET_HINT: Record<WidgetId, string> = {
   checklist: "The steps that make YouBank yours, ticked as you do them", brief: "The morning brief for your desk", agenda: "Meetings in the next day, with prep briefs", waiting: "Drafts, questions and suggestions the agents left for you",
   watchlist: "Prices, multiples and trends for your names", movers: "The names that moved most today", start: "Tools picked for your role",
   ask: "Suggested questions for the assistant", runs: "Your latest tool runs", notes: "A scratchpad kept on your account",
   private: "The startup directory and new private raises", saved: "Comps sheets and peer groups",
-  markets: "Which exchanges trade now, and when they open or close in your time", calc: "Arithmetic with k, m, b and %, plus npv, irr and pmt",
+  markets: "Which exchanges trade now, and when they open or close in your time", calc: "Arithmetic with k, m, b and %, plus npv, irr and pmt", recent: "The pages, tools and tickers you opened last, on this device",
 };
 
 /** Widgets that take the full width of the page (or the Desk layout's main column) unless the person says otherwise. */
@@ -97,7 +97,7 @@ const isWidget = (v: unknown): v is WidgetId => typeof v === "string" && (WIDGET
 /** The widgets on by default for each layout. */
 const LAYOUT_WIDGETS: Record<HomeLayout, WidgetId[]> = {
   focus: ["checklist", "waiting", "agenda", "brief"],
-  home: ["checklist", "agenda", "brief", "waiting", "watchlist", "notes", "runs"],
+  home: ["checklist", "agenda", "recent", "brief", "waiting", "watchlist", "notes", "runs"],
   desk: ["checklist", "brief", "start", "watchlist", "movers", "ask", "runs", "waiting", "agenda", "saved"],
 };
 

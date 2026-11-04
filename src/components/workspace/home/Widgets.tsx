@@ -19,7 +19,7 @@ import { NOTES_MAX, WIDGET_LABEL, type WidgetId } from "@/lib/desk/desk";
 import { InboxWidget } from "./Inbox";
 import { ChecklistWidget } from "./Checklist";
 import { WatchlistEditor } from "./WatchlistEditor";
-import { CalcWidget, MarketsWidget } from "./MoreWidgets";
+import { CalcWidget, MarketsWidget, RecentWidget } from "./MoreWidgets";
 
 export type HomeFacts = { directoryTotal: number | null; sheets: number; groups: number };
 type Props = { roomy?: boolean };
@@ -268,6 +268,7 @@ export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: bool
     case "checklist": return <ChecklistWidget roomy={roomy} />;
     case "markets": return <MarketsWidget roomy={roomy} />;
     case "calc": return <CalcWidget roomy={roomy} />;
+    case "recent": return <RecentWidget roomy={roomy} />;
     case "watchlist": return <WatchlistWidget roomy={roomy} />;
     case "movers": return <MoversWidget roomy={roomy} />;
     case "start": return <StartWidget roomy={roomy} />;
