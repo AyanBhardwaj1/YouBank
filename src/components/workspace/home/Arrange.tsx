@@ -60,7 +60,7 @@ export function Slot({ w, layout, children }: { w: WidgetPref; layout: HomeLayou
         <button type="button" className={btn} disabled={idx < 0 || idx >= shown.length - 1} onClick={() => set(nudgeWidget(desk.widgets, w.id, 1, among))} aria-label={`Move ${WIDGET_LABEL[w.id]} later`} title="Later"><Icon name="ArrowDown" className="h-3.5 w-3.5" /></button>
         {layout !== "focus" && (
           <button type="button" onClick={() => set(desk.widgets.map((x) => (x.id === w.id ? { ...x, size: wide ? "narrow" : "wide" } : x)))}
-            className="ctl border border-line px-1.5 py-0.5 text-[10.5px] text-muted hover:text-fg" aria-label={`Make ${WIDGET_LABEL[w.id]} ${wide ? "narrow" : "wide"}`}>
+            className="ctl border border-line px-1.5 py-0.5 text-[10.5px] text-muted hover:text-fg max-lg:hidden" aria-label={`Make ${WIDGET_LABEL[w.id]} ${wide ? "narrow" : "wide"}`}>
             {wide ? "Wide" : "Narrow"}
           </button>
         )}
