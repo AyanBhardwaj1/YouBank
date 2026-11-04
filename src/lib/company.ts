@@ -141,6 +141,9 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
  * Built public-only (market/user-context): it is shared through company_cache, so no one's own keys or
  * source order ever feed it.
  */
+/** The shared record with no one's manual estimates: for public pages (src/app/c/[ticker]). */
+export const getPublicCompany = (ticker: string) => companyBase(ticker);
+
 function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   return publicOnly(() => sharedCompanyBase(tickerRaw));
 }
