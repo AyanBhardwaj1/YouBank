@@ -86,8 +86,10 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
   useEffect(() => { runRef.current = run; });
   useEffect(() => {
     const key = `${initial?.ticker ?? ""}|${initial?.fn ?? ""}|${initial?.arg ?? ""}`;
-    if (key === seen.current || (!initial?.ticker && !initial?.fn)) return;
+    if (key === seen.current) return;
     seen.current = key;
+    // The bare terminal: nothing to open, but the next link (even the same one as before) counts as new.
+    if (!initial?.ticker && !initial?.fn) return;
     const fn = initial.fn && isFunctionCode(initial.fn.toUpperCase()) ? (initial.fn.toUpperCase() as FunctionCode) : "DES";
     const t = window.setTimeout(() => runRef.current({ ticker: initial.ticker ?? "", fn, arg: initial.arg, via: "click" }), 0);
     return () => window.clearTimeout(t);

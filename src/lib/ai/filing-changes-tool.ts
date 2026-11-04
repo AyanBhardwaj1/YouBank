@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { aiUser } from "./context";
 import { def, type ToolDef } from "./tools";
-import { changeRadar } from "@/lib/edge/docs/changes";
 import { withinRate } from "@/lib/locks";
 
 /**
@@ -21,6 +20,8 @@ export const filingChangesTool = def({
   run: async ({ ticker, form, section }, ctx) => {
     const user = aiUser();
     if (user && !(await withinRate(`edge-radar:${user}`, 30, 3_600_000))) return JSON.stringify({ error: "Many filing comparisons this hour; try again later." });
+    // Loaded here, not at the top: changes.ts imports the agent, which imports this file.
+    const { changeRadar } = await import("@/lib/edge/docs/changes");
     const r = await changeRadar(ticker, form, section);
     if (!r.current || !r.prior) return JSON.stringify({ ticker: r.ticker, note: r.summary[0] ?? "There are not two filings to compare." });
     const cur = ctx.addSource(`${r.ticker} ${r.form} filed ${r.current.filed}`, r.current.url);

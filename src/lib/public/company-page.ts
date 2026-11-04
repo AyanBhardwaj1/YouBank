@@ -8,7 +8,9 @@ import { PEER_GROUPS, DEFAULT_WATCHLIST } from "@/lib/static-data";
 
 /** A ticker as it appears in a public URL: upper case, letters and digits, one class suffix. */
 export const publicTicker = (raw: string) => {
-  const t = decodeURIComponent(raw).trim().toUpperCase();
+  let t: string;
+  // A malformed escape ("%", "%E0%A4") is not a ticker: a 404, never a 500.
+  try { t = decodeURIComponent(raw).trim().toUpperCase(); } catch { return null; }
   return /^[A-Z][A-Z0-9]{0,9}([.-][A-Z0-9]{1,3})?$/.test(t) ? t : null;
 };
 

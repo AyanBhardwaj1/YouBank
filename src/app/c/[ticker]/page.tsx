@@ -4,7 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { cache } from "react";
 import { SiteFooter, SiteHeader } from "@/components/marketing/SiteChrome";
 import { Icon } from "@/components/ui/Icon";
-import { getPublicCompany, hasCompanyRecord } from "@/lib/company";
+import { getPublicCompany, hasCompanyRecord, isSecTicker } from "@/lib/company";
 import { withinRate } from "@/lib/locks";
 import { publicFacts, publicPeers, publicSummary, publicTicker, sitemapTickers } from "@/lib/public/company-page";
 import { siteLink, siteUrl } from "@/lib/site";
@@ -29,7 +29,11 @@ const BUILDS_PER_HOUR = 300;
 const load = cache(async (raw: string) => {
   const t = publicTicker(raw);
   if (!t) return { t: null, c: null };
-  if (!(await hasCompanyRecord(t)) && !sitemapTickers().includes(t) && !(await withinRate("public-company-build", BUILDS_PER_HOUR, 3_600_000))) return { t, c: null };
+  // Only real SEC tickers reach the budget, so made-up ones cannot use it up for real companies.
+  if (!(await hasCompanyRecord(t)) && !sitemapTickers().includes(t)) {
+    if (!(await isSecTicker(t))) return { t, c: null };
+    if (!(await withinRate("public-company-build", BUILDS_PER_HOUR, 3_600_000))) return { t, c: null };
+  }
   return { t, c: await getPublicCompany(t).catch(() => null) };
 });
 
@@ -66,7 +70,7 @@ export default async function CompanyPage({ params }: Params) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       <SiteHeader />
       <main className="mx-auto max-w-[1080px] px-5 py-10">
-        <nav className="text-[11.5px] text-muted" aria-label="Breadcrumb"><Link href="/" className="hover:text-fg">YouBank</Link> · Companies · {c.ticker}</nav>
+        <nav className="text-[11.5px] text-muted" aria-label="Breadcrumb"><Link href="/" className="hover:text-fg">YouBank</Link> · <Link href="/c" className="hover:text-fg">Companies</Link> · {c.ticker}</nav>
         <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-[30px] font-semibold tracking-tight">{c.name} <span className="num text-muted">{c.ticker}</span></h1>

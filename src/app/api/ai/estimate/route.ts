@@ -6,6 +6,8 @@ import { typicalCost, type Estimate } from "@/lib/ai/cost-preview";
 import { isAdmin } from "@/lib/auth/admin";
 import { guarded } from "@/lib/auth/user";
 import { memo } from "@/lib/memo";
+import { rateLimit } from "@/lib/locks";
+import { metaById } from "@/lib/workflows/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +35,9 @@ const typical = (feature: string) => memo(`ai-estimate:${feature}`, 600_000, asy
 export async function GET(req: Request) {
   return guarded(async (user) => {
     const feature = new URL(req.url).searchParams.get("feature") ?? "";
-    if (!FEATURE.test(feature)) return NextResponse.json({ error: "Unknown kind of run." }, { status: 400 });
+    // Only kinds that exist: a made-up tool id would scan the usage table and take a cache slot.
+    if (!FEATURE.test(feature) || (feature.startsWith("tool:") && !metaById(feature.slice(5)))) return NextResponse.json({ error: "Unknown kind of run." }, { status: 400 });
+    await rateLimit(`ai-estimate:${user.id}`, 120, 3_600_000, "Too many cost checks this hour. Try again later.");
     const [t, a] = await Promise.all([typical(feature).catch(() => ({ typicalUsd: null, runs: 0 })), aiAllowance(user.id, isAdmin(user)).catch(() => null)]);
     const estimate: Estimate = { ...t, monthlyUsd: a?.monthlyUsd ?? null, monthUsd: a?.monthUsd ?? 0, leftUsd: a?.credits.leftUsd ?? 0 };
     return NextResponse.json(estimate, { headers: { "Cache-Control": "private, no-store" } });

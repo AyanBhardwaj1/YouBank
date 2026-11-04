@@ -144,11 +144,19 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
 /** The shared record with no one's manual estimates: for public pages (src/app/c/[ticker]). */
 export const getPublicCompany = (ticker: string) => companyBase(ticker);
 
-/** Whether a stored record exists for the ticker (any age): a public page can show it without asking the SEC. */
+/**
+ * Whether a stored record can be served without asking the SEC: one young enough and in the current
+ * format (an older one is rebuilt on read, which costs SEC requests like a new one).
+ */
 export async function hasCompanyRecord(ticker: string): Promise<boolean> {
   if (!db) return false;
-  return cachedRecord(canonical(ticker)).then((r) => !!r).catch(() => false);
+  return cachedRecord(canonical(ticker))
+    .then((r) => !!r && Date.now() - r.fetchedAt.getTime() < COMPANY_STALE_MS && (r.data as CompanyData).recordVersion === RECORD_VERSION)
+    .catch(() => false);
 }
+
+/** Whether the SEC lists the ticker (a cached map: no request per call). */
+export const isSecTicker = (ticker: string) => resolveTicker(ticker).then((r) => !!r).catch(() => false);
 
 function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   return publicOnly(() => sharedCompanyBase(tickerRaw));

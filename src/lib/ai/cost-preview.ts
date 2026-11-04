@@ -21,8 +21,8 @@ const share = (x: number) => (x < 0.01 ? "under 1%" : `about ${Math.round(x * 10
 export function costLine(e: Estimate, what = "A run like this"): string | null {
   if (e.typicalUsd === null) return null;
   if (e.monthlyUsd === null || e.monthlyUsd <= 0) return `${what} usually costs about $${e.typicalUsd < 0.1 ? e.typicalUsd.toFixed(3) : e.typicalUsd.toFixed(2)} in AI.`;
+  // No count of runs that "fit": the daily cap and the model chosen change that, and this figure knows neither.
   const left = Math.max(0, e.monthlyUsd - e.monthUsd) + Math.max(0, e.leftUsd);
-  const runsLeft = Math.floor(left / e.typicalUsd);
-  const tail = runsLeft < 1 ? ", and less than that is left" : runsLeft < 20 ? `; about ${runsLeft} more fit in what is left` : "";
-  return `${what} usually uses ${share(e.typicalUsd / e.monthlyUsd)} of your monthly AI allowance${tail}.`;
+  const tail = left < e.typicalUsd ? ", and less than that is left this month" : "";
+  return `${what} typically uses ${share(e.typicalUsd / e.monthlyUsd)} of your monthly AI allowance (recent runs, all models)${tail}.`;
 }
