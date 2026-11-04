@@ -17,12 +17,22 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trim
  * learning, the autopilot gate, step-up) hold here too. A table a database does not have yet reads as
  * empty rather than failing Home.
  */
-export async function GET() {
+export async function GET(req: Request) {
   return guarded(async (user) => {
     const db = requireDb();
+    const countsOnly = new URL(req.url).searchParams.get("counts") === "1";
     const safe = <T,>(q: Promise<T[]>) => q.catch(() => [] as T[]);
     const n = (q: Promise<{ n: number }[]>) => q.then((r) => Number(r[0]?.n ?? 0)).catch(() => 0);
     const d = schema.crmDrafts, qn = schema.crmQuestions, a = schema.crmActions, nt = schema.newsNotifications;
+    // ?counts=1: just the numbers, for the badge on Home's tab (four indexed counts, no rows).
+    if (countsOnly) {
+      const [draft, question, action] = await Promise.all([
+        n(db.select({ n: count() }).from(d).where(and(eq(d.userId, user.id), eq(d.status, "pending")))),
+        n(db.select({ n: count() }).from(qn).where(and(eq(qn.userId, user.id), eq(qn.status, "open")))),
+        n(db.select({ n: count() }).from(a).where(and(eq(a.userId, user.id), eq(a.status, "pending")))),
+      ]);
+      return NextResponse.json({ counts: { draft, question, action } }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     const [drafts, questions, actions, alerts, counts] = await Promise.all([
       safe(db.select({ id: d.id, subject: d.subject, body: d.body, to: d.toAddresses, rationale: d.rationale, holdReason: d.holdReason, scheduledFor: d.scheduledFor, confidence: d.confidence, sensitive: d.sensitive, kind: d.kind, createdAt: d.createdAt })
         .from(d).where(and(eq(d.userId, user.id), eq(d.status, "pending"))).orderBy(desc(d.createdAt)).limit(PER_KIND)),

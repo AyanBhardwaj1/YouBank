@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { fetchJson, errorMessage } from "@/lib/client/errors";
+import { refreshWaiting } from "@/lib/client/waiting";
 import { WIDGET_LABEL } from "@/lib/desk/desk";
 import { inboxHref, inboxOrder, inboxRequest, verbsFor, type InboxItem, type InboxKind, type InboxVerb } from "@/lib/desk/inbox";
 
@@ -58,6 +59,7 @@ export function InboxWidget({ roomy }: { roomy?: boolean }) {
     try {
       const res = await fetchJson<{ message?: string }>(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body ? JSON.stringify(req.body) : undefined });
       setNote({ text: (verb === "approve" && typeof res?.message === "string" && res.message) || DONE[verb] || "Done.", tone: "ok" });
+      void refreshWaiting();
     } catch (e) {
       setD((cur) => cur && (cur.items.some((x) => x.key === item.key) ? cur : { items: inboxOrder([...cur.items, item]), counts: { ...cur.counts, [item.kind]: cur.counts[item.kind] + 1 } }));
       setNote({ text: errorMessage(e), tone: "err" });

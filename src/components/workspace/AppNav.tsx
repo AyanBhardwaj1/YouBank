@@ -23,9 +23,17 @@ import { ROLES } from "@/lib/roles";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
 import { openPalette } from "./CommandPalette";
+import { useWaiting } from "@/lib/client/waiting";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
 import { NotificationBell } from "@/components/news/NotificationBell";
+
+/** On Home's tab: how many decisions wait in the desk inbox. */
+function WaitingBadge() {
+  const n = useWaiting();
+  if (!n) return null;
+  return <span className="num relative ml-0.5 rounded-full bg-accent px-1.5 text-[9.5px] font-bold leading-[15px] text-accent-fg" aria-label={`${n} waiting for you`} title={`${n} waiting for you on Home`}>{n > 99 ? "99+" : n}</span>;
+}
 
 function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active: boolean; iconsOnly: boolean; temporary?: boolean; onPin?: () => void }) {
   const link = (
@@ -34,6 +42,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
       {active && <motion.span layoutId="nav-active" className="absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
       <Icon name={f.icon} className="relative h-3.5 w-3.5 shrink-0" />
       {!iconsOnly && <span className="relative hidden lg:inline">{f.label}</span>}
+      {f.id === "home" && <WaitingBadge />}
     </Link>
   );
   if (!temporary) return <motion.div layout="position" transition={{ type: "spring", stiffness: 520, damping: 42 }}>{link}</motion.div>;

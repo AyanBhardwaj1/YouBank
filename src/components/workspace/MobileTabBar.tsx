@@ -12,10 +12,18 @@ import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { LayoutGrid } from "lucide-react";
 import { featureOf, type NavFeature } from "@/lib/nav";
+import { useWaiting } from "@/lib/client/waiting";
 import { Icon } from "@/components/ui/Icon";
 import { useNav } from "./NavContext";
 
 const TABS = 4;
+
+/** On Home's tab: how many decisions wait in the desk inbox. */
+function PhoneBadge() {
+  const n = useWaiting();
+  if (!n) return null;
+  return <span className="num absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-accent px-1 text-center text-[9.5px] font-bold leading-4 text-accent-fg" aria-label={`${n} waiting for you`}>{n > 99 ? "99+" : n}</span>;
+}
 
 export function MobileTabBar() {
   const nav = useNav();
@@ -38,7 +46,7 @@ export function MobileTabBar() {
               <Link href={f.href} aria-current={active ? "page" : undefined} onClick={() => nav.setOpen(false)}
                 className={`relative flex h-full flex-col items-center justify-center gap-1 transition-colors active:bg-elevated/60 ${active ? "text-accent" : "text-muted"}`}>
                 {active && <motion.span layoutId="tab-active" className="absolute top-0 h-0.5 w-8 rounded-full bg-accent" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
-                <Icon name={f.icon} className="h-[22px] w-[22px]" strokeWidth={active ? 2.1 : 1.75} />
+                <span className="relative"><Icon name={f.icon} className="h-[22px] w-[22px]" strokeWidth={active ? 2.1 : 1.75} />{f.id === "home" && <PhoneBadge />}</span>
                 <span className="max-w-full truncate px-1 text-[11px] font-medium leading-none">{short(f)}</span>
               </Link>
             </li>
