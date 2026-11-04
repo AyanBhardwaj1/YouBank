@@ -3,7 +3,8 @@
 /**
  * The signed-in frame: the top bar, the sidebar and the page. Holds how this person arranges the top
  * bar (which features are pinned, in what order, with or without labels) and the sidebar (open, and
- * docked beside the page or over it), and saves changes to their profile. Cmd/Ctrl+\ toggles the sidebar.
+ * docked beside the page or over it), and saves changes to their profile. Cmd/Ctrl+\ toggles the sidebar;
+ * Cmd/Ctrl+K opens the command palette.
  *
  * On a phone the same pieces rearrange: the top bar slims to the page's name and the account controls,
  * the pinned features become a tab bar along the bottom, and the sidebar opens as a "More" sheet.
@@ -19,6 +20,7 @@ import { MobileTabBar } from "./MobileTabBar";
 import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
+import { CommandPalette } from "./CommandPalette";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -71,6 +73,8 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
         <MobileTabBar />
         {/* The authenticator-code dialog before risky actions (src/lib/client/step-up). */}
         <StepUpHost />
+        {/* ⌘K: go anywhere, open a ticker, change the look, or ask (CommandPalette). */}
+        <CommandPalette />
       </div>
     </NavCtx.Provider>
   );

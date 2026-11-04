@@ -21,6 +21,8 @@ export const metadata: Metadata = {
   description: "Cited analysis from SEC filings, and an email agent that tracks every thread, asks you what it cannot answer, remembers, and sends on its own only what you allow. For boutique advisors, emerging managers, founders and students.",
   metadataBase: new URL(siteUrl()),
   applicationName: "YouBank",
+  // Installed to a phone's home screen, it opens full screen with the status bar over the theme (manifest.ts).
+  appleWebApp: { capable: true, title: "YouBank", statusBarStyle: "black-translucent" },
   openGraph: {
     title: "YouBank · The AI deal desk that learns how you work",
     description: "Cited analysis from SEC filings, and an email agent that earns autonomy from your own decisions.",

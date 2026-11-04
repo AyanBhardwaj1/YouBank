@@ -95,7 +95,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
               <div className="mt-5"><AskBox big /></div>
             </div>
           </Reveal>
-          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-flow-row-dense lg:grid-cols-2">
             {on.map((id, i) => <Reveal key={id} eager delay={i * 40} className={WIDE.has(id) ? "lg:col-span-2" : ""}><Widget id={id} roomy facts={facts} brief={brief} /></Reveal>)}
           </div>
         </div>

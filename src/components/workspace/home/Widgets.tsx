@@ -16,6 +16,7 @@ import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
 import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
 import { changeTone, fmtChange } from "@/lib/market/units";
 import { NOTES_MAX, WIDGET_LABEL, type WidgetId } from "@/lib/desk/desk";
+import { InboxWidget } from "./Inbox";
 
 export type HomeFacts = { directoryTotal: number | null; sheets: number; groups: number };
 type Props = { roomy?: boolean };
@@ -28,32 +29,7 @@ const H = ({ children, right, roomy }: { children: React.ReactNode; right?: Reac
 );
 const box = (roomy?: boolean) => (roomy ? "home-card p-5" : "panel p-3");
 
-/* ---------------- Waiting for you ---------------- */
-
-type Waiting = { items: { id: string; label: string; count: number; href: string }[] };
-export function WaitingWidget({ roomy }: Props) {
-  const [d, setD] = useState<Waiting | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => { fetch("/api/desk/waiting").then((r) => (r.ok ? r.json() : Promise.reject())).then(setD).catch(() => setFailed(true)); }, []);
-  const open = d?.items.filter((i) => i.count > 0) ?? [];
-  return (
-    <section className={box(roomy)}>
-      <H roomy={roomy}>{WIDGET_LABEL.waiting}</H>
-      {!d && !failed && <div className="shimmer h-12 ctl" />}
-      {failed && <p className="text-[11.5px] text-muted">This could not be loaded just now. It will be back on the next visit.</p>}
-      {d && open.length === 0 && <p className={`${roomy ? "text-[13px]" : "text-[11.5px]"} text-muted`}>Nothing is waiting for you. The agents will leave drafts, questions and follow-ups here.</p>}
-      <ul className="space-y-1">
-        {open.map((i) => (
-          <li key={i.id}>
-            <Link href={i.href} className={`flex items-center justify-between gap-2 ctl px-2 py-1.5 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[12px]"}`}>
-              <span>{i.label}</span><span className="num rounded-full bg-accent-soft px-2 py-px text-[11px] font-semibold text-accent">{i.count}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
+/* ---------------- Waiting for you: the desk inbox (./Inbox.tsx) ---------------- */
 
 /* ---------------- Coming up (the next 24 hours) ---------------- */
 
@@ -278,7 +254,7 @@ export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: bool
   switch (id) {
     case "brief": return <HomeBrief seed={brief} />;
     case "agenda": return <AgendaWidget roomy={roomy} />;
-    case "waiting": return <WaitingWidget roomy={roomy} />;
+    case "waiting": return <InboxWidget roomy={roomy} />;
     case "watchlist": return <WatchlistWidget roomy={roomy} />;
     case "movers": return <MoversWidget roomy={roomy} />;
     case "start": return <StartWidget roomy={roomy} />;

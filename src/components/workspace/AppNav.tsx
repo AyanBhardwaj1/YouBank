@@ -22,6 +22,7 @@ import { useNav } from "./NavContext";
 import { ROLES } from "@/lib/roles";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
+import { openPalette } from "./CommandPalette";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
 import { NotificationBell } from "@/components/news/NotificationBell";
@@ -105,6 +106,12 @@ export function AppNav({ email }: { email: string }) {
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
         {status?.configured && <span className="num hidden text-[10.5px] text-muted 2xl:inline" title={`Model ${status.model}, reasoning ${status.effort}`}>{status.label ?? status.model}</span>}
+        <button type="button" onClick={openPalette} title="Go anywhere, change the look, or ask (⌘K)" aria-label="Search, go to, or ask"
+          className="ctl flex items-center gap-1.5 border border-line px-2 py-1 text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">
+          <Icon name="Search" className="h-3.5 w-3.5 max-md:h-[18px] max-md:w-[18px]" />
+          <span className="hidden lg:inline">Search or ask</span>
+          <kbd className="hidden rounded border border-line px-1 font-mono text-[9.5px] text-faint lg:inline">⌘K</kbd>
+        </button>
         <NotificationBell />
         <ThemeMenu nameClass="hidden 2xl:inline" />
         <div className="relative">
