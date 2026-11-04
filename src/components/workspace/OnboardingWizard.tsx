@@ -10,6 +10,7 @@ import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 import { apiError, errorMessage } from "@/lib/client/errors";
 import { LAYOUTS, WALLPAPERS, widgetsFor, type HomeLayout } from "@/lib/desk/desk";
+import { RELEASE } from "@/lib/whats-new";
 import { LAYOUT_INFO, LayoutSketch } from "./home/LayoutSketch";
 
 type Draft = Profile;
@@ -46,6 +47,8 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
         ...(layout ? { desk: { layout, widgets: widgetsFor(layout, d.role), source: "auto" } } : {}),
         ...(wallpaper !== "none" ? { look: { wallpaper } } : {}),
       }) }).catch(() => {});
+      // Everything is new to a new account: Getting started on Home covers it, not the "New in YouBank" card.
+      try { localStorage.setItem("yb-whats-new-seen", RELEASE); } catch { /* fine */ }
       router.push(next);
       router.refresh();
     } catch (e) { setError(errorMessage(e)); setBusy(false); }

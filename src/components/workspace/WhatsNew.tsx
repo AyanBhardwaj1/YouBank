@@ -14,6 +14,7 @@ import { openPalette } from "./CommandPalette";
 import { openShortcuts } from "./Shortcuts";
 import { requestArrange } from "@/lib/client/arrange";
 
+/** Also set by onboarding (OnboardingWizard.tsx), so a new account does not get the card. */
 const KEY = "yb-whats-new-seen";
 export const openWhatsNew = () => window.dispatchEvent(new Event("yb:whats-new"));
 
