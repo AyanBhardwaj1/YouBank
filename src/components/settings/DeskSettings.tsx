@@ -10,21 +10,9 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { useNav } from "@/components/workspace/NavContext";
 import { Icon } from "@/components/ui/Icon";
 import { FEATURES, type NavId } from "@/lib/nav";
-import { CORE_FEATURES, LAYOUTS, WIDGET_HINT, WIDGET_LABEL, type DeskPrefs, type HomeLayout } from "@/lib/desk/desk";
+import { CORE_FEATURES, LAYOUTS, WIDGET_HINT, WIDGET_LABEL, type DeskPrefs } from "@/lib/desk/desk";
+import { LAYOUT_INFO, LayoutSketch } from "@/components/workspace/home/LayoutSketch";
 import { errorMessage } from "@/lib/client/errors";
-
-const LAYOUT_INFO: Record<HomeLayout, { name: string; icon: string; blurb: string }> = {
-  focus: { name: "Focus", icon: "Focus", blurb: "One question box and only what needs you. Quiet." },
-  home: { name: "Home", icon: "Sofa", blurb: "A calm, roomy page for the day: larger type, cards, your agenda first." },
-  desk: { name: "Desk", icon: "LayoutGrid", blurb: "Everything at once, dense, in two columns." },
-};
-
-function LayoutSketch({ layout }: { layout: HomeLayout }) {
-  const bar = "rounded-sm bg-line";
-  if (layout === "focus") return <div className="flex h-14 flex-col items-center gap-1 p-2"><div className={`${bar} h-2 w-1/2`} /><div className="h-2.5 w-3/4 rounded-sm bg-accent/40" /><div className={`${bar} h-2 w-3/4`} /><div className={`${bar} h-2 w-3/4`} /></div>;
-  if (layout === "home") return <div className="flex h-14 flex-col gap-1 p-2"><div className="h-4 rounded-sm bg-accent/30" /><div className="grid flex-1 grid-cols-2 gap-1"><div className={bar} /><div className={bar} /></div></div>;
-  return <div className="grid h-14 grid-cols-[2fr_1fr] gap-1 p-2"><div className="flex flex-col gap-1"><div className={`${bar} h-3`} /><div className={`${bar} flex-1`} /></div><div className="flex flex-col gap-1"><div className={`${bar} h-2`} /><div className={`${bar} h-2`} /><div className={`${bar} h-2`} /></div></div>;
-}
 
 export function DeskSettings() {
   const { profile, desk, setDesk } = useWorkspace();
