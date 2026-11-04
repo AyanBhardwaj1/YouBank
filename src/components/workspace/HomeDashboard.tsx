@@ -11,6 +11,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useNow } from "@/components/ui/useNow";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
 import { Icon } from "@/components/ui/Icon";
@@ -20,7 +21,8 @@ import { LAYOUTS, isWide, type HomeLayout } from "@/lib/desk/desk";
 import { Widget, type HomeFacts } from "./home/Widgets";
 import { ArrangeBar, ArrangeProvider, Slot } from "./home/Arrange";
 
-const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+/** By the browser's clock; "Hello" until the page is live, so the server's time zone never shows. */
+const greeting = (now: number | null) => { if (now === null) return "Hello"; const h = new Date(now).getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 const LAYOUT_LABEL: Record<HomeLayout, string> = { focus: "Focus", home: "Home", desk: "Desk" };
 
 function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange: () => void }) {
@@ -63,7 +65,8 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
   const bar = arranging && <ArrangeBar layout={desk.layout} onDone={() => setArranging(false)} />;
   const empty = on.length === 0 && !arranging && <p className="text-[12.5px] text-muted">No widgets on. <button type="button" onClick={() => setArranging(true)} className="text-accent hover:underline">Add some</button>.</p>;
   const name = profile.name ? `, ${profile.name.split(" ")[0]}` : "";
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const now = useNow(60_000);
+  const today = now === null ? "\u00a0" : new Date(now).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   if (desk.layout === "focus") {
     return (
@@ -71,7 +74,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
         <div className="mx-auto max-w-[760px] px-5 py-10">
           <Reveal eager>
             <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span>{sw}</div>
-            <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting()}{name}.</h1>
+            <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
             <p className="mt-1 text-[13px] text-muted">What do you need?</p>
             <div className="mt-5"><AskBox big /></div>
           </Reveal>
@@ -94,7 +97,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-[12px] text-muted">{today}</div>
-                  <h1 className="mt-1 text-[30px] font-semibold tracking-tight">{greeting()}{name}.</h1>
+                  <h1 className="mt-1 text-[30px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
                   <p className="mt-1 text-[13px] text-muted">{ROLES[profile.role].label}{profile.firmName ? ` · ${profile.firmName}` : ""}. Here is your day.</p>
                 </div>
                 {sw}
@@ -120,7 +123,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
         <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-[22px] font-semibold tracking-tight">{greeting()}{name}.</h1>
+              <h1 className="text-[22px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
               <p className="mt-1 text-[12.5px] text-muted">{ROLES[profile.role].label}{profile.specialty ? ` · ${profile.specialty}` : ""}{profile.firmName ? ` · ${profile.firmName}` : ""}{profile.seniority ? ` · ${profile.seniority}` : ""} · <Link href="/app/profile" className="hover:text-fg">change</Link></p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
