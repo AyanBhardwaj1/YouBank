@@ -21,6 +21,7 @@ import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
 import { CommandPalette } from "./CommandPalette";
+import { Shortcuts } from "./Shortcuts";
 import { listenForInstall } from "@/lib/client/install";
 
 const persist = (nav: NavPrefs) => {
@@ -79,6 +80,8 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
         <StepUpHost />
         {/* ⌘K: go anywhere, open a ticker, change the look, or ask (CommandPalette). */}
         <CommandPalette />
+        {/* G then a letter to go to a feature, ? for the list (Shortcuts). */}
+        <Shortcuts />
       </div>
     </NavCtx.Provider>
   );
