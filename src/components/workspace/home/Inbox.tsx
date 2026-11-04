@@ -67,6 +67,15 @@ export function InboxWidget({ roomy }: { roomy?: boolean }) {
   };
 
   const items = d?.items ?? [];
+  /** The alerts shown here, read in one go (the bell's own route); they come back if that fails. */
+  const readAlerts = async () => {
+    const ids = items.filter((i) => i.kind === "alert").map((i) => i.id);
+    if (!ids.length) return;
+    const before = d;
+    setD((cur) => cur && { items: cur.items.filter((x) => x.kind !== "alert"), counts: { ...cur.counts, alert: Math.max(0, cur.counts.alert - ids.length) } });
+    try { await fetchJson("/api/news/notifications", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids }) }); setNote({ text: "Alerts marked read.", tone: "ok" }); }
+    catch (e) { setD(before); setNote({ text: errorMessage(e), tone: "err" }); }
+  };
   const shown = all ? items : items.slice(0, roomy ? 4 : 5);
   const counts = d ? (Object.keys(KIND) as InboxKind[]).filter((k) => d.counts[k] > 0) : [];
   const text = roomy ? "text-[13px]" : "text-[12px]";
@@ -78,6 +87,7 @@ export function InboxWidget({ roomy }: { roomy?: boolean }) {
         {counts.length > 0 && (
           <span className="flex flex-wrap gap-x-2 text-[11px] text-muted">
             {counts.map((k) => <span key={k}><span className="num font-semibold text-fg">{d!.counts[k]}</span> {d!.counts[k] === 1 ? KIND[k].one : KIND[k].many}</span>)}
+            {items.some((i) => i.kind === "alert") && <button type="button" onClick={() => void readAlerts()} className="hover:text-fg">Mark alerts read</button>}
           </span>
         )}
       </div>
