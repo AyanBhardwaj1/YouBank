@@ -4,8 +4,9 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { cache } from "react";
 import { SiteFooter, SiteHeader } from "@/components/marketing/SiteChrome";
 import { Icon } from "@/components/ui/Icon";
-import { getPublicCompany } from "@/lib/company";
-import { publicFacts, publicPeers, publicSummary, publicTicker } from "@/lib/public/company-page";
+import { getPublicCompany, hasCompanyRecord } from "@/lib/company";
+import { withinRate } from "@/lib/locks";
+import { publicFacts, publicPeers, publicSummary, publicTicker, sitemapTickers } from "@/lib/public/company-page";
 import { siteLink, siteUrl } from "@/lib/site";
 
 /**
@@ -18,9 +19,17 @@ import { siteLink, siteUrl } from "@/lib/site";
 
 type Params = { params: Promise<{ ticker: string }> };
 
+/**
+ * A company with no stored record is built from the SEC on first view. Crawlers walking every ticker would
+ * turn that into a flood of SEC requests, so public pages build at most 300 new records an hour across the
+ * site (the sitemap's companies always); past that, an unbuilt company is a 404 until someone opens it in
+ * the app or the hour turns.
+ */
+const BUILDS_PER_HOUR = 300;
 const load = cache(async (raw: string) => {
   const t = publicTicker(raw);
   if (!t) return { t: null, c: null };
+  if (!(await hasCompanyRecord(t)) && !sitemapTickers().includes(t) && !(await withinRate("public-company-build", BUILDS_PER_HOUR, 3_600_000))) return { t, c: null };
   return { t, c: await getPublicCompany(t).catch(() => null) };
 });
 

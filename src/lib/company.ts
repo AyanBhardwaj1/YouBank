@@ -144,6 +144,12 @@ export async function getCompanyData(tickerRaw: string): Promise<CompanyData | n
 /** The shared record with no one's manual estimates: for public pages (src/app/c/[ticker]). */
 export const getPublicCompany = (ticker: string) => companyBase(ticker);
 
+/** Whether a stored record exists for the ticker (any age): a public page can show it without asking the SEC. */
+export async function hasCompanyRecord(ticker: string): Promise<boolean> {
+  if (!db) return false;
+  return cachedRecord(canonical(ticker)).then((r) => !!r).catch(() => false);
+}
+
 function companyBase(tickerRaw: string): Promise<CompanyData | null> {
   return publicOnly(() => sharedCompanyBase(tickerRaw));
 }
