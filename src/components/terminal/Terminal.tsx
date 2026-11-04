@@ -79,6 +79,20 @@ export function Terminal({ initial }: { initial?: { ticker?: string; fn?: string
 
   const openFn = (fn: FunctionCode) => run({ ticker: activeTicker, fn, via: "click" });
 
+  // A link into the terminal while it is already open (the palette's "Open NVDA", Jump back in, an answer's
+  // link) changes the URL but not this component: open what the new URL asks for as a panel.
+  const seen = useRef(`${initial?.ticker ?? ""}|${initial?.fn ?? ""}|${initial?.arg ?? ""}`);
+  const runRef = useRef(run);
+  useEffect(() => { runRef.current = run; });
+  useEffect(() => {
+    const key = `${initial?.ticker ?? ""}|${initial?.fn ?? ""}|${initial?.arg ?? ""}`;
+    if (key === seen.current || (!initial?.ticker && !initial?.fn)) return;
+    seen.current = key;
+    const fn = initial.fn && isFunctionCode(initial.fn.toUpperCase()) ? (initial.fn.toUpperCase() as FunctionCode) : "DES";
+    const t = window.setTimeout(() => runRef.current({ ticker: initial.ticker ?? "", fn, arg: initial.arg, via: "click" }), 0);
+    return () => window.clearTimeout(t);
+  }, [initial?.ticker, initial?.fn, initial?.arg]);
+
   // The sidebar's terminal workflows open here as panels, beside the ones already open.
   useSubNav("/app/terminal", (code) => { if (isFunctionCode(code)) run({ ticker: "", fn: code, via: "click" }); });
 

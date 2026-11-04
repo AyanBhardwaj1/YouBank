@@ -26,7 +26,7 @@ import { WhatsNew } from "./WhatsNew";
 import { SystemTheme } from "@/components/theme/SystemTheme";
 import { listenForInstall } from "@/lib/client/install";
 import { recordVisit, visitFor } from "@/lib/client/recent";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -50,11 +50,12 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
 
   // Home's "Jump back in": each page, tool or ticker opened, kept in this browser.
   const path = usePathname();
+  const search = useSearchParams().toString();
   const { tools } = useWorkspace();
   useEffect(() => {
-    const v = visitFor(path, window.location.search, features, tools, Date.now());
+    const v = visitFor(path, search ? `?${search}` : "", features, tools, Date.now());
     if (v) recordVisit(v);
-  }, [path, features, tools]);
+  }, [path, search, features, tools]);
 
   // The browser's offer to install the app can come before Home's checklist is there to show it.
   useEffect(() => listenForInstall(), []);
