@@ -40,6 +40,20 @@ function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange:
   );
 }
 
+/** Focus: three questions to start from, one click each (the role's prompt library). */
+function Suggestions() {
+  const { config } = useWorkspace();
+  const first = config.watchlist[0] ?? "SNOW";
+  return (
+    <div className="mt-2.5 flex flex-wrap gap-1.5">
+      {config.suggestedPrompts(first).slice(0, 3).map((p) => (
+        <Link key={p} href={`/app/terminal?ticker=${encodeURIComponent(first)}&fn=AI&arg=${encodeURIComponent(p)}`}
+          className="max-w-full truncate rounded-full border border-line bg-panel px-2.5 py-1 text-[11.5px] text-muted hover:border-accent/50 hover:text-fg">{p}</Link>
+      ))}
+    </div>
+  );
+}
+
 function AskBox({ big }: { big?: boolean }) {
   const { config } = useWorkspace();
   const router = useRouter();
@@ -79,6 +93,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
             <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting(now)}{name}.</h1>
             <p className="mt-1 text-[13px] text-muted">What do you need?</p>
             <div className="mt-5"><AskBox big /></div>
+            <Suggestions />
           </Reveal>
           <div className="mt-6 space-y-4">
             {bar}
