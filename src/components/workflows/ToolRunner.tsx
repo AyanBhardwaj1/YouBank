@@ -9,6 +9,12 @@ import { Icon } from "@/components/ui/Icon";
 import { StarButton } from "./ToolCard";
 import { FigureCheck } from "@/components/ai/FigureCheck";
 import type { FigureReport } from "@/lib/ai/figures";
+
+/** A saved run's figure report, when it has a well-formed one. */
+const figuresOf = (o: unknown): FigureReport | null => {
+  const f = (o as { figures?: Partial<FigureReport> } | null)?.figures;
+  return f && Array.isArray(f.figures) && typeof f.checkable === "number" ? (f as FigureReport) : null;
+};
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
 import { errorMessage, safeText } from "@/lib/client/errors";
@@ -32,7 +38,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<WorkflowOutput | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
-  // This run's figures checked against their cited sources (live runs only; a reopened run has none).
+  // This run's figures checked against their cited sources (saved with the run, under output.figures).
   const [figures, setFigures] = useState<FigureReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ model?: string; durationMs?: number; runId?: number | null }>({});
@@ -82,7 +88,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
       // The output schema (zod) loads only when a saved run is opened, not with every tool page.
       const { WorkflowOutput: OutputSchema } = await import("@/lib/workflows/schema");
       const parsed = OutputSchema.safeParse(row.output);
-      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setFigures(null); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
+      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setFigures(figuresOf(row.output)); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
     } catch (e) { setError(errorMessage(e)); }
   }, []);
 

@@ -101,7 +101,7 @@ async function runTool(req: Request) {
     let runId: number | null = null;
     if (db && output) {
       try {
-        const [row] = await db.insert(schema.workflowRuns).values({ userId: user.id, toolId: tool.id, title: output.title, inputs: cleaned.inputs, output, sources, provider, model, status: error ? "error" : "done", error, durationMs: Date.now() - started }).returning({ id: schema.workflowRuns.id });
+        const [row] = await db.insert(schema.workflowRuns).values({ userId: user.id, toolId: tool.id, title: output.title, inputs: cleaned.inputs, output: figures ? { ...output, figures } : output, sources, provider, model, status: error ? "error" : "done", error, durationMs: Date.now() - started }).returning({ id: schema.workflowRuns.id });
         runId = row?.id ?? null;
       } catch (e) { logError(e, { where: "tool-run-save" }); /* saving is best-effort */ }
     }
