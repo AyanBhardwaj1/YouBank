@@ -6,7 +6,8 @@ import type { FigureReport } from "@/lib/ai/figures";
  * Which figures match a number in the source they cite. "Matches" is all it claims: a matched figure can
  * still be the wrong field to quote, so each one shows the field and period it matched.
  */
-export function FigureCheck({ r }: { r: FigureReport }) {
+/** `uncitedIsWarning: false` for workflow results, whose tables carry inputs and assumptions without a source: only a figure that contradicts its source turns the line red. */
+export function FigureCheck({ r, uncitedIsWarning = true }: { r: FigureReport; uncitedIsWarning?: boolean }) {
   if (!r.figures.length) return null;
   const sumUp = [
     r.checkable ? `${r.matched + r.computed} of ${r.checkable} figures from data match the cited source` : "",
@@ -14,7 +15,7 @@ export function FigureCheck({ r }: { r: FigureReport }) {
     r.textOnly ? `${r.textOnly} cited from text, not checked` : "",
     r.uncited ? `${r.uncited} without a citation` : "",
   ].filter(Boolean).join(" · ");
-  const tone = r.noMatch || r.uncited ? "text-neg" : "text-muted";
+  const tone = r.noMatch || (uncitedIsWarning && r.uncited) ? "text-neg" : "text-muted";
   const what: Record<string, string> = { matched: "matches", computed: "computed with calc", no_match: "not found in the cited source", text_only: "cited from text, not checked", uncited: "no citation" };
   return (
     <details className="mt-2 border-t border-line pt-1.5 text-[10.5px]">

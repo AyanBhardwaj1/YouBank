@@ -45,7 +45,13 @@ export function AgendaWidget({ roomy }: Props) {
   // The clock for "Join now" (from 15 minutes before until the end), refreshed every 30 s.
   const now = useNow();
   const [failed, setFailed] = useState(false);
-  useEffect(() => { fetch("/api/calendar/upcoming?hours=24&limit=8").then((r) => (r.ok ? r.json() : Promise.reject())).then((d: { meetings?: Meeting[] }) => setM(d.meetings ?? [])).catch(() => setFailed(true)); }, []);
+  useEffect(() => {
+    // Meetings under way too (Join matters most then), and again every five minutes while Home is open.
+    const load = () => fetch("/api/calendar/upcoming?hours=24&limit=8&ongoing=1").then((r) => (r.ok ? r.json() : Promise.reject())).then((d: { meetings?: Meeting[] }) => { setM(d.meetings ?? []); setFailed(false); }).catch(() => setFailed(true));
+    void load();
+    const id = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 300_000);
+    return () => window.clearInterval(id);
+  }, []);
   const time = (iso: string) => {
     const d = new Date(iso);
     const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });

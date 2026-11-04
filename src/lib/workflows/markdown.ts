@@ -4,9 +4,14 @@ import type { WorkflowOutput } from "./schema";
  * A workflow's output as Markdown: for copying and downloading a run, and on the server for checking the
  * run's figures against the sources they cite (src/lib/ai/figures.ts). Pure.
  */
-export function outputToMarkdown(o: WorkflowOutput, sources: { id: string; label: string; url: string }[]): string {
+/** Chart and grid blocks: their axis labels and plotted values are not claims a person reads as cited figures. */
+const PLOTS = new Set(["bar", "columns", "line", "waterfall", "scatter", "sensitivity", "score"]);
+
+/** `forFigures` leaves out chart and grid blocks, for checking the figures a reader takes as claims. */
+export function outputToMarkdown(o: WorkflowOutput, sources: { id: string; label: string; url: string }[], opts: { forFigures?: boolean } = {}): string {
   const lines: string[] = [`# ${o.title}`, "", o.summary, ""];
   for (const b of o.blocks) {
+    if (opts.forFigures && PLOTS.has(b.type)) continue;
     const t = "title" in b && b.title ? `## ${b.title}\n` : "";
     switch (b.type) {
       case "kpis": lines.push(t + b.items.map((k) => `- **${k.label}**: ${k.value}${k.delta ? ` (${k.delta})` : ""}`).join("\n")); break;

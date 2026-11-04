@@ -65,6 +65,13 @@ const wf = outputToMarkdown({ title: "ACME tear sheet", summary: "ACME grew reve
 const wr = checkFigures(wf, [acme], [{ id: "S1" }, { id: "S2" }]);
 ok("summary, KPI and table figures each checked against their cited source", wr.figures.map((f) => `${f.raw}:${f.status}`), ["20.2%:matched", "$5.4 billion:matched", "67.4%:matched", "10.0x:matched", "$1,123 million:matched", "$901 million:no_match"]);
 
+const dcf = { title: "DCF", summary: "Implied value $54.2 billion [S2].", blocks: [
+  { type: "sensitivity" as const, rowLabel: "WACC", colLabel: "Growth", rows: ["8%", "9%"], cols: ["2%", "3%"], values: [[1, 2], [3, 4]] },
+  { type: "bar" as const, data: [{ label: "2027", value: 12.5 }] },
+] };
+ok("chart and grid axes are not checked as figures", checkFigures(outputToMarkdown(dcf, [], { forFigures: true }), [acme], [{ id: "S2" }]).figures.map((f) => f.raw), ["$54.2 billion"]);
+ok("…but are still in the copied Markdown", outputToMarkdown(dcf, []).includes("8%"), true);
+
 const calc = rec("calc", JSON.stringify({ results: [{ line: "ev / adj", value: 11.2468 }, { line: "fcf / ni", value: 0.31251 }] }), []);
 const derived = checkFigures("EV to adjusted EBITDA is 11.25x [S1], and FCF conversion is 31.3% [S1].", [acme, calc], [{ id: "S1" }]);
 ok("figures the run computed with calc count as computed", derived.figures.map((f) => f.status), ["computed", "computed"]);

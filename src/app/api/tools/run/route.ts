@@ -96,7 +96,7 @@ async function runTool(req: Request) {
     // Every figure in the result checked against the source it cites, as chat answers are (src/lib/ai/figures.ts).
     let figures: FigureReport | undefined;
     if (output && !error) {
-      try { const r = checkFigures(outputToMarkdown(output, []), records ?? [], sources); if (r.figures.length) figures = r; } catch (e) { logError(e, { where: `tool-figures:${tool.id}` }); }
+      try { const r = checkFigures(outputToMarkdown(output, [], { forFigures: true }), records ?? [], sources); if (r.figures.length) figures = r; } catch (e) { logError(e, { where: `tool-figures:${tool.id}` }); }
     }
     let runId: number | null = null;
     if (db && output) {

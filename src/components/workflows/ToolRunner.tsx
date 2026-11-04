@@ -232,7 +232,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
                 </div>
               </div>
               <OutputBlocks output={shown} sources={sources} compact={compact} />
-              {figures && <div className="mt-1"><FigureCheck r={figures} /></div>}
+              {figures && <div className="mt-1"><FigureCheck r={figures} uncitedIsWarning={false} /></div>}
             </>
           ) : (
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center text-muted">

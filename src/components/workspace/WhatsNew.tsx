@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { RELEASE, WHATS_NEW, type NewThing } from "@/lib/whats-new";
 import { openPalette } from "./CommandPalette";
 import { openShortcuts } from "./Shortcuts";
+import { requestArrange } from "@/lib/client/arrange";
 
 const KEY = "yb-whats-new-seen";
 export const openWhatsNew = () => window.dispatchEvent(new Event("yb:whats-new"));
@@ -36,7 +37,8 @@ export function WhatsNew() {
     close();
     if (n.action === "palette") openPalette();
     else if (n.action === "shortcuts") openShortcuts();
-    else if (n.action === "arrange") { if (path !== "/app") router.push("/app"); window.setTimeout(() => window.dispatchEvent(new Event("yb:arrange")), path === "/app" ? 0 : 900); }
+    // Home picks the request up when it mounts, however long its data takes (src/lib/client/arrange.ts).
+    else if (n.action === "arrange") { requestArrange(); if (path !== "/app") router.push("/app"); }
   };
   if (!open) return null;
   return (

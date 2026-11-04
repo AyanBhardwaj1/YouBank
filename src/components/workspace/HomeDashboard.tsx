@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useNow } from "@/components/ui/useNow";
+import { takeArrange } from "@/lib/client/arrange";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
 import { Icon } from "@/components/ui/Icon";
@@ -76,7 +77,13 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
   const on = desk.widgets.filter((w) => w.on);
   const [arranging, setArranging] = useState(false);
   // "Arrange" from elsewhere (What's new).
-  useEffect(() => { const on = () => setArranging(true); window.addEventListener("yb:arrange", on); return () => window.removeEventListener("yb:arrange", on); }, []);
+  useEffect(() => {
+    const on = () => { if (takeArrange()) setArranging(true); };
+    window.addEventListener("yb:arrange", on);
+    // Asked for before Home was here (What's new, from another page).
+    const t = window.setTimeout(on, 0);
+    return () => { window.removeEventListener("yb:arrange", on); window.clearTimeout(t); };
+  }, []);
   const sw = <LayoutSwitch arranging={arranging} onArrange={() => setArranging((a) => !a)} />;
   const bar = arranging && <ArrangeBar layout={desk.layout} onDone={() => setArranging(false)} />;
   const empty = on.length === 0 && !arranging && <p className="text-[12.5px] text-muted">No widgets on. <button type="button" onClick={() => setArranging(true)} className="text-accent hover:underline">Add some</button>.</p>;
