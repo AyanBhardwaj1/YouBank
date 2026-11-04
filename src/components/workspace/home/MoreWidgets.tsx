@@ -49,7 +49,14 @@ export function CalcWidget({ roomy }: { roomy?: boolean }) {
   const [src, setSrc] = useState("");
   const out = useMemo(() => {
     if (!src.trim()) return null;
-    try { return { ok: true as const, ...evaluateScript(src) }; } catch (e) { return { ok: false as const, msg: e instanceof Error && e.message.length < 120 ? e.message : "That could not be read as a calculation." }; }
+    const unreadable = { ok: false as const, msg: "That could not be read as a calculation." };
+    try {
+      const r = evaluateScript(src);
+      return r.results.every((x) => typeof x.value === "number") ? { ok: true as const, ...r } : unreadable;
+    } catch (e) {
+      // The engine's own messages ("Unexpected *") help; anything else (a stack overflow from deep nesting) does not.
+      return e instanceof Error && !(e instanceof RangeError) && e.message.length < 120 && !/stack|undefined|prototype/i.test(e.message) ? { ok: false as const, msg: e.message } : unreadable;
+    }
   }, [src]);
   const last = out?.ok ? out.results[out.results.length - 1] : null;
   return (

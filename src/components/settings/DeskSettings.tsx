@@ -39,7 +39,7 @@ export function DeskSettings() {
       const d = (await res.json().catch(() => ({}))) as { desk?: DeskPrefs; pinned?: NavId[]; reasons?: string[]; via?: string; error?: string };
       if (!res.ok || !d.desk) throw new Error(d.error ?? "Your desk could not be set up just now. Try again in a minute.");
       // Saved on the server already: show it here without saving it again.
-      setDesk({ ...d.desk, source: d.desk.source });
+      setDesk({ ...d.desk, source: d.desk.source }, { persist: false });
       if (d.pinned) nav.update({ pinned: d.pinned }, { persist: false });
       setResult({ reasons: d.reasons ?? [], via: d.via ?? "rules" });
     } catch (e) {

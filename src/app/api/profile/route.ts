@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { updateExtra } from "@/lib/prefs/extra";
 import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
@@ -25,16 +26,19 @@ export async function POST(req: Request) {
       goals: (body.goals ?? "").slice(0, 2000), completedAt: new Date(), updatedAt: new Date(),
     };
     const db = requireDb();
+    // Whether the survey was finished before this save: only the first finish sets the desk up.
+    const [before] = await db.select({ completedAt: schema.profiles.completedAt }).from(schema.profiles).where(eq(schema.profiles.userId, user.id));
     const [row] = await db.insert(schema.profiles).values({ userId: user.id, ...values }).onConflictDoUpdate({ target: schema.profiles.userId, set: values }).returning();
     // The first time the survey is finished, YouBank sets up the desk from it (features, Home, the top
-    // bar). Retaking the survey later never overrides a desk the person has (Settings → My desk can redo it).
-    const extra = (row.extra ?? {}) as Record<string, unknown>;
-    if (!normalizeDesk(extra.desk, values.role).setupAt) {
+    // bar). Editing the profile later, or anyone who finished it before desks existed, keeps the desk and
+    // top bar they have (Settings → My desk can redo it). Merged under the row lock, like every prefs save.
+    if (!before?.completedAt && !normalizeDesk((row.extra as Record<string, unknown> | null)?.desk, values.role).setupAt) {
       const r = recommendDesk(values.role, [values.specialty, values.goals].filter(Boolean).join(". "));
-      const desk = { ...r.desk, source: "auto" as const, notes: normalizeDesk(extra.desk, values.role).notes };
-      const next = { ...extra, desk, nav: { ...normalizeNavPrefs(extra.nav, values.role, desk.hidden), pinned: r.pinned } };
-      await db.update(schema.profiles).set({ extra: next }).where(eq(schema.profiles.userId, user.id)).catch(() => undefined);
-      return NextResponse.json({ ...row, extra: next });
+      const next = await updateExtra(user.id, (extra) => {
+        const desk = { ...r.desk, source: "auto" as const, notes: normalizeDesk(extra.desk, values.role).notes };
+        return { ...extra, desk, nav: { ...normalizeNavPrefs(extra.nav, values.role, desk.hidden), pinned: r.pinned } };
+      }).catch(() => null);
+      if (next) return NextResponse.json({ ...row, extra: next });
     }
     return NextResponse.json(row);
   });

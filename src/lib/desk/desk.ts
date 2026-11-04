@@ -53,9 +53,12 @@ export function moveWidget(list: WidgetPref[], id: WidgetId, to: WidgetId): Widg
   return out;
 }
 
-/** The list with `id` moved one place among the widgets that are on (the arrows in arrange mode). */
-export function nudgeWidget(list: WidgetPref[], id: WidgetId, by: -1 | 1): WidgetPref[] {
-  const on = list.filter((w) => w.on);
+/**
+ * The list with `id` moved one place among the widgets that are on (the arrows in arrange mode), or,
+ * with `among`, among those it picks: on the Desk layout, the widgets in the same column.
+ */
+export function nudgeWidget(list: WidgetPref[], id: WidgetId, by: -1 | 1, among: (w: WidgetPref) => boolean = () => true): WidgetPref[] {
+  const on = list.filter((w) => w.on && among(w));
   const i = on.findIndex((w) => w.id === id);
   const j = i + by;
   if (i < 0 || j < 0 || j >= on.length) return list;

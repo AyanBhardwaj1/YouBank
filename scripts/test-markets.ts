@@ -38,6 +38,8 @@ ok("days", until(at("2026-11-09T14:30:00Z"), at("2026-11-06T22:00:00Z")), "2d 16
 console.log("quick calc");
 ok("suffixes and variables", evaluateScript("ev = 5.4b + 1.2b - 0.8b\nev / 380m").results.map((r) => Math.round(r.value * 100) / 100), [5.8e9, 15.26]);
 ok("percent", evaluateScript("200 * 15%").results[0].value, 30);
+const bad = (src: string) => { try { evaluateScript(src); return "ran"; } catch (e) { return (e as Error).message; } };
+ok("object built-ins are not variables", [bad("constructor"), bad("__proto__ + 1"), bad("toString")], ["Unknown variable constructor", "Unknown variable __proto__", "Unknown variable toString"]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

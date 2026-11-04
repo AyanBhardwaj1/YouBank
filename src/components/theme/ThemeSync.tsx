@@ -13,8 +13,7 @@ export function ThemeSync({ theme, look }: { theme: string | null; look?: unknow
     if (theme && isThemeId(theme) && theme !== themeId) setTheme(theme, { persist: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
-  useEffect(() => {
-    if (look !== undefined) applyLook(normalizeLook(look));
-  }, [look]);
+  // Always: an account with no saved look gets the default, not a look another account left in this browser's cookie.
+  useEffect(() => { applyLook(normalizeLook(look)); }, [look]);
   return null;
 }

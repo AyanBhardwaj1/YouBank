@@ -14,7 +14,7 @@ import { Icon } from "@/components/ui/Icon";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { fetchJson, errorMessage } from "@/lib/client/errors";
 import { WIDGET_LABEL } from "@/lib/desk/desk";
-import { inboxHref, inboxRequest, verbsFor, type InboxItem, type InboxKind, type InboxVerb } from "@/lib/desk/inbox";
+import { inboxHref, inboxOrder, inboxRequest, verbsFor, type InboxItem, type InboxKind, type InboxVerb } from "@/lib/desk/inbox";
 
 type Data = { items: InboxItem[]; counts: Record<InboxKind, number> };
 
@@ -52,15 +52,14 @@ export function InboxWidget({ roomy }: { roomy?: boolean }) {
     if (!req) return;
     if (verb === "send" && item.sensitive && !(await confirmDialog({ title: "Send this sensitive email?", body: "The agent marked it sensitive. Read it once more before it goes.", confirmLabel: "Send" }))) return;
     if (verb === "discard" && !(await confirmDialog({ title: "Discard this draft?", body: "It will not be sent, and the agent learns you did not want it.", confirmLabel: "Discard", tone: "danger" }))) return;
-    const before = d;
-    // Leaves the list at once; comes back if the server says no.
+    // Leaves the list at once; comes back (alone: other decisions made meanwhile stand) if the server says no.
     setD((cur) => cur && { items: cur.items.filter((x) => x.key !== item.key), counts: { ...cur.counts, [item.kind]: Math.max(0, cur.counts[item.kind] - 1) } });
     setNote(null);
     try {
       const res = await fetchJson<{ message?: string }>(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body ? JSON.stringify(req.body) : undefined });
       setNote({ text: (verb === "approve" && typeof res?.message === "string" && res.message) || DONE[verb] || "Done.", tone: "ok" });
     } catch (e) {
-      setD(before);
+      setD((cur) => cur && (cur.items.some((x) => x.key === item.key) ? cur : { items: inboxOrder([...cur.items, item]), counts: { ...cur.counts, [item.kind]: cur.counts[item.kind] + 1 } }));
       setNote({ text: errorMessage(e), tone: "err" });
     }
   };

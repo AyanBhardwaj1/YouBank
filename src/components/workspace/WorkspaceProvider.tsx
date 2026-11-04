@@ -16,7 +16,7 @@ type Workspace = {
   /** Features on, the Home layout and its widgets (Settings → My desk). */
   desk: DeskPrefs;
   /** Change the desk now and save it (notes are saved after a pause, so typing is not a request a key). */
-  setDesk: (patch: Partial<DeskPrefs>) => void;
+  setDesk: (patch: Partial<DeskPrefs>, opts?: { /** false: show it here only, it is already saved. */ persist?: boolean }) => void;
   /** How the app looks beyond the theme (Settings → Style). */
   look: LookPrefs;
   setLook: (patch: Partial<LookPrefs>) => void;
@@ -32,8 +32,14 @@ const Ctx = createContext<Workspace | null>(null);
 
 const NO_TOOLS: ToolMeta[] = [];
 
+/**
+ * Saves go one at a time, in the order they were made: two quick clicks (Later, Later; Large, then
+ * Larger) can otherwise reach two server instances and be stored in the wrong order, leaving the
+ * in-between state after a reload. The server merges each under a row lock (src/lib/prefs/extra.ts).
+ */
+let queue: Promise<unknown> = Promise.resolve();
 const save = (body: Record<string, unknown>) => {
-  void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
+  queue = queue.then(() => fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined));
 };
 
 /** Put a look on <html> now (and in its cookie, so the next page's first paint already has it). */
@@ -58,8 +64,9 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
   const [watchlist, setWatchlistState] = useState<string[] | null>(() => normalizeWatchlist(initialWatchlist));
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setDesk = useCallback((patch: Partial<DeskPrefs>) => {
+  const setDesk = useCallback((patch: Partial<DeskPrefs>, opts?: { persist?: boolean }) => {
     setDeskState((d) => normalizeDesk({ ...d, ...patch, ...(Object.keys(patch).some((k) => k !== "notes") ? { source: patch.source ?? "you" } : {}) }, profile.role));
+    if (opts?.persist === false) return;
     if (Object.keys(patch).length === 1 && "notes" in patch) {
       if (notesTimer.current) clearTimeout(notesTimer.current);
       notesTimer.current = setTimeout(() => save({ desk: { notes: patch.notes } }), 800);

@@ -25,9 +25,11 @@ export function Slot({ w, layout, children }: { w: WidgetPref; layout: HomeLayou
   const a = useContext(Ctx);
   const { desk, setDesk } = useWorkspace();
   if (!a) return <>{children}</>;
-  const shown = desk.widgets.filter((x) => x.on);
-  const idx = shown.findIndex((x) => x.id === w.id);
   const wide = isWide(w);
+  // On the Desk layout each column is its own order; elsewhere it is one list.
+  const among = (x: WidgetPref) => layout !== "desk" || isWide(x) === wide;
+  const shown = desk.widgets.filter((x) => x.on && among(x));
+  const idx = shown.findIndex((x) => x.id === w.id);
   const set = (widgets: WidgetPref[]) => setDesk({ widgets });
   const drop = (target: WidgetId) => {
     const from = a.dragging;
@@ -54,8 +56,8 @@ export function Slot({ w, layout, children }: { w: WidgetPref; layout: HomeLayou
       <div className="mb-1.5 flex items-center gap-1 ctl border border-line-strong bg-raised px-1.5 py-1 text-[11.5px]">
         <Icon name="GripVertical" className="h-4 w-4 shrink-0 cursor-grab text-muted active:cursor-grabbing" aria-hidden />
         <span className="min-w-0 flex-1 truncate font-medium text-fg">{WIDGET_LABEL[w.id]}</span>
-        <button type="button" className={btn} disabled={idx <= 0} onClick={() => set(nudgeWidget(desk.widgets, w.id, -1))} aria-label={`Move ${WIDGET_LABEL[w.id]} earlier`} title="Earlier"><Icon name="ArrowUp" className="h-3.5 w-3.5" /></button>
-        <button type="button" className={btn} disabled={idx < 0 || idx >= shown.length - 1} onClick={() => set(nudgeWidget(desk.widgets, w.id, 1))} aria-label={`Move ${WIDGET_LABEL[w.id]} later`} title="Later"><Icon name="ArrowDown" className="h-3.5 w-3.5" /></button>
+        <button type="button" className={btn} disabled={idx <= 0} onClick={() => set(nudgeWidget(desk.widgets, w.id, -1, among))} aria-label={`Move ${WIDGET_LABEL[w.id]} earlier`} title="Earlier"><Icon name="ArrowUp" className="h-3.5 w-3.5" /></button>
+        <button type="button" className={btn} disabled={idx < 0 || idx >= shown.length - 1} onClick={() => set(nudgeWidget(desk.widgets, w.id, 1, among))} aria-label={`Move ${WIDGET_LABEL[w.id]} later`} title="Later"><Icon name="ArrowDown" className="h-3.5 w-3.5" /></button>
         {layout !== "focus" && (
           <button type="button" onClick={() => set(desk.widgets.map((x) => (x.id === w.id ? { ...x, size: wide ? "narrow" : "wide" } : x)))}
             className="ctl border border-line px-1.5 py-0.5 text-[10.5px] text-muted hover:text-fg" aria-label={`Make ${WIDGET_LABEL[w.id]} ${wide ? "narrow" : "wide"}`}>
