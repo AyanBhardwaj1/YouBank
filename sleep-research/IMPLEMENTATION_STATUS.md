@@ -113,6 +113,7 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 | Make it yours: size (whole-app zoom), corners, typeface, accent (swatches or any colour), background (glow, grid, dots), motion, contrast. Applied at once, and in the first paint through a cookie | `LookSettings.tsx`, `lookAttrs`, `app/layout.tsx`, `globals.css` |
 | Looks: six built in, save your own, share as a `yb1.` code | `BUILTIN_LOOKS`, `lookCode` / `readLookCode` |
 | Match my system: a light and a dark style that follow the device | `SystemTheme.tsx` |
+| Home wallpapers: Dawn, Dusk, Ocean, Forest, Aurora, Paper | `WALLPAPERS`, `globals.css` |
 
 **Flow**
 
@@ -124,6 +125,13 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 | Installable app (D4, without push): manifest, maskable icons, shortcuts | `src/app/manifest.ts` | |
 | Keyboard: G then a letter to go, ? for the sheet | `Shortcuts.tsx` | browser |
 | World markets and Quick calc widgets | `src/lib/desk/markets.ts`, `home/MoreWidgets.tsx` | `test-markets` |
+| Jump back in: the last pages, tools and tickers opened (this browser only) | `src/lib/client/recent.ts`, `RecentWidget` | `test-recent` |
+| Star tools: starred first on Home and in Tools | `normalizeStarred`, `ToolCard.tsx` | `test-watchlist`, browser |
+| A badge on Home's tab counting what waits in the inbox | `src/lib/client/waiting.ts`, `/api/desk/inbox?counts=1` | browser, load |
+| Coming up shows contacts, deals, outside guests, and Join now | `home/Widgets.tsx` | browser |
+| Onboarding asks how YouBank should feel: Home layout, style, wallpaper | `OnboardingWizard.tsx` | browser, new account |
+| Share your setup: Home, features, style and look as a `yb2.` code (never notes) | `setupCode` / `readSetupCode` | `test-desk`, two accounts |
+| "New in YouBank": once per release, each feature tried in one click | `src/lib/whats-new.ts`, `WhatsNew.tsx` | browser |
 
 **AI**
 
@@ -131,10 +139,13 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 |---|---|---|
 | Tool search (A3): the chat's `find_tools` searches the catalogue and links the right workflow or calculator | `src/lib/ai/catalog-tool.ts` | `test-palette` |
 | Answers become actions (part of A9): copy with sources, copy a table as spreadsheet cells, save to Home's notes, download | `src/lib/ai/answer-actions.ts`, `AiScreen.tsx` | `test-answer-actions` |
+| Follow-up questions under the latest answer, from the tools it used (no model call) | `followUps` | `test-answer-actions` |
+| B2 extended to workflows: every figure in a workflow's result checked against its cited source, saved with the run | `/api/tools/run`, `src/lib/workflows/markdown.ts`, `components/ai/FigureCheck.tsx` | `test-figures` |
 
 **Bugs found and fixed along the way**
 - Preferences were read-modify-write, so two saves sent together (a style and a look in one click) lost one. `/api/prefs` and the desk setup now merge under a row lock (`src/lib/prefs/extra.ts`). Ten concurrent saves all land.
 - Home's greeting and date were rendered in the server's time zone, so everyone outside UTC hit React error 418 (hydration mismatch). `useNow` keeps time-dependent text for the browser. A sweep of every page in four time zones finds none.
 - The normalize test pointed at Home's old file.
+- An independent review of the evening's work found seven more, all fixed: editing a profile re-ran the desk setup and replaced existing desks and top bars; quick successive saves could be stored out of order (saves now queue per tab); Desk's arrange arrows crossed columns; the setup button re-saved stale notes; a look left in the cookie by another account; Quick calc reached object built-ins; an inbox rollback restored decided items.
 
-**Checks:** every `scripts/test-*.ts` passes. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
+**Checks:** every `scripts/test-*.ts` passes. A second load run at 150 users with the badge, inbox, checklist and saves: p95 179 ms, no raw error text, errors only the two stale load-test sessions. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
