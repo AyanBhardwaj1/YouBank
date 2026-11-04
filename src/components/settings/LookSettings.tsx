@@ -13,7 +13,7 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import { Icon } from "@/components/ui/Icon";
 import { promptDialog } from "@/components/ui/Dialog";
 import { THEMES, themeById, type ThemeId } from "@/lib/themes";
-import { ACCENTS, BACKGROUNDS, BUILTIN_LOOKS, DEFAULT_LOOK, FONTS, RADII, SCALES, asAccent, lookCode, readLookCode, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
+import { WALLPAPERS, ACCENTS, BACKGROUNDS, BUILTIN_LOOKS, DEFAULT_LOOK, FONTS, RADII, SCALES, asAccent, lookCode, readLookCode, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
 const SCALE_LABEL: Record<number, string> = { 0.9: "Compact", 1: "Standard", 1.1: "Large", 1.25: "Larger" };
 const RADIUS_LABEL: Record<string, string> = { theme: "Theme's own", square: "Square", soft: "Soft", round: "Round" };
@@ -23,6 +23,7 @@ const FONT_LABEL: Record<string, { name: string; sample: string; family: string 
   mono: { name: "Mono", sample: "Aa", family: "var(--font-geist-mono)" },
   system: { name: "System", sample: "Aa", family: "system-ui, -apple-system, sans-serif" },
 };
+const WALL_LABEL: Record<string, string> = { none: "None", dawn: "Dawn", dusk: "Dusk", ocean: "Ocean", forest: "Forest", aurora: "Aurora", paper: "Paper" };
 const BG_LABEL: Record<string, string> = { theme: "Theme's own", plain: "Plain", mesh: "Glow", grid: "Grid", dots: "Dots" };
 
 function Row({ icon, label, hint, children }: { icon: string; label: string; hint?: string; children: React.ReactNode }) {
@@ -186,6 +187,13 @@ function LookStudio() {
         </Row>
         <Row icon="Image" label="Background">
           {BACKGROUNDS.map((b) => <Choice key={b} on={look.background === b} onClick={() => set({ background: b })}>{BG_LABEL[b]}</Choice>)}
+        </Row>
+        <Row icon="Sofa" label="Wallpaper" hint="Soft light at the top of Home">
+          {WALLPAPERS.map((w) => (
+            <Choice key={w} on={look.wallpaper === w} onClick={() => set({ wallpaper: w })} label={`Wallpaper: ${WALL_LABEL[w]}`}>
+              <span className="flex items-center gap-1.5">{w !== "none" && <span className={`wall-swatch wall-${w} h-3.5 w-5 rounded-sm border border-line`} aria-hidden />}{WALL_LABEL[w]}</span>
+            </Choice>
+          ))}
         </Row>
         <Row icon="Move" label="Motion" hint="Reduced also applies when your device asks for it">
           <Choice on={look.motion === "full"} onClick={() => set({ motion: "full" })}>Full</Choice>

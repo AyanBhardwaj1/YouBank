@@ -208,6 +208,8 @@ export const SCALES = [0.9, 1, 1.1, 1.25] as const;
 export const RADII = ["theme", "square", "soft", "round"] as const;
 export const FONTS = ["sans", "serif", "mono", "system"] as const;
 export const BACKGROUNDS = ["theme", "plain", "mesh", "grid", "dots"] as const;
+/** Soft backdrops at the top of Home, over any style. */
+export const WALLPAPERS = ["none", "dawn", "dusk", "ocean", "forest", "aurora", "paper"] as const;
 /** Accent swatches people can pick instead of the theme's own (any other #rrggbb is allowed too). */
 export const ACCENTS = ["theme", "#f5a623", "#4f8cff", "#a78bfa", "#2dd4bf", "#34d399", "#fb7185", "#f472b6", "#facc15", "#38bdf8", "#e879f9"] as const;
 /** "theme" or a plain six-digit hex colour, lower case: nothing else ever reaches a style attribute. */
@@ -220,6 +222,7 @@ export type LookPrefs = {
   font: (typeof FONTS)[number];
   accent: Accent;
   background: (typeof BACKGROUNDS)[number];
+  wallpaper: (typeof WALLPAPERS)[number];
   motion: "full" | "reduced";
   contrast: "normal" | "high";
   /** Follow the device's light or dark setting, with these two styles. */
@@ -227,7 +230,7 @@ export type LookPrefs = {
   lightTheme: ThemeId;
   darkTheme: ThemeId;
 };
-export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", motion: "full", contrast: "normal", system: false, lightTheme: "daylight", darkTheme: "terminal" };
+export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", wallpaper: "none", motion: "full", contrast: "normal", system: false, lightTheme: "daylight", darkTheme: "terminal" };
 export const LOOK_COOKIE = "yb-look";
 
 const oneOf = <T,>(list: readonly T[], v: unknown, d: T): T => (list.includes(v as T) ? (v as T) : d);
@@ -241,6 +244,7 @@ export function normalizeLook(raw: unknown): LookPrefs {
     font: oneOf(FONTS, r.font, DEFAULT_LOOK.font),
     accent: asAccent(r.accent) ?? DEFAULT_LOOK.accent,
     background: oneOf(BACKGROUNDS, r.background, DEFAULT_LOOK.background),
+    wallpaper: oneOf(WALLPAPERS, r.wallpaper, DEFAULT_LOOK.wallpaper),
     motion: r.motion === "reduced" ? "reduced" : "full",
     contrast: r.contrast === "high" ? "high" : "normal",
     system: r.system === true,
@@ -276,6 +280,7 @@ export function lookAttrs(l: LookPrefs): { attrs: Record<string, string>; vars: 
     vars["--chart-1"] = l.accent;
   }
   if (l.background !== "theme") attrs["data-bg"] = l.background;
+  if (l.wallpaper !== "none") attrs["data-wall"] = l.wallpaper;
   if (l.motion === "reduced") attrs["data-motion"] = "reduced";
   if (l.contrast === "high") attrs["data-contrast"] = "high";
   return { attrs, vars };
@@ -290,11 +295,11 @@ export const PRESETS_MAX = 12;
 /** Looks that come with YouBank, to start from. */
 export const BUILTIN_LOOKS: LookPreset[] = [
   { name: "Night trader", theme: "terminal", look: { ...DEFAULT_LOOK, scale: 0.9, radius: "square", font: "mono", background: "grid" } },
-  { name: "Calm paper", theme: "paper", look: { ...DEFAULT_LOOK, scale: 1.1, radius: "round", font: "serif", background: "plain" } },
+  { name: "Calm paper", theme: "paper", look: { ...DEFAULT_LOOK, scale: 1.1, radius: "round", font: "serif", background: "plain", wallpaper: "paper" } },
   { name: "Big and clear", theme: "daylight", look: { ...DEFAULT_LOOK, scale: 1.25, contrast: "high", motion: "reduced", background: "plain" } },
   { name: "Neon", theme: "aurora", look: { ...DEFAULT_LOOK, accent: "#e879f9", radius: "round", background: "mesh" } },
-  { name: "Forest desk", theme: "evergreen", look: { ...DEFAULT_LOOK, accent: "#34d399", radius: "soft", background: "dots" } },
-  { name: "Ocean", theme: "ocean", look: { ...DEFAULT_LOOK, accent: "#38bdf8", radius: "round", background: "mesh", scale: 1.1 } },
+  { name: "Forest desk", theme: "evergreen", look: { ...DEFAULT_LOOK, accent: "#34d399", radius: "soft", background: "dots", wallpaper: "forest" } },
+  { name: "Ocean", theme: "ocean", look: { ...DEFAULT_LOOK, accent: "#38bdf8", radius: "round", background: "mesh", scale: 1.1, wallpaper: "ocean" } },
 ];
 
 export function normalizePreset(raw: unknown): LookPreset | null {

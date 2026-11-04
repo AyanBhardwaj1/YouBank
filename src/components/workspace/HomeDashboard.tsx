@@ -70,7 +70,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
 
   if (desk.layout === "focus") {
     return (
-      <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
+      <ArrangeProvider on={arranging}><div className="home-wall h-full overflow-auto">
         <div className="mx-auto max-w-[760px] px-5 py-10">
           <Reveal eager>
             <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span>{sw}</div>
@@ -90,7 +90,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
 
   if (desk.layout === "home") {
     return (
-      <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
+      <ArrangeProvider on={arranging}><div className="home-wall h-full overflow-auto">
         <div className="mx-auto max-w-[1180px] px-5 py-6">
           <Reveal eager>
             <div className="home-hero home-card px-6 py-7">
@@ -118,7 +118,7 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
   const side = on.filter((w) => !isWide(w));
   const first = profile.firmTicker || undefined;
   return (
-    <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
+    <ArrangeProvider on={arranging}><div className="home-wall h-full overflow-auto">
       <div className="mx-auto max-w-[1280px] px-5 py-6">
         <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">

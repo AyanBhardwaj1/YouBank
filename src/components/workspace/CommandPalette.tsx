@@ -15,7 +15,7 @@ import { THEMES } from "@/lib/themes";
 import { FEATURES } from "@/lib/nav";
 import { emitSubNav } from "@/lib/subnav";
 import { asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
-import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES } from "@/lib/desk/desk";
+import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES, WALLPAPERS } from "@/lib/desk/desk";
 import { useNav } from "./NavContext";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -97,6 +97,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     for (const s of SCALES) c.push({ id: `scale:${s}`, label: `Size: ${SCALE_NAME[s]}`, group: "Look", icon: "Maximize2", keywords: "zoom text bigger smaller scale", on: look.scale === s, run: () => setLook({ scale: s }) });
     for (const f of FONTS) c.push({ id: `font:${f}`, label: `Typeface: ${FONT_NAME[f]}`, group: "Look", icon: "Type", keywords: "font", on: look.font === f, run: () => setLook({ font: f }) });
     for (const b of BACKGROUNDS) c.push({ id: `bg:${b}`, label: `Background: ${BG_NAME[b]}`, group: "Look", icon: "Image", keywords: "wallpaper", on: look.background === b, run: () => setLook({ background: b }) });
+    for (const w of WALLPAPERS) c.push({ id: `wall:${w}`, label: `Wallpaper: ${w === "none" ? "none" : w[0].toUpperCase() + w.slice(1)}`, group: "Look", icon: "Sofa", keywords: "home backdrop gradient cozy", on: look.wallpaper === w, run: () => setLook({ wallpaper: w }) });
     c.push({ id: "look:system", label: look.system ? "Match my system's light and dark: off" : "Match my system's light and dark: on", group: "Look", icon: "Contrast", keywords: "auto dark mode light mode os appearance", run: () => setLook({ system: !look.system }) });
     c.push({ id: "look:contrast", label: look.contrast === "high" ? "High contrast: off" : "High contrast: on", group: "Look", icon: "Contrast", keywords: "accessibility legibility", run: () => setLook({ contrast: look.contrast === "high" ? "normal" : "high" }) });
     c.push({ id: "look:motion", label: look.motion === "reduced" ? "Reduced motion: off" : "Reduced motion: on", group: "Look", icon: "Move", keywords: "animation accessibility", run: () => setLook({ motion: look.motion === "reduced" ? "full" : "reduced" }) });

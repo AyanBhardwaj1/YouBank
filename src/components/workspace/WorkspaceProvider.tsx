@@ -40,7 +40,7 @@ const save = (body: Record<string, unknown>) => {
 export function applyLook(l: LookPrefs) {
   const html = document.documentElement;
   const { attrs, vars } = lookAttrs(l);
-  for (const a of ["data-font", "data-bg", "data-motion", "data-contrast"]) {
+  for (const a of ["data-font", "data-bg", "data-wall", "data-motion", "data-contrast"]) {
     if (attrs[a]) html.setAttribute(a, attrs[a]); else html.removeAttribute(a);
   }
   for (const v of ["--ui-scale", "--radius", "--radius-sm", "--accent", "--accent-soft", "--accent-fg", "--chart-1"]) {

@@ -409,3 +409,20 @@ html[data-motion="reduced"] .reveal { opacity: 1; transform: none; }
 /* Home layouts: the roomy Home page and the Focus page. */
 .home-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--panel)), var(--panel) 60%); }
 .home-card { border-radius: calc(var(--radius) + 6px); background: var(--panel); border: 1px solid var(--line); }
+
+/* Home wallpapers (Settings → Style → Wallpaper; html[data-wall]): soft light at the top of Home that
+   scrolls away with the page, over any style. The hero card turns to frosted glass so it shows through. */
+html[data-wall] .home-wall { background-repeat: no-repeat; background-attachment: local; background-size: 100% 640px; }
+html[data-wall="dawn"] .home-wall { background-image: radial-gradient(70% 520px at 15% -80px, rgba(251, 146, 60, 0.48), transparent 70%), radial-gradient(60% 460px at 90% -100px, rgba(244, 114, 182, 0.42), transparent 70%); }
+html[data-wall="dusk"] .home-wall { background-image: radial-gradient(70% 520px at 20% -90px, rgba(139, 92, 246, 0.51), transparent 70%), radial-gradient(60% 460px at 85% -80px, rgba(251, 113, 133, 0.35), transparent 70%); }
+html[data-wall="ocean"] .home-wall { background-image: radial-gradient(75% 540px at 10% -100px, rgba(56, 189, 248, 0.48), transparent 70%), radial-gradient(60% 460px at 90% -60px, rgba(45, 212, 191, 0.35), transparent 70%); }
+html[data-wall="forest"] .home-wall { background-image: radial-gradient(70% 520px at 20% -90px, rgba(52, 211, 153, 0.42), transparent 70%), radial-gradient(60% 440px at 85% -80px, rgba(163, 230, 53, 0.26), transparent 70%); }
+html[data-wall="aurora"] .home-wall { background-image: radial-gradient(60% 520px at 0% -60px, rgba(34, 211, 238, 0.42), transparent 70%), radial-gradient(55% 480px at 50% -120px, rgba(167, 139, 250, 0.48), transparent 70%), radial-gradient(55% 460px at 100% -60px, rgba(52, 211, 153, 0.35), transparent 70%); }
+html[data-wall="paper"] .home-wall { background-image: linear-gradient(180deg, color-mix(in srgb, #f5deb3 22%, transparent), transparent 480px); }
+html[data-wall] .home-hero { background: color-mix(in srgb, var(--panel) 55%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.wall-swatch.wall-dawn { background: linear-gradient(135deg, #fb923c, #f472b6); }
+.wall-swatch.wall-dusk { background: linear-gradient(135deg, #8b5cf6, #fb7185); }
+.wall-swatch.wall-ocean { background: linear-gradient(135deg, #38bdf8, #2dd4bf); }
+.wall-swatch.wall-forest { background: linear-gradient(135deg, #34d399, #a3e635); }
+.wall-swatch.wall-aurora { background: linear-gradient(135deg, #22d3ee, #a78bfa, #34d399); }
+.wall-swatch.wall-paper { background: linear-gradient(135deg, #f5deb3, #fffaf0); }
