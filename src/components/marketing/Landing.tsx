@@ -468,9 +468,24 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
       <section id="styles" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Make it yours</h2>
-          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">Fourteen styles, from amber-on-black terminal to soft daylight.</p>
-          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Density, corner radius, glass and glow all change with the style, not just the colors. Try one now: this page will change with you.</p>
+          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">A workspace that sets itself up for you, and stays yours to change.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Tell YouBank how you work and it picks your features, your Home and its widgets. Then change any of it: a quiet Focus page, a calm Home with cards, or a dense Desk; widgets you drag where you want; fourteen styles from amber-on-black terminal to soft daylight; any accent colour, typeface, size and wallpaper; looks you save and share with your team as a code. Try a style now: this page will change with you.</p>
         </Reveal>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { icon: "Wand2", t: "Set up for you", d: "From your survey, or from a sentence about how you work. Every choice stays switchable." },
+            { icon: "LayoutGrid", t: "Arrange Home on the page", d: "Focus, Home or Desk. Drag widgets, make them wide or narrow, add or remove them." },
+            { icon: "Command", t: "⌘K for everything", d: "Any page or tool, a ticker, your look, or a question for the AI, from one box." },
+            { icon: "Paintbrush", t: "Looks you can share", d: "Save a style and every setting as a look, follow your system's light and dark, share a code." },
+          ].map((x) => (
+            <Reveal key={x.t}>
+              <div className="panel h-full p-3.5">
+                <h3 className="flex items-center gap-2 text-[13px] font-semibold"><Icon name={x.icon} className="h-4 w-4 text-accent" />{x.t}</h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">{x.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
         <div className="mt-7"><ThemeShowcase /></div>
       </section>
 
