@@ -11,6 +11,7 @@ import { PlanNotice } from "@/components/billing/PlanNotice";
 import { apiError, errorMessage, safeText } from "@/lib/client/errors";
 import type { FigureReport } from "@/lib/ai/figures";
 import { FigureCheck } from "@/components/ai/FigureCheck";
+import { CostLine } from "@/components/ai/CostLine";
 import { answerFileName, answerMarkdown, firstTable, followUps, noteEntry, toTsv } from "@/lib/ai/answer-actions";
 import { NOTES_MAX, toggleWidget } from "@/lib/desk/desk";
 
@@ -209,6 +210,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
             <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="accent-[var(--accent)]" />Deep research <PremiumBadge feature="ai.deep-research" />
           </label>
         </div>
+        {deep && <CostLine feature="ai.deep-research" what="A deep research run" className="mt-1 px-1 text-right" />}
       </form>
     </div>
   );

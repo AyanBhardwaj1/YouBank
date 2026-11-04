@@ -8,6 +8,7 @@ import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
 import { StarButton } from "./ToolCard";
 import { FigureCheck } from "@/components/ai/FigureCheck";
+import { CostLine } from "@/components/ai/CostLine";
 import type { FigureReport } from "@/lib/ai/figures";
 
 /** A saved run's figure report, when it has a well-formed one. */
@@ -190,6 +191,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
               <button type="button" onClick={saveCalc} disabled={!calc?.output} className="ctl flex items-center gap-1.5 bg-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-accent-fg disabled:opacity-40"><Icon name="Save" className="h-3.5 w-3.5" /> Save result</button>
             )}
             {tool.example && <button type="button" onClick={() => setInputs(defaultInputs(tool.fields, tool.example))} className="ctl border border-line px-2.5 py-1.5 text-[11.5px] text-muted hover:border-accent/50 hover:text-fg">Try an example</button>}
+            {tool.kind === "ai" && !busy && <CostLine feature={`tool:${tool.id}`} what="A run of this workflow" className="basis-full" />}
             {tool.kind === "ai" && <ModelPicker value={settings} onChange={setSettings} compact />}
             {status && <span className="text-[11px] text-pos">{status}</span>}
             {runs && runs.length > 0 && (
