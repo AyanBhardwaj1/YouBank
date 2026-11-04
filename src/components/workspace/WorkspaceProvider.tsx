@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
 import { normalizeStarred, normalizeWatchlist, toggleStar } from "@/lib/desk/watchlist";
 import type { ToolMeta } from "@/lib/workflows/catalog";
@@ -74,9 +74,26 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
     if (opts?.persist === false) return;
     if (Object.keys(patch).length === 1 && "notes" in patch) {
       if (notesTimer.current) clearTimeout(notesTimer.current);
-      notesTimer.current = setTimeout(() => save({ desk: { notes: patch.notes } }), 800);
+      pendingNotes.current = patch.notes ?? "";
+      notesTimer.current = setTimeout(() => { pendingNotes.current = null; save({ desk: { notes: patch.notes } }); }, 800);
     } else save({ desk: patch });
   }, [profile.role]);
+
+  // Notes typed in the last moment before the tab closes or goes to the background are sent at once,
+  // with keepalive so the request outlives the page.
+  const pendingNotes = useRef<string | null>(null);
+  useEffect(() => {
+    const flush = () => {
+      if (pendingNotes.current === null || document.visibilityState === "visible") return;
+      if (notesTimer.current) clearTimeout(notesTimer.current);
+      const notes = pendingNotes.current;
+      pendingNotes.current = null;
+      void fetch("/api/prefs", { method: "POST", keepalive: true, headers: { "content-type": "application/json" }, body: JSON.stringify({ desk: { notes } }) }).catch(() => undefined);
+    };
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("pagehide", flush);
+    return () => { document.removeEventListener("visibilitychange", flush); window.removeEventListener("pagehide", flush); };
+  }, []);
 
   const setLook = useCallback((patch: Partial<LookPrefs>) => {
     setLookState((l) => {
