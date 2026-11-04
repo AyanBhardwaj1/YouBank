@@ -68,7 +68,7 @@ function Palette({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const path = usePathname();
   const nav = useNav();
-  const { tools, desk, setDesk, look, setLook, looks, config, profile } = useWorkspace();
+  const { tools, desk, setDesk, look, setLook, looks, config, profile, setWatchlist } = useWorkspace();
   const { themeId, setTheme } = useTheme();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -128,18 +128,23 @@ function Palette({ onClose }: { onClose: () => void }) {
       // Typed in capitals, or nothing else fits well: the ticker first. "dcf" in lower case finds the DCF tool first.
       const open: Command = { id: `ticker:${t}`, label: `Open ${t} in the terminal`, group: "Go to", icon: "Terminal", hint: "quote, filings, comps, news", href: `/app/terminal?ticker=${encodeURIComponent(t)}` };
       const strong = ranked.filter((c) => score(c, query) >= 60).length;
-      out.splice(query === query.toUpperCase() ? 0 : Math.min(strong, 3), 0, open);
+      const at = query === query.toUpperCase() ? 0 : Math.min(strong, 3);
+      const watched = config.watchlist.includes(t);
+      const watch: Command = watched
+        ? { id: `unwatch:${t}`, label: `Remove ${t} from the watchlist`, group: "Home", icon: "X", run: () => setWatchlist(config.watchlist.filter((x) => x !== t)) }
+        : { id: `watch:${t}`, label: `Add ${t} to the watchlist`, group: "Home", icon: "Star", hint: "Home, the terminal and your news", run: () => setWatchlist([...config.watchlist, t]) };
+      out.splice(at, 0, open, watch);
     }
     const ask: Command = { id: "ask", label: `Ask: “${query.length > 70 ? `${query.slice(0, 70)}…` : query}”`, group: "Ask", icon: "Sparkles", hint: "AI, with sources", href: `/app/terminal?ticker=${encodeURIComponent(t ?? first)}&fn=AI&arg=${encodeURIComponent(query)}` };
     // A question goes to the AI first; a word or two that matches something goes there first.
     if (query.split(/\s+/).length >= 4 || /\?$/.test(query) || (ranked.length === 0 && !t)) out.unshift(ask); else out.push(ask);
     return out;
-  }, [q, commands, recent, first]);
+  }, [q, commands, recent, first, config.watchlist, setWatchlist]);
 
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
 
   const run = useCallback((c: Command) => {
-    if (c.id !== "ask" && !c.id.startsWith("ticker:")) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
+    if (c.id !== "ask" && !/^(ticker|watch|unwatch):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
     onClose();
     if (c.run) { c.run(); return; }
     if (!c.href) return;

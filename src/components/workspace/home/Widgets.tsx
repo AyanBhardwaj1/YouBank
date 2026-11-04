@@ -18,6 +18,7 @@ import { changeTone, fmtChange } from "@/lib/market/units";
 import { NOTES_MAX, WIDGET_LABEL, type WidgetId } from "@/lib/desk/desk";
 import { InboxWidget } from "./Inbox";
 import { ChecklistWidget } from "./Checklist";
+import { WatchlistEditor } from "./WatchlistEditor";
 import { CalcWidget, MarketsWidget } from "./MoreWidgets";
 
 export type HomeFacts = { directoryTotal: number | null; sheets: number; groups: number };
@@ -90,12 +91,16 @@ export function WatchlistWidget({ roomy }: Props) {
   const { config } = useWorkspace();
   const { data, errors, loading } = useCompanies(config.watchlist);
   const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
+  const [editing, setEditing] = useState(false);
+  const edit = <button type="button" onClick={() => setEditing((e) => !e)} aria-pressed={editing} className={`text-[11px] ${editing ? "text-accent" : "text-muted hover:text-fg"}`}>Edit</button>;
+  const editor = editing && <div className="mb-2.5"><WatchlistEditor onDone={() => setEditing(false)} /></div>;
   if (roomy) {
     return (
       <section className={box(roomy)}>
-        <H roomy right={<Link href="/app/terminal" className="text-[11px] text-muted hover:text-fg">terminal →</Link>}>{WIDGET_LABEL.watchlist}</H>
+        <H roomy right={<span className="flex items-baseline gap-3">{edit}<Link href="/app/terminal" className="text-[11px] text-muted hover:text-fg">terminal →</Link></span>}>{WIDGET_LABEL.watchlist}</H>
+        {editor}
         {rows.length === 0 && loading && <div className="shimmer h-24 ctl" />}
-        {rows.length === 0 && !loading && <p className="text-[13px] text-muted">{config.watchlist.length === 0 ? "Open a company in the terminal to start your watchlist." : `${Object.values(errors)[0] ?? "Prices could not be loaded right now."} Your names will fill in when they are back.`}</p>}
+        {rows.length === 0 && !loading && <p className="text-[13px] text-muted">{config.watchlist.length === 0 ? "No names yet. Edit to add some." : `${Object.values(errors)[0] ?? "Prices could not be loaded right now."} Your names will fill in when they are back.`}</p>}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {rows.slice(0, 9).map((c) => {
             const chg = c.price?.changePct ?? null;
@@ -115,8 +120,9 @@ export function WatchlistWidget({ roomy }: Props) {
     <section className="panel p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
-        <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>
+        <span className="flex items-baseline gap-3"><span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>{edit}</span>
       </div>
+      {editor}
       <div className="table-scroll overflow-auto">
         <table className="w-full whitespace-nowrap text-[11.5px]">
           <thead className="text-[10px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Ticker</th><th className="py-1 pr-3 text-right font-normal">Price</th><th className="py-1 pr-3 text-right font-normal">Today</th><th className="py-1 pr-3 text-right font-normal">EV/Rev</th><th className="py-1 pr-3 text-right font-normal">Growth</th><th className="py-1 pr-3 text-right font-normal">FCF margin</th><th className="py-1 pr-1 text-right font-normal">Revenue trend</th></tr></thead>
@@ -140,7 +146,7 @@ export function WatchlistWidget({ roomy }: Props) {
             {rows.length === 0 && !loading && (
               <tr><td colSpan={7} className="whitespace-normal py-3 text-[11.5px] text-muted">
                 {config.watchlist.length === 0
-                  ? <>No names yet. Open a company in the <Link href="/app/terminal" className="text-fg hover:text-accent">terminal</Link> to start your watchlist.</>
+                  ? <>No names yet. <button type="button" onClick={() => setEditing(true)} className="text-fg hover:text-accent">Add some</button>.</>
                   : <>{Object.values(errors)[0] ?? "Prices and filings could not be loaded right now."} Your watchlist ({config.watchlist.slice(0, 6).join(", ")}{config.watchlist.length > 6 ? "…" : ""}) will fill in when they are back.</>}
               </td></tr>
             )}

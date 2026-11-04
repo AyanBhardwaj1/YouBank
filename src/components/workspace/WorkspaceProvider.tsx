@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
+import { normalizeWatchlist } from "@/lib/desk/watchlist";
 import type { ToolMeta } from "@/lib/workflows/catalog";
 import { DEFAULT_LOOK, LOOK_COOKIE, defaultDesk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, normalizePresets, type DeskPrefs, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
@@ -22,6 +23,10 @@ type Workspace = {
   /** Looks the person saved (Settings → Style), each a style and a look under a name. */
   looks: LookPreset[];
   setLooks: (list: LookPreset[]) => void;
+  /** Whether config.watchlist is the person's own list rather than the one their role suggests. */
+  ownWatchlist: boolean;
+  /** Replace the watchlist everywhere (null goes back to the role's). */
+  setWatchlist: (list: string[] | null) => void;
 };
 const Ctx = createContext<Workspace | null>(null);
 
@@ -44,12 +49,13 @@ export function applyLook(l: LookPrefs) {
   try { document.cookie = `${LOOK_COOKIE}=${lookCookie(l)}; path=/; max-age=31536000; samesite=lax`; } catch { /* ignore */ }
 }
 
-export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, looks: initialLooks, children }: {
-  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; looks?: unknown; children: React.ReactNode;
+export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, looks: initialLooks, watchlist: initialWatchlist, children }: {
+  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; looks?: unknown; watchlist?: unknown; children: React.ReactNode;
 }) {
   const [desk, setDeskState] = useState<DeskPrefs>(() => (initialDesk === undefined ? defaultDesk(profile.role) : normalizeDesk(initialDesk, profile.role)));
   const [look, setLookState] = useState<LookPrefs>(() => (initialLook === undefined ? DEFAULT_LOOK : normalizeLook(initialLook)));
   const [looks, setLooksState] = useState<LookPreset[]>(() => normalizePresets(initialLooks));
+  const [watchlist, setWatchlistState] = useState<string[] | null>(() => normalizeWatchlist(initialWatchlist));
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setDesk = useCallback((patch: Partial<DeskPrefs>) => {
@@ -75,7 +81,14 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
     save({ looks: next });
   }, []);
 
-  const value = useMemo(() => ({ profile, config: workspaceFor(profile), edge, tools, desk, setDesk, look, setLook, looks, setLooks }), [profile, edge, tools, desk, setDesk, look, setLook, looks, setLooks]);
+  const setWatchlist = useCallback((list: string[] | null) => {
+    const next = list === null ? null : normalizeWatchlist(list);
+    setWatchlistState(next);
+    save({ watchlist: next });
+  }, []);
+
+  const config = useMemo(() => { const c = workspaceFor(profile); return watchlist ? { ...c, watchlist } : c; }, [profile, watchlist]);
+  const value = useMemo(() => ({ profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, ownWatchlist: watchlist !== null, setWatchlist }), [profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, watchlist, setWatchlist]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -84,5 +97,5 @@ const FALLBACK: Profile = { role: "banker", specialty: "Technology M&A", seniori
 /** Workspace config for the signed-in user's role. Falls back to a tech banker when used outside the provider. */
 export function useWorkspace(): Workspace {
   const v = useContext(Ctx);
-  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined, looks: [], setLooks: () => undefined };
+  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined, looks: [], setLooks: () => undefined, ownWatchlist: false, setWatchlist: () => undefined };
 }
