@@ -7,6 +7,8 @@ import { FieldsForm, defaultInputs } from "./FieldsForm";
 import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
 import { StarButton } from "./ToolCard";
+import { FigureCheck } from "@/components/ai/FigureCheck";
+import type { FigureReport } from "@/lib/ai/figures";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
 import { errorMessage, safeText } from "@/lib/client/errors";
@@ -30,6 +32,8 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<WorkflowOutput | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
+  // This run's figures checked against their cited sources (live runs only; a reopened run has none).
+  const [figures, setFigures] = useState<FigureReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ model?: string; durationMs?: number; runId?: number | null }>({});
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -78,7 +82,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
       // The output schema (zod) loads only when a saved run is opened, not with every tool page.
       const { WorkflowOutput: OutputSchema } = await import("@/lib/workflows/schema");
       const parsed = OutputSchema.safeParse(row.output);
-      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
+      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setFigures(null); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
     } catch (e) { setError(errorMessage(e)); }
   }, []);
 
@@ -89,7 +93,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
 
   const run = async () => {
     if (tool.kind !== "ai" || busy) return;
-    setBusy(true); setEvents([]); setThinking(""); setProgress(0); setOutput(null); setSources([]); setError(null); setMeta({});
+    setBusy(true); setEvents([]); setThinking(""); setProgress(0); setOutput(null); setSources([]); setFigures(null); setError(null); setMeta({});
     try {
       const res = await fetch("/api/tools/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: tool.id, inputs, model: settings.model, effort: settings.effort }) });
       if (!res.ok) throw new Error(await errorOf(res));
@@ -103,7 +107,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
         else if (ev.type === "error") { ended = true; setError(safeText(ev.message)); }
         else if (ev.type === "output") {
           ended = true;
-          if (ev.output) { setOutput(ev.output as WorkflowOutput); setSources((ev.sources as Source[]) ?? []); }
+          if (ev.output) { setOutput(ev.output as WorkflowOutput); setSources((ev.sources as Source[]) ?? []); setFigures((ev.figures as FigureReport | undefined) ?? null); }
           if (ev.error) setError(safeText(ev.error));
           setMeta({ model: ev.model as string, durationMs: ev.durationMs as number, runId: ev.runId as number | null });
         }
@@ -222,6 +226,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
                 </div>
               </div>
               <OutputBlocks output={shown} sources={sources} compact={compact} />
+              {figures && <div className="mt-1"><FigureCheck r={figures} /></div>}
             </>
           ) : (
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center text-muted">

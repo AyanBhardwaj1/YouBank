@@ -1,3 +1,5 @@
+import { checkFigures, type FigureReport } from "@/lib/ai/figures";
+import { outputToMarkdown } from "@/lib/workflows/markdown";
 import { runChat } from "@/lib/ai/agent";
 import { isAdmin } from "@/lib/auth/admin";
 import { modelAllowed } from "@/lib/ai/config";
@@ -63,7 +65,7 @@ async function runTool(req: Request) {
   /** The run itself; a failure it throws ends the stream with an output event that says so. */
   const produce = async (emit: (e: unknown) => void) => {
     let provider = "", model = "", runError = "";
-    const { text, sources } = await runAsUser(user.id, () => runChat({
+    const { text, sources, records } = await runAsUser(user.id, () => runChat({
       messages: [{ role: "user", content: workflowUserPrompt(tool, cleaned.inputs) }],
       context: { ticker: String(cleaned.inputs.ticker ?? ""), panels: [], subject: tool.title, persona },
       system: workflowSystemPrompt(), volatile: workflowContext(tool, persona, today), feature: `tool:${tool.id}`, parallelTools: true,
@@ -91,6 +93,11 @@ async function runTool(req: Request) {
         output = { title: tool.title, summary: "The model's answer could not be fully structured; the raw text is shown below.", blocks: [{ type: "markdown", text: clean.slice(0, 20_000) }], caveats: ["Parts of this answer could not be laid out as tables and charts, so it is shown as text."] };
       }
     }
+    // Every figure in the result checked against the source it cites, as chat answers are (src/lib/ai/figures.ts).
+    let figures: FigureReport | undefined;
+    if (output && !error) {
+      try { const r = checkFigures(outputToMarkdown(output, []), records ?? [], sources); if (r.figures.length) figures = r; } catch (e) { logError(e, { where: `tool-figures:${tool.id}` }); }
+    }
     let runId: number | null = null;
     if (db && output) {
       try {
@@ -98,7 +105,7 @@ async function runTool(req: Request) {
         runId = row?.id ?? null;
       } catch (e) { logError(e, { where: "tool-run-save" }); /* saving is best-effort */ }
     }
-    emit({ type: "output", output, runId, sources, provider, model, durationMs: Date.now() - started, error: output ? "" : error });
+    emit({ type: "output", output, runId, sources, figures, provider, model, durationMs: Date.now() - started, error: output ? "" : error });
   };
   const stream = new ReadableStream({
     async start(controller) {

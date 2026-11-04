@@ -7,6 +7,7 @@
  * perturbed figures (3–30% off) and of 1000x scale slips may match. Seeded; synthetic, not live answers.
  */
 import { checkFigures, leavesOf, resolveRef, type ToolRecord } from "@/lib/ai/figures";
+import { outputToMarkdown } from "@/lib/workflows/markdown";
 import { calcTool } from "@/lib/ai/tools";
 
 let pass = 0, fail = 0;
@@ -55,6 +56,14 @@ ok("a figure cited to the price source is not found among the facts source's val
 
 const wrongField = checkFigures("LTM revenue was $4.5 billion [S1].", [acme], [{ id: "S1" }]);
 ok("a wrong-field figure matches, but the chip names the field it matched", [wrongField.figures[0].status, wrongField.figures[0].field], ["matched", "prior LTM revenue"]);
+
+console.log("a workflow's output is checked the same way");
+const wf = outputToMarkdown({ title: "ACME tear sheet", summary: "ACME grew revenue 20.2% [S1] to $5.4 billion [S1].", blocks: [
+  { type: "kpis", items: [{ label: "Gross margin", value: "67.4% [S1]" }, { label: "EV / LTM revenue", value: "10.0x [S2]" }] },
+  { type: "table", columns: ["Metric", "Value"], rows: [["Free cash flow", "$1,123 million [S1]"], ["Operating income", "$901 million [S1]"]] },
+] }, []);
+const wr = checkFigures(wf, [acme], [{ id: "S1" }, { id: "S2" }]);
+ok("summary, KPI and table figures each checked against their cited source", wr.figures.map((f) => `${f.raw}:${f.status}`), ["20.2%:matched", "$5.4 billion:matched", "67.4%:matched", "10.0x:matched", "$1,123 million:matched", "$901 million:no_match"]);
 
 const calc = rec("calc", JSON.stringify({ results: [{ line: "ev / adj", value: 11.2468 }, { line: "fcf / ni", value: 0.31251 }] }), []);
 const derived = checkFigures("EV to adjusted EBITDA is 11.25x [S1], and FCF conversion is 31.3% [S1].", [acme, calc], [{ id: "S1" }]);
