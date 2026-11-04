@@ -10,6 +10,8 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { apiError, errorMessage, safeText } from "@/lib/client/errors";
 import type { FigureReport } from "@/lib/ai/figures";
+import { answerFileName, answerMarkdown, firstTable, noteEntry, toTsv } from "@/lib/ai/answer-actions";
+import { NOTES_MAX, toggleWidget } from "@/lib/desk/desk";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
 type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; figures?: FigureReport; error?: string; streaming?: boolean };
@@ -41,6 +43,43 @@ function FigureCheck({ r }: { r: FigureReport }) {
         ))}
       </ul>
     </details>
+  );
+}
+
+/**
+ * What to do with a finished answer: copy it with its sources, copy its table for a spreadsheet, keep it
+ * in Home's notes, or download it.
+ */
+function AnswerActions({ m, question }: { m: Msg; question: string }) {
+  const { desk, setDesk } = useWorkspace();
+  const [done, setDone] = useState<string | null>(null);
+  const table = firstTable(m.content);
+  const flash = (t: string) => { setDone(t); window.setTimeout(() => setDone((d) => (d === t ? null : d)), 2200); };
+  const copy = async (text: string, what: string) => {
+    try { await navigator.clipboard.writeText(text); flash(what); } catch { flash("Your browser did not allow copying"); }
+  };
+  const keep = () => {
+    const entry = noteEntry(question, m.content, new Date());
+    const notes = `${entry}\n\n${desk.notes}`.slice(0, NOTES_MAX);
+    const on = desk.widgets.find((w) => w.id === "notes")?.on;
+    setDesk(on ? { notes } : { notes, widgets: toggleWidget(desk.widgets, "notes", true) });
+    flash("Saved to your notes on Home");
+  };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([answerMarkdown(m.content, m.sources ?? [], question)], { type: "text/markdown" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: answerFileName(question, new Date()) });
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const btn = "rounded border border-line px-1.5 py-0.5 text-[10.5px] text-muted hover:border-accent/50 hover:text-fg";
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-1.5">
+      <button type="button" className={btn} onClick={() => void copy(answerMarkdown(m.content, m.sources ?? [], question), "Copied with its sources")}>Copy</button>
+      {table && <button type="button" className={btn} onClick={() => void copy(toTsv(table), "Table copied: paste it into a spreadsheet")} title="Tab-separated, so it pastes into cells">Copy table</button>}
+      <button type="button" className={btn} onClick={keep}>Save to notes</button>
+      <button type="button" className={btn} onClick={download}>Download</button>
+      {done && <span role="status" className="text-[10.5px] text-pos">{done}</span>}
+    </div>
   );
 }
 
@@ -168,6 +207,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
                   ))}
                 </div>
               )}
+              {m.role === "assistant" && !m.streaming && !m.error && m.content.trim() && <AnswerActions m={m} question={messages[i - 1]?.content ?? ""} />}
             </div>
           </div>
         ))}
