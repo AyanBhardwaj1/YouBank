@@ -8,10 +8,13 @@ export type NewThing = { title: string; body: string; href?: string; action?: "p
 
 export const WHATS_NEW: NewThing[] = [
   { title: "⌘K goes anywhere", body: "Any page or tool, a ticker, your look, or a question for the AI, from one box.", action: "palette", cta: "Try it" },
+  { title: "Your day in one line", body: "Under the greeting: what waits for you, your next meeting, and your biggest mover.", href: "/app", cta: "See Home" },
   { title: "Home, your way", body: "Focus, Home or Desk. Arrange widgets right on the page: drag, resize, add.", action: "arrange", cta: "Arrange" },
   { title: "Looks and wallpapers", body: "Six looks to start from, any accent colour, Home wallpapers, and match your system's light and dark.", href: "/app/settings?tab=style", cta: "Open Style" },
   { title: "Waiting for you", body: "The agent's drafts, questions and follow-ups, decided right on Home.", href: "/app", cta: "See Home" },
   { title: "Your own watchlist", body: "Edit it on Home; the terminal, comps and your news follow it.", href: "/app", cta: "Edit it" },
+  { title: "Conversations are kept", body: "The terminal AI keeps your last conversation per ticker in this browser. New chat starts over; signing out clears it.", href: "/app/terminal?fn=AI", cta: "Open the AI" },
+  { title: "Find people and deals", body: "Type a name in ⌘K to find your contacts and deals.", action: "palette", cta: "Try it" },
   { title: "Answers you can use", body: "Copy with sources, paste tables into Excel, save to notes, and follow-up questions.", href: "/app/terminal?fn=AI", cta: "Ask something" },
   { title: "Checked figures in tools", body: "Every number in an AI workflow's result is checked against the source it cites, as in chat.", href: "/app/tools", cta: "Run a tool" },
   { title: "Star tools, jump back in", body: "Star the tools you use; they come first. Home remembers the pages and tickers you opened last.", href: "/app/tools", cta: "Open Tools" },

@@ -126,6 +126,11 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 | Keyboard: G then a letter to go, ? for the sheet | `Shortcuts.tsx` | browser |
 | The terminal opens what a new link asks for while it is open (it read its ticker once) | `Terminal.tsx` | browser |
 | The palette's code loads on first use (preloaded when idle) | `CommandPalette.tsx`, `PalettePanel.tsx` | browser |
+| The palette finds your contacts and deals | `/api/crm/search`, `PalettePanel.tsx` | browser, load |
+| Home's day line: decisions waiting, next meeting, biggest mover | `src/lib/desk/day-line.ts`, `home/DayLine.tsx` | `test-day-line`, browser |
+| The terminal AI keeps the last conversation per ticker (this browser, a week; cleared on sign-out) | `src/lib/client/ai-history.ts` | `test-ai-history`, browser |
+| The email agent's questions show in the bell and clear when settled | `src/lib/crm/knowledge.ts`, `autopilot.ts` | DB check |
+| Notes typed just before the tab closes are kept | `WorkspaceProvider.tsx` | |
 | World markets and Quick calc widgets | `src/lib/desk/markets.ts`, `home/MoreWidgets.tsx` | `test-markets` |
 | Jump back in: the last pages, tools and tickers opened (this browser only) | `src/lib/client/recent.ts`, `RecentWidget` | `test-recent` |
 | Star tools: starred first on Home and in Tools | `normalizeStarred`, `ToolCard.tsx` | `test-watchlist`, browser |
@@ -157,7 +162,8 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 - Preferences were read-modify-write, so two saves sent together (a style and a look in one click) lost one. `/api/prefs` and the desk setup now merge under a row lock (`src/lib/prefs/extra.ts`). Ten concurrent saves all land.
 - Home's greeting and date were rendered in the server's time zone, so everyone outside UTC hit React error 418 (hydration mismatch). `useNow` keeps time-dependent text for the browser. A sweep of every page in four time zones finds none.
 - The normalize test pointed at Home's old file.
+- A third review found six more, all fixed: made-up tickers could use up the public build budget; the cost estimate accepted any tool id; a malformed company URL threw; the cost line's "N more fit" ignored the daily cap and the model; the agent/Edge import cycle could break by load order; the terminal did not reopen a link after a visit to the bare terminal.
 - A second review found four more, all fixed: Join never showed for a meeting already under way; workflow figure checks counted chart axes as uncited figures; What's new's Arrange could be lost on a slow load; the badge could miss a refresh.
 - An independent review of the evening's work found seven more, all fixed: editing a profile re-ran the desk setup and replaced existing desks and top bars; quick successive saves could be stored out of order (saves now queue per tab); Desk's arrange arrows crossed columns; the setup button re-saved stale notes; a look left in the cookie by another account; Quick calc reached object built-ins; an inbox rollback restored decided items.
 
-**Checks:** every `scripts/test-*.ts` passes. A second load run at 150 users with the badge, inbox, checklist and saves: p95 179 ms, no raw error text, errors only the two stale load-test sessions. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
+**Checks:** every `scripts/test-*.ts` passes. A second load run at 150 users with the badge, inbox, checklist and saves: p95 179 ms. At 200 users with everything (CRM search included): p95 275 ms, against 244 ms before tonight with fewer endpoints. No raw error text in either; errors were only the two stale load-test sessions. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
