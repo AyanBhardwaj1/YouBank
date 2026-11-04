@@ -1,5 +1,6 @@
 /** Command palette ranking (src/lib/palette.ts): pnpm exec tsx scripts/test-palette.ts */
 import { asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
+import { findTools } from "@/lib/ai/catalog-tool";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -39,6 +40,14 @@ ok("too long is not a ticker", asTicker("ABCDEFG"), null);
 console.log("recent");
 ok("newest first, no repeats", pushRecent(["a", "b", "c"], "b"), ["b", "a", "c"]);
 ok("at most the cap", pushRecent(["a", "b", "c"], "d", 3), ["d", "a", "b"]);
+
+console.log("the chat's tool search");
+ok("finds the merger model", findTools("merger accretion")[0]?.title.toLowerCase().includes("accretion"), true);
+ok("finds by short name", findTools("lbo").every((t) => /lbo/i.test(`${t.title} ${t.what}`)), true);
+ok("a long sentence still finds something", findTools("diligence checklist for a saas target").length > 0, true);
+ok("links open the tool inside YouBank", /\/app\/tools\/[\w-]+$/.test(findTools("dcf")[0]?.link ?? ""), true);
+ok("nonsense finds nothing", findTools("zzqx"), []);
+ok("at most the limit", findTools("model", 3).length <= 3, true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

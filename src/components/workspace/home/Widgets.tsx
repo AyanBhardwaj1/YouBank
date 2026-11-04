@@ -126,7 +126,7 @@ export function WatchlistWidget({ roomy }: Props) {
                 <tr key={c.ticker} className="border-b border-line/50 hover:bg-elevated/60">
                   <td className="py-1.5"><Link href={`/app/terminal?ticker=${c.ticker}`} className="num font-semibold hover:text-accent">{c.ticker}</Link> <span className="hidden max-w-[150px] truncate text-[10.5px] text-muted xl:inline">{c.name.replace(/,? (Inc|Corp|Holdings|plc)\.?$/i, "")}</span></td>
                   <td className="num py-1.5 pr-3 text-right">{c.price ? c.price.last.toFixed(2) : "—"}</td>
-                  <td className={`num py-1.5 pr-3 text-right ${chg === null ? "" : chg >= 0 ? "text-pos" : "text-neg"}`}>{fmtChange(chg)}</td>
+                  <td className={`num py-1.5 pr-3 text-right ${changeTone(chg)}`}>{fmtChange(chg)}</td>
                   <td className="num py-1.5 pr-3 text-right">{fmtX(d.evRevLtm)}</td>
                   <td className="num py-1.5 pr-3 text-right">{fmtPct(d.revenueGrowth)}</td>
                   <td className="num py-1.5 pr-3 text-right">{fmtPct(d.fcfMargin)}</td>
