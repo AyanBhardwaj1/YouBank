@@ -10,7 +10,7 @@ import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { apiError, errorMessage, safeText } from "@/lib/client/errors";
 import type { FigureReport } from "@/lib/ai/figures";
-import { answerFileName, answerMarkdown, firstTable, noteEntry, toTsv } from "@/lib/ai/answer-actions";
+import { answerFileName, answerMarkdown, firstTable, followUps, noteEntry, toTsv } from "@/lib/ai/answer-actions";
 import { NOTES_MAX, toggleWidget } from "@/lib/desk/desk";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
@@ -208,6 +208,15 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
                 </div>
               )}
               {m.role === "assistant" && !m.streaming && !m.error && m.content.trim() && <AnswerActions m={m} question={messages[i - 1]?.content ?? ""} />}
+              {/* What to ask next, under the latest answer only. */}
+              {m.role === "assistant" && i === messages.length - 1 && !m.streaming && !m.error && m.content.trim() && online && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {followUps(messages[i - 1]?.content ?? "", (m.tools ?? []).map((t) => t.name), subject ? "" : ticker).map((f) => (
+                    <button key={f} type="button" disabled={busy} onClick={() => void send(f)}
+                      className="max-w-full rounded-full border border-line bg-panel px-2.5 py-1 text-left text-[11px] text-fg/90 hover:border-accent/50 hover:text-accent disabled:opacity-50">↳ {f}</button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}

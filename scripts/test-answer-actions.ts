@@ -1,5 +1,5 @@
 /** Actions on a finished AI answer (src/lib/ai/answer-actions.ts): pnpm exec tsx scripts/test-answer-actions.ts */
-import { answerFileName, answerMarkdown, firstTable, noteEntry, toTsv } from "@/lib/ai/answer-actions";
+import { answerFileName, answerMarkdown, firstTable, followUps, noteEntry, toTsv } from "@/lib/ai/answer-actions";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -34,5 +34,11 @@ ok("…without citation marks or table pipes", /\[S\d|\|/.test(n), false);
 ok("file name from the question", answerFileName("How is SNOW valued?", at), "youbank-how-is-snow-valued-2026-11-04.md");
 ok("an empty question still names the file", answerFileName("???", at), "youbank-answer-2026-11-04.md");
 
+console.log("follow-ups");
+ok("from the tools used, naming the ticker", followUps("What is SNOW's revenue?", ["get_company_financials", "calc"], "SNOW")[0], "How does SNOW compare with its closest peers on growth and margins?");
+ok("at most three, no repeats", followUps("q", ["get_company_financials", "get_xbrl_series", "get_trading_comps", "calc"], "SNOW").length, 3);
+ok("no tools: general questions about the ticker", followUps("hi", [], "NVDA"), ["What are the two or three things that matter most for NVDA right now?", "What would change your view on NVDA?"]);
+ok("never repeats the question just asked", followUps("How does SNOW compare with its closest peers on growth and margins?", ["get_company_financials"], "SNOW").some((q) => q.startsWith("How does SNOW compare")), false);
+ok("no ticker in scope reads naturally", followUps("x", [], "")[0].includes("the company"), true);
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
