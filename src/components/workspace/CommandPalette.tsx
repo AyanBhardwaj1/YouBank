@@ -108,6 +108,7 @@ function Palette({ onClose }: { onClose: () => void }) {
     }
     for (const s of SETTINGS) c.push({ id: `settings:${s.id}`, label: `Settings: ${s.label}`, group: "Settings", icon: s.icon, keywords: s.keywords, href: `/app/settings?tab=${s.id}`, event: { path: "/app/settings", value: s.id } });
     c.push({ id: "app:sidebar", label: nav.open ? "Close the sidebar" : "Open the sidebar", group: "App", icon: "PanelLeft", hint: "⌘\\", run: () => nav.setOpen(!nav.open) });
+    c.push({ id: "app:new", label: "What's new", group: "App", icon: "Sparkles", keywords: "changelog release features", run: () => window.dispatchEvent(new Event("yb:whats-new")) });
     c.push({ id: "app:keys", label: "Keyboard shortcuts", group: "App", icon: "Keyboard", hint: "?", keywords: "keys hotkeys", run: () => window.dispatchEvent(new Event("yb:shortcuts")) });
     c.push({ id: "app:bar", label: "Customize the top bar", group: "App", icon: "SlidersHorizontal", keywords: "pin reorder", run: () => nav.customize() });
     c.push({ id: "app:setup", label: "Set up my desk for me", group: "App", icon: "Wand2", keywords: "personalize auto recommend", href: "/app/settings?tab=desk", event: { path: "/app/settings", value: "desk" } });

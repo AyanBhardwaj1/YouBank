@@ -22,6 +22,7 @@ import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
 import { CommandPalette } from "./CommandPalette";
 import { Shortcuts } from "./Shortcuts";
+import { WhatsNew } from "./WhatsNew";
 import { SystemTheme } from "@/components/theme/SystemTheme";
 import { listenForInstall } from "@/lib/client/install";
 import { recordVisit, visitFor } from "@/lib/client/recent";
@@ -95,6 +96,8 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
         <Shortcuts />
         {/* Style follows the device's light or dark setting when the person asked for that. */}
         <SystemTheme />
+        {/* Once per release: what is new, each tried in one click. */}
+        <WhatsNew />
       </div>
     </NavCtx.Provider>
   );
