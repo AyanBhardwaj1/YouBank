@@ -92,3 +92,49 @@ At 200 users, one local process used 85% of a core. Vercel runs many instances.
 8. The Alpaca callback no longer re-asks for a code.
 9. A deploy ahead of migrations 0030 and 0031 shows "being set up" instead of breaking sign-in.
 10. The unsubscribe page never returns a bare 500.
+
+## Workspace, customization and flow (2026-11-04)
+
+Asked for: a workspace that sets itself up for each person and stays theirs to change, a calm "homey" Home as an option, deep UI customization, and more that makes the product flow. No migration is needed: everything new is kept in `profiles.extra`.
+
+**Set up for you, changeable by you**
+
+| Feature | Where | Tests |
+|---|---|---|
+| The desk sets itself up from the survey on first profile completion, or from a sentence in Settings → My desk. A model call, checked against fixed vocabularies, falls back to rules. Features, Home layout and widgets stay switchable. Named features are pinned first. | `src/lib/desk/{desk,setup}.ts`, `/api/desk/setup`, `DeskSettings.tsx` | `test-desk` |
+| Home in three layouts: Focus (one question box), Home (calm, roomy cards), Desk (dense, two columns), switchable on the page | `HomeDashboard.tsx`, `home/Widgets.tsx` | browser |
+| Arrange Home on the page: drag to reorder (or across Desk's columns), wide or narrow, add or remove, reset | `home/Arrange.tsx`, `moveWidget` / `nudgeWidget` / `toggleWidget` | `test-desk`, browser drag |
+| Your own watchlist, used by Home, the terminal, comps, the palette and the Newsroom's ranking | `src/lib/desk/watchlist.ts`, `WatchlistEditor.tsx`, `news/reader.ts` | `test-watchlist`, browser |
+
+**Customization**
+
+| Feature | Where |
+|---|---|
+| Make it yours: size (whole-app zoom), corners, typeface, accent (swatches or any colour), background (glow, grid, dots), motion, contrast. Applied at once, and in the first paint through a cookie | `LookSettings.tsx`, `lookAttrs`, `app/layout.tsx`, `globals.css` |
+| Looks: six built in, save your own, share as a `yb1.` code | `BUILTIN_LOOKS`, `lookCode` / `readLookCode` |
+| Match my system: a light and a dark style that follow the device | `SystemTheme.tsx` |
+
+**Flow**
+
+| Feature | Where | Tests |
+|---|---|---|
+| ⌘K command palette: go anywhere (features, pages, 328 tools, settings), open a ticker, add it to the watchlist, ask the AI, change layout, look or style | `CommandPalette.tsx`, `src/lib/palette.ts` | `test-palette` |
+| Desk inbox (research item D1): the agent's questions, drafts (autopilot's about-to-send first, with Stop), follow-ups and alerts, decided in place through the endpoints that own them | `/api/desk/inbox`, `src/lib/desk/inbox.ts`, `home/Inbox.tsx` | `test-inbox` |
+| Getting started checklist, ticked from the account itself, with an in-place Install | `/api/desk/checklist`, `src/lib/desk/checklist.ts`, `src/lib/client/install.ts` | `test-desk` |
+| Installable app (D4, without push): manifest, maskable icons, shortcuts | `src/app/manifest.ts` | |
+| Keyboard: G then a letter to go, ? for the sheet | `Shortcuts.tsx` | browser |
+| World markets and Quick calc widgets | `src/lib/desk/markets.ts`, `home/MoreWidgets.tsx` | `test-markets` |
+
+**AI**
+
+| Feature | Where | Tests |
+|---|---|---|
+| Tool search (A3): the chat's `find_tools` searches the catalogue and links the right workflow or calculator | `src/lib/ai/catalog-tool.ts` | `test-palette` |
+| Answers become actions (part of A9): copy with sources, copy a table as spreadsheet cells, save to Home's notes, download | `src/lib/ai/answer-actions.ts`, `AiScreen.tsx` | `test-answer-actions` |
+
+**Bugs found and fixed along the way**
+- Preferences were read-modify-write, so two saves sent together (a style and a look in one click) lost one. `/api/prefs` and the desk setup now merge under a row lock (`src/lib/prefs/extra.ts`). Ten concurrent saves all land.
+- Home's greeting and date were rendered in the server's time zone, so everyone outside UTC hit React error 418 (hydration mismatch). `useNow` keeps time-dependent text for the browser. A sweep of every page in four time zones finds none.
+- The normalize test pointed at Home's old file.
+
+**Checks:** every `scripts/test-*.ts` passes. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
