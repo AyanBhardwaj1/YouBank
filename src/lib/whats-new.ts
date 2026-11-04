@@ -16,5 +16,7 @@ export const WHATS_NEW: NewThing[] = [
   { title: "Checked figures in tools", body: "Every number in an AI workflow's result is checked against the source it cites, as in chat.", href: "/app/tools", cta: "Run a tool" },
   { title: "Star tools, jump back in", body: "Star the tools you use; they come first. Home remembers the pages and tickers you opened last.", href: "/app/tools", cta: "Open Tools" },
   { title: "Share your setup", body: "Give a teammate your whole desk and look as a code, or use theirs.", href: "/app/settings?tab=desk", cta: "Open My desk" },
+  { title: "What changed in the 10-K", body: "Ask the AI what a company changed since its last 10-K or 10-Q: new, dropped and reworded passages, quoted.", href: "/app/terminal?fn=AI", cta: "Ask" },
+  { title: "Know the cost first", body: "Before a deep research run or a workflow, see what it usually uses of your monthly AI allowance.", href: "/app/tools", cta: "Open Tools" },
   { title: "Keyboard", body: "G then a letter to go anywhere. ? lists them.", action: "shortcuts", cta: "Show keys" },
 ];

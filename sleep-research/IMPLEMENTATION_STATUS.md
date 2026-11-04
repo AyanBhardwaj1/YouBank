@@ -124,6 +124,8 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 | Getting started checklist, ticked from the account itself, with an in-place Install | `/api/desk/checklist`, `src/lib/desk/checklist.ts`, `src/lib/client/install.ts` | `test-desk` |
 | Installable app (D4, without push): manifest, maskable icons, shortcuts | `src/app/manifest.ts` | |
 | Keyboard: G then a letter to go, ? for the sheet | `Shortcuts.tsx` | browser |
+| The terminal opens what a new link asks for while it is open (it read its ticker once) | `Terminal.tsx` | browser |
+| The palette's code loads on first use (preloaded when idle) | `CommandPalette.tsx`, `PalettePanel.tsx` | browser |
 | World markets and Quick calc widgets | `src/lib/desk/markets.ts`, `home/MoreWidgets.tsx` | `test-markets` |
 | Jump back in: the last pages, tools and tickers opened (this browser only) | `src/lib/client/recent.ts`, `RecentWidget` | `test-recent` |
 | Star tools: starred first on Home and in Tools | `normalizeStarred`, `ToolCard.tsx` | `test-watchlist`, browser |
@@ -141,11 +143,21 @@ Asked for: a workspace that sets itself up for each person and stays theirs to c
 | Answers become actions (part of A9): copy with sources, copy a table as spreadsheet cells, save to Home's notes, download | `src/lib/ai/answer-actions.ts`, `AiScreen.tsx` | `test-answer-actions` |
 | Follow-up questions under the latest answer, from the tools it used (no model call) | `followUps` | `test-answer-actions` |
 | B2 extended to workflows: every figure in a workflow's result checked against its cited source, saved with the run | `/api/tools/run`, `src/lib/workflows/markdown.ts`, `components/ai/FigureCheck.tsx` | `test-figures` |
+| E1 in chat: `filing_changes` says what changed between the last two 10-Ks or 10-Qs (Edge's change radar), with both filings as sources | `src/lib/ai/filing-changes-tool.ts` | chat smoke test |
+| D5: what a run usually costs, as a share of the monthly allowance, before Deep research or a workflow | `/api/ai/estimate`, `src/lib/ai/cost-preview.ts`, `components/ai/CostLine.tsx` | `test-cost-preview` |
+
+**Growth**
+
+| Feature | Where | Tests |
+|---|---|---|
+| C3: public company pages at `/c/TICKER`. SEC fundamentals, quarters, filings, peers and questions that open the app. Public-domain SEC data only (no prices). JSON-LD, canonical URLs, sitemap. At most 300 new SEC builds an hour from public traffic | `src/app/c/[ticker]/page.tsx`, `src/lib/public/company-page.ts` | `test-company-page`, curl, browser |
+| The palette copies a company's public page link | `PalettePanel.tsx` | |
 
 **Bugs found and fixed along the way**
 - Preferences were read-modify-write, so two saves sent together (a style and a look in one click) lost one. `/api/prefs` and the desk setup now merge under a row lock (`src/lib/prefs/extra.ts`). Ten concurrent saves all land.
 - Home's greeting and date were rendered in the server's time zone, so everyone outside UTC hit React error 418 (hydration mismatch). `useNow` keeps time-dependent text for the browser. A sweep of every page in four time zones finds none.
 - The normalize test pointed at Home's old file.
+- A second review found four more, all fixed: Join never showed for a meeting already under way; workflow figure checks counted chart axes as uncited figures; What's new's Arrange could be lost on a slow load; the badge could miss a refresh.
 - An independent review of the evening's work found seven more, all fixed: editing a profile re-ran the desk setup and replaced existing desks and top bars; quick successive saves could be stored out of order (saves now queue per tab); Desk's arrange arrows crossed columns; the setup button re-saved stale notes; a look left in the cookie by another account; Quick calc reached object built-ins; an inbox rollback restored decided items.
 
 **Checks:** every `scripts/test-*.ts` passes. A second load run at 150 users with the badge, inbox, checklist and saves: p95 179 ms, no raw error text, errors only the two stale load-test sessions. Production build, typecheck and lint are clean. A load run at 120 users (desk inbox, checklist and preference saves included) had p95 109 ms and no raw error text; its only errors were stale cookies of two load-test users with 2FA turned on.
