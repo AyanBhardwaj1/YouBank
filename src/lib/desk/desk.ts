@@ -31,7 +31,44 @@ export const WIDGET_HINT: Record<WidgetId, string> = {
   private: "The startup directory and new private raises", saved: "Comps sheets and peer groups",
 };
 
-export type WidgetPref = { id: WidgetId; on: boolean };
+/** Widgets that take the full width of the page (or the Desk layout's main column) unless the person says otherwise. */
+export const DEFAULT_WIDE: ReadonlySet<WidgetId> = new Set<WidgetId>(["brief", "start", "watchlist", "movers"]);
+export type WidgetSize = "wide" | "narrow";
+export type WidgetPref = { id: WidgetId; on: boolean; /** Set when the person changed it on Home; otherwise DEFAULT_WIDE decides. */ size?: WidgetSize };
+export const isWide = (w: Pick<WidgetPref, "id" | "size">) => (w.size ? w.size === "wide" : DEFAULT_WIDE.has(w.id));
+
+/**
+ * The list with `id` moved to where `to` is (Home's arrange mode: drag a widget onto another). Moving
+ * down puts it after `to`, moving up before it, as a drag reads. Unknown ids leave the list as it was.
+ */
+export function moveWidget(list: WidgetPref[], id: WidgetId, to: WidgetId): WidgetPref[] {
+  const from = list.findIndex((w) => w.id === id);
+  const target = list.findIndex((w) => w.id === to);
+  if (from < 0 || target < 0 || from === target) return list;
+  const out = [...list];
+  const [w] = out.splice(from, 1);
+  out.splice(target, 0, w);
+  return out;
+}
+
+/** The list with `id` moved one place among the widgets that are on (the arrows in arrange mode). */
+export function nudgeWidget(list: WidgetPref[], id: WidgetId, by: -1 | 1): WidgetPref[] {
+  const on = list.filter((w) => w.on);
+  const i = on.findIndex((w) => w.id === id);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= on.length) return list;
+  return moveWidget(list, id, on[j].id);
+}
+
+/** Switch a widget on at the end of what is shown (the arrange tray), or off where it is. */
+export function toggleWidget(list: WidgetPref[], id: WidgetId, on: boolean): WidgetPref[] {
+  const w = list.find((x) => x.id === id);
+  if (!w || w.on === on) return list;
+  if (!on) return list.map((x) => (x.id === id ? { ...x, on: false } : x));
+  const rest = list.filter((x) => x.id !== id);
+  const lastOn = rest.reduce((n, x, i) => (x.on ? i : n), -1);
+  return [...rest.slice(0, lastOn + 1), { ...w, on: true }, ...rest.slice(lastOn + 1)];
+}
 export type DeskPrefs = {
   layout: HomeLayout;
   /** Every widget, in the order shown; `on: false` keeps its place for when it is switched back on. */
@@ -83,7 +120,7 @@ export function normalizeDesk(raw: unknown, role: RoleId): DeskPrefs {
   const widgets = Array.isArray(r.widgets)
     ? completeWidgets(r.widgets.flatMap((w) => {
       const o = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
-      return isWidget(o.id) ? [{ id: o.id, on: o.on !== false }] : [];
+      return isWidget(o.id) ? [{ id: o.id, on: o.on !== false, ...(o.size === "wide" || o.size === "narrow" ? { size: o.size } : {}) }] : [];
     }))
     : widgetsFor(layout, role);
   const known = new Set(FEATURES.map((f) => f.id));

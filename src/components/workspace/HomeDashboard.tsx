@@ -5,7 +5,8 @@
  * - Focus: one question box and the few widgets that need you, nothing else;
  * - Home: a calm, roomy page for the day, with larger type and cards;
  * - Desk: everything, dense, in two columns.
- * The widgets, and their order, are the person's (src/lib/desk/desk.ts).
+ * The widgets, their order and their width are the person's (src/lib/desk/desk.ts), arranged in Settings
+ * → My desk or right here with Arrange (home/Arrange.tsx).
  */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,15 +16,14 @@ import { ROLES } from "@/lib/roles";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
 import type { BriefSeed } from "@/components/news/HomeBrief";
-import { LAYOUTS, type HomeLayout, type WidgetId } from "@/lib/desk/desk";
+import { LAYOUTS, isWide, type HomeLayout } from "@/lib/desk/desk";
 import { Widget, type HomeFacts } from "./home/Widgets";
+import { ArrangeBar, ArrangeProvider, Slot } from "./home/Arrange";
 
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 const LAYOUT_LABEL: Record<HomeLayout, string> = { focus: "Focus", home: "Home", desk: "Desk" };
-/** Widgets that need the width of the main column. */
-const WIDE = new Set<WidgetId>(["brief", "start", "watchlist", "movers"]);
 
-function LayoutSwitch() {
+function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange: () => void }) {
   const { desk, setDesk } = useWorkspace();
   return (
     <div className="flex items-center gap-1" role="radiogroup" aria-label="Home layout">
@@ -31,7 +31,9 @@ function LayoutSwitch() {
         <button key={l} type="button" role="radio" aria-checked={desk.layout === l} onClick={() => setDesk({ layout: l })}
           className={`ctl px-2 py-1 text-[11px] transition ${desk.layout === l ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{LAYOUT_LABEL[l]}</button>
       ))}
-      <Link href="/app/settings?tab=desk" className="ctl ml-1 flex items-center gap-1 px-2 py-1 text-[11px] text-muted hover:text-fg" title="Choose features, widgets and their order"><Icon name="SlidersHorizontal" className="h-3 w-3" />Customize</Link>
+      <button type="button" onClick={onArrange} aria-pressed={arranging} title="Move, resize, add and remove widgets on this page"
+        className={`ctl ml-1 flex items-center gap-1 px-2 py-1 text-[11px] transition ${arranging ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}><Icon name="LayoutGrid" className="h-3 w-3" />Arrange</button>
+      <Link href="/app/settings?tab=desk" className="ctl flex items-center gap-1 px-2 py-1 text-[11px] text-muted hover:text-fg" title="Choose features, widgets and their order"><Icon name="SlidersHorizontal" className="h-3 w-3" />Customize</Link>
     </div>
   );
 }
@@ -55,32 +57,37 @@ function AskBox({ big }: { big?: boolean }) {
 
 export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: BriefSeed }) {
   const { profile, tools, desk } = useWorkspace();
-  const on = desk.widgets.filter((w) => w.on).map((w) => w.id);
+  const on = desk.widgets.filter((w) => w.on);
+  const [arranging, setArranging] = useState(false);
+  const sw = <LayoutSwitch arranging={arranging} onArrange={() => setArranging((a) => !a)} />;
+  const bar = arranging && <ArrangeBar layout={desk.layout} onDone={() => setArranging(false)} />;
+  const empty = on.length === 0 && !arranging && <p className="text-[12.5px] text-muted">No widgets on. <button type="button" onClick={() => setArranging(true)} className="text-accent hover:underline">Add some</button>.</p>;
   const name = profile.name ? `, ${profile.name.split(" ")[0]}` : "";
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   if (desk.layout === "focus") {
     return (
-      <div className="h-full overflow-auto">
+      <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
         <div className="mx-auto max-w-[760px] px-5 py-10">
           <Reveal eager>
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span><LayoutSwitch /></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span>{sw}</div>
             <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting()}{name}.</h1>
             <p className="mt-1 text-[13px] text-muted">What do you need?</p>
             <div className="mt-5"><AskBox big /></div>
           </Reveal>
           <div className="mt-6 space-y-4">
-            {on.map((id, i) => <Reveal key={id} eager delay={i * 40}><Widget id={id} facts={facts} brief={brief} /></Reveal>)}
-            {on.length === 0 && <p className="text-[12.5px] text-muted">No widgets on. <Link href="/app/settings?tab=desk" className="text-accent hover:underline">Choose some</Link>.</p>}
+            {bar}
+            {on.map((w, i) => <Reveal key={w.id} eager delay={i * 40}><Slot w={w} layout="focus"><Widget id={w.id} facts={facts} brief={brief} /></Slot></Reveal>)}
+            {empty}
           </div>
         </div>
-      </div>
+      </div></ArrangeProvider>
     );
   }
 
   if (desk.layout === "home") {
     return (
-      <div className="h-full overflow-auto">
+      <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
         <div className="mx-auto max-w-[1180px] px-5 py-6">
           <Reveal eager>
             <div className="home-hero home-card px-6 py-7">
@@ -90,24 +97,25 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
                   <h1 className="mt-1 text-[30px] font-semibold tracking-tight">{greeting()}{name}.</h1>
                   <p className="mt-1 text-[13px] text-muted">{ROLES[profile.role].label}{profile.firmName ? ` · ${profile.firmName}` : ""}. Here is your day.</p>
                 </div>
-                <LayoutSwitch />
+                {sw}
               </div>
               <div className="mt-5"><AskBox big /></div>
             </div>
           </Reveal>
-          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-flow-row-dense lg:grid-cols-2">
-            {on.map((id, i) => <Reveal key={id} eager delay={i * 40} className={WIDE.has(id) ? "lg:col-span-2" : ""}><Widget id={id} roomy facts={facts} brief={brief} /></Reveal>)}
+          <div className="mt-5">{bar}{empty}</div>
+          <div className="grid grid-cols-1 gap-5 lg:grid-flow-row-dense lg:grid-cols-2">
+            {on.map((w, i) => <Reveal key={w.id} eager delay={i * 40} className={isWide(w) ? "lg:col-span-2" : ""}><Slot w={w} layout="home"><Widget id={w.id} roomy facts={facts} brief={brief} /></Slot></Reveal>)}
           </div>
         </div>
-      </div>
+      </div></ArrangeProvider>
     );
   }
 
-  const main = on.filter((id) => WIDE.has(id));
-  const side = on.filter((id) => !WIDE.has(id));
+  const main = on.filter((w) => isWide(w));
+  const side = on.filter((w) => !isWide(w));
   const first = profile.firmTicker || undefined;
   return (
-    <div className="h-full overflow-auto">
+    <ArrangeProvider on={arranging}><div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1280px] px-5 py-6">
         <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -116,18 +124,19 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
               <p className="mt-1 text-[12.5px] text-muted">{ROLES[profile.role].label}{profile.specialty ? ` · ${profile.specialty}` : ""}{profile.firmName ? ` · ${profile.firmName}` : ""}{profile.seniority ? ` · ${profile.seniority}` : ""} · <Link href="/app/profile" className="hover:text-fg">change</Link></p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <LayoutSwitch />
+              {sw}
               <Link href={`/app/terminal${first ? `?ticker=${first}` : ""}`} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg transition hover:brightness-110"><Icon name="Terminal" className="h-3.5 w-3.5" /> Open the terminal</Link>
               <Link href="/app/tools" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12.5px] text-fg transition hover:border-accent/50 hover:text-accent"><Icon name="Wand2" className="h-3.5 w-3.5" /> {tools.length} tools</Link>
             </div>
           </div>
         </Reveal>
 
-        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">{main.map((id) => <Reveal key={id} eager><Widget id={id} facts={facts} brief={brief} /></Reveal>)}</div>
-          <div className="space-y-4">{side.map((id, i) => <Reveal key={id} eager delay={60 + i * 40}><Widget id={id} facts={facts} brief={brief} /></Reveal>)}</div>
+        <div className="mt-6">{bar}{empty}</div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-4">{main.map((w) => <Reveal key={w.id} eager><Slot w={w} layout="desk"><Widget id={w.id} facts={facts} brief={brief} /></Slot></Reveal>)}</div>
+          <div className="space-y-4">{side.map((w, i) => <Reveal key={w.id} eager delay={60 + i * 40}><Slot w={w} layout="desk"><Widget id={w.id} facts={facts} brief={brief} /></Slot></Reveal>)}</div>
         </div>
       </div>
-    </div>
+    </div></ArrangeProvider>
   );
 }

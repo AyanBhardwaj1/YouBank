@@ -1,4 +1,5 @@
 /** Workspace setup and appearance (src/lib/desk/desk.ts): pnpm exec tsx scripts/test-desk.ts */
+import { moveWidget, nudgeWidget, toggleWidget, isWide, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
 
@@ -63,6 +64,22 @@ ok("variables on <html>", [a.vars["--ui-scale"], a.vars["--radius"], a.vars["--a
 ok("the default look sets nothing", lookAttrs(DEFAULT_LOOK), { attrs: {}, vars: {} });
 ok("text on a light accent is dark, on a dark one light", [accentInk("#facc15"), accentInk("#4f8cff")], ["#0a0c0f", "#ffffff"]);
 ok("every accent swatch is a colour or 'theme'", ACCENTS.every((x) => x === "theme" || /^#[0-9a-f]{6}$/.test(x)), true);
+
+console.log("arranging Home");
+{
+  const L: WidgetPref[] = [{ id: "brief", on: true }, { id: "agenda", on: true }, { id: "notes", on: false }, { id: "runs", on: true }];
+  const ids = (l: WidgetPref[]) => l.map((w) => `${w.id}${w.on ? "" : "-"}`);
+  ok("dragging down lands after the target", ids(moveWidget(L, "brief", "agenda")), ["agenda", "brief", "notes-", "runs"]);
+  ok("dragging up lands before it", ids(moveWidget(L, "runs", "agenda")), ["brief", "runs", "agenda", "notes-"]);
+  ok("an unknown id changes nothing", moveWidget(L, "brief", "movers"), L);
+  ok("the arrows skip widgets that are off", ids(nudgeWidget(L, "runs", -1)), ["brief", "runs", "agenda", "notes-"]);
+  ok("…and stop at the ends", nudgeWidget(L, "brief", -1), L);
+  ok("putting one on adds it after the last shown", ids(toggleWidget(L, "notes", true)), ["brief", "agenda", "runs", "notes"]);
+  ok("taking one off keeps its place", ids(toggleWidget(L, "agenda", false)), ["brief", "agenda-", "notes-", "runs"]);
+  ok("width follows the default until the person sets it", [isWide({ id: "brief" }), isWide({ id: "notes" }), isWide({ id: "brief", size: "narrow" }), isWide({ id: "notes", size: "wide" })], [true, false, false, true]);
+  const n = normalizeDesk({ widgets: [{ id: "notes", on: true, size: "wide" }, { id: "brief", size: "huge" }] }, "banker");
+  ok("a stored width is kept; a bad one dropped", [n.widgets[0], n.widgets[1]], [{ id: "notes", on: true, size: "wide" }, { id: "brief", on: true }]);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
