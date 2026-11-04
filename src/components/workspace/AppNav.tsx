@@ -24,6 +24,7 @@ import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
 import { openPalette, preloadPalette } from "./CommandPalette";
 import { useWaiting } from "@/lib/client/waiting";
+import { clearAiHistory } from "@/lib/client/ai-history";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
 import { NotificationBell } from "@/components/news/NotificationBell";
@@ -79,6 +80,8 @@ export function AppNav({ email }: { email: string }) {
     setLeaving(true); setStuck(false);
     const res = await getAuthClient().then((c) => c.signOut()).catch((error: unknown) => ({ error }));
     if (res?.error) { setLeaving(false); setStuck(true); return; }
+    // What was asked of the AI stays with the account, not this browser.
+    clearAiHistory();
     window.location.replace("/");
   };
   useEffect(() => {

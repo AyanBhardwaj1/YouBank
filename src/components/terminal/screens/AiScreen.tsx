@@ -12,6 +12,7 @@ import { apiError, errorMessage, safeText } from "@/lib/client/errors";
 import type { FigureReport } from "@/lib/ai/figures";
 import { FigureCheck } from "@/components/ai/FigureCheck";
 import { CostLine } from "@/components/ai/CostLine";
+import { keepable, loadAiHistory, saveAiHistory } from "@/lib/client/ai-history";
 import { answerFileName, answerMarkdown, firstTable, followUps, noteEntry, toTsv } from "@/lib/ai/answer-actions";
 import { NOTES_MAX, toggleWidget } from "@/lib/desk/desk";
 
@@ -68,6 +69,25 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
   const suggestions = question ? [question, ...base.filter((p) => p !== question)] : base;
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages]);
+
+  // The last conversation about this ticker (or subject), kept in this browser (src/lib/client/ai-history.ts):
+  // loaded after hydration, saved whenever nothing is streaming.
+  const scope = subject || ticker;
+  const loaded = useRef(false);
+  useEffect(() => {
+    loaded.current = false;
+    const t = window.setTimeout(() => {
+      const kept = loadAiHistory(scope);
+      if (kept.length) setMessages((cur) => (cur.length ? cur : kept.map((m) => ({ ...m, figures: m.figures as FigureReport | undefined }))));
+      loaded.current = true;
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [scope]);
+  useEffect(() => {
+    if (!loaded.current || messages.some((m) => m.streaming)) return;
+    saveAiHistory(scope, keepable(messages));
+  }, [messages, scope]);
+  const newChat = () => { setMessages([]); saveAiHistory(scope, []); };
 
   const patchLast = (f: (m: Msg) => Msg) => setMessages((ms) => ms.map((m, i) => (i === ms.length - 1 ? f(m) : m)));
 
@@ -127,7 +147,8 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-[11px]">
-        <span className="flex min-w-0 items-center gap-2"><span className="text-accent">✦</span> <span className="shrink-0 max-md:hidden">YouBank AI · scope</span> <span className="num truncate text-fg">{subject || ticker}</span>{company ? <span className="truncate text-muted">· {company.name}</span> : null}</span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-accent">✦</span> <span className="shrink-0 max-md:hidden">YouBank AI · scope</span> <span className="num truncate text-fg">{subject || ticker}</span>{company ? <span className="truncate text-muted">· {company.name}</span> : null}
+          {messages.length > 0 && !busy && <button type="button" onClick={newChat} title="Start over (this conversation is kept in this browser until then)" className="shrink-0 rounded border border-line px-1.5 py-px text-[10px] text-muted hover:text-fg">New chat</button>}</span>
         <span title={ai && !online ? ai.reason : undefined} className={`flex min-w-0 max-w-[55%] items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[10px] ${online ? "text-muted" : "text-neg"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-pos" : "bg-neg"}`} />
           <span className="truncate">{ai ? (online ? `${ai.provider} · ${ai.model}` : `Offline · ${ai.reason ?? "no key"}`) : "checking…"}</span>
