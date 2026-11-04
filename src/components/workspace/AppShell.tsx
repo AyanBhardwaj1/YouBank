@@ -21,6 +21,7 @@ import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
 import { CommandPalette } from "./CommandPalette";
+import { listenForInstall } from "@/lib/client/install";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
@@ -41,6 +42,9 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
   const isOpen = phone ? sheet : open;
 
   const setOpen = (o: boolean) => { if (phone) setSheet(o); else setOpenState(o); if (!o) setCustomizing(false); };
+
+  // The browser's offer to install the app can come before Home's checklist is there to show it.
+  useEffect(() => listenForInstall(), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -18,22 +18,22 @@ import { isThemeId, type ThemeId } from "@/lib/themes";
 export const LAYOUTS = ["focus", "home", "desk"] as const;
 export type HomeLayout = (typeof LAYOUTS)[number];
 
-export const WIDGETS = ["brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved"] as const;
+export const WIDGETS = ["checklist", "brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
 
 export const WIDGET_LABEL: Record<WidgetId, string> = {
-  brief: "Today's brief", agenda: "Coming up", waiting: "Waiting for you", watchlist: "Watchlist", movers: "Movers",
+  checklist: "Getting started", brief: "Today's brief", agenda: "Coming up", waiting: "Waiting for you", watchlist: "Watchlist", movers: "Movers",
   start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work",
 };
 export const WIDGET_HINT: Record<WidgetId, string> = {
-  brief: "The morning brief for your desk", agenda: "Meetings in the next day, with prep briefs", waiting: "Drafts, questions and suggestions the agents left for you",
+  checklist: "The steps that make YouBank yours, ticked as you do them", brief: "The morning brief for your desk", agenda: "Meetings in the next day, with prep briefs", waiting: "Drafts, questions and suggestions the agents left for you",
   watchlist: "Prices, multiples and trends for your names", movers: "The names that moved most today", start: "Tools picked for your role",
   ask: "Suggested questions for the assistant", runs: "Your latest tool runs", notes: "A scratchpad kept on your account",
   private: "The startup directory and new private raises", saved: "Comps sheets and peer groups",
 };
 
 /** Widgets that take the full width of the page (or the Desk layout's main column) unless the person says otherwise. */
-export const DEFAULT_WIDE: ReadonlySet<WidgetId> = new Set<WidgetId>(["brief", "start", "watchlist", "movers"]);
+export const DEFAULT_WIDE: ReadonlySet<WidgetId> = new Set<WidgetId>(["checklist", "brief", "start", "watchlist", "movers"]);
 export type WidgetSize = "wide" | "narrow";
 export type WidgetPref = { id: WidgetId; on: boolean; /** Set when the person changed it on Home; otherwise DEFAULT_WIDE decides. */ size?: WidgetSize };
 export const isWide = (w: Pick<WidgetPref, "id" | "size">) => (w.size ? w.size === "wide" : DEFAULT_WIDE.has(w.id));
@@ -92,9 +92,9 @@ const isWidget = (v: unknown): v is WidgetId => typeof v === "string" && (WIDGET
 
 /** The widgets on by default for each layout. */
 const LAYOUT_WIDGETS: Record<HomeLayout, WidgetId[]> = {
-  focus: ["waiting", "agenda", "brief"],
-  home: ["agenda", "brief", "waiting", "watchlist", "notes", "runs"],
-  desk: ["brief", "start", "watchlist", "movers", "ask", "runs", "waiting", "agenda", "saved"],
+  focus: ["checklist", "waiting", "agenda", "brief"],
+  home: ["checklist", "agenda", "brief", "waiting", "watchlist", "notes", "runs"],
+  desk: ["checklist", "brief", "start", "watchlist", "movers", "ask", "runs", "waiting", "agenda", "saved"],
 };
 
 /** A widget list with every widget once: the given order first, then the rest switched off. */

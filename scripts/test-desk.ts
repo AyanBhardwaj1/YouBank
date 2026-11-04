@@ -1,4 +1,5 @@
 /** Workspace setup and appearance (src/lib/desk/desk.ts): pnpm exec tsx scripts/test-desk.ts */
+import { checklist, hasStyled, STEPS } from "@/lib/desk/checklist";
 import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS, lookCode, readLookCode, normalizePresets, PRESETS_MAX, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
@@ -99,6 +100,19 @@ ok("saved looks are capped, newest kept", normalizePresets(many).map((p) => p.na
 ok("…at the cap", normalizePresets(many).length, PRESETS_MAX);
 ok("one look per name, the later wins", normalizePresets([{ name: "A", theme: "paper", look: {} }, { name: "a", theme: "ocean", look: {} }]).map((p) => p.theme), ["ocean"]);
 ok("a look without a name is dropped", normalizePresets([{ name: "  ", theme: "paper" }, "x", null]), []);
+
+console.log("getting started");
+{
+  const none = { asked: false, ranTool: false, mail: false, calendar: false, twoFactor: false, styled: false, installed: false };
+  ok("nothing done: the first step is next", [checklist(none).done, checklist(none).next?.id], [0, "asked"]);
+  ok("the next step skips what is done", checklist({ ...none, asked: true, ranTool: true }).next?.id, "mail");
+  ok("all done: no next step", checklist(Object.fromEntries(STEPS.map((s) => [s.id, true])) as typeof none).next, null);
+  ok("every step links inside the app", STEPS.every((s) => s.href.startsWith("/") && !s.href.startsWith("//")), true);
+  ok("a fresh profile has not styled anything", hasStyled({ nav: { pinned: [] }, desk: { source: "auto" } }), false);
+  ok("a theme, a look, an arranged desk or a saved look counts", [hasStyled({ theme: "paper" }), hasStyled({ look: { font: "mono" } }), hasStyled({ desk: { source: "you" } }), hasStyled({ looks: [{}] })], [true, true, true, true]);
+  ok("new desks start with it on, first", widgetsFor("home")[0], { id: "checklist", on: true });
+  ok("existing desks get it switched off, not pushed on them", normalizeDesk({ widgets: [{ id: "brief", on: true }] }, "banker").widgets.find((w) => w.id === "checklist"), { id: "checklist", on: false });
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
