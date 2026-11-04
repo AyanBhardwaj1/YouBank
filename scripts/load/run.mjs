@@ -126,6 +126,12 @@ const MIX = [
   { name: "crm settings", weight: 3, run: get("/api/crm/settings") },
   { name: "step-up state", weight: 3, run: get("/api/security/step-up") },
   { name: "two-factor state", weight: 2, run: get("/api/security/two-factor") },
+  // Home's desk: the inbox and the checklist load with every Home view; layout and look saves are frequent clicks.
+  { name: "desk inbox", weight: 6, run: get("/api/desk/inbox") },
+  { name: "desk checklist", weight: 4, run: get("/api/desk/checklist") },
+  { name: "prefs save (look)", weight: 3, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { scale: [0.9, 1, 1.1][Math.floor(Math.random() * 3)] } }) }) },
+  { name: "prefs save (desk layout)", weight: 2, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ desk: { layout: ["focus", "home", "desk"][Math.floor(Math.random() * 3)] } }) }) },
+  { name: "page settings style", weight: 2, run: get("/app/settings?tab=style") },
   { name: "unsubscribe page", weight: 1, run: (u) => (u.unsub ? anon(u.unsub) : null) },
   { name: "unsubscribe one-click", weight: 1, run: (u) => (u.unsub ? anon(u.unsub, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" }) : null) },
   { name: "ai chat (mock)", weight: 4, run: (u) => as(u, "/api/ai/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "What moved oil prices this week?" }], context: { ticker: "XOM", panels: [] } }) }) },
