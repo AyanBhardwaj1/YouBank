@@ -37,3 +37,15 @@ export function moveTicker(list: string[], t: string, by: -1 | 1): string[] {
   [out[i], out[j]] = [out[j], out[i]];
   return out;
 }
+
+/* ---------------- Starred tools ---------------- */
+
+export const STARRED_MAX = 24;
+/** Starred tool ids (profiles.extra.starredTools), cleaned: catalogue-shaped ids once each, newest kept. */
+export function normalizeStarred(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) if (typeof x === "string" && /^[a-z0-9][a-z0-9-]{0,79}$/.test(x) && !out.includes(x)) out.push(x);
+  return out.slice(-STARRED_MAX);
+}
+export const toggleStar = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : normalizeStarred([...list, id]));

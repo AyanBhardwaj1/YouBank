@@ -6,6 +6,7 @@ import type { ToolDef, WorkflowOutput, Inputs } from "@/lib/workflows/types";
 import { FieldsForm, defaultInputs } from "./FieldsForm";
 import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
+import { StarButton } from "./ToolCard";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
 import { errorMessage, safeText } from "@/lib/client/errors";
@@ -134,7 +135,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
             <div className="flex items-center gap-2">
               <span className="grid h-8 w-8 place-items-center ctl bg-accent-soft text-accent"><Icon name={tool.icon} className="h-4.5 w-4.5" /></span>
               <div>
-                <h1 className="text-[18px] font-semibold leading-tight">{tool.title}</h1>
+                <h1 className="flex items-center gap-1 text-[18px] font-semibold leading-tight">{tool.title}<StarButton id={tool.id} title={tool.title} className="!opacity-100" /></h1>
                 <div className="text-[11.5px] text-muted">{tool.tagline}</div>
               </div>
             </div>

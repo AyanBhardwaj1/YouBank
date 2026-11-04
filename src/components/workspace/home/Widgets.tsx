@@ -185,7 +185,9 @@ export function MoversWidget({ roomy }: Props) {
 /* ---------------- Tools, the assistant, runs ---------------- */
 
 export function StartWidget({ roomy }: Props) {
-  const { tools } = useWorkspace();
+  const { tools: all, starred } = useWorkspace();
+  // Starred tools first, then the ones picked for the role.
+  const tools = [...starred.map((id) => all.find((t) => t.id === id)).filter((t): t is (typeof all)[number] => !!t), ...all.filter((t) => !starred.includes(t.id))];
   return (
     <section>
       <H roomy={roomy} right={<Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link>}>Start here</H>

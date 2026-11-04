@@ -8,14 +8,14 @@ import { normalizeNavPrefs } from "@/lib/nav";
 import type { RoleId } from "@/lib/roles";
 import { normalizeDesk, normalizeLook, normalizePresets } from "@/lib/desk/desk";
 import { updateExtra } from "@/lib/prefs/extra";
-import { normalizeWatchlist } from "@/lib/desk/watchlist";
+import { normalizeStarred, normalizeWatchlist } from "@/lib/desk/watchlist";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Per-account preferences kept in profiles.extra: { theme, ai: { provider, model, effort }, nav: { pinned, labels, dock },
  * desk: { layout, widgets, hidden, notes } (src/lib/desk/desk.ts), look: { scale, radius, font, accent, background, motion, contrast },
- * looks: [{ name, theme, look }] (saved looks, sent whole), watchlist: [tickers] (sent whole; null for the role's) }.
+ * looks: [{ name, theme, look }] (saved looks, sent whole), watchlist: [tickers] (sent whole; null for the role's), starredTools: [tool ids] (sent whole) }.
  * desk and look are merged into what is stored, so one setting (or the notes) can be sent alone.
  */
 export async function GET() {
@@ -27,7 +27,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   return guarded(async (user) => {
-    const body = (await req.json().catch(() => null)) as { theme?: string; ai?: unknown; nav?: unknown; desk?: unknown; look?: unknown; looks?: unknown; watchlist?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { theme?: string; ai?: unknown; nav?: unknown; desk?: unknown; look?: unknown; looks?: unknown; watchlist?: unknown; starredTools?: unknown } | null;
     if (!body) return NextResponse.json({ error: "That request was incomplete. Reload the page and try again." }, { status: 400 });
     if (body.ai !== undefined) {
       const ai = normalizePrefs(body.ai);
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       }
       if (body.look !== undefined && body.look && typeof body.look === "object") extra.look = normalizeLook({ ...((extra.look as object) ?? {}), ...(body.look as object) });
       if (body.looks !== undefined) extra.looks = normalizePresets(body.looks);
+      if (body.starredTools !== undefined) extra.starredTools = normalizeStarred(body.starredTools);
       // null goes back to the watchlist the role suggests.
       if (body.watchlist !== undefined) { const w = normalizeWatchlist(body.watchlist); if (w) extra.watchlist = w; else delete extra.watchlist; }
       const hidden = normalizeDesk(extra.desk, role).hidden;

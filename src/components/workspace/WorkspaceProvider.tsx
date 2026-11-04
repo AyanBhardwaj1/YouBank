@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
-import { normalizeWatchlist } from "@/lib/desk/watchlist";
+import { normalizeStarred, normalizeWatchlist, toggleStar } from "@/lib/desk/watchlist";
 import type { ToolMeta } from "@/lib/workflows/catalog";
 import { DEFAULT_LOOK, LOOK_COOKIE, defaultDesk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, normalizePresets, type DeskPrefs, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
@@ -27,6 +27,9 @@ type Workspace = {
   ownWatchlist: boolean;
   /** Replace the watchlist everywhere (null goes back to the role's). */
   setWatchlist: (list: string[] | null) => void;
+  /** Tools the person starred: first on Home and at the top of Tools. */
+  starred: string[];
+  toggleStarred: (id: string) => void;
 };
 const Ctx = createContext<Workspace | null>(null);
 
@@ -55,13 +58,15 @@ export function applyLook(l: LookPrefs) {
   try { document.cookie = `${LOOK_COOKIE}=${lookCookie(l)}; path=/; max-age=31536000; samesite=lax`; } catch { /* ignore */ }
 }
 
-export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, looks: initialLooks, watchlist: initialWatchlist, children }: {
-  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; looks?: unknown; watchlist?: unknown; children: React.ReactNode;
+export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, looks: initialLooks, watchlist: initialWatchlist, starred: initialStarred, children }: {
+  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; looks?: unknown; watchlist?: unknown; starred?: unknown; children: React.ReactNode;
 }) {
   const [desk, setDeskState] = useState<DeskPrefs>(() => (initialDesk === undefined ? defaultDesk(profile.role) : normalizeDesk(initialDesk, profile.role)));
   const [look, setLookState] = useState<LookPrefs>(() => (initialLook === undefined ? DEFAULT_LOOK : normalizeLook(initialLook)));
   const [looks, setLooksState] = useState<LookPreset[]>(() => normalizePresets(initialLooks));
   const [watchlist, setWatchlistState] = useState<string[] | null>(() => normalizeWatchlist(initialWatchlist));
+  const [starred, setStarred] = useState<string[]>(() => normalizeStarred(initialStarred));
+  const starredNow = useRef(starred);
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setDesk = useCallback((patch: Partial<DeskPrefs>, opts?: { persist?: boolean }) => {
@@ -94,8 +99,15 @@ export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, des
     save({ watchlist: next });
   }, []);
 
+  const toggleStarred = useCallback((id: string) => {
+    const next = toggleStar(starredNow.current, id);
+    starredNow.current = next;
+    setStarred(next);
+    save({ starredTools: next });
+  }, []);
+
   const config = useMemo(() => { const c = workspaceFor(profile); return watchlist ? { ...c, watchlist } : c; }, [profile, watchlist]);
-  const value = useMemo(() => ({ profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, ownWatchlist: watchlist !== null, setWatchlist }), [profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, watchlist, setWatchlist]);
+  const value = useMemo(() => ({ profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, ownWatchlist: watchlist !== null, setWatchlist, starred, toggleStarred }), [profile, config, edge, tools, desk, setDesk, look, setLook, looks, setLooks, watchlist, setWatchlist, starred, toggleStarred]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -104,5 +116,5 @@ const FALLBACK: Profile = { role: "banker", specialty: "Technology M&A", seniori
 /** Workspace config for the signed-in user's role. Falls back to a tech banker when used outside the provider. */
 export function useWorkspace(): Workspace {
   const v = useContext(Ctx);
-  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined, looks: [], setLooks: () => undefined, ownWatchlist: false, setWatchlist: () => undefined };
+  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined, looks: [], setLooks: () => undefined, ownWatchlist: false, setWatchlist: () => undefined, starred: [], toggleStarred: () => undefined };
 }

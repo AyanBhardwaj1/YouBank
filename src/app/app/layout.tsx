@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const savedTheme = typeof extra.theme === "string" ? extra.theme : null;
   return (
-    <WorkspaceProvider profile={profile} edge tools={catalogFor(profile)} desk={extra.desk} look={extra.look} looks={extra.looks} watchlist={extra.watchlist}>
+    <WorkspaceProvider profile={profile} edge tools={catalogFor(profile)} desk={extra.desk} look={extra.look} looks={extra.looks} watchlist={extra.watchlist} starred={extra.starredTools}>
       <ThemeSync theme={savedTheme} look={extra.look} />
       <AppShell email={user.email} initialNav={normalizeNavPrefs(extra.nav, profile.role, normalizeDesk(extra.desk, profile.role).hidden)}>{children}</AppShell>
     </WorkspaceProvider>
