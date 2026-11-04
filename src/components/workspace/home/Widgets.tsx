@@ -17,6 +17,7 @@ import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
 import { changeTone, fmtChange } from "@/lib/market/units";
 import { NOTES_MAX, WIDGET_LABEL, type WidgetId } from "@/lib/desk/desk";
 import { InboxWidget } from "./Inbox";
+import { useNow } from "@/components/ui/useNow";
 import { ChecklistWidget } from "./Checklist";
 import { WatchlistEditor } from "./WatchlistEditor";
 import { CalcWidget, MarketsWidget, RecentWidget } from "./MoreWidgets";
@@ -36,9 +37,13 @@ const box = (roomy?: boolean) => (roomy ? "home-card p-5" : "panel p-3");
 
 /* ---------------- Coming up (the next 24 hours) ---------------- */
 
-type Meeting = { id: number; title: string; start: string; end: string; allDay: boolean; location: string };
+type Meeting = { id: number; title: string; start: string; end: string; allDay: boolean; location: string; external?: boolean; videoUrl?: string; contacts?: { name: string; email: string }[]; deals?: { id: number; name: string }[]; attendees?: unknown[] };
+/** A meeting link that is safe to open: http(s) only. */
+const joinable = (u?: string) => (u && /^https:\/\/[^\s]+$/i.test(u) ? u : null);
 export function AgendaWidget({ roomy }: Props) {
   const [m, setM] = useState<Meeting[] | null>(null);
+  // The clock for "Join now" (from 15 minutes before until the end), refreshed every 30 s.
+  const now = useNow();
   const [failed, setFailed] = useState(false);
   useEffect(() => { fetch("/api/calendar/upcoming?hours=24&limit=8").then((r) => (r.ok ? r.json() : Promise.reject())).then((d: { meetings?: Meeting[] }) => setM(d.meetings ?? [])).catch(() => setFailed(true)); }, []);
   const time = (iso: string) => {
@@ -60,8 +65,21 @@ export function AgendaWidget({ roomy }: Props) {
           <li key={x.id}>
             <Link href="/app/calendar?view=day" className={`flex items-baseline gap-3 ctl px-2 py-1.5 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[12px]"}`}>
               <span className="num w-[5.5rem] shrink-0 text-muted">{x.allDay ? "all day" : time(x.start)}</span>
-              <span className="min-w-0 flex-1 truncate">{x.title || "Untitled"}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{x.title || "Untitled"}</span>
+                {(x.contacts?.length || x.deals?.length) ? (
+                  <span className="block truncate text-[11px] text-muted">
+                    {x.contacts?.length ? `with ${x.contacts[0].name || x.contacts[0].email}${x.contacts.length > 1 ? ` +${x.contacts.length - 1}` : ""}` : ""}
+                    {x.contacts?.length && x.deals?.length ? " · " : ""}
+                    {x.deals?.length ? x.deals.map((d) => d.name).slice(0, 2).join(", ") : ""}
+                  </span>
+                ) : null}
+              </span>
+              {x.external && <span className="shrink-0 rounded bg-info/10 px-1 text-[10px] text-info" title="Someone outside your firm is invited">external</span>}
             </Link>
+            {joinable(x.videoUrl) && now !== null && Date.parse(x.start) - now < 15 * 60_000 && Date.parse(x.end) > now && (
+              <a href={joinable(x.videoUrl)!} target="_blank" rel="noreferrer noopener" className="ctl ml-[5.5rem] mb-1 inline-flex items-center gap-1 bg-accent px-2 py-0.5 text-[11px] font-semibold text-accent-fg">Join now</a>
+            )}
           </li>
         ))}
       </ul>
