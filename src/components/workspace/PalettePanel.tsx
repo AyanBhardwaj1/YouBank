@@ -8,7 +8,7 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import { THEMES } from "@/lib/themes";
 import { FEATURES } from "@/lib/nav";
 import { emitSubNav } from "@/lib/subnav";
-import { asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
+import { asComparison, asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
 import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES, WALLPAPERS } from "@/lib/desk/desk";
 import { useNav } from "./NavContext";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -129,6 +129,12 @@ export function Palette({ onClose }: { onClose: () => void }) {
       out.splice(at, 0, open, watch);
       out.push(share);
     }
+    // "SNOW vs MDB": compare them side by side with the AI (growth, margins, valuation, with sources), first.
+    const cmp = asComparison(query);
+    if (cmp) {
+      const question = `Compare ${cmp.slice(0, -1).join(", ")} and ${cmp[cmp.length - 1]} side by side: revenue growth, margins, free cash flow and valuation, in a table, with sources.`;
+      out.unshift({ id: `compare:${cmp.join("-")}`, label: `Compare ${cmp.join(" vs ")}`, group: "Ask", icon: "Scale", hint: "growth, margins and valuation, in a table", href: `/app/terminal?ticker=${encodeURIComponent(cmp[0])}&fn=AI&arg=${encodeURIComponent(question)}` });
+    }
     // People and deals, only for the query they were fetched for (an older answer never shows under a newer query).
     if (crm && crm.q === query) {
       for (const p of crm.contacts) out.push({ id: `person:${p.id}`, label: p.name || p.email, group: "People", icon: "Users", hint: [p.company, p.name ? p.email : ""].filter(Boolean).join(" · "), href: `/app/crm?tab=contacts&q=${encodeURIComponent(p.email || p.name)}` });
@@ -143,7 +149,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
 
   const run = useCallback((c: Command) => {
-    if (c.id !== "ask" && !/^(ticker|watch|unwatch|share|person|deal):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
+    if (c.id !== "ask" && !/^(ticker|watch|unwatch|share|person|deal|compare):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
     onClose();
     if (c.run) { c.run(); return; }
     if (!c.href) return;

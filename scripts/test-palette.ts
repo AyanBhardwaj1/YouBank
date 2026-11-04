@@ -1,5 +1,5 @@
 /** Command palette ranking (src/lib/palette.ts): pnpm exec tsx scripts/test-palette.ts */
-import { asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
+import { asComparison, asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
 import { findTools } from "@/lib/ai/catalog-tool";
 
 let pass = 0, fail = 0;
@@ -37,6 +37,12 @@ ok("…but typed in capitals it is", asTicker("NEWS"), "NEWS");
 ok("a sentence is not a ticker", asTicker("what is the ev"), null);
 ok("too long is not a ticker", asTicker("ABCDEFG"), null);
 
+console.log("comparisons");
+ok("vs", asComparison("snow vs mdb"), ["SNOW", "MDB"]);
+ok("commas and and", asComparison("SNOW, MDB and DDOG"), ["SNOW", "MDB", "DDOG"]);
+ok("ampersand and versus", [asComparison("nvda & amd"), asComparison("KO versus PEP")], [["NVDA", "AMD"], ["KO", "PEP"]]);
+ok("one ticker, a sentence, or too many are not comparisons", [asComparison("snow"), asComparison("what is snow vs mdb growth"), asComparison("a,b,c,d,e")], [null, null, null]);
+ok("the same ticker twice is not a comparison", asComparison("snow vs SNOW"), null);
 console.log("recent");
 ok("newest first, no repeats", pushRecent(["a", "b", "c"], "b"), ["b", "a", "c"]);
 ok("at most the cap", pushRecent(["a", "b", "c"], "d", 3), ["d", "a", "b"]);

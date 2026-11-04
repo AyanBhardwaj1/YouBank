@@ -67,6 +67,19 @@ export function asTicker(q: string): string | null {
   return t.toUpperCase();
 }
 
+/**
+ * Two to four tickers to compare: "snow vs mdb", "SNOW, MDB and DDOG", "nvda & amd". Null for anything
+ * else, including a single ticker or a sentence.
+ */
+export function asComparison(q: string): string[] | null {
+  const parts = q.trim().split(/\s*(?:\bvs\.?|\bversus\b|,|&|\band\b)\s*/i).filter(Boolean);
+  if (parts.length < 2 || parts.length > 4) return null;
+  const tickers = parts.map((p) => (/^[A-Za-z]{1,5}([.-][A-Za-z]{1,2})?$/.test(p) ? p.toUpperCase() : null));
+  if (tickers.some((t) => t === null)) return null;
+  const unique = [...new Set(tickers as string[])];
+  return unique.length >= 2 ? unique : null;
+}
+
 /** Recently chosen commands, newest first, without repeats, at most `max`. */
 export function pushRecent(recent: string[], id: string, max = 6): string[] {
   return [id, ...recent.filter((x) => x !== id)].slice(0, max);
