@@ -109,7 +109,10 @@ export function Palette({ onClose }: { onClose: () => void }) {
       const watch: Command = watched
         ? { id: `unwatch:${t}`, label: `Remove ${t} from the watchlist`, group: "Home", icon: "X", run: () => setWatchlist(config.watchlist.filter((x) => x !== t)) }
         : { id: `watch:${t}`, label: `Add ${t} to the watchlist`, group: "Home", icon: "Star", hint: "Home, the terminal and your news", run: () => setWatchlist([...config.watchlist, t]) };
+      // The public page (/c/TICKER): SEC fundamentals and filings anyone can open, to share.
+      const share: Command = { id: `share:${t}`, label: `Copy ${t}'s public page link`, group: "Go to", icon: "Share2", hint: "SEC fundamentals and filings, for anyone", run: () => { void navigator.clipboard?.writeText(`${window.location.origin}/c/${encodeURIComponent(t)}`).catch(() => undefined); } };
       out.splice(at, 0, open, watch);
+      out.push(share);
     }
     const ask: Command = { id: "ask", label: `Ask: “${query.length > 70 ? `${query.slice(0, 70)}…` : query}”`, group: "Ask", icon: "Sparkles", hint: "AI, with sources", href: `/app/terminal?ticker=${encodeURIComponent(t ?? first)}&fn=AI&arg=${encodeURIComponent(query)}` };
     // A question goes to the AI first; a word or two that matches something goes there first.
@@ -120,7 +123,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
 
   const run = useCallback((c: Command) => {
-    if (c.id !== "ask" && !/^(ticker|watch|unwatch):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
+    if (c.id !== "ask" && !/^(ticker|watch|unwatch|share):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
     onClose();
     if (c.run) { c.run(); return; }
     if (!c.href) return;
