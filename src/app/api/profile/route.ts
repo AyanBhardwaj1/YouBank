@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { guarded } from "@/lib/auth/user";
 import { ROLES, type RoleId } from "@/lib/roles";
+import { normalizeDesk, recommendDesk } from "@/lib/desk/desk";
+import { normalizeNavPrefs } from "@/lib/nav";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,16 @@ export async function POST(req: Request) {
     };
     const db = requireDb();
     const [row] = await db.insert(schema.profiles).values({ userId: user.id, ...values }).onConflictDoUpdate({ target: schema.profiles.userId, set: values }).returning();
+    // The first time the survey is finished, YouBank sets up the desk from it (features, Home, the top
+    // bar). Retaking the survey later never overrides a desk the person has (Settings → My desk can redo it).
+    const extra = (row.extra ?? {}) as Record<string, unknown>;
+    if (!normalizeDesk(extra.desk, values.role).setupAt) {
+      const r = recommendDesk(values.role, [values.specialty, values.goals].filter(Boolean).join(". "));
+      const desk = { ...r.desk, source: "auto" as const, notes: normalizeDesk(extra.desk, values.role).notes };
+      const next = { ...extra, desk, nav: { ...normalizeNavPrefs(extra.nav, values.role, desk.hidden), pinned: r.pinned } };
+      await db.update(schema.profiles).set({ extra: next }).where(eq(schema.profiles.userId, user.id)).catch(() => undefined);
+      return NextResponse.json({ ...row, extra: next });
+    }
     return NextResponse.json(row);
   });
 }

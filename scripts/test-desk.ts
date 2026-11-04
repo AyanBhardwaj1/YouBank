@@ -1,0 +1,68 @@
+/** Workspace setup and appearance (src/lib/desk/desk.ts): pnpm exec tsx scripts/test-desk.ts */
+import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
+import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
+
+let pass = 0, fail = 0;
+const ok = (label: string, got: unknown, want: unknown) => {
+  const g = JSON.stringify(got), w = JSON.stringify(want);
+  if (g === w) { pass++; console.log(`  ok   ${label}`); }
+  else { fail++; console.log(`  FAIL ${label}\n       got  ${g}\n       want ${w}`); }
+};
+const now = new Date("2026-11-04T08:00:00Z");
+
+console.log("cleaning stored desk preferences");
+const d = normalizeDesk(undefined, "banker");
+ok("defaults to the Desk layout", d.layout, "desk");
+ok("every widget appears exactly once", [...d.widgets.map((w) => w.id)].sort(), [...WIDGETS].sort());
+const junk = normalizeDesk({ layout: "space", widgets: [{ id: "notes" }, { id: "bogus" }, { id: "notes", on: false }, "x"], hidden: ["crypto", "home", "settings", "nope"], notes: "x".repeat(5000), source: "hacker" }, "banker");
+ok("an unknown layout falls back", junk.layout, "desk");
+ok("unknown and repeated widgets drop out; the rest are kept, switched off", [junk.widgets[0], junk.widgets.length, junk.widgets.filter((w) => w.on).length], [{ id: "notes", on: true }, WIDGETS.length, 1]);
+ok("Home and Settings can never be hidden; unknown features drop out", junk.hidden, ["crypto"]);
+ok("notes are capped", junk.notes.length, 4000);
+ok("an unknown source is 'auto'", junk.source, "auto");
+ok("the private-markets widget is on for VC on the Desk layout", widgetsFor("desk", "vc").find((w) => w.id === "private")?.on, true);
+
+console.log("setting it up from the survey");
+const banker = recommendDesk("banker", "", now);
+ok("a banker gets the Desk layout and the Relationships agent", [banker.desk.layout, banker.desk.hidden.includes("crm")], ["desk", false]);
+ok("trading features are out of a banker's way", ["crypto", "algo", "copy", "quant"].every((id) => banker.desk.hidden.includes(id as never)), true);
+ok("the reasons say what was hidden", banker.reasons.some((r) => r.includes("Crypto")), true);
+const student = recommendDesk("student", "", now);
+ok("a student gets the roomy Home layout", student.desk.layout, "home");
+const crypto = recommendDesk("banker", "I cover crypto exchanges and want to backtest some signals", now);
+ok("words switch features on", [crypto.desk.hidden.includes("crypto"), crypto.desk.hidden.includes("algo"), crypto.desk.hidden.includes("quant")], [false, false, false]);
+ok("and say so", crypto.reasons.filter((r) => r.startsWith("You mentioned")).length, 2);
+ok("a description counts as set up from your words", crypto.desk.source, "ai");
+ok("a calm, minimal request picks Focus", recommendDesk("markets", "keep it minimal and clean please", now).desk.layout, "focus");
+ok("a cozy request picks Home", recommendDesk("banker", "something cozy and warm", now).desk.layout, "home");
+ok("Private markets is never switched on for a role without it", recommendDesk("banker", "startups and form d", now).desk.hidden.includes("vc"), false);
+ok("…and does not appear among its features at all", featuresFor("banker").some((f) => f.id === "vc"), false);
+ok("pinned features are never hidden ones", banker.pinned.some((id) => banker.desk.hidden.includes(id)), false);
+{
+  const r = recommendDesk("consultant", "crypto research and some algo trading", now);
+  ok("named features are pinned right after Home", r.pinned.slice(0, 3), ["home", "crypto", "algo"]);
+  ok("pins stay a short bar", r.pinned.length <= 6, true);
+}
+ok("the same input gives the same setup", JSON.stringify(recommendDesk("pe", "LBO models and outreach", now)), JSON.stringify(recommendDesk("pe", "LBO models and outreach", now)));
+
+console.log("the navigation follows what is hidden");
+ok("a hidden feature is not in the navigation", featuresFor("banker", ["studio"]).some((f) => f.id === "studio"), false);
+ok("…nor pinned", normalizeNavPrefs({ pinned: ["home", "studio", "crm"] }, "banker", ["studio"]).pinned, ["home", "crm"]);
+ok("…nor in the default pins", normalizeNavPrefs(undefined, "banker", ["studio"]).pinned.includes("studio"), false);
+
+console.log("how it looks");
+ok("unknown look values take the defaults", normalizeLook({ scale: 3, radius: "blob", font: "comic", accent: "#123456", background: "lava", motion: "fast", contrast: "max" }), DEFAULT_LOOK);
+ok("the scale is read from a cookie string", normalizeLook({ scale: "1.25" }).scale, 1.25);
+const look = normalizeLook({ scale: 1.1, radius: "round", font: "serif", accent: "#a78bfa", background: "mesh", motion: "reduced", contrast: "high" });
+ok("cookie round trip", readLookCookie(lookCookie(look)), look);
+ok("a default look writes an empty cookie", decodeURIComponent(lookCookie(DEFAULT_LOOK)), "{}");
+ok("a broken cookie is the default", readLookCookie("%7Bnot-json"), DEFAULT_LOOK);
+const a = lookAttrs(look);
+ok("attributes on <html>", a.attrs, { "data-font": "serif", "data-bg": "mesh", "data-motion": "reduced", "data-contrast": "high" });
+ok("variables on <html>", [a.vars["--ui-scale"], a.vars["--radius"], a.vars["--accent"], a.vars["--accent-soft"]], ["1.1", "16px", "#a78bfa", "#a78bfa24"]);
+ok("the default look sets nothing", lookAttrs(DEFAULT_LOOK), { attrs: {}, vars: {} });
+ok("text on a light accent is dark, on a dark one light", [accentInk("#facc15"), accentInk("#4f8cff")], ["#0a0c0f", "#ffffff"]);
+ok("every accent swatch is a colour or 'theme'", ACCENTS.every((x) => x === "theme" || /^#[0-9a-f]{6}$/.test(x)), true);
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

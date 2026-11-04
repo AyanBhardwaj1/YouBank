@@ -1,0 +1,242 @@
+/**
+ * A person's workspace: which features are on, how Home is laid out, and which widgets it shows in what
+ * order (profiles.extra.desk), plus how the whole app looks beyond the theme (profiles.extra.look, mirrored
+ * in the yb-look cookie so the first paint is already right).
+ *
+ * YouBank sets it up for the person from their survey (recommendDesk): their role decides the starting set,
+ * and words in their goals switch on what they mentioned ("crypto", "outreach", "backtest"). It can also be
+ * set up from a sentence they write (src/app/api/desk/setup, a model call checked against these same
+ * vocabularies), and every choice stays theirs to change in Settings → My desk and Style. Pure.
+ */
+import { FEATURES, defaultPinned, type NavId } from "@/lib/nav";
+import type { RoleId } from "@/lib/roles";
+
+/* ---------------- Home ---------------- */
+
+/** Focus: one question box and the few things that need you. Home: a calm, roomy page for the day. Desk: everything, dense. */
+export const LAYOUTS = ["focus", "home", "desk"] as const;
+export type HomeLayout = (typeof LAYOUTS)[number];
+
+export const WIDGETS = ["brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved"] as const;
+export type WidgetId = (typeof WIDGETS)[number];
+
+export const WIDGET_LABEL: Record<WidgetId, string> = {
+  brief: "Today's brief", agenda: "Coming up", waiting: "Waiting for you", watchlist: "Watchlist", movers: "Movers",
+  start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work",
+};
+export const WIDGET_HINT: Record<WidgetId, string> = {
+  brief: "The morning brief for your desk", agenda: "Meetings in the next day, with prep briefs", waiting: "Drafts, questions and suggestions the agents left for you",
+  watchlist: "Prices, multiples and trends for your names", movers: "The names that moved most today", start: "Tools picked for your role",
+  ask: "Suggested questions for the assistant", runs: "Your latest tool runs", notes: "A scratchpad kept on your account",
+  private: "The startup directory and new private raises", saved: "Comps sheets and peer groups",
+};
+
+export type WidgetPref = { id: WidgetId; on: boolean };
+export type DeskPrefs = {
+  layout: HomeLayout;
+  /** Every widget, in the order shown; `on: false` keeps its place for when it is switched back on. */
+  widgets: WidgetPref[];
+  /** Features taken out of the navigation. Their pages still open from a link. */
+  hidden: NavId[];
+  /** How the current setup was made: from the survey, from the person's own words, or by hand. */
+  source: "auto" | "ai" | "you";
+  setupAt: string | null;
+  /** The Notes widget's text. */
+  notes: string;
+};
+
+/** Features that are always there: the app is unusable without them. */
+export const CORE_FEATURES: NavId[] = ["home", "settings"];
+export const NOTES_MAX = 4000;
+
+const isLayout = (v: unknown): v is HomeLayout => typeof v === "string" && (LAYOUTS as readonly string[]).includes(v);
+const isWidget = (v: unknown): v is WidgetId => typeof v === "string" && (WIDGETS as readonly string[]).includes(v);
+
+/** The widgets on by default for each layout. */
+const LAYOUT_WIDGETS: Record<HomeLayout, WidgetId[]> = {
+  focus: ["waiting", "agenda", "brief"],
+  home: ["agenda", "brief", "waiting", "watchlist", "notes", "runs"],
+  desk: ["brief", "start", "watchlist", "movers", "ask", "runs", "waiting", "agenda", "saved"],
+};
+
+/** A widget list with every widget once: the given order first, then the rest switched off. */
+function completeWidgets(list: WidgetPref[]): WidgetPref[] {
+  const seen = new Set<WidgetId>();
+  const out: WidgetPref[] = [];
+  for (const w of list) if (!seen.has(w.id)) { seen.add(w.id); out.push(w); }
+  for (const id of WIDGETS) if (!seen.has(id)) out.push({ id, on: false });
+  return out;
+}
+
+export const widgetsFor = (layout: HomeLayout, role?: RoleId): WidgetPref[] => {
+  const on = [...LAYOUT_WIDGETS[layout], ...(layout === "desk" && (role === "vc" || role === "pe") ? (["private"] as WidgetId[]) : [])];
+  return completeWidgets(on.map((id) => ({ id, on: true })));
+};
+
+export const defaultDesk = (role: RoleId): DeskPrefs => ({ layout: "desk", widgets: widgetsFor("desk", role), hidden: [], source: "auto", setupAt: null, notes: "" });
+
+/** Stored desk preferences, cleaned. Unknown widgets and features drop out; a missing list falls back to the layout's. */
+export function normalizeDesk(raw: unknown, role: RoleId): DeskPrefs {
+  const d = defaultDesk(role);
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const layout = isLayout(r.layout) ? r.layout : d.layout;
+  const widgets = Array.isArray(r.widgets)
+    ? completeWidgets(r.widgets.flatMap((w) => {
+      const o = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
+      return isWidget(o.id) ? [{ id: o.id, on: o.on !== false }] : [];
+    }))
+    : widgetsFor(layout, role);
+  const known = new Set(FEATURES.map((f) => f.id));
+  const hidden = Array.isArray(r.hidden) ? [...new Set(r.hidden.filter((x): x is NavId => typeof x === "string" && known.has(x as NavId) && !CORE_FEATURES.includes(x as NavId)))] : [];
+  const source = r.source === "ai" || r.source === "you" ? r.source : "auto";
+  return { layout, widgets, hidden, source, setupAt: typeof r.setupAt === "string" ? r.setupAt : null, notes: typeof r.notes === "string" ? r.notes.slice(0, NOTES_MAX) : "" };
+}
+
+/* ---------------- Setting it up for the person ---------------- */
+
+/** Every optional feature, so a recommendation can say what it hid and why. */
+const OPTIONAL: NavId[] = ["terminal", "news", "tools", "studio", "edge", "vc", "crypto", "copy", "algo", "quant", "crm", "calendar", "collab", "library", "team"];
+
+/** What each role starts with: features shown, the Home layout, and what goes in the top bar. */
+const ROLE_SETUP: Record<RoleId, { show: NavId[]; layout: HomeLayout; pinned?: NavId[] }> = {
+  banker: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "crm", "news"] },
+  pe: { show: ["terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team", "quant"], layout: "desk", pinned: ["home", "terminal", "vc", "studio", "crm"] },
+  vc: { show: ["terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "vc", "crm", "news", "tools"] },
+  markets: { show: ["terminal", "news", "tools", "studio", "edge", "quant", "copy", "algo", "calendar", "library", "team"], layout: "desk", pinned: ["home", "terminal", "news", "quant", "edge"] },
+  corpfin: { show: ["terminal", "news", "tools", "studio", "edge", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "tools", "news"] },
+  consultant: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "tools", "studio", "news", "crm"] },
+  accountant: { show: ["terminal", "news", "tools", "studio", "calendar", "collab", "library", "team"], layout: "focus", pinned: ["home", "tools", "terminal", "studio"] },
+  student: { show: ["terminal", "news", "tools", "studio", "edge", "library", "calendar"], layout: "home", pinned: ["home", "terminal", "tools", "news", "studio"] },
+};
+
+/** Words in a person's goals (or their own description) that switch features on. */
+const KEYWORDS: [RegExp, NavId[]][] = [
+  [/\b(crypto|bitcoin|btc|ethereum|eth|defi|token|stablecoin|on-?chain|web3)\b/i, ["crypto"]],
+  [/\b(algo|algorithmic|systematic|backtest|trading bot|quant|factor|alpha|signals?)\b/i, ["algo", "quant"]],
+  [/\b(13f|hedge funds?|copy (trading|portfolios?)|clone)\b/i, ["copy"]],
+  [/\b(outreach|cold email|email|inbox|follow[- ]?ups?|pipeline|crm|relationships?|fundrais\w*|investors?|lps?|prospects?)\b/i, ["crm"]],
+  [/\b(meetings?|calendar|schedule|calls?)\b/i, ["calendar"]],
+  [/\b(startups?|venture|seed|series [a-d]|form d|private (markets?|companies)|sourcing)\b/i, ["vc"]],
+  [/\b(models?|dcf|lbo|decks?|pitch ?books?|excel|powerpoint|spreadsheets?)\b/i, ["studio"]],
+  [/\b(satellite|alternative data|alt data|supply chain|deal radar|precedents?|theses|thesis)\b/i, ["edge"]],
+  [/\b(news|headlines|briefs?|morning)\b/i, ["news"]],
+  [/\b(team|colleagues|together|collaborat\w*)\b/i, ["team", "collab"]],
+];
+
+/** Words that pick a Home layout. */
+const LAYOUT_WORDS: [RegExp, HomeLayout][] = [
+  [/\b(minimal|clean|simple|focus(ed)?|distraction|calm|quiet|uncluttered)\b/i, "focus"],
+  [/\b(cozy|cosy|homey|warm|relaxed|friendly|comfortable|comfy)\b/i, "home"],
+  [/\b(dense|everything|power user|bloomberg|terminal|all the data|dashboard)\b/i, "desk"],
+];
+
+export type DeskRecommendation = { desk: DeskPrefs; pinned: NavId[]; reasons: string[] };
+
+/**
+ * The desk YouBank would set up from a role and some words (the survey's goals and specialty, or the
+ * person's own description). Pure: the same input always gives the same setup.
+ */
+export function recommendDesk(role: RoleId, words = "", now = new Date()): DeskRecommendation {
+  const base = ROLE_SETUP[role] ?? ROLE_SETUP.banker;
+  const show = new Set<NavId>(base.show);
+  const reasons: string[] = [`Started from what a ${role === "pe" ? "private equity" : role === "vc" ? "venture" : role === "corpfin" ? "corporate finance" : role} desk uses most.`];
+  const mentioned: NavId[] = [];
+  for (const [re, ids] of KEYWORDS) {
+    const hit = re.exec(words);
+    if (!hit) continue;
+    for (const id of ids) if (!mentioned.includes(id) && FEATURES.some((f) => f.id === id && (!f.roles || f.roles.includes(role)))) mentioned.push(id);
+    const added = ids.filter((id) => !show.has(id) && FEATURES.find((f) => f.id === id && (!f.roles || f.roles.includes(role))));
+    for (const id of added) show.add(id);
+    if (added.length) reasons.push(`You mentioned “${hit[0]}”, so ${added.map((id) => FEATURES.find((f) => f.id === id)?.label ?? id).join(" and ")} ${added.length === 1 ? "is" : "are"} on.`);
+  }
+  let layout = base.layout;
+  for (const [re, l] of LAYOUT_WORDS) {
+    const hit = re.exec(words);
+    if (hit) { layout = l; reasons.push(`You asked for something “${hit[0]}”, so Home uses the ${l === "focus" ? "Focus" : l === "home" ? "Home" : "Desk"} layout.`); break; }
+  }
+  const hidden = OPTIONAL.filter((id) => !show.has(id) && FEATURES.some((f) => f.id === id && (!f.roles || f.roles.includes(role))));
+  if (hidden.length) reasons.push(`Out of the way for now, and one switch away in Settings → My desk: ${hidden.map((id) => FEATURES.find((f) => f.id === id)?.label ?? id).join(", ")}.`);
+  // What the person named goes first in the bar (after Home), then the role's usual pins, five or six in all.
+  const rolePins = [...(base.pinned ?? defaultPinned(role))].filter((id) => !hidden.includes(id));
+  const pinned = [...new Set<NavId>(["home", ...mentioned, ...rolePins])].filter((id) => !hidden.includes(id)).slice(0, Math.max(rolePins.length, 6));
+  const widgets = widgetsFor(layout, role).map((w) => (w.id === "private" && !show.has("vc") ? { ...w, on: false } : w));
+  return { desk: { layout, widgets, hidden, source: words.trim() ? "ai" : "auto", setupAt: now.toISOString(), notes: "" }, pinned, reasons };
+}
+
+/* ---------------- How it looks ---------------- */
+
+export const SCALES = [0.9, 1, 1.1, 1.25] as const;
+export const RADII = ["theme", "square", "soft", "round"] as const;
+export const FONTS = ["sans", "serif", "mono", "system"] as const;
+export const BACKGROUNDS = ["theme", "plain", "mesh", "grid", "dots"] as const;
+/** Accent swatches people can pick instead of the theme's own. */
+export const ACCENTS = ["theme", "#f5a623", "#4f8cff", "#a78bfa", "#2dd4bf", "#34d399", "#fb7185", "#f472b6", "#facc15", "#38bdf8", "#e879f9"] as const;
+
+export type LookPrefs = {
+  scale: (typeof SCALES)[number];
+  radius: (typeof RADII)[number];
+  font: (typeof FONTS)[number];
+  accent: (typeof ACCENTS)[number];
+  background: (typeof BACKGROUNDS)[number];
+  motion: "full" | "reduced";
+  contrast: "normal" | "high";
+};
+export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", motion: "full", contrast: "normal" };
+export const LOOK_COOKIE = "yb-look";
+
+const oneOf = <T,>(list: readonly T[], v: unknown, d: T): T => (list.includes(v as T) ? (v as T) : d);
+
+/** Stored look preferences (or the cookie's), cleaned: anything unknown takes the default. */
+export function normalizeLook(raw: unknown): LookPrefs {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    scale: oneOf(SCALES, typeof r.scale === "string" ? Number(r.scale) : r.scale, DEFAULT_LOOK.scale),
+    radius: oneOf(RADII, r.radius, DEFAULT_LOOK.radius),
+    font: oneOf(FONTS, r.font, DEFAULT_LOOK.font),
+    accent: oneOf(ACCENTS, r.accent, DEFAULT_LOOK.accent),
+    background: oneOf(BACKGROUNDS, r.background, DEFAULT_LOOK.background),
+    motion: r.motion === "reduced" ? "reduced" : "full",
+    contrast: r.contrast === "high" ? "high" : "normal",
+  };
+}
+
+/** The look as a short cookie value (only what differs from the default). Pure. */
+export function lookCookie(l: LookPrefs): string {
+  const diff = Object.fromEntries(Object.entries(l).filter(([k, v]) => DEFAULT_LOOK[k as keyof LookPrefs] !== v));
+  return encodeURIComponent(JSON.stringify(diff));
+}
+export function readLookCookie(v: string | undefined): LookPrefs {
+  if (!v) return DEFAULT_LOOK;
+  try { return normalizeLook(JSON.parse(decodeURIComponent(v))); } catch { return DEFAULT_LOOK; }
+}
+
+/** The attributes and CSS variables the look sets on <html>. Pure, so the server and the browser agree. */
+export function lookAttrs(l: LookPrefs): { attrs: Record<string, string>; vars: Record<string, string> } {
+  const attrs: Record<string, string> = {};
+  const vars: Record<string, string> = {};
+  if (l.scale !== 1) vars["--ui-scale"] = String(l.scale);
+  if (l.radius !== "theme") {
+    const [r, s] = l.radius === "square" ? [0, 0] : l.radius === "soft" ? [8, 6] : [16, 12];
+    vars["--radius"] = `${r}px`; vars["--radius-sm"] = `${s}px`;
+  }
+  if (l.font !== "sans") attrs["data-font"] = l.font;
+  if (l.accent !== "theme") {
+    vars["--accent"] = l.accent;
+    vars["--accent-soft"] = `${l.accent}24`;
+    vars["--accent-fg"] = accentInk(l.accent);
+    vars["--chart-1"] = l.accent;
+  }
+  if (l.background !== "theme") attrs["data-bg"] = l.background;
+  if (l.motion === "reduced") attrs["data-motion"] = "reduced";
+  if (l.contrast === "high") attrs["data-contrast"] = "high";
+  return { attrs, vars };
+}
+
+/** Black or white text on an accent, whichever reads better (WCAG relative luminance). */
+export function accentInk(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return "#ffffff";
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.4 ? "#0a0c0f" : "#ffffff";
+}

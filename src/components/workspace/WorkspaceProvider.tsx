@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { workspaceFor, type Profile, type WorkspaceConfig } from "@/lib/roles";
 import type { ToolMeta } from "@/lib/workflows/catalog";
+import { DEFAULT_LOOK, LOOK_COOKIE, defaultDesk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, type DeskPrefs, type LookPrefs } from "@/lib/desk/desk";
 
 type Workspace = {
   profile: Profile; config: WorkspaceConfig; /** Whether Edge is available here (always, inside the app; not on public pages). */ edge: boolean;
@@ -11,13 +12,60 @@ type Workspace = {
    * full catalog of every role stays out of the JavaScript every signed-in page loads.
    */
   tools: ToolMeta[];
+  /** Features on, the Home layout and its widgets (Settings → My desk). */
+  desk: DeskPrefs;
+  /** Change the desk now and save it (notes are saved after a pause, so typing is not a request a key). */
+  setDesk: (patch: Partial<DeskPrefs>) => void;
+  /** How the app looks beyond the theme (Settings → Style). */
+  look: LookPrefs;
+  setLook: (patch: Partial<LookPrefs>) => void;
 };
 const Ctx = createContext<Workspace | null>(null);
 
 const NO_TOOLS: ToolMeta[] = [];
 
-export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, children }: { profile: Profile; edge?: boolean; tools?: ToolMeta[]; children: React.ReactNode }) {
-  const value = useMemo(() => ({ profile, config: workspaceFor(profile), edge, tools }), [profile, edge, tools]);
+const save = (body: Record<string, unknown>) => {
+  void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).catch(() => undefined);
+};
+
+/** Put a look on <html> now (and in its cookie, so the next page's first paint already has it). */
+export function applyLook(l: LookPrefs) {
+  const html = document.documentElement;
+  const { attrs, vars } = lookAttrs(l);
+  for (const a of ["data-font", "data-bg", "data-motion", "data-contrast"]) {
+    if (attrs[a]) html.setAttribute(a, attrs[a]); else html.removeAttribute(a);
+  }
+  for (const v of ["--ui-scale", "--radius", "--radius-sm", "--accent", "--accent-soft", "--accent-fg", "--chart-1"]) {
+    if (vars[v]) html.style.setProperty(v, vars[v]); else html.style.removeProperty(v);
+  }
+  try { document.cookie = `${LOOK_COOKIE}=${lookCookie(l)}; path=/; max-age=31536000; samesite=lax`; } catch { /* ignore */ }
+}
+
+export function WorkspaceProvider({ profile, edge = false, tools = NO_TOOLS, desk: initialDesk, look: initialLook, children }: {
+  profile: Profile; edge?: boolean; tools?: ToolMeta[]; desk?: unknown; look?: unknown; children: React.ReactNode;
+}) {
+  const [desk, setDeskState] = useState<DeskPrefs>(() => (initialDesk === undefined ? defaultDesk(profile.role) : normalizeDesk(initialDesk, profile.role)));
+  const [look, setLookState] = useState<LookPrefs>(() => (initialLook === undefined ? DEFAULT_LOOK : normalizeLook(initialLook)));
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setDesk = useCallback((patch: Partial<DeskPrefs>) => {
+    setDeskState((d) => normalizeDesk({ ...d, ...patch, ...(Object.keys(patch).some((k) => k !== "notes") ? { source: patch.source ?? "you" } : {}) }, profile.role));
+    if (Object.keys(patch).length === 1 && "notes" in patch) {
+      if (notesTimer.current) clearTimeout(notesTimer.current);
+      notesTimer.current = setTimeout(() => save({ desk: { notes: patch.notes } }), 800);
+    } else save({ desk: patch });
+  }, [profile.role]);
+
+  const setLook = useCallback((patch: Partial<LookPrefs>) => {
+    setLookState((l) => {
+      const next = normalizeLook({ ...l, ...patch });
+      applyLook(next);
+      return next;
+    });
+    save({ look: patch });
+  }, []);
+
+  const value = useMemo(() => ({ profile, config: workspaceFor(profile), edge, tools, desk, setDesk, look, setLook }), [profile, edge, tools, desk, setDesk, look, setLook]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -26,5 +74,5 @@ const FALLBACK: Profile = { role: "banker", specialty: "Technology M&A", seniori
 /** Workspace config for the signed-in user's role. Falls back to a tech banker when used outside the provider. */
 export function useWorkspace(): Workspace {
   const v = useContext(Ctx);
-  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [] };
+  return v ?? { profile: FALLBACK, config: workspaceFor(FALLBACK), edge: false, tools: [], desk: defaultDesk(FALLBACK.role), setDesk: () => undefined, look: DEFAULT_LOOK, setLook: () => undefined };
 }

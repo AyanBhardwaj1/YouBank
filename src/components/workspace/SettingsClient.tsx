@@ -21,6 +21,8 @@ const DesktopSettings = lazyPanel(() => import("@/components/desktop/DesktopConn
 const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((m) => m.EdgeUpgrades));
 const DataSourcesSettings = lazyPanel(() => import("@/components/settings/DataSourcesSettings").then((m) => m.DataSourcesSettings), TabLoading);
 const SecuritySettings = lazyPanel(() => import("@/components/settings/SecuritySettings").then((m) => m.SecuritySettings), TabLoading);
+const DeskSettings = lazyPanel(() => import("@/components/settings/DeskSettings").then((m) => m.DeskSettings), TabLoading);
+const LookSettings = lazyPanel(() => import("@/components/settings/LookSettings").then((m) => m.LookSettings), TabLoading);
 
 const TABS = [
   { id: "style", label: "Style", icon: "Palette" },
@@ -38,7 +40,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
-  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings, SecuritySettings]);
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings, SecuritySettings, DeskSettings, LookSettings]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
@@ -70,6 +72,7 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
             <h2 className="text-[14px] font-semibold">Interface style</h2>
             <p className="mt-1 max-w-[70ch] text-[12px] text-muted">Fourteen styles, each with its own palette, density, corner radius and glass. Terminal styles are square and dense; modern styles are rounder and softer. Your choice is saved to your account and applies everywhere, including the signed-out pages on this browser.</p>
             <div className="mt-4"><ThemePicker /></div>
+            <LookSettings />
           </section>
         )}
 
@@ -105,8 +108,9 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
           <section className="mt-5 rise space-y-4">
             <div>
               <h2 className="text-[14px] font-semibold">Your desk</h2>
-              <p className="mt-1 text-[12px] text-muted">Derived from your survey answers. Change the answers to rebuild it.</p>
+              <p className="mt-1 text-[12px] text-muted">Set up for you from your survey. Change any of it here; nothing is locked.</p>
             </div>
+            <DeskSettings />
             <dl className="grid gap-3 sm:grid-cols-2">
               {[
                 ["Role", ROLES[profile.role].label], ["Specialty", profile.specialty || "—"], ["Level", profile.seniority || "—"], ["Firm type", profile.firmType || "—"],

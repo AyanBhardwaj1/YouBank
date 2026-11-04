@@ -1,0 +1,291 @@
+"use client";
+
+/**
+ * Home's widgets (src/lib/desk/desk.ts WIDGETS). Each is self-contained: it fetches what it shows, says so
+ * plainly when there is nothing or it could not load, and takes a `roomy` flag for the Home layout's larger
+ * type and spacing. HomeDashboard decides which are on and in what order.
+ */
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useWorkspace } from "../WorkspaceProvider";
+import { ToolCard } from "@/components/workflows/ToolCard";
+import { useCompanies } from "@/lib/client/companies";
+import { Sparkline } from "@/components/charts/Sparkline";
+import { Icon } from "@/components/ui/Icon";
+import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
+import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
+import { changeTone, fmtChange } from "@/lib/market/units";
+import { NOTES_MAX, WIDGET_LABEL, type WidgetId } from "@/lib/desk/desk";
+
+export type HomeFacts = { directoryTotal: number | null; sheets: number; groups: number };
+type Props = { roomy?: boolean };
+
+const H = ({ children, right, roomy }: { children: React.ReactNode; right?: React.ReactNode; roomy?: boolean }) => (
+  <div className="mb-2 flex items-baseline justify-between gap-2">
+    <h2 className={roomy ? "text-[14px] font-semibold text-fg" : "text-[11px] uppercase tracking-wider text-muted"}>{children}</h2>
+    {right}
+  </div>
+);
+const box = (roomy?: boolean) => (roomy ? "home-card p-5" : "panel p-3");
+
+/* ---------------- Waiting for you ---------------- */
+
+type Waiting = { items: { id: string; label: string; count: number; href: string }[] };
+export function WaitingWidget({ roomy }: Props) {
+  const [d, setD] = useState<Waiting | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { fetch("/api/desk/waiting").then((r) => (r.ok ? r.json() : Promise.reject())).then(setD).catch(() => setFailed(true)); }, []);
+  const open = d?.items.filter((i) => i.count > 0) ?? [];
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy}>{WIDGET_LABEL.waiting}</H>
+      {!d && !failed && <div className="shimmer h-12 ctl" />}
+      {failed && <p className="text-[11.5px] text-muted">This could not be loaded just now. It will be back on the next visit.</p>}
+      {d && open.length === 0 && <p className={`${roomy ? "text-[13px]" : "text-[11.5px]"} text-muted`}>Nothing is waiting for you. The agents will leave drafts, questions and follow-ups here.</p>}
+      <ul className="space-y-1">
+        {open.map((i) => (
+          <li key={i.id}>
+            <Link href={i.href} className={`flex items-center justify-between gap-2 ctl px-2 py-1.5 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[12px]"}`}>
+              <span>{i.label}</span><span className="num rounded-full bg-accent-soft px-2 py-px text-[11px] font-semibold text-accent">{i.count}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ---------------- Coming up (the next 24 hours) ---------------- */
+
+type Meeting = { id: number; title: string; start: string; end: string; allDay: boolean; location: string };
+export function AgendaWidget({ roomy }: Props) {
+  const [m, setM] = useState<Meeting[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { fetch("/api/calendar/upcoming?hours=24&limit=8").then((r) => (r.ok ? r.json() : Promise.reject())).then((d: { meetings?: Meeting[] }) => setM(d.meetings ?? [])).catch(() => setFailed(true)); }, []);
+  const time = (iso: string) => {
+    const d = new Date(iso);
+    const t = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+    return d.toDateString() === new Date().toDateString() ? t : `${d.toLocaleDateString("en-US", { weekday: "short" })} ${t}`;
+  };
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy} right={<Link href="/app/calendar" className="text-[11px] text-muted hover:text-fg">calendar →</Link>}>{WIDGET_LABEL.agenda}</H>
+      {!m && !failed && <div className="shimmer h-12 ctl" />}
+      {(failed || m?.length === 0) && (
+        <p className={`${roomy ? "text-[13px]" : "text-[11.5px]"} text-muted`}>
+          {failed ? "Your calendar could not be read just now." : "Nothing in the next 24 hours."} <Link href="/app/calendar" className="text-fg hover:text-accent">Connect or open your calendar</Link>.
+        </p>
+      )}
+      <ul className="space-y-1">
+        {m?.map((x) => (
+          <li key={x.id}>
+            <Link href="/app/calendar?view=day" className={`flex items-baseline gap-3 ctl px-2 py-1.5 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[12px]"}`}>
+              <span className="num w-[5.5rem] shrink-0 text-muted">{x.allDay ? "all day" : time(x.start)}</span>
+              <span className="min-w-0 flex-1 truncate">{x.title || "Untitled"}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* ---------------- Notes ---------------- */
+
+export function NotesWidget({ roomy }: Props) {
+  const { desk, setDesk } = useWorkspace();
+  const [text, setText] = useState(desk.notes);
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy} right={<span className="text-[10.5px] text-faint">saved on your account</span>}>{WIDGET_LABEL.notes}</H>
+      <textarea value={text} maxLength={NOTES_MAX} rows={roomy ? 7 : 5} aria-label="Notes"
+        onChange={(e) => { setText(e.target.value); setDesk({ notes: e.target.value }); }}
+        placeholder="Calls to make, names to check, the thing you will forget by lunch…"
+        className={`ctl w-full resize-y border border-line bg-transparent px-2.5 py-2 text-fg outline-none placeholder:text-faint focus:border-accent ${roomy ? "text-[13.5px] leading-relaxed" : "text-[12px]"}`} />
+    </section>
+  );
+}
+
+/* ---------------- Watchlist and movers ---------------- */
+
+export function WatchlistWidget({ roomy }: Props) {
+  const { config } = useWorkspace();
+  const { data, errors, loading } = useCompanies(config.watchlist);
+  const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
+  if (roomy) {
+    return (
+      <section className={box(roomy)}>
+        <H roomy right={<Link href="/app/terminal" className="text-[11px] text-muted hover:text-fg">terminal →</Link>}>{WIDGET_LABEL.watchlist}</H>
+        {rows.length === 0 && loading && <div className="shimmer h-24 ctl" />}
+        {rows.length === 0 && !loading && <p className="text-[13px] text-muted">{config.watchlist.length === 0 ? "Open a company in the terminal to start your watchlist." : `${Object.values(errors)[0] ?? "Prices could not be loaded right now."} Your names will fill in when they are back.`}</p>}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {rows.slice(0, 9).map((c) => {
+            const chg = c.price?.changePct ?? null;
+            return (
+              <Link key={c.ticker} href={`/app/terminal?ticker=${c.ticker}`} className="lift ctl border border-line px-3 py-2.5 hover:border-accent/50">
+                <div className="flex items-baseline justify-between"><span className="num text-[13px] font-semibold">{c.ticker}</span><span className={`num text-[12px] ${changeTone(chg)}`}>{fmtChange(chg)}</span></div>
+                <div className="mt-0.5 truncate text-[11px] text-muted">{c.name}</div>
+                {c.quarters.length > 1 && <div className="mt-1.5"><Sparkline values={c.quarters.map((q) => q.revenue)} width={110} height={20} stroke="var(--chart-1)" /></div>}
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="panel p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
+        <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>
+      </div>
+      <div className="table-scroll overflow-auto">
+        <table className="w-full whitespace-nowrap text-[11.5px]">
+          <thead className="text-[10px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Ticker</th><th className="py-1 pr-3 text-right font-normal">Price</th><th className="py-1 pr-3 text-right font-normal">Today</th><th className="py-1 pr-3 text-right font-normal">EV/Rev</th><th className="py-1 pr-3 text-right font-normal">Growth</th><th className="py-1 pr-3 text-right font-normal">FCF margin</th><th className="py-1 pr-1 text-right font-normal">Revenue trend</th></tr></thead>
+          <tbody>
+            {rows.map((c) => {
+              const d = derive(c);
+              const chg = c.price?.changePct ?? null;
+              return (
+                <tr key={c.ticker} className="border-b border-line/50 hover:bg-elevated/60">
+                  <td className="py-1.5"><Link href={`/app/terminal?ticker=${c.ticker}`} className="num font-semibold hover:text-accent">{c.ticker}</Link> <span className="hidden max-w-[150px] truncate text-[10.5px] text-muted xl:inline">{c.name.replace(/,? (Inc|Corp|Holdings|plc)\.?$/i, "")}</span></td>
+                  <td className="num py-1.5 pr-3 text-right">{c.price ? c.price.last.toFixed(2) : "—"}</td>
+                  <td className={`num py-1.5 pr-3 text-right ${chg === null ? "" : chg >= 0 ? "text-pos" : "text-neg"}`}>{fmtChange(chg)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{fmtX(d.evRevLtm)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{fmtPct(d.revenueGrowth)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{fmtPct(d.fcfMargin)}</td>
+                  <td className="py-1 pr-1 text-right">{c.quarters.length > 1 && <span className="inline-block"><Sparkline values={c.quarters.map((q) => q.revenue)} width={60} height={16} stroke="var(--chart-1)" /></span>}</td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && loading && Array.from({ length: 4 }).map((_, i) => <tr key={i}><td colSpan={7} className="py-1"><span className="shimmer block h-4 ctl" /></td></tr>)}
+            {rows.length === 0 && !loading && (
+              <tr><td colSpan={7} className="whitespace-normal py-3 text-[11.5px] text-muted">
+                {config.watchlist.length === 0
+                  ? <>No names yet. Open a company in the <Link href="/app/terminal" className="text-fg hover:text-accent">terminal</Link> to start your watchlist.</>
+                  : <>{Object.values(errors)[0] ?? "Prices and filings could not be loaded right now."} Your watchlist ({config.watchlist.slice(0, 6).join(", ")}{config.watchlist.length > 6 ? "…" : ""}) will fill in when they are back.</>}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+export function MoversWidget({ roomy }: Props) {
+  const { config } = useWorkspace();
+  const { data } = useCompanies(config.watchlist);
+  const movers = config.watchlist.map((t) => data[t]).filter(Boolean).sort((a, b) => Math.abs(b.price?.changePct ?? 0) - Math.abs(a.price?.changePct ?? 0)).slice(0, 3);
+  if (!movers.length) return null;
+  return (
+    <section>
+      <H roomy={roomy}>Movers worth a look</H>
+      <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {movers.map((c) => {
+          const d = derive(c);
+          const chg = c.price?.changePct ?? null;
+          return (
+            <Link key={c.ticker} href={`/app/terminal?ticker=${c.ticker}&fn=DES`} className={`lift p-3 ${roomy ? "home-card" : "panel"}`}>
+              <div className="flex items-baseline justify-between"><span className="num text-[13px] font-semibold">{c.ticker}</span><span className={`num text-[11.5px] ${changeTone(chg)}`}>{fmtChange(chg, 2, true)}</span></div>
+              <div className="mt-0.5 truncate text-[11px] text-muted">{c.name}</div>
+              <div className="num mt-2 flex items-baseline gap-3 text-[11px]"><span>EV {d.ev !== null ? `$${fmtMoney(d.ev)}` : "n/a"}</span><span className="text-muted">{fmtX(d.evRevLtm)} rev</span></div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ---------------- Tools, the assistant, runs ---------------- */
+
+export function StartWidget({ roomy }: Props) {
+  const { tools } = useWorkspace();
+  return (
+    <section>
+      <H roomy={roomy} right={<Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link>}>Start here</H>
+      <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {tools.slice(0, roomy ? 3 : 6).map((t) => <ToolCard key={t.id} t={t} />)}
+      </div>
+    </section>
+  );
+}
+
+export function AskWidget({ roomy }: Props) {
+  const { config } = useWorkspace();
+  const first = config.watchlist[0] ?? "SNOW";
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy}>{WIDGET_LABEL.ask}</H>
+      <div className="space-y-1.5">
+        {config.suggestedPrompts(first).map((p) => (
+          <Link key={p} href={`/app/terminal?ticker=${first}&fn=AI&arg=${encodeURIComponent(p)}`} className={`block ctl border border-line px-2.5 py-1.5 text-fg/90 transition hover:border-accent/50 hover:text-accent ${roomy ? "text-[13px]" : "text-[11.5px]"}`}>{p}</Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type Run = { id: number; toolId: string; title: string; createdAt: string };
+export function RunsWidget({ roomy }: Props) {
+  const [runs, setRuns] = useState<Run[] | null>(null);
+  useEffect(() => { fetch("/api/tools/runs?limit=6").then((r) => r.json()).then((r) => setRuns(Array.isArray(r) ? r : [])).catch(() => setRuns([])); }, []);
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy} right={<Link href="/app/library" className="text-[11px] text-muted hover:text-fg">library →</Link>}>{roomy ? "Pick up where you left off" : "Recent runs"}</H>
+      {runs === null && <div className="shimmer h-16 ctl" />}
+      {runs?.length === 0 && <div className={`${roomy ? "text-[13px]" : "text-[11.5px]"} text-muted`}>Nothing yet. Runs and calculator results you save land here with their sources.</div>}
+      <ul className="space-y-1">
+        {runs?.map((r) => (
+          <li key={r.id}>
+            <Link href={`/app/tools/${r.toolId}?run=${r.id}`} className={`flex items-baseline gap-2 ctl px-1.5 py-1 hover:bg-elevated ${roomy ? "text-[13px]" : "text-[11.5px]"}`}>
+              <span className="min-w-0 flex-1 truncate">{r.title || r.toolId}</span>
+              <span className="num shrink-0 text-[10px] text-muted">{new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+export function PrivateWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
+  return (
+    <Link href="/app/vc" className={`lift block p-3 ${roomy ? "home-card p-5" : "panel"}`}>
+      <div className="flex items-center gap-2"><Icon name="Rocket" className="h-4 w-4 text-accent" /><h2 className="text-[12.5px] font-semibold">Private markets</h2></div>
+      <p className="mt-1.5 text-[11.5px] text-muted">{facts.directoryTotal ? `${facts.directoryTotal.toLocaleString()} startups` : "The startup directory"} across Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and web discovery, plus every private raise filed this month.</p>
+      <span className="mt-2 inline-block text-[11.5px] text-accent">Open the directory →</span>
+    </Link>
+  );
+}
+
+export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
+  return (
+    <section className={`${box(roomy)} text-[11.5px]`}>
+      <H roomy={roomy}>Your saved work</H>
+      <dl className="space-y-1">
+        <div className="flex justify-between"><dt className="text-muted">Comps sheets</dt><dd className="num">{facts.sheets}</dd></div>
+        <div className="flex justify-between"><dt className="text-muted">Peer groups</dt><dd className="num">{facts.groups}</dd></div>
+      </dl>
+      <div className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">Fundamentals refresh every six hours; prices on every load. Nightly jobs re-sync the startup directory and new Form D filings.</div>
+    </section>
+  );
+}
+
+/** One widget by id. */
+export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: boolean; facts: HomeFacts; brief?: BriefSeed }) {
+  switch (id) {
+    case "brief": return <HomeBrief seed={brief} />;
+    case "agenda": return <AgendaWidget roomy={roomy} />;
+    case "waiting": return <WaitingWidget roomy={roomy} />;
+    case "watchlist": return <WatchlistWidget roomy={roomy} />;
+    case "movers": return <MoversWidget roomy={roomy} />;
+    case "start": return <StartWidget roomy={roomy} />;
+    case "ask": return <AskWidget roomy={roomy} />;
+    case "runs": return <RunsWidget roomy={roomy} />;
+    case "notes": return <NotesWidget roomy={roomy} />;
+    case "private": return <PrivateWidget roomy={roomy} facts={facts} />;
+    case "saved": return <SavedWidget roomy={roomy} facts={facts} />;
+  }
+}

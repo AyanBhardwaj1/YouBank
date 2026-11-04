@@ -1,175 +1,131 @@
 "use client";
 
+/**
+ * Home, in the layout the person chose (Settings → My desk, or the switch at the top of the page):
+ * - Focus: one question box and the few widgets that need you, nothing else;
+ * - Home: a calm, roomy page for the day, with larger type and cards;
+ * - Desk: everything, dense, in two columns.
+ * The widgets, and their order, are the person's (src/lib/desk/desk.ts).
+ */
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ROLES } from "@/lib/roles";
-import { ToolCard } from "@/components/workflows/ToolCard";
-import { useCompanies } from "@/lib/client/companies";
-import { Sparkline } from "@/components/charts/Sparkline";
 import { Icon } from "@/components/ui/Icon";
 import { Reveal } from "@/components/motion/Reveal";
-import { HomeBrief, type BriefSeed } from "@/components/news/HomeBrief";
-import { derive, fmtMoney, fmtPct, fmtX } from "@/lib/metrics";
-import { changeTone, fmtChange } from "@/lib/market/units";
-
-type Run = { id: number; toolId: string; title: string; model: string; status: string; createdAt: string; durationMs: number };
+import type { BriefSeed } from "@/components/news/HomeBrief";
+import { LAYOUTS, type HomeLayout, type WidgetId } from "@/lib/desk/desk";
+import { Widget, type HomeFacts } from "./home/Widgets";
 
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+const LAYOUT_LABEL: Record<HomeLayout, string> = { focus: "Focus", home: "Home", desk: "Desk" };
+/** Widgets that need the width of the main column. */
+const WIDE = new Set<WidgetId>(["brief", "start", "watchlist", "movers"]);
 
-export function HomeDashboard({ facts, brief }: { facts: { directoryTotal: number | null; sheets: number; groups: number }; brief?: BriefSeed }) {
-  const { profile, config, tools } = useWorkspace();
-  const [runs, setRuns] = useState<Run[] | null>(null);
-  const { data, errors, loading } = useCompanies(config.watchlist);
-  const rows = config.watchlist.map((t) => data[t]).filter(Boolean);
-  const movers = [...rows].sort((a, b) => Math.abs(b.price?.changePct ?? 0) - Math.abs(a.price?.changePct ?? 0)).slice(0, 6);
+function LayoutSwitch() {
+  const { desk, setDesk } = useWorkspace();
+  return (
+    <div className="flex items-center gap-1" role="radiogroup" aria-label="Home layout">
+      {LAYOUTS.map((l) => (
+        <button key={l} type="button" role="radio" aria-checked={desk.layout === l} onClick={() => setDesk({ layout: l })}
+          className={`ctl px-2 py-1 text-[11px] transition ${desk.layout === l ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{LAYOUT_LABEL[l]}</button>
+      ))}
+      <Link href="/app/settings?tab=desk" className="ctl ml-1 flex items-center gap-1 px-2 py-1 text-[11px] text-muted hover:text-fg" title="Choose features, widgets and their order"><Icon name="SlidersHorizontal" className="h-3 w-3" />Customize</Link>
+    </div>
+  );
+}
+
+function AskBox({ big }: { big?: boolean }) {
+  const { config } = useWorkspace();
+  const router = useRouter();
+  const [q, setQ] = useState("");
   const first = config.watchlist[0] ?? "SNOW";
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t) router.push(`/app/terminal?ticker=${first}&fn=AI&arg=${encodeURIComponent(t)}`); }}
+      className={`flex items-center gap-2 border border-line bg-panel focus-within:border-accent ${big ? "home-card px-4 py-3" : "panel px-3 py-2"}`}>
+      <Icon name="Sparkles" className="h-4 w-4 shrink-0 text-accent" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Ask anything"
+        placeholder={`Ask anything: a company, a deal, a number… e.g. “${config.suggestedPrompts(first)[0] ?? "What changed in the latest 10-Q?"}”`}
+        className={`min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-faint ${big ? "text-[15px]" : "text-[13px]"}`} />
+      <button type="submit" disabled={!q.trim()} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">Ask</button>
+    </form>
+  );
+}
 
-  useEffect(() => { fetch("/api/tools/runs?limit=6").then((r) => r.json()).then((r) => setRuns(Array.isArray(r) ? r : [])).catch(() => setRuns([])); }, []);
+export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: BriefSeed }) {
+  const { profile, tools, desk } = useWorkspace();
+  const on = desk.widgets.filter((w) => w.on).map((w) => w.id);
+  const name = profile.name ? `, ${profile.name.split(" ")[0]}` : "";
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
+  if (desk.layout === "focus") {
+    return (
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-[760px] px-5 py-10">
+          <Reveal eager>
+            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[12px] text-muted">{today}</span><LayoutSwitch /></div>
+            <h1 className="mt-6 text-[28px] font-semibold tracking-tight">{greeting()}{name}.</h1>
+            <p className="mt-1 text-[13px] text-muted">What do you need?</p>
+            <div className="mt-5"><AskBox big /></div>
+          </Reveal>
+          <div className="mt-6 space-y-4">
+            {on.map((id, i) => <Reveal key={id} eager delay={i * 40}><Widget id={id} facts={facts} brief={brief} /></Reveal>)}
+            {on.length === 0 && <p className="text-[12.5px] text-muted">No widgets on. <Link href="/app/settings?tab=desk" className="text-accent hover:underline">Choose some</Link>.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (desk.layout === "home") {
+    return (
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-[1180px] px-5 py-6">
+          <Reveal eager>
+            <div className="home-hero home-card px-6 py-7">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[12px] text-muted">{today}</div>
+                  <h1 className="mt-1 text-[30px] font-semibold tracking-tight">{greeting()}{name}.</h1>
+                  <p className="mt-1 text-[13px] text-muted">{ROLES[profile.role].label}{profile.firmName ? ` · ${profile.firmName}` : ""}. Here is your day.</p>
+                </div>
+                <LayoutSwitch />
+              </div>
+              <div className="mt-5"><AskBox big /></div>
+            </div>
+          </Reveal>
+          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {on.map((id, i) => <Reveal key={id} eager delay={i * 40} className={WIDE.has(id) ? "lg:col-span-2" : ""}><Widget id={id} roomy facts={facts} brief={brief} /></Reveal>)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const main = on.filter((id) => WIDE.has(id));
+  const side = on.filter((id) => !WIDE.has(id));
+  const first = profile.firmTicker || undefined;
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1280px] px-5 py-6">
         <Reveal eager>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-[22px] font-semibold tracking-tight">{greeting()}{profile.name ? `, ${profile.name.split(" ")[0]}` : ""}.</h1>
+              <h1 className="text-[22px] font-semibold tracking-tight">{greeting()}{name}.</h1>
               <p className="mt-1 text-[12.5px] text-muted">{ROLES[profile.role].label}{profile.specialty ? ` · ${profile.specialty}` : ""}{profile.firmName ? ` · ${profile.firmName}` : ""}{profile.seniority ? ` · ${profile.seniority}` : ""} · <Link href="/app/profile" className="hover:text-fg">change</Link></p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href={`/app/terminal?ticker=${first}`} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg transition hover:brightness-110"><Icon name="Terminal" className="h-3.5 w-3.5" /> Open the terminal</Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <LayoutSwitch />
+              <Link href={`/app/terminal${first ? `?ticker=${first}` : ""}`} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg transition hover:brightness-110"><Icon name="Terminal" className="h-3.5 w-3.5" /> Open the terminal</Link>
               <Link href="/app/tools" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12.5px] text-fg transition hover:border-accent/50 hover:text-accent"><Icon name="Wand2" className="h-3.5 w-3.5" /> {tools.length} tools</Link>
-              <Link href={`/app/terminal?ticker=${first}&fn=AI`} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12.5px] text-fg transition hover:border-accent/50 hover:text-accent"><Icon name="Sparkles" className="h-3.5 w-3.5" /> Ask the assistant</Link>
             </div>
           </div>
         </Reveal>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-4">
-            <Reveal eager><HomeBrief seed={brief} /></Reveal>
-
-            <Reveal eager>
-              <section>
-                <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Start here</h2><Link href="/app/tools" className="text-[11px] text-muted hover:text-fg">all tools →</Link></div>
-                <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {tools.slice(0, 6).map((t) => <ToolCard key={t.id} t={t} />)}
-                </div>
-              </section>
-            </Reveal>
-
-            <Reveal eager>
-              <section className="panel p-3">
-                <div className="mb-2 flex items-baseline justify-between">
-                  <h2 className="text-[11px] uppercase tracking-wider text-muted">Your watchlist</h2>
-                  <span className="text-[10.5px] text-muted">{loading && rows.length === 0 ? "loading from SEC and prices…" : rows.length === 0 ? `${config.watchlist.length} names` : `${rows.length} names · click to open`}</span>
-                </div>
-                <div className="table-scroll overflow-auto">
-                  <table className="w-full whitespace-nowrap text-[11.5px]">
-                    <thead className="text-[10px] uppercase tracking-wider text-muted"><tr className="border-b border-line"><th className="py-1 text-left font-normal">Ticker</th><th className="py-1 pr-3 text-right font-normal">Price</th><th className="py-1 pr-3 text-right font-normal">Today</th><th className="py-1 pr-3 text-right font-normal">EV/Rev</th><th className="py-1 pr-3 text-right font-normal">Growth</th><th className="py-1 pr-3 text-right font-normal">FCF margin</th><th className="py-1 pr-1 text-right font-normal">Revenue trend</th></tr></thead>
-                    <tbody>
-                      {rows.map((c) => {
-                        const d = derive(c);
-                        const chg = c.price?.changePct ?? null;
-                        return (
-                          <tr key={c.ticker} className="border-b border-line/50 hover:bg-elevated/60">
-                            <td className="py-1.5"><Link href={`/app/terminal?ticker=${c.ticker}`} className="num font-semibold hover:text-accent">{c.ticker}</Link> <span className="hidden max-w-[150px] truncate text-[10.5px] text-muted xl:inline">{c.name.replace(/,? (Inc|Corp|Holdings|plc)\.?$/i, "")}</span></td>
-                            <td className="num py-1.5 pr-3 text-right">{c.price ? c.price.last.toFixed(2) : "—"}</td>
-                            <td className={`num py-1.5 pr-3 text-right ${chg === null ? "" : chg >= 0 ? "text-pos" : "text-neg"}`}>{fmtChange(chg)}</td>
-                            <td className="num py-1.5 pr-3 text-right">{fmtX(d.evRevLtm)}</td>
-                            <td className="num py-1.5 pr-3 text-right">{fmtPct(d.revenueGrowth)}</td>
-                            <td className="num py-1.5 pr-3 text-right">{fmtPct(d.fcfMargin)}</td>
-                            <td className="py-1 pr-1 text-right">{c.quarters.length > 1 && <span className="inline-block"><Sparkline values={c.quarters.map((q) => q.revenue)} width={60} height={16} stroke="var(--chart-1)" /></span>}</td>
-                          </tr>
-                        );
-                      })}
-                      {rows.length === 0 && loading && Array.from({ length: 4 }).map((_, i) => <tr key={i}><td colSpan={7} className="py-1"><span className="shimmer block h-4 ctl" /></td></tr>)}
-                      {/* Nothing loaded and nothing still coming: say why instead of a shimmer that never ends. */}
-                      {rows.length === 0 && !loading && (
-                        <tr><td colSpan={7} className="whitespace-normal py-3 text-[11.5px] text-muted">
-                          {config.watchlist.length === 0
-                            ? <>No names yet. Open a company in the <Link href="/app/terminal" className="text-fg hover:text-accent">terminal</Link> to start your watchlist.</>
-                            : <>{Object.values(errors)[0] ?? "Prices and filings could not be loaded right now."} Your watchlist ({config.watchlist.slice(0, 6).join(", ")}{config.watchlist.length > 6 ? "…" : ""}) will fill in when they are back.</>}
-                        </td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </Reveal>
-
-            {movers.length > 0 && (
-              <Reveal>
-                <section>
-                  <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Movers worth a look</h2>
-                  <div className="stagger grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {movers.slice(0, 3).map((c) => {
-                      const d = derive(c);
-                      const chg = c.price?.changePct ?? null;
-                      return (
-                        <Link key={c.ticker} href={`/app/terminal?ticker=${c.ticker}&fn=DES`} className="lift panel p-3">
-                          <div className="flex items-baseline justify-between"><span className="num text-[13px] font-semibold">{c.ticker}</span><span className={`num text-[11.5px] ${changeTone(chg)}`}>{fmtChange(chg, 2, true)}</span></div>
-                          <div className="mt-0.5 truncate text-[11px] text-muted">{c.name}</div>
-                          <div className="num mt-2 flex items-baseline gap-3 text-[11px]"><span>EV {d.ev !== null ? `$${fmtMoney(d.ev)}` : "n/a"}</span><span className="text-muted">{fmtX(d.evRevLtm)} rev</span></div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </section>
-              </Reveal>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <Reveal eager delay={60}>
-              <section className="panel p-3">
-                <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Ask the assistant</h2>
-                <div className="space-y-1.5">
-                  {config.suggestedPrompts(first).map((p) => (
-                    <Link key={p} href={`/app/terminal?ticker=${first}&fn=AI`} className="block ctl border border-line px-2.5 py-1.5 text-[11.5px] text-fg/90 transition hover:border-accent/50 hover:text-accent">{p}</Link>
-                  ))}
-                </div>
-              </section>
-            </Reveal>
-
-            <Reveal eager delay={100}>
-              <section className="panel p-3">
-                <div className="mb-2 flex items-baseline justify-between"><h2 className="text-[11px] uppercase tracking-wider text-muted">Recent runs</h2><Link href="/app/library" className="text-[11px] text-muted hover:text-fg">library →</Link></div>
-                {runs === null && <div className="shimmer h-16 ctl" />}
-                {runs?.length === 0 && <div className="text-[11.5px] text-muted">Nothing yet. Runs and calculator results you save land here with their sources.</div>}
-                <ul className="space-y-1">
-                  {runs?.map((r) => (
-                    <li key={r.id}>
-                      <Link href={`/app/tools/${r.toolId}?run=${r.id}`} className="flex items-baseline gap-2 ctl px-1.5 py-1 text-[11.5px] hover:bg-elevated">
-                        <span className="min-w-0 flex-1 truncate">{r.title || r.toolId}</span>
-                        <span className="num shrink-0 text-[10px] text-muted">{new Date(r.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </Reveal>
-
-            {(profile.role === "vc" || profile.role === "pe") && (
-              <Reveal eager delay={140}>
-                <Link href="/app/vc" className="lift block panel p-3">
-                  <div className="flex items-center gap-2"><Icon name="Rocket" className="h-4 w-4 text-accent" /><h2 className="text-[12.5px] font-semibold">Private markets</h2></div>
-                  <p className="mt-1.5 text-[11.5px] text-muted">{facts.directoryTotal ? `${facts.directoryTotal.toLocaleString()} startups` : "The startup directory"} across Y Combinator, a16z, Thiel Fellows, Show HN, SEC Form D and web discovery, plus every private raise filed this month.</p>
-                  <span className="mt-2 inline-block text-[11.5px] text-accent">Open the directory →</span>
-                </Link>
-              </Reveal>
-            )}
-
-            <Reveal eager delay={180}>
-              <section className="panel p-3 text-[11.5px]">
-                <h2 className="mb-2 text-[11px] uppercase tracking-wider text-muted">Your saved work</h2>
-                <dl className="space-y-1">
-                  <div className="flex justify-between"><dt className="text-muted">Comps sheets</dt><dd className="num">{facts.sheets}</dd></div>
-                  <div className="flex justify-between"><dt className="text-muted">Peer groups</dt><dd className="num">{facts.groups}</dd></div>
-                </dl>
-                <div className="mt-2 border-t border-line pt-2 text-[10.5px] text-muted">Fundamentals refresh every six hours; prices on every load. Nightly jobs re-sync the startup directory and new Form D filings.</div>
-              </section>
-            </Reveal>
-          </div>
+          <div className="space-y-4">{main.map((id) => <Reveal key={id} eager><Widget id={id} facts={facts} brief={brief} /></Reveal>)}</div>
+          <div className="space-y-4">{side.map((id, i) => <Reveal key={id} eager delay={60 + i * 40}><Widget id={id} facts={facts} brief={brief} /></Reveal>)}</div>
         </div>
       </div>
     </div>

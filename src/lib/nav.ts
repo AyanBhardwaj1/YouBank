@@ -80,7 +80,8 @@ export const FEATURES: NavFeature[] = [
   },
 ];
 
-export const featuresFor = (role: RoleId) => FEATURES.filter((f) => !f.roles || f.roles.includes(role));
+/** The features a person sees: their role's, less any they took out of the navigation (Settings → My desk). */
+export const featuresFor = (role: RoleId, hidden: readonly string[] = []) => FEATURES.filter((f) => (!f.roles || f.roles.includes(role)) && !hidden.includes(f.id));
 
 export type NavLabels = "full" | "icons";
 export type NavPrefs = {
@@ -98,11 +99,11 @@ export function defaultPinned(role: RoleId): NavId[] {
 export const defaultNavPrefs = (role: RoleId): NavPrefs => ({ pinned: defaultPinned(role), labels: "full", dock: false });
 
 /** Stored preferences, cleaned: unknown or role-gated features drop out; malformed values fall back. */
-export function normalizeNavPrefs(raw: unknown, role: RoleId): NavPrefs {
+export function normalizeNavPrefs(raw: unknown, role: RoleId, hidden: readonly string[] = []): NavPrefs {
   const d = defaultNavPrefs(role);
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const valid = new Set<string>(featuresFor(role).map((f) => f.id));
-  const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned;
+  const valid = new Set<string>(featuresFor(role, hidden).map((f) => f.id));
+  const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned.filter((id) => valid.has(id));
   return { pinned, labels: r.labels === "icons" ? "icons" : "full", dock: r.dock === true };
 }
 

@@ -366,3 +366,46 @@ body { --table-bg: var(--bg); }
 @media (prefers-reduced-motion: reduce) {
   .scroll-touch { scroll-behavior: auto; }
 }
+
+/* ---------------- Appearance studio (src/lib/desk/desk.ts lookAttrs, set on <html>) ---------------- */
+
+/* UI scale: the signed-in app frame is zoomed, and its height divided back so it still fills the screen. */
+html[style*="--ui-scale"] .app-frame { zoom: var(--ui-scale); height: calc(100dvh / var(--ui-scale)); }
+
+/* Typeface for the whole app; figures and tables keep the mono face. */
+html[data-font="serif"] { --font-sans: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; }
+html[data-font="mono"] { --font-sans: var(--font-mono); }
+html[data-font="system"] { --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+/* Background over the theme's own. */
+html[data-bg="plain"] body { background-image: none; }
+html[data-bg="mesh"] body {
+  background-image:
+    radial-gradient(1100px 560px at 8% -12%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 60%),
+    radial-gradient(900px 520px at 100% 0%, color-mix(in srgb, var(--info) 16%, transparent), transparent 62%),
+    radial-gradient(800px 600px at 50% 115%, color-mix(in srgb, var(--pos) 12%, transparent), transparent 60%);
+}
+html[data-bg="grid"] body {
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+html[data-bg="dots"] body { background-image: radial-gradient(var(--line-strong) 1px, transparent 1.2px); background-size: 18px 18px; }
+
+/* Higher contrast: secondary text and hairlines move toward the foreground. */
+html[data-contrast="high"] {
+  --muted: color-mix(in oklab, var(--fg) 82%, var(--bg));
+  --faint: color-mix(in oklab, var(--fg) 62%, var(--bg));
+  --line: color-mix(in oklab, var(--fg) 26%, var(--bg));
+  --line-strong: color-mix(in oklab, var(--fg) 42%, var(--bg));
+}
+
+/* Less motion, whatever the system says (the system setting is honoured above as well). */
+html[data-motion="reduced"] { scroll-behavior: auto; }
+html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important;
+}
+html[data-motion="reduced"] .reveal { opacity: 1; transform: none; }
+
+/* Home layouts: the roomy Home page and the Focus page. */
+.home-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--panel)), var(--panel) 60%); }
+.home-card { border-radius: calc(var(--radius) + 6px); background: var(--panel); border: 1px solid var(--line); }
