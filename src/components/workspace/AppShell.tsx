@@ -22,6 +22,7 @@ import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
 import { CommandPalette } from "./CommandPalette";
 import { Shortcuts } from "./Shortcuts";
+import { SystemTheme } from "@/components/theme/SystemTheme";
 import { listenForInstall } from "@/lib/client/install";
 
 const persist = (nav: NavPrefs) => {
@@ -82,6 +83,8 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
         <CommandPalette />
         {/* G then a letter to go to a feature, ? for the list (Shortcuts). */}
         <Shortcuts />
+        {/* Style follows the device's light or dark setting when the person asked for that. */}
+        <SystemTheme />
       </div>
     </NavCtx.Provider>
   );

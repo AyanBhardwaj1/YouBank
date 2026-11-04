@@ -222,8 +222,12 @@ export type LookPrefs = {
   background: (typeof BACKGROUNDS)[number];
   motion: "full" | "reduced";
   contrast: "normal" | "high";
+  /** Follow the device's light or dark setting, with these two styles. */
+  system: boolean;
+  lightTheme: ThemeId;
+  darkTheme: ThemeId;
 };
-export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", motion: "full", contrast: "normal" };
+export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", motion: "full", contrast: "normal", system: false, lightTheme: "daylight", darkTheme: "terminal" };
 export const LOOK_COOKIE = "yb-look";
 
 const oneOf = <T,>(list: readonly T[], v: unknown, d: T): T => (list.includes(v as T) ? (v as T) : d);
@@ -239,6 +243,9 @@ export function normalizeLook(raw: unknown): LookPrefs {
     background: oneOf(BACKGROUNDS, r.background, DEFAULT_LOOK.background),
     motion: r.motion === "reduced" ? "reduced" : "full",
     contrast: r.contrast === "high" ? "high" : "normal",
+    system: r.system === true,
+    lightTheme: typeof r.lightTheme === "string" && isThemeId(r.lightTheme) ? r.lightTheme : DEFAULT_LOOK.lightTheme,
+    darkTheme: typeof r.darkTheme === "string" && isThemeId(r.darkTheme) ? r.darkTheme : DEFAULT_LOOK.darkTheme,
   };
 }
 

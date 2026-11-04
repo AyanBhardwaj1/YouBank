@@ -12,7 +12,7 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { Icon } from "@/components/ui/Icon";
 import { promptDialog } from "@/components/ui/Dialog";
-import { themeById } from "@/lib/themes";
+import { THEMES, themeById, type ThemeId } from "@/lib/themes";
 import { ACCENTS, BACKGROUNDS, BUILTIN_LOOKS, DEFAULT_LOOK, FONTS, RADII, SCALES, asAccent, lookCode, readLookCode, type LookPrefs, type LookPreset } from "@/lib/desk/desk";
 
 const SCALE_LABEL: Record<number, string> = { 0.9: "Compact", 1: "Standard", 1.1: "Large", 1.25: "Larger" };
@@ -148,6 +148,24 @@ function LookStudio() {
         {changed && <button type="button" onClick={() => set(DEFAULT_LOOK)} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Back to the style&apos;s defaults</button>}
       </div>
       <div className="mt-2" role="radiogroup">
+        <Row icon="Contrast" label="Light and dark" hint="Follow your device's setting, with a style for each">
+          <Choice on={!look.system} onClick={() => set({ system: false })}>One style</Choice>
+          <Choice on={look.system} onClick={() => set({ system: true })}>Match my system</Choice>
+          {look.system && (
+            <span className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+              <label className="flex items-center gap-1">Light
+                <select value={look.lightTheme} onChange={(e) => set({ lightTheme: e.target.value as ThemeId })} className="ctl border border-line bg-panel px-1.5 py-1 text-[12px] text-fg">
+                  {THEMES.filter((t) => t.mode === "light").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+              <label className="flex items-center gap-1">Dark
+                <select value={look.darkTheme} onChange={(e) => set({ darkTheme: e.target.value as ThemeId })} className="ctl border border-line bg-panel px-1.5 py-1 text-[12px] text-fg">
+                  {THEMES.filter((t) => t.mode === "dark").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+            </span>
+          )}
+        </Row>
         <Row icon="Maximize2" label="Size" hint="Everything in the app, text and controls">
           {SCALES.map((s) => <Choice key={s} on={look.scale === s} onClick={() => set({ scale: s })}>{SCALE_LABEL[s]}</Choice>)}
         </Row>
