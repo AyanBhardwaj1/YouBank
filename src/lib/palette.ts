@@ -5,7 +5,7 @@
  * open it, and any query can be asked of the AI.
  */
 
-export type PaletteGroup = "Recent" | "Go to" | "Pages" | "Tools" | "Ask" | "Home" | "Style" | "Look" | "Features" | "Settings" | "App";
+export type PaletteGroup = "Recent" | "Go to" | "Pages" | "Tools" | "Ask" | "Home" | "Style" | "Look" | "Features" | "Settings" | "App" | "People" | "Deals";
 
 export type PaletteItem = {
   id: string;

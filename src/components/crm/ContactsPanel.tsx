@@ -17,9 +17,9 @@ type Contact = {
 const BLANK = { email: "", name: "", company: "", kind: "unknown", notes: "" };
 
 /** Everyone the agent knows, when you last spoke, what is new about them, and whether they can be written to. */
-export function ContactsPanel({ ctx }: { ctx: PanelCtx }) {
+export function ContactsPanel({ ctx, initialQuery = "" }: { ctx: PanelCtx; initialQuery?: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [adding, setAdding] = useState<typeof BLANK | null>(null);
   const [notes, setNotes] = useState<{ id: number; text: string } | null>(null);
   const meetings = useMeetingSummaries(ctx.tick);

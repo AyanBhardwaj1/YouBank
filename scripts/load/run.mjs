@@ -130,6 +130,7 @@ const MIX = [
   { name: "desk inbox", weight: 6, run: get("/api/desk/inbox") },
   { name: "desk checklist", weight: 4, run: get("/api/desk/checklist") },
   { name: "waiting badge", weight: 6, run: get("/api/desk/inbox?counts=1") },
+  { name: "palette crm search", weight: 3, run: get("/api/crm/search?q=acme") },
   { name: "prefs save (look)", weight: 3, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { scale: [0.9, 1, 1.1][Math.floor(Math.random() * 3)] } }) }) },
   { name: "prefs save (desk layout)", weight: 2, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ desk: { layout: ["focus", "home", "desk"][Math.floor(Math.random() * 3)] } }) }) },
   { name: "page settings style", weight: 2, run: get("/app/settings?tab=style") },

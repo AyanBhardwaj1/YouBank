@@ -46,6 +46,21 @@ export function Palette({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const [recent, setRecent] = useState<string[]>(readRecent);
+  // The person's own contacts and deals matching what is typed (Relationships), fetched after a pause.
+  const [crm, setCrm] = useState<{ q: string; contacts: { id: number; name: string; email: string; company: string }[]; deals: { id: number; name: string; stage: string }[] } | null>(null);
+  const hasCrm = nav.features.some((f) => f.id === "crm");
+  useEffect(() => {
+    const query = q.trim();
+    if (!hasCrm || query.length < 2) return;
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => {
+      fetch(`/api/crm/search?q=${encodeURIComponent(query)}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d) setCrm({ q: query, contacts: d.contacts ?? [], deals: d.deals ?? [] }); })
+        .catch(() => undefined);
+    }, 180);
+    return () => { window.clearTimeout(t); ctrl.abort(); };
+  }, [q, hasCrm]);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const back = useRef<Element | null>(null);
@@ -114,16 +129,21 @@ export function Palette({ onClose }: { onClose: () => void }) {
       out.splice(at, 0, open, watch);
       out.push(share);
     }
+    // People and deals, only for the query they were fetched for (an older answer never shows under a newer query).
+    if (crm && crm.q === query) {
+      for (const p of crm.contacts) out.push({ id: `person:${p.id}`, label: p.name || p.email, group: "People", icon: "Users", hint: [p.company, p.name ? p.email : ""].filter(Boolean).join(" · "), href: `/app/crm?tab=contacts&q=${encodeURIComponent(p.email || p.name)}` });
+      for (const d of crm.deals) out.push({ id: `deal:${d.id}`, label: d.name, group: "Deals", icon: "Handshake", hint: d.stage, href: `/app/crm?tab=pipeline` });
+    }
     const ask: Command = { id: "ask", label: `Ask: “${query.length > 70 ? `${query.slice(0, 70)}…` : query}”`, group: "Ask", icon: "Sparkles", hint: "AI, with sources", href: `/app/terminal?ticker=${encodeURIComponent(t ?? first)}&fn=AI&arg=${encodeURIComponent(query)}` };
     // A question goes to the AI first; a word or two that matches something goes there first.
     if (query.split(/\s+/).length >= 4 || /\?$/.test(query) || (ranked.length === 0 && !t)) out.unshift(ask); else out.push(ask);
     return out;
-  }, [q, commands, recent, first, config.watchlist, setWatchlist]);
+  }, [q, commands, recent, first, config.watchlist, setWatchlist, crm]);
 
   useEffect(() => { list.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: "nearest" }); }, [active]);
 
   const run = useCallback((c: Command) => {
-    if (c.id !== "ask" && !/^(ticker|watch|unwatch|share):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
+    if (c.id !== "ask" && !/^(ticker|watch|unwatch|share|person|deal):/.test(c.id)) { const next = pushRecent(recent, c.id); setRecent(next); writeRecent(next); }
     onClose();
     if (c.run) { c.run(); return; }
     if (!c.href) return;
