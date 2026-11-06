@@ -2,11 +2,14 @@
  * What changed, for the "New in YouBank" card (src/components/workspace/WhatsNew.tsx). Newest first.
  * Bump RELEASE when adding entries: the card shows once per release per browser.
  */
-export const RELEASE = "2026-11-06";
+export const RELEASE = "2026-11-06b";
 
 export type NewThing = { title: string; body: string; href?: string; action?: "palette" | "arrange" | "shortcuts"; cta: string };
 
 export const WHATS_NEW: NewThing[] = [
+  { title: "Risk and stress tests", body: "Your book's beta, one-day VaR, the names that are really one bet, and what today's book would have lost in COVID, 2022 and April 2025. Check a trade before you make it.", href: "/app/book?view=risk", cta: "See the risk" },
+  { title: "Your AI apps can propose", body: "Claude or ChatGPT can propose a position with its thesis and kill criteria. It waits in your Book until you review it; nothing is added without you.", href: "/app/book", cta: "Open the Book" },
+  { title: "AI governance report", body: "A month of the research ledger on one page for compliance or a DDQ: what the AI produced, what was reviewed and rejected, and whether the chain still checks.", href: "/report/ledger", cta: "Open it" },
   { title: "The Book", body: "Your positions, each thesis with the numbers that would prove it wrong, checked against filings and the price on every load. Exposure, P&L and a red team that argues the other side.", href: "/app/book", cta: "Open the Book" },
   { title: "YouBank in your AI apps", body: "Claude, ChatGPT, Cursor and your own agents can use YouBank's research tools over MCP, with sources on every figure.", href: "/app/settings?tab=connect", cta: "Connect" },
   { title: "A research ledger", body: "A tamper-evident record of what the AI was asked and answered, with sources and sign-offs, ready for compliance.", href: "/app/settings?tab=ledger", cta: "Turn it on" },
