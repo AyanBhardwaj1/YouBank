@@ -66,6 +66,8 @@ const field = `${fieldBox} w-full`;
 /** `heading` replaces the title (a proposal under review: a new position, without the templates). */
 function Editor({ initial, onSaved, onCancel, heading, market }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
   const [d, setD] = useState<Draft>(initial);
+  // Why this change: saved with it into the decision journal (decisions.ts), dated by the server.
+  const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -94,6 +96,7 @@ function Editor({ initial, onSaved, onCancel, heading, market }: { initial: Draf
           // Unchanged, it keeps the day it was made; changed, it is a new forecast made today.
           conviction: d.convP.trim() ? { p: Number(d.convP), by: d.convBy, source: d.convSource ?? "You", ...(d.convAt ? { at: d.convAt } : {}) } : undefined,
           convP: undefined, convBy: undefined, convSource: undefined, convAt: undefined,
+          ...(why.trim() ? { note: why.trim() } : {}),
         }),
       });
       onSaved();
@@ -178,6 +181,9 @@ function Editor({ initial, onSaved, onCancel, heading, market }: { initial: Draf
           {d.catalysts.length < 8 && <button type="button" className="text-[11.5px] text-accent" onClick={() => set("catalysts", [...d.catalysts, { label: "", date: "" }])}>+ Add a catalyst</button>}
         </div>
       </div>
+      <label className="block text-[11px] text-muted">Why? Optional, kept in the position&apos;s decision journal with today&apos;s date
+        <input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={500} placeholder="e.g. sizing up after the call: margins guided above 70%" className={field} />
+      </label>
       {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
       <div className="flex gap-2">
         <button type="button" disabled={busy || !d.ticker.trim() || !d.thesis.trim()} onClick={save} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">{busy ? "Saving…" : "Save position"}</button>
