@@ -20,7 +20,9 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 | Risk a small fund doesn't have | Beta-adjusted net, historical VaR and ES, stacked bets, five stress replays, a pre-trade what-if, risk per team member | Good for the segment. It is historical, not a factor model, and the product says so. |
 | AI inside the apps you already use | An MCP server with 21 tools and 6 prompts, OAuth so one URL connects, proposals the PM approves, a pause switch per app | Ahead of the market on control. It needs a live test with Claude.ai and ChatGPT before the pitch. |
 | Every AI answer on the record | A hash-chained ledger anchored outside YouBank, reviews, a governance report, the AI-use line in the LP report | Strong. It is the best answer to "how do you supervise AI?" from a DDQ. |
-| A track record of process | The track record (hit rate, payoff, exit discipline, the cost of holding past a break) and calibration (Brier scores on conviction) | New this round. It is the piece LPs ask for, and it builds itself as positions close. |
+| A track record of process | The track record (hit rate, payoff, exit discipline, the cost of holding past a break, process against outcome) and calibration (Brier scores, a correction once 20 forecasts resolve), with forecasts that can't be backdated, farmed or withdrawn | New this round. It is the piece LPs ask for, and it builds itself as positions close. Integrity matters more than features here: two reviews found ways to game it, now closed. |
+| An AI committee, kept score | Independent bull and bear briefs, three pooled chairs, a 90-day forecast scored beside the PM's, run in the background with a bell | New this round. Its value is only provable over months of resolved forecasts; until then it is a structured second opinion. |
+| Investor writing that passes compliance | LP letter and DDQ drafted from the record; a deterministic pass for Marketing Rule language, AI claims checked against the ledger, and figures checked against the filings | New this round. It turns the ledger into something the COO uses every quarter. |
 
 ## 3. Strengths, from an investor's point of view
 
@@ -49,6 +51,11 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 | Closing a position | It vanished, with no record and no reason | It now closes into the track record, with exit, reason and note |
 | Conviction | No way to say how sure we are, or to learn from it | Conviction plus scored calibration, with a break before the forecast never counting against it |
 | AI app access | All or nothing: revoke the key | Pause, keep from the Book, or keep from proposing, each noted in the ledger |
+| The committee | It blocked the page for three minutes and was lost if you left | It sits in the background; the bell says when it is done; a split of chairs reads as close |
+| The sample book | No forecasts, so calibration and sizing looked empty in a demo | Sample forecasts (labelled, never scored) make the sizing note appear at once |
+| Track record | One position could read both "exited late" and "sound process" | One rule: only a break still in force at the close, timed from its start |
+| A data source down | Some screens said "something went wrong on our side" (a 500) | A 503 that says a data source is not answering, for every route |
+| Weekly habit | Nothing to open when no alert fired | "The week in your book": changes, resolved forecasts, committee calls, the next two weeks |
 
 ## 6. What the research says to build (Nov 2026)
 
@@ -66,8 +73,8 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 ## 7. Metrics that would prove it works
 
 - **Activation:** a book with at least 3 positions and kill criteria within the first session; an AI app connected within the first week.
-- **Habit:** opening the Book after an alert (alert → open rate); weekly active PMs.
-- **Proof:** positions closed into the track record; forecasts resolved; governance reports printed (proxy: DDQ use).
+- **Habit:** opening the Book after an alert (alert → open rate); weekly active PMs; the week report opened on Mondays.
+- **Proof:** positions closed into the track record; forecasts resolved (and the share of positions carrying one); committee sittings; governance reports and DDQ pages printed.
 - **Trust:** the share of AI figures verified; proposals approved versus dismissed per app.
 
 ## 8. Next, in order
@@ -78,3 +85,6 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 4. A point-in-time replay of a thesis.
 5. ✓ The investor-letter drafter with a Marketing Rule pass.
 6. ✓ A DDQ drafter that answers the standard AI questions from the ledger.
+7. Adopt the MCP 2026-07-28 spec once final (stateless core, tasks for long runs such as the committee, a confirmation step for proposals), seen so far only as a release candidate.
+8. Verification against XBRL for any figure, not only the Book's criteria metrics, using the full company facts.
+9. A point-in-time replay, and a live check of every AI path on the preview with a real key.
