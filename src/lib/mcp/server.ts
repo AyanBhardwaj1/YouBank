@@ -7,7 +7,8 @@
  * What is offered: company fundamentals and comps from SEC XBRL, filing search and reading (sec.gov
  * only), EDGAR full-text search, recent filings, XBRL series, insider transactions, what changed in the
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
- * for a ticker, and the person's Book with each thesis checked. Web research is left out: it spends the
+ * for a ticker, the person's Book with each thesis checked, and any kill criteria checked on demand
+ * (check_thesis); plus four ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */

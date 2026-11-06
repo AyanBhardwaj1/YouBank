@@ -4,10 +4,12 @@
  *
  * A position is a ticker, long or short, an optional weight (% of NAV) and entry price, a one-line thesis,
  * its pillars (why), kill criteria (falsifiable checks: "revenue growth at least 20%", "gross margin at
- * least 70%", "price at least $150" as a stop) and dated catalysts. The evaluation reads the company's SEC
- * XBRL record and price (src/lib/company.ts) and says, for every criterion, the actual value, its period and
- * source, and whether it passes, is close to failing, or has failed; the thesis is intact, on watch, or
- * broken. The book adds exposure (gross, net, long, short) and P&L since entry.
+ * least 70%", "price at least $150" as a stop, insider selling) and dated catalysts. The evaluation reads
+ * the company's SEC XBRL record and price (src/lib/company.ts), and the insider-selling figure, next earnings
+ * date and any new 10-Q or 10-K the server hands it, and says for every criterion the actual value, its
+ * period and source, the headroom to the threshold, and whether it passes, is close to failing, or has
+ * failed; the thesis is intact, on watch, or broken. The book adds exposure (gross, net, long, short, by
+ * industry) and P&L since entry. Also here: import parsing, the sample book, drafting from words, CSV rows.
  *
  * Agent-run, multi-day investigations of a thesis live in Edge (view=theses); this is the fund's own book,
  * checked on every read at no AI cost. Pure, tested in scripts/test-book.ts.

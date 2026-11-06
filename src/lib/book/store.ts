@@ -1,8 +1,10 @@
 /**
  * Where the book lives (profiles.extra.book, at most 25 positions per person) and how it is checked on the
  * server: every position's thesis against its company's SEC record and price (src/lib/company.ts, cached
- * six hours for filings and a minute in memory) and this week's Newsroom stories that name its ticker.
- * Saves go through the profile row lock (src/lib/prefs/extra.ts), like every preference.
+ * six hours for filings and a minute in memory), its next earnings date, cached insider-selling and
+ * new-filing facts (./insiders-store.ts, ./filings-store.ts) and this week's Newsroom stories that name its
+ * ticker. Also bulk adds, daily history points, team sharing and the alerts switch. Saves go through the
+ * profile row lock (src/lib/prefs/extra.ts), like every preference.
  */
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
