@@ -2,7 +2,7 @@
 import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf } from "@/lib/mcp/keys";
 import { dispatch, LATEST_PROTOCOL, withSources, type McpServer } from "@/lib/mcp/protocol";
 import { mcpServer, PROMPTS } from "@/lib/mcp/server";
-import { authServerMetadata, clientFrom, isMetadataClientId, parseAuthorize, pkceOk, redirectOk, redirectWith, resourceMetadata } from "@/lib/mcp/oauth";
+import { authServerMetadata, clientFrom, isMetadataClientId, parseAuthorize, pkceOk, redirectOk, redirectWith, resourceMetadata, secretFrom, secretMatches } from "@/lib/mcp/oauth";
 import { createHash } from "node:crypto";
 
 let pass = 0, fail = 0;
@@ -75,9 +75,11 @@ async function main() {
   const O = "https://youbank.example";
   ok("resource metadata points at this server as its authorization server", [resourceMetadata(O).resource, resourceMetadata(O).authorization_servers], ["https://youbank.example/api/mcp", [O]]);
   const as = authServerMetadata(O);
-  ok("authorization server: code flow, S256 only, public clients, registration and metadata documents", [as.response_types_supported, as.code_challenge_methods_supported, as.token_endpoint_auth_methods_supported, !!as.registration_endpoint, as.client_id_metadata_document_supported], [["code"], ["S256"], ["none"], true, true]);
+  ok("authorization server: code flow, S256 only, public or confidential clients, registration and metadata documents", [as.response_types_supported, as.code_challenge_methods_supported, as.token_endpoint_auth_methods_supported, !!as.registration_endpoint, as.client_id_metadata_document_supported], [["code"], ["S256"], ["none", "client_secret_post", "client_secret_basic"], true, true]);
   ok("redirects: https, or http on localhost; nothing else", [redirectOk("https://claude.ai/api/mcp/auth_callback"), redirectOk("http://localhost:6274/cb"), redirectOk("http://127.0.0.1:9/x"), redirectOk("http://evil.example/cb"), redirectOk("javascript:alert(1)"), redirectOk("https://a.example/cb#frag")], [true, true, true, false, false, false]);
-  ok("a client needs valid redirect URIs and no secret", [("client" in clientFrom({ redirect_uris: ["https://claude.ai/cb"], client_name: "Claude" }, "ybc_x")), ("error" in clientFrom({ redirect_uris: [] }, "x")), ("error" in clientFrom({ redirect_uris: ["https://a/cb"], token_endpoint_auth_method: "client_secret_basic" }, "x"))], [true, true, true]);
+  ok("a client needs valid redirect URIs; public or confidential, nothing else", [("client" in clientFrom({ redirect_uris: ["https://claude.ai/cb"], client_name: "Claude" }, "ybc_x")), ("error" in clientFrom({ redirect_uris: [] }, "x")), (clientFrom({ redirect_uris: ["https://a/cb"], token_endpoint_auth_method: "client_secret_basic" }, "x") as { client: { auth_method: string } }).client.auth_method, ("error" in clientFrom({ redirect_uris: ["https://a/cb"], token_endpoint_auth_method: "private_key_jwt" }, "x"))], [true, true, "client_secret_basic", true]);
+  const secretHash = createHash("sha256").update("s3cret").digest("hex");
+  ok("client secrets: form field or HTTP Basic, compared to the stored hash", [secretFrom({ client_id: "c1", client_secret: "s3cret" }, null), secretFrom({}, `Basic ${Buffer.from("c1:s3cret").toString("base64")}`), secretMatches("s3cret", secretHash), secretMatches("nope", secretHash), secretMatches(null, secretHash), secretMatches(null, undefined)], [{ id: "c1", secret: "s3cret" }, { id: "c1", secret: "s3cret" }, true, false, false, true]);
   ok("metadata-document client ids are https URLs with a path", [isMetadataClientId("https://claude.ai/oauth/client.json"), isMetadataClientId("https://claude.ai"), isMetadataClientId("ybc_abc")], [true, false, false]);
   const verifier = "a".repeat(20) + "B".repeat(23);
   const challenge = createHash("sha256").update(verifier).digest("base64url");

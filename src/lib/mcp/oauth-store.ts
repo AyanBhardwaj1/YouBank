@@ -5,7 +5,7 @@
  * ten minutes. A code is taken with one DELETE … RETURNING, so it can be used once even when two token
  * requests race.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { safePublicFetch } from "@/lib/net";
@@ -26,11 +26,15 @@ async function get<T>(key: string): Promise<T | null> {
 }
 
 /** Dynamic Client Registration (RFC 7591). */
-export async function registerClient(body: unknown): Promise<{ client: OAuthClient } | { error: string }> {
+export async function registerClient(body: unknown): Promise<{ client: OAuthClient; secret: string | null } | { error: string }> {
   const id = `ybc_${randomBytes(16).toString("base64url")}`;
   const r = clientFrom(body, id);
-  if ("client" in r) await put(`oauth:client:${id}`, r.client, UNCONFIRMED);
-  return r;
+  if (!("client" in r)) return r;
+  // A confidential client gets a secret, shown once in the registration answer; only its hash is kept.
+  const secret = r.client.auth_method && r.client.auth_method !== "none" ? randomBytes(32).toString("base64url") : null;
+  const client: OAuthClient = { ...r.client, ...(secret ? { secret_hash: createHash("sha256").update(secret).digest("hex") } : {}) };
+  await put(`oauth:client:${id}`, client, UNCONFIRMED);
+  return { client, secret };
 }
 
 /** A registered client that completed a sign-in: kept for a year from now. */

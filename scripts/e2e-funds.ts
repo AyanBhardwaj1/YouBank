@@ -1,7 +1,8 @@
 /**
  * End-to-end check of the features for funds, through the HTTP API of a running server: the Book (sample
  * book, import, checks with headroom), the MCP server (keys, initialize, tools, prompts, check_thesis),
- * MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay refused) and the
+ * MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay refused, a confidential
+ * client's secret) and the
  * research ledger (recording an MCP call, the chain check, the export).
  *
  * Run against a local server signed in as a development user whose profile exists (finish onboarding once,
@@ -11,7 +12,7 @@
  *   pnpm exec tsx scripts/e2e-funds.ts [--base http://localhost:3100]
  *
  * It adds the sample book and a few imported names to that user's Book, turns their research ledger on,
- * and revokes the keys it made. Exits 1 on the first failed check.
+ * and revokes the keys it made. Exits 1 if any check failed.
  */
 import { createHash, randomBytes } from "node:crypto";
 
@@ -89,6 +90,18 @@ async function main() {
   const replay = await fetch(`${BASE}/api/oauth/token`, { method: "POST", body: tokenBody, headers: { "Content-Type": "application/x-www-form-urlencoded" } }).then((r) => r.json());
   check("a used code is refused", replay.error === "invalid_grant", replay);
 
+  // A confidential client (registers for a secret): the secret is checked on top of PKCE.
+  const creg = await j("/api/oauth/register", { method: "POST", body: JSON.stringify({ client_name: "e2e confidential", redirect_uris: [redirect], token_endpoint_auth_method: "client_secret_basic" }) });
+  check("a confidential client gets a secret once", creg.status === 201 && typeof creg.body.client_secret === "string" && creg.body.token_endpoint_auth_method === "client_secret_basic", creg.body);
+  const v2 = randomBytes(32).toString("base64url");
+  const q2 = new URLSearchParams({ response_type: "code", client_id: creg.body.client_id, redirect_uri: redirect, code_challenge: createHash("sha256").update(v2).digest("base64url"), code_challenge_method: "S256", state: "s2" });
+  const code2 = async () => new URL((await fetch(`${BASE}/api/oauth/authorize`, { method: "POST", body: new URLSearchParams({ ...Object.fromEntries(q2), decision: "approve" }), redirect: "manual", headers: ORIGIN })).headers.get("location") ?? "http://x/").searchParams.get("code") ?? "";
+  const basic = (secret: string) => `Basic ${Buffer.from(`${encodeURIComponent(creg.body.client_id)}:${encodeURIComponent(secret)}`).toString("base64")}`;
+  const bad = await fetch(`${BASE}/api/oauth/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", code: await code2(), redirect_uri: redirect, code_verifier: v2 }), headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basic("wrong") } });
+  check("a wrong client secret is refused", bad.status === 401);
+  const good = await fetch(`${BASE}/api/oauth/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", code: await code2(), redirect_uri: redirect, code_verifier: v2 }), headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basic(creg.body.client_secret) } }).then((r) => r.json());
+  check("the right secret with HTTP Basic gets a key", /^ybm_/.test(good.access_token ?? ""), good);
+
   console.log("the research ledger");
   const on = await j("/api/ledger", { method: "POST", body: JSON.stringify({ on: true }) });
   check("recording on", on.status === 200 && on.body.settings.on === true, on.body);
@@ -106,7 +119,7 @@ async function main() {
   }
 
   const keys = await j("/api/settings/mcp-keys");
-  for (const k of (keys.body.keys ?? []) as { id: string; name: string }[]) if (k.name === "e2e" || k.name === "e2e client (connected)") await j(`/api/settings/mcp-keys?id=${k.id}`, { method: "DELETE" });
+  for (const k of (keys.body.keys ?? []) as { id: string; name: string }[]) if (k.name === "e2e" || k.name === "e2e client (connected)" || k.name === "e2e confidential (connected)") await j(`/api/settings/mcp-keys?id=${k.id}`, { method: "DELETE" });
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed) process.exit(1);
 }

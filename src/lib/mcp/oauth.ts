@@ -8,7 +8,7 @@
  * Connect AI apps beside hand-made keys and is revoked the same way. Public clients only (no client
  * secrets); redirect URIs must be https, or http on localhost. Pure; tested in scripts/test-mcp.ts.
  */
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 export const MCP_PATH = "/api/mcp";
 export const CODE_TTL_MS = 10 * 60_000;
@@ -30,7 +30,7 @@ export function authServerMetadata(origin: string) {
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
     scopes_supported: ["mcp"],
     client_id_metadata_document_supported: true,
     service_documentation: `${origin}/app/settings?tab=connect`,
@@ -48,7 +48,8 @@ export function redirectOk(uri: unknown): uri is string {
   } catch { return false; }
 }
 
-export type OAuthClient = { client_id: string; client_name: string; redirect_uris: string[]; client_uri?: string };
+export type AuthMethod = "none" | "client_secret_post" | "client_secret_basic";
+export type OAuthClient = { client_id: string; client_name: string; redirect_uris: string[]; client_uri?: string; auth_method?: AuthMethod; /** SHA-256 of the client secret, for confidential clients. */ secret_hash?: string };
 
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\p{Cc}/gu, "").trim().slice(0, n) : "");
 
@@ -60,11 +61,12 @@ export function clientFrom(raw: unknown, clientId: string): { client: OAuthClien
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const uris = Array.isArray(r.redirect_uris) ? r.redirect_uris : [];
   if (!uris.length || uris.length > 10 || !uris.every(redirectOk)) return { error: "redirect_uris must list 1 to 10 https (or localhost) addresses" };
-  if (r.token_endpoint_auth_method !== undefined && r.token_endpoint_auth_method !== "none") return { error: "Only public clients are supported: token_endpoint_auth_method must be \"none\"" };
+  const method = r.token_endpoint_auth_method ?? "none";
+  if (method !== "none" && method !== "client_secret_post" && method !== "client_secret_basic") return { error: "token_endpoint_auth_method must be none, client_secret_post or client_secret_basic" };
   if (Array.isArray(r.grant_types) && !r.grant_types.includes("authorization_code")) return { error: "grant_types must include authorization_code" };
   if (Array.isArray(r.response_types) && !r.response_types.includes("code")) return { error: "response_types must include code" };
   const client_uri = typeof r.client_uri === "string" && /^https:\/\//.test(r.client_uri) ? r.client_uri.slice(0, 300) : undefined;
-  return { client: { client_id: clientId, client_name: clip(r.client_name, 80) || "An AI app", redirect_uris: uris as string[], ...(client_uri ? { client_uri } : {}) } };
+  return { client: { client_id: clientId, client_name: clip(r.client_name, 80) || "An AI app", redirect_uris: uris as string[], ...(client_uri ? { client_uri } : {}), auth_method: method as AuthMethod } };
 }
 
 /** A client_id that is a Client ID Metadata Document URL: https, with a path. */
@@ -95,4 +97,25 @@ export function redirectWith(uri: string, params: Record<string, string>): strin
   const u = new URL(uri);
   for (const [k, v] of Object.entries(params)) if (v) u.searchParams.set(k, v);
   return u.toString();
+}
+
+/**
+ * The client secret a token request carries (form field, or HTTP Basic as RFC 6749 §2.3.1 encodes it), for
+ * a confidential client. PKCE is required either way; the secret is checked on top of it.
+ */
+export function secretFrom(form: Record<string, string>, authorization: string | null): { id: string | null; secret: string | null } {
+  const basic = /^Basic\s+([A-Za-z0-9+/=]+)$/i.exec(authorization ?? "");
+  if (basic) {
+    const [id, secret] = Buffer.from(basic[1], "base64").toString("utf8").split(":");
+    return { id: id ? decodeURIComponent(id) : null, secret: secret !== undefined ? decodeURIComponent(secret) : null };
+  }
+  return { id: form.client_id || null, secret: form.client_secret || null };
+}
+
+/** Whether a presented secret matches a client's stored hash (constant time). */
+export function secretMatches(secret: string | null, hash: string | undefined): boolean {
+  if (!hash) return true;
+  if (!secret) return false;
+  const a = createHash("sha256").update(secret).digest(), b = Buffer.from(hash, "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
 }
