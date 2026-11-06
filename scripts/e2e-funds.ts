@@ -78,6 +78,8 @@ async function main() {
   const tr = await rpc(K, "tools/call", { name: "book_track_record", arguments: {} });
   const wk = await rpc(K, "tools/call", { name: "book_week", arguments: {} });
   check("book_week answers with the week's headline and sections", typeof wk.body.result?.structuredContent?.result?.headline === "string" && Array.isArray(wk.body.result?.structuredContent?.result?.changes), wk.body);
+  const bs = (await rpc(K, "tools/call", { name: "book_status", arguments: {} })).body.result?.structuredContent?.result;
+  check("book_status answers, and says what is broken now (from the daily checks) when anything is", !!bs?.summary && (bs.broken_now === undefined || /^Broken now: /.test(bs.broken_now)), bs?.broken_now ?? bs);
   const cc = await rpc(K, "tools/call", { name: "compliance_check", arguments: { text: "We guarantee strong returns. Every AI output is reviewed by a person." } });
   const ccr = cc.body.result?.structuredContent?.result;
   check("compliance_check flags a promise in text an AI app drafted", ccr?.verdict === "fix before sending" && ccr.findings.some((f: { rule: string }) => f.rule === "Promissory or guaranteeing language"), cc.body);

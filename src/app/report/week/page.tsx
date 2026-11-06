@@ -1,3 +1,4 @@
+import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PrintButton } from "@/components/book/PrintButton";
@@ -68,6 +69,8 @@ export default async function WeekPage() {
           <H>Your notes this week</H>
           <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>{n.with ? <span className="text-muted"> ({n.with})</span> : null}: {n.text}</li>)}</ul>
         </>)}
+
+        {(() => { const line = brokenNowLine(brokenNow(book, history, now)); return line ? (<><H>Broken theses</H><p className="mt-0.5">{line}</p></>) : null; })()}
 
         {w.unexplained.length > 0 && (<>
           <H>Changes without a reason</H>

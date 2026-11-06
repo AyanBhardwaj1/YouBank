@@ -16,6 +16,7 @@ import { governanceRows, ledgerHead } from "@/lib/ledger/store";
 import { governance, periodOf } from "@/lib/ledger/governance";
 import { riskOf } from "@/lib/book/risk-store";
 import { loadJournal } from "@/lib/book/store";
+import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
 import { scorecard, scorecardLine } from "@/lib/book/journal";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +81,8 @@ export default async function BookReport() {
               ))}
             </section>
             <p className="mt-2 text-[11.5px] text-muted">{s.verdicts.broken} broken · {s.verdicts.watch} on watch · {s.verdicts.intact} intact{s.verdicts.unknown ? ` · ${s.verdicts.unknown} without data` : ""}. Weights are % of NAV as entered; &ldquo;at risk&rdquo; is the weight in positions whose thesis is broken or on watch.</p>
+
+            {(() => { const line = brokenNowLine(brokenNow(book, history, now)); return line ? <p className="mt-1 text-[11.5px]">{line}</p> : null; })()}
 
             {s.byIndustry.filter((x) => x.gross > 0).length > 1 && (
               <p className="mt-2 text-[11.5px] text-muted">By industry (% of NAV): {s.byIndustry.filter((x) => x.gross > 0).map((x) => `${x.industry} ${x.long ? `+${nav(x.long)}` : ""}${x.short ? ` −${nav(x.short)}` : ""} (net ${nav(x.net)})`).join(" · ")}.</p>

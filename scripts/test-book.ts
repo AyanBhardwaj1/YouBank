@@ -13,6 +13,7 @@ import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
+import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
 import { AUTO_MAX, changesOf, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -530,6 +531,21 @@ console.log("Decision journal");
   ok("the journal is kept through the close, ending with it", [closedLog?.length, closedLog?.[closedLog.length - 1]?.text], [3, "Closed: target reached at $120."]);
   const withNote = closedFrom(withLog, "intact", [], 120, "target", "Took profits at the target", new Date("2026-11-20T00:00:00Z")).log;
   ok("the close's note joins the journal beside the close", withNote?.slice(-2).map((x) => [x.text, !!x.auto]), [["Closed: target reached at $120.", true], ["Took profits at the target", false]]);
+}
+
+{
+  // The live book's broken theses: acted on since the break, or not.
+  const dNow = new Date("2026-11-20T12:00:00Z");
+  const H = (id: string, pts: [string, "intact" | "broken"][]) => ({ [id]: pts.map(([d, v]) => ({ d, v, s: null })) });
+  const acted = normalizePosition({ ...t, id: "dsc1", ticker: "ACT", log: [{ at: "2026-11-12T15:00:00Z", text: "Thesis rewritten.", auto: true }, { at: "2026-11-13T15:00:00Z", text: "Weight 5% → 2% of NAV.", auto: true }] })!;
+  const idle = normalizePosition({ ...t, id: "dsc2", ticker: "IDL", log: [{ at: "2026-11-01T15:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-11-16T15:00:00Z", text: "watching it" }] })!;
+  const fine = normalizePosition({ ...t, id: "dsc3", ticker: "FIN" })!;
+  const hist = { ...H("dsc1", [["2026-11-09", "intact"], ["2026-11-10", "broken"], ["2026-11-11", "broken"]]), ...H("dsc2", [["2026-11-12", "intact"], ["2026-11-14", "broken"], ["2026-11-19", "broken"]]), ...H("dsc3", [["2026-11-14", "broken"], ["2026-11-19", "intact"]]) };
+  const b = brokenNow([acted, idle, fine], hist, dNow);
+  ok("broken now: nothing done first; a thesis edit, a note or a resize before the break is not acting on it; recovered positions are left out", b.map((x) => [x.ticker, x.since, x.actedAfter, x.days]), [["IDL", "2026-11-14", null, 6], ["ACT", "2026-11-10", 3, 10]]);
+  ok("broken now: one line", brokenNowLine(b), "Broken now: nothing done since the break on IDL (6 days); ACT resized 3 days after its break.");
+  ok("broken now: a break seen today reads as today", brokenNowLine(brokenNow([fine], H("dsc3", [["2026-11-20", "broken"]]), dNow)), "Broken now: nothing done since the break on FIN (broke today).");
+  ok("broken now: nothing to say when no thesis is broken", brokenNowLine(brokenNow([fine], hist, dNow)), "");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
