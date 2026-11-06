@@ -41,7 +41,7 @@ export function draftDdq(i: DdqInput): DdqItem[] {
     id: "use", topic: "Use of AI", q: "Where does the firm use AI in its investment process, and who makes investment decisions?",
     a: [
       "AI tools support research: they read SEC filings, XBRL financial data, news and comparable companies, draft and check written theses, argue the case against a position (a red team) and, on request, convene an AI investment committee whose recommendation is advice only.",
-      g && on && g.ai ? `In ${i.period.toLowerCase()} they produced ${g.ai} recorded outputs: ${list(g.byKind.filter((k) => k.kind !== "signoff" && k.kind !== "note").map((k) => `${k.n} ${KIND[k.kind] ?? k.kind}`))}.` : "",
+      g && on && g.ai ? `In ${i.period.toLowerCase()} they produced ${g.ai} recorded outputs, by use: ${list((g.inventory ?? []).map((u) => `${u.use.charAt(0).toLowerCase()}${u.use.slice(1)} (${u.n})`))}.` : "",
       "Investment decisions are made by [names and roles]. No AI tool can place a trade or change the book of positions.",
       proposing.length ? `${list(names(proposing))} may propose a position; a person reviews each proposal and adds or dismisses it.` : "No connected AI app may propose positions.",
     ].filter(Boolean).join(" "),
@@ -122,7 +122,6 @@ export function draftDdq(i: DdqInput): DdqItem[] {
   return items;
 }
 
-const KIND: Record<string, string> = { chat: "research answers", workflow: "workflow and tool runs", red_team: "red-team and committee briefs", mcp: "AI-app calls" };
 
 export function ddqMarkdown(items: DdqItem[], firm: string, period: string, now: Date): string {
   return [

@@ -101,6 +101,23 @@ ok("an empty period has no shares, not zero", [governance([], "a", "b").sourcedS
 const pm = periodOf("2026-02", new Date("2026-11-06T12:00:00Z")), p30 = periodOf(undefined, new Date("2026-11-06T12:00:00Z")), bad = periodOf("2026-13", new Date("2026-11-06T12:00:00Z"));
 ok("a month runs to the first of the next; anything else is the last 30 days", [pm.from, pm.to, pm.label, p30.from, p30.label, bad.label], ["2026-02-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z", "February 2026", "2026-10-07T12:00:00.000Z", "The last 30 days", "The last 30 days"]);
 
+console.log("AI use inventory");
+{
+  const rows: GovRow[] = [
+    { seq: 1, at: "2026-11-02T10:00:00Z", kind: "red_team", subject: "Committee bull: SNOW", model: "anthropic/m1", meta: { feature: "book.committee.bull" }, sources: 2 },
+    { seq: 2, at: "2026-11-02T10:01:00Z", kind: "red_team", subject: "Committee: SNOW", model: "openai/m2", meta: { feature: "book.committee.chair" }, sources: 2 },
+    { seq: 3, at: "2026-11-02T11:00:00Z", kind: "chat", subject: "Q", model: "anthropic/m1", meta: { feature: "chat" }, sources: 1 },
+    { seq: 4, at: "2026-11-02T12:00:00Z", kind: "mcp", subject: "book_status via Claude", model: "", meta: { tool: "book_status" }, sources: 0 },
+    { seq: 5, at: "2026-11-03T09:00:00Z", kind: "signoff", subject: "Review of entry 2", model: "", meta: { ref: 2, decision: "approved" }, sources: 0 },
+  ];
+  const inv = governance(rows, "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z").inventory;
+  ok("the inventory groups AI output by use, with its models and the share reviewed", inv, [
+    { use: "AI investment committee on a position", n: 2, models: ["anthropic/m1", "openai/m2"], reviewedShare: 50 },
+    { use: "Research answers", n: 1, models: ["anthropic/m1"], reviewedShare: 0 },
+    { use: "The firm's AI apps calling YouBank tools (MCP)", n: 1, models: [], reviewedShare: 0 },
+  ]);
+}
+
 console.log("DDQ answers");
 {
   const gRows: GovRow[] = [

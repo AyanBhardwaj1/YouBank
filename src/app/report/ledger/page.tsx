@@ -92,6 +92,16 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
             </section>
           </div>
 
+          <section className="mt-5" aria-label="AI use inventory">
+            <h2 className="text-[10px] uppercase tracking-wider text-muted">AI use inventory (each way AI was used in this period)</h2>
+            {g.inventory.length ? (
+              <table className="mt-1 w-full text-[12px]">
+                <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-0.5 font-medium">Use</th><th className="text-right font-medium">Outputs</th><th className="pl-3 font-medium">Models</th><th className="text-right font-medium">Reviewed</th></tr></thead>
+                <tbody>{g.inventory.map((u) => <tr key={u.use} className="border-b border-line/50 align-top"><td className="py-0.5 pr-2">{u.use}</td><td className="num text-right">{u.n}</td><td className="break-all pl-3 text-muted">{u.models.length ? u.models.join(", ") : "the app's own model"}</td><td className="num text-right">{pct(u.reviewedShare)}</td></tr>)}</tbody>
+              </table>
+            ) : <p className="mt-0.5 text-muted">No AI output was recorded in this period.</p>}
+          </section>
+
           <section className="mt-5" aria-label="Figure check">
             <h2 className="text-[10px] uppercase tracking-wider text-muted">Figure check (every number in an AI answer against the source it cites)</h2>
             {g.figures.answers ? (

@@ -36,7 +36,24 @@ export type Governance = {
    */
   figures: { answers: number; checkable: number; verified: number; noMatch: number; uncited: number; verifiedShare: number | null };
   activeDays: number;
+  /** The AI use inventory: each way AI was used this period, with its outputs, models and share reviewed. */
+  inventory: { use: string; n: number; models: string[]; reviewedShare: number | null }[];
 };
+
+/** What an AI output was for, in words a compliance officer would put in an inventory. */
+export function aiUseOf(r: Pick<GovRow, "kind" | "meta">): string {
+  if (r.kind === "mcp") return "The firm's AI apps calling YouBank tools (MCP)";
+  const f = typeof r.meta.feature === "string" ? r.meta.feature : "";
+  if (f.startsWith("book.committee")) return "AI investment committee on a position";
+  if (f === "book.red-team") return "Red team: the case against a position";
+  if (f === "book.draft") return "Drafting a position from plain English";
+  if (f.startsWith("tool:")) return "Workflows and AI tools";
+  if (f.startsWith("studio")) return "Studio models";
+  if (f.startsWith("research") || f.includes("deep")) return "Deep research";
+  if (r.kind === "workflow") return "Workflows and AI tools";
+  if (r.kind === "red_team") return "Red team: the case against a position";
+  return "Research answers";
+}
 
 const AI_KINDS: ReadonlySet<LedgerKind> = new Set(["chat", "workflow", "red_team", "mcp"]);
 const top = (m: Map<string, number>, n = 8) => [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n);
@@ -87,6 +104,15 @@ export function governance(rows: GovRow[], from: string, to: string, laterSignof
     fig.answers++; fig.checkable += n("checkable"); fig.verified += n("matched") + n("computed"); fig.noMatch += n("noMatch"); fig.uncited += n("uncited");
   }
   const share = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
+  const inv = new Map<string, { n: number; models: Set<string>; reviewed: number }>();
+  for (const r of ai) {
+    const u = aiUseOf(r);
+    const x = inv.get(u) ?? { n: 0, models: new Set<string>(), reviewed: 0 };
+    x.n++; if (r.model) x.models.add(r.model); if (reviewedSeqs.has(r.seq)) x.reviewed++;
+    inv.set(u, x);
+  }
+  const inventory = [...inv.entries()].sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0]))
+    .map(([use, x]) => ({ use, n: x.n, models: [...x.models].sort().slice(0, 6), reviewedShare: share(x.reviewed, x.n) }));
   return {
     from, to, entries: inPeriod.length, ai: ai.length,
     byKind: top(kinds, 10).map(([kind, n]) => ({ kind: kind as LedgerKind, n })),
@@ -95,7 +121,7 @@ export function governance(rows: GovRow[], from: string, to: string, laterSignof
     byTool: top(tools, 12).map(([tool, n]) => ({ tool, n })),
     unsourced, sourcedShare: share(ai.length - unsourced, ai.length),
     reviews, reviewedShare: share(reviewedSeqs.size, ai.length), rejected: rejected.slice(0, 50),
-    proposals, errors, pauses, activeDays: days.size,
+    proposals, errors, pauses, activeDays: days.size, inventory,
     figures: { ...fig, verifiedShare: share(fig.verified, fig.checkable) },
   };
 }
