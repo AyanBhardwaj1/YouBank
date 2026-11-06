@@ -187,13 +187,14 @@ function PositionCard({ ev, position, history = [], focused, onEdit, onChanged }
           {ev.checks.length > 0 && (
             <div className="overflow-x-auto">
               <table className="w-full text-[11.5px]">
-                <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Kill criterion</th><th className="font-medium">Now</th><th className="font-medium">Needs</th><th className="font-medium">State</th><th className="hidden font-medium sm:table-cell">Evidence</th></tr></thead>
+                <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Kill criterion</th><th className="font-medium">Now</th><th className="font-medium">Needs</th><th className="font-medium" title="How far the figure is from breaking the criterion">Room</th><th className="font-medium">State</th><th className="hidden font-medium sm:table-cell">Evidence</th></tr></thead>
                 <tbody>
                   {ev.checks.map((c) => (
                     <tr key={c.criterion.id} className="border-t border-line/60">
                       <td className="py-1 pr-2">{c.label}</td>
                       <td className="num pr-2">{c.evidence ? <a href={c.evidence.url} target="_blank" rel="noreferrer" title={`${c.evidence.source}, ${c.evidence.period}`} className="underline decoration-dotted underline-offset-2 sm:no-underline">{c.shown}</a> : c.shown}</td>
                       <td className="pr-2 text-muted">{c.target}</td>
+                      <td className={`num pr-2 ${!c.headroom ? "text-muted" : c.headroom.value < 0 ? "text-neg" : c.state === "near" ? "text-accent" : "text-muted"}`}>{c.headroom?.shown ?? "—"}</td>
                       <td className={`pr-2 font-semibold ${STATE[c.state].cls}`}>{STATE[c.state].label}</td>
                       <td className="hidden text-muted sm:table-cell">{c.evidence ? <a href={c.evidence.url} target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">{c.evidence.source}, {c.evidence.period}</a> : "—"}</td>
                     </tr>

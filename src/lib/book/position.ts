@@ -106,6 +106,8 @@ export type CheckState = "pass" | "near" | "fail" | "unknown";
 export type CheckResult = {
   criterion: Criterion; label: string; state: CheckState;
   actual: number | null; shown: string; target: string;
+  /** How far the figure is from breaking the criterion, in the criterion's units (positive: room left; negative: past it). */
+  headroom: { value: number; shown: string } | null;
   /** Where the number comes from: period and a link a person can open. */
   evidence: { period: string; source: string; url: string } | null;
 };
@@ -138,6 +140,22 @@ function nearness(m: MetricKey, actual: number, threshold: number): boolean {
   return isPct(m) ? gap <= 0.03 : gap <= Math.abs(threshold) * 0.1;
 }
 
+/**
+ * The distance to a kill criterion: percentage points for percentages and Rule of 40, otherwise as a
+ * share of the threshold ("12% above the stop"), or in the metric's own unit when the threshold is zero.
+ */
+export function headroomOf(c: Criterion, actual: number): { value: number; shown: string } {
+  const threshold = isPct(c.metric) ? c.value / 100 : c.value;
+  const room = c.op === ">=" ? actual - threshold : threshold - actual;
+  const sign = (x: number) => (x >= 0 ? "+" : "−");
+  const u = METRICS[c.metric].unit;
+  if (u === "pct") return { value: room * 100, shown: `${sign(room)}${Math.abs(room * 100).toFixed(1)} pts` };
+  if (u === "pts") return { value: room, shown: `${sign(room)}${Math.abs(room).toFixed(1)} pts` };
+  if (threshold === 0) return { value: room, shown: `${sign(room)}${fmtMetric(c.metric, Math.abs(room))}` };
+  const rel = room / Math.abs(threshold);
+  return { value: rel * 100, shown: `${sign(rel)}${Math.abs(rel * 100).toFixed(1)}%` };
+}
+
 const targetOf = (c: Criterion) => `${c.op === ">=" ? "at least" : "at most"} ${fmtMetric(c.metric, isPct(c.metric) ? c.value / 100 : c.value)}`;
 
 export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): CheckResult {
@@ -148,10 +166,10 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): 
   const evidence = actual === null ? null : c.metric === "price"
     ? (company.price ? { period: `as of ${company.price.asOf.slice(0, 16).replace("T", " ")} UTC`, source: `${company.price.source ?? "price feed"}${company.price.stale ? " (stale)" : ""}`, url: `https://www.nasdaq.com/market-activity/stocks/${company.ticker.toLowerCase()}` } : null)
     : { period: `LTM to ${company.ltm.periodEnd || "latest filing"}`, source: "SEC XBRL company facts", url: company.sources.factsUrl };
-  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null };
+  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null, headroom: null };
   const pass = c.op === ">=" ? actual >= threshold : actual <= threshold;
   const state: CheckState = !pass ? "fail" : nearness(c.metric, actual, threshold) ? "near" : "pass";
-  return { criterion: c, label: m.label, state, actual, shown: fmtMetric(c.metric, actual), target, evidence };
+  return { criterion: c, label: m.label, state, actual, shown: fmtMetric(c.metric, actual), target, evidence, headroom: headroomOf(c, actual) };
 }
 
 /**
@@ -160,7 +178,7 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): 
  * one counts half).
  */
 export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date): Evaluation {
-  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null }));
+  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
   const known = checks.filter((c) => c.state !== "unknown");
   const failed = known.filter((c) => c.state === "fail");
   const near = known.filter((c) => c.state === "near");

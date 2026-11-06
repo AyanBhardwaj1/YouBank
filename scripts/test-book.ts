@@ -2,7 +2,7 @@
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
 import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
-import { byUrgency, checkCriterion, defaultTemplate, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
+import { byUrgency, checkCriterion, defaultTemplate, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -122,6 +122,12 @@ ok("the streak counts from the first day of the current verdict", [streakOf(h.a,
 ok("a read records today's point only when it is missing", [needsPoint(h, [mk("a", "broken")], day("2026-11-05")), needsPoint(h, [mk("a", "broken")], day("2026-11-06")), needsPoint(h, [mk("a", "unknown")], day("2026-11-06"))], [false, true, false]);
 ok("history is capped", recordHistory({ a: Array.from({ length: 200 }, (_, i) => ({ d: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), v: "intact" as const, s: 100 })) }, [mk("a", "intact")], day("2026-11-06")).a.length, 180);
 ok("the daily check carries the history forward", alertsFor({ verdicts: {}, checkedAt: null, history: { a: [{ d: "2026-11-01", v: "intact", s: 100 }] } }, [mk("a", "intact")], day("2026-11-02")).next.history.a.length, 2);
+
+console.log("headroom");
+ok("percentages in points; past the line is negative", [growth.headroom?.shown, gm.headroom?.shown], ["+4.7 pts", "−3.2 pts"]);
+ok("a price stop as a share of the stop", checkCriterion(t.criteria[2], co, d).headroom?.shown, "+20.0%");
+ok("an at-most criterion counts room downwards; a zero threshold uses the unit", [headroomOf({ id: "x", metric: "ev_revenue", op: "<=", value: 10 }, 8).shown, headroomOf({ id: "x", metric: "net_debt", op: "<=", value: 0 }, -400).shown], ["+20.0%", "+$400M"]);
+ok("no data, no headroom", checkCriterion({ id: "x", metric: "pe", op: "<=", value: 40 }, co, d).headroom, null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

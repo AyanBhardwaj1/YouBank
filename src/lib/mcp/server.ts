@@ -59,7 +59,7 @@ function bookTool(userId: string) {
         positions: evals.map((e) => ({
           ticker: e.ticker, name: e.name, direction: e.direction, weight_pct_nav: e.weight, verdict: e.verdict, score: e.score, price: e.price, pnl_since_entry: e.pnl, summary: e.summary,
           thesis: positions.find((p) => p.id === e.positionId)?.thesis,
-          kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
+          kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),
         })),
       });

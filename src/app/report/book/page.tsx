@@ -93,10 +93,10 @@ export default async function BookReport() {
                   <p className="mt-1.5 italic text-muted">{e.summary}</p>
                   {e.checks.length > 0 && (
                     <table className="mt-2 w-full border-collapse text-[11px]">
-                      <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-0.5">Kill criterion</th><th>Now</th><th>Needs</th><th>State</th><th>Source</th></tr></thead>
+                      <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-0.5">Kill criterion</th><th>Now</th><th>Needs</th><th>Room</th><th>State</th><th>Source</th></tr></thead>
                       <tbody>{e.checks.map((c) => (
                         <tr key={c.criterion.id} className="border-b border-line/40 align-top">
-                          <td className="py-0.5 pr-2">{c.label}</td><td className="num pr-2">{c.shown}</td><td className="pr-2">{c.target}</td>
+                          <td className="py-0.5 pr-2">{c.label}</td><td className="num pr-2">{c.shown}</td><td className="pr-2">{c.target}</td><td className="num pr-2">{c.headroom?.shown ?? "—"}</td>
                           <td className={`pr-2 font-semibold ${c.state === "fail" ? "text-neg" : c.state === "near" ? "text-accent" : c.state === "pass" ? "text-pos" : "text-muted"}`}>{c.state === "pass" ? "holds" : c.state === "near" ? "close" : c.state === "fail" ? "failed" : "no data"}</td>
                           <td className="text-muted">{c.evidence ? <><a href={c.evidence.url} className="underline decoration-dotted">{c.evidence.source}</a>, {c.evidence.period}</> : "—"}</td>
                         </tr>
