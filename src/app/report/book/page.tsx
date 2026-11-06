@@ -10,6 +10,7 @@ import { headLine } from "@/lib/ledger/chain";
 import { normalizeBookState, streakOf } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import { ledgerHead } from "@/lib/ledger/store";
+import { riskOf } from "@/lib/book/risk-store";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book report", robots: { index: false } };
@@ -41,7 +42,8 @@ export default async function BookReport() {
     db.select({ firmName: schema.profiles.firmName, name: schema.profiles.name, extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).then((r) => r[0]),
     ledgerHead(user.id).catch(() => null),
   ]);
-  const evals = await evaluateBook(book, now);
+  // Risk is best effort: without prices (a feed down) the report still prints, without that section.
+  const [evals, risk] = await Promise.all([evaluateBook(book, now), riskOf(book, now).catch(() => null)]);
   const s = summarize(evals);
   const byId = new Map<string, Position>(book.map((p) => [p.id, p]));
   const history = normalizeBookState((profile?.extra as Record<string, unknown> | undefined)?.bookState).history;
@@ -71,6 +73,15 @@ export default async function BookReport() {
 
             {s.byIndustry.filter((x) => x.gross > 0).length > 1 && (
               <p className="mt-2 text-[11.5px] text-muted">By industry (% of NAV): {s.byIndustry.filter((x) => x.gross > 0).map((x) => `${x.industry} ${x.long ? `+${nav(x.long)}` : ""}${x.short ? ` −${nav(x.short)}` : ""} (net ${nav(x.net)})`).join(" · ")}.</p>
+            )}
+            {risk && risk.betaNet !== null && (
+              <section className="mt-4 break-inside-avoid-page" aria-label="Risk">
+                <h2 className="text-[10px] uppercase tracking-wider text-muted">Risk (historical, today&apos;s weights, % of NAV)</h2>
+                <p className="mt-0.5">Beta-adjusted net {risk.betaNet >= 0 ? "+" : ""}{risk.betaNet.toFixed(1)}% · volatility {risk.vol?.toFixed(1)}% a year · one-day 95% VaR {risk.var95?.toFixed(2)}% · expected shortfall {risk.es95?.toFixed(2)}%. An S&amp;P 500 fall of 10% costs about {Math.abs((risk.shocks.find((x) => x.move === -10)?.pnl ?? 0)).toFixed(2)}% by beta.</p>
+                <p className="mt-0.5 text-muted">Replays: {risk.scenarios.map((x) => `${x.label} ${x.pnl === null ? "n/a" : `${x.pnl >= 0 ? "+" : ""}${x.pnl.toFixed(2)}%`}${x.market !== null ? ` (S&P ${x.market >= 0 ? "+" : ""}${x.market.toFixed(1)}%)` : ""}${x.missing.length ? `, without ${x.missing.join(", ")}` : ""}`).join(" · ")}.</p>
+                {risk.pairs.some((x) => x.kind === "stacked") && <p className="mt-0.5 text-muted">Moving together: {risk.pairs.filter((x) => x.kind === "stacked").map((x) => `${x.a} and ${x.b} (correlation ${x.rho.toFixed(2)}, ${nav(x.weight)} of NAV)`).join("; ")}.</p>}
+                <p className="mt-0.5 text-[10.5px] text-muted">{risk.window ? `Daily closes ${risk.window.from} to ${risk.window.to}` : "Daily closes"}{risk.sources.length ? ` (${risk.sources.join(", ")})` : ""}; benchmark SPY.{risk.excluded.length ? ` Left out: ${risk.excluded.map((x) => `${x.ticker} (${x.reason})`).join(", ")}.` : ""}</p>
+              </section>
             )}
             <div className="mt-4 overflow-x-auto print:overflow-visible"><table className="w-full min-w-[520px] border-collapse text-[11.5px] [&_td]:pr-3 [&_th]:pr-3">
               <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1">Position</th><th>Side</th><th className="text-right">Weight</th><th className="text-right">Price</th><th className="text-right">Since entry</th><th className="pl-3">Thesis</th></tr></thead>

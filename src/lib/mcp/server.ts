@@ -7,8 +7,8 @@
  * What is offered: company fundamentals and comps from SEC XBRL, filing search and reading (sec.gov
  * only), EDGAR full-text search, recent filings, XBRL series, insider transactions, what changed in the
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
- * for a ticker, the person's Book with each thesis checked, and any kill criteria checked on demand
- * (check_thesis); plus four ready-made prompts. Web research is left out: it spends the
+ * for a ticker, the person's Book with each thesis checked, the Book's risk (beta, VaR, correlated bets,
+ * stress replays), and any kill criteria checked on demand (check_thesis); plus four ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */
@@ -18,6 +18,8 @@ import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { evaluateBook, loadBook, newsFor } from "@/lib/book/store";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
+import { riskLine } from "@/lib/book/risk";
+import { riskOf } from "@/lib/book/risk-store";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
@@ -96,6 +98,21 @@ function bookTool(userId: string) {
 }
 
 
+function riskTool(userId: string) {
+  return def({
+    name: "book_risk",
+    description: "The risk of the signed-in person's Book, from a year of daily closes: beta-adjusted net exposure to the S&P 500 (SPY), annualised volatility, one-day 95% value at risk and expected shortfall (historical, today's weights), each name's beta, volatility and share of the book's risk, pairs of names that move together (a stacked bet, or a hedge), P&L for market moves of -20% to +10%, and today's book replayed through the COVID crash, the 2022 rate shock, SVB, the 2024 yen carry unwind and the April 2025 tariff shock. All figures are % of NAV.",
+    schema: z.object({}),
+    run: async (_args, ctx) => {
+      const book = await loadBook(userId);
+      if (!book.length) return JSON.stringify({ note: "The book is empty. Positions are added in YouBank → Book.", link: siteLink("/app/book") });
+      const r = await riskOf(book);
+      const src = ctx.addSource(`Daily closes for the held names and SPY (${r.sources.join(", ") || "market data"}), ${r.window ? `${r.window.from} to ${r.window.to}` : "no window"}`, siteLink("/app/book?view=risk"));
+      return JSON.stringify({ headline: riskLine(r), source: src, link: siteLink("/app/book?view=risk"), units: "% of NAV", ...r, sources: undefined });
+    },
+  });
+}
+
 const tick = (v: string | undefined) => tickerOf(v ?? "") ?? (v ?? "").toUpperCase().slice(0, 10);
 const CITE = "Cite every figure with the source id the tool returned ([S1], [S2], …) and do not state a number no tool returned. If a tool has no data, say so.";
 
@@ -109,7 +126,8 @@ export const PROMPTS: McpPrompt[] = [
       "1. Call book_status. Lead with the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk.",
       "2. For each broken or on-watch name, call ticker_news and filing_changes (10-Q, section mdna) to find what moved it.",
       "3. Then the intact names in one line each, and any catalyst in the next two weeks.",
-      "4. End with three things I should decide or check this week.",
+      "4. Call book_risk: the beta-adjusted net, the one-day VaR, any stacked bets, and the worst stress replay, in three lines.",
+      "5. End with three things I should decide or check this week.",
       CITE,
     ].join("\n"),
   },
@@ -150,7 +168,7 @@ export const PROMPTS: McpPrompt[] = [
 ];
 
 export function mcpServer(userId: string): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>];
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>];
   return {
     name: "youbank", title: "YouBank research", version: "1.0.0",
     instructions: [

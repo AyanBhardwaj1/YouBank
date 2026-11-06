@@ -60,7 +60,7 @@ async function main() {
   check("a notification is accepted with 202", (await rpc(K, "notifications/initialized", undefined, null)).status === 202);
   const tools = await rpc(K, "tools/list");
   const names = (tools.body.result?.tools ?? []).map((t: { name: string }) => t.name);
-  check("tools include the Book and check_thesis", names.includes("book_status") && names.includes("check_thesis"), names);
+  check("tools include the Book, its risk and check_thesis", names.includes("book_status") && names.includes("book_risk") && names.includes("check_thesis"), names);
   const prompts = await rpc(K, "prompts/list");
   check("four prompts", (prompts.body.result?.prompts ?? []).length === 4, prompts.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });

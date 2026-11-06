@@ -15,6 +15,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
+import type { SourcedRisk } from "@/lib/book/risk";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -310,6 +311,111 @@ function Importer({ onDone, onCancel }: { onDone: (r: ImportRes) => void; onCanc
   );
 }
 
+/* ---------------- Risk and stress tests ---------------- */
+
+const signed = (x: number, digits = 2) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(digits)}%`;
+
+/** The book's risk from a year of daily closes, and today's book replayed through real sell-offs. Fetched when opened. */
+function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
+  // The answer for one book (its names, sides and weights): an edit to the book shows the loader again.
+  const [res, setRes] = useState<{ sig: string; r?: SourcedRisk; err?: string } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    fetchJson<SourcedRisk>("/api/book/risk").then((r) => { if (live) setRes({ sig, r }); }).catch((e) => { if (live) setRes({ sig, err: errorMessage(e) }); });
+    return () => { live = false; };
+  }, [open, sig]);
+  const r = res?.sig === sig ? res.r ?? null : null;
+  const err = res?.sig === sig ? res.err ?? "" : "";
+  return (
+    <section aria-label="Risk and stress tests" className="panel p-4">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 text-left">
+        <Icon name="Activity" className="h-4 w-4 text-accent" />
+        <span className="text-[13px] font-semibold">Risk and stress tests</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">Beta, value at risk, bets that move together, and today&apos;s book through past sell-offs</span>
+        <Icon name={open ? "ChevronUp" : "ChevronDown"} className="h-4 w-4 text-muted" />
+      </button>
+      {open && err && <p role="alert" className="mt-3 text-[12px] text-neg">{err}</p>}
+      {open && !r && !err && <div className="shimmer mt-3 h-32 ctl" />}
+      {open && r && (
+        <div className="mt-3 space-y-4">
+          {r.betaNet === null ? (
+            <p className="text-[12px] text-muted">Not enough price history to measure the book&apos;s risk{r.excluded.length ? ` (${r.excluded.map((e) => `${e.ticker}: ${e.reason}`).join("; ")})` : ""}.</p>
+          ) : (<>
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              <Stat label="Beta-adjusted net" value={signed(r.betaNet, 1)} hint="Sum of each position's weight × its beta to the S&P 500 (SPY): how much of NAV moves with the market" />
+              <Stat label="Volatility" value={`${r.vol?.toFixed(1)}%`} hint="Annualised, of the book's daily P&L over the last year with today's weights" />
+              <Stat label="1-day VaR (95%)" value={`${r.var95?.toFixed(2)}%`} tone="text-neg" hint="A loss the book exceeded on 1 day in 20 over the last year (historical, today's weights), % of NAV" />
+              <Stat label="Expected shortfall" value={`${r.es95?.toFixed(2)}%`} tone="text-neg" hint="The average loss on those worst days, % of NAV" />
+            </div>
+            <div>
+              <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">If the S&amp;P 500 moves (by beta)</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {r.shocks.map((x) => <span key={x.move} className="ctl border border-line px-2 py-1 text-[11.5px]"><span className="text-muted">S&amp;P {x.move > 0 ? "+" : "−"}{Math.abs(x.move)}%</span> <span className={`num font-semibold ${x.pnl < 0 ? "text-neg" : "text-pos"}`}>{signed(x.pnl)}</span></span>)}
+              </div>
+            </div>
+          </>)}
+          <div>
+            <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Today&apos;s book through past sell-offs</h3>
+            <ul className="text-[12px]">
+              <li className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-faint" aria-hidden><span>Episode</span><span className="text-right">Book</span><span className="text-right">S&amp;P 500</span></li>
+              {r.scenarios.map((x) => (
+                <li key={x.id} className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-x-2 border-t border-line py-1.5">
+                  <span className="min-w-0"><span className="font-medium">{x.label}</span> <span className="whitespace-nowrap text-[11px] text-faint">{x.from} to {x.to}</span></span>
+                  <span className={`num text-right font-semibold ${x.pnl === null ? "text-muted" : x.pnl < 0 ? "text-neg" : "text-pos"}`}>{x.pnl === null ? "n/a" : signed(x.pnl)}</span>
+                  <span className="num text-right text-muted">{x.market === null ? "n/a" : signed(x.market, 1)}</span>
+                  {(x.worst.length > 0 || x.missing.length > 0) && (
+                    <span className="col-span-3 text-[11.5px] text-muted">{x.worst.length ? `Hit hardest: ${x.worst.map((w) => `${w.ticker} ${signed(w.pnl)}`).join(", ")}` : ""}{x.missing.length ? <span className="text-faint">{x.worst.length ? " · " : ""}not trading then: {x.missing.join(", ")}</span> : null}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-[11px] text-faint">Each name&apos;s own price move over the episode times today&apos;s weight; % of NAV. Names that were not trading then are left out, not counted as flat.</p>
+          </div>
+          {r.pairs.length > 0 && (
+            <div>
+              <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Names that move together</h3>
+              <ul className="space-y-1 text-[12px]">
+                {r.pairs.map((x) => (
+                  <li key={`${x.a}-${x.b}`} className="flex flex-wrap gap-x-2">
+                    <span className="font-semibold">{x.a} + {x.b}</span>
+                    <span className="num text-muted">correlation {x.rho.toFixed(2)}</span>
+                    <span className={x.kind === "stacked" ? "text-accent" : "text-pos"}>{x.kind === "stacked" ? `one bet in two tickets: ${navPct(x.weight)} of NAV` : `a hedge: the short offsets the long (${navPct(x.weight)} gross)`}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {r.positions.length > 0 && (
+            <div>
+              <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Where the risk is</h3>
+              <ul className="space-y-1 text-[12px]">
+                {r.positions.map((x) => {
+                  const share = x.riskShare ?? 0;
+                  return (
+                    <li key={x.ticker} className="grid grid-cols-[4rem_1fr] items-center gap-x-3 sm:grid-cols-[4rem_1fr_auto]">
+                      <span className="font-semibold">{x.ticker}</span>
+                      <span className="h-2.5 rounded-sm bg-elevated" aria-hidden><span className={`block h-2.5 rounded-sm ${share < 0 ? "bg-pos/70" : "bg-accent/70"}`} style={{ width: `${Math.min(100, Math.abs(share))}%` }} /></span>
+                      <span className="num col-span-2 text-[11.5px] text-muted sm:col-span-1 sm:whitespace-nowrap sm:text-right sm:text-[12px]">{x.riskShare === null ? "n/a" : `${share.toFixed(0)}% of risk`} · {x.direction} {navPct(x.weight)} · β {x.beta?.toFixed(2) ?? "n/a"} · vol {x.vol?.toFixed(0) ?? "n/a"}%</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-1 text-[11px] text-faint">Each name&apos;s share of the book&apos;s variance; a negative share is a position that lowers the book&apos;s risk.</p>
+            </div>
+          )}
+          <p className="text-[11px] text-faint">
+            {r.window ? `Daily closes ${r.window.from} to ${r.window.to} (${r.window.days} days)` : "Daily closes"}{r.sources.length ? `, from ${r.sources.join(", ")}` : ""}.
+            {r.excluded.length > 0 && ` Left out: ${r.excluded.map((e) => `${e.ticker} (${e.reason})`).join(", ")}.`}
+            {" "}Historical figures with today&apos;s weights; not a forecast.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ---------------- The team's books (read-only) ---------------- */
 
 type TeamList = { teams: { id: number; name: string; members: number }[]; sharing: number[] };
@@ -365,7 +471,7 @@ function Stat({ label, value, tone, hint }: { label: string; value: string; tone
   );
 }
 
-export function BookClient({ focus }: { focus?: string }) {
+export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boolean }) {
   const [data, setData] = useState<BookData | null>(null);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -451,6 +557,8 @@ export function BookClient({ focus }: { focus?: string }) {
           </div>
         </section>
       )}
+
+      {s && s.gross > 0 && data && <RiskPanel initiallyOpen={riskOpen} sig={data.positions.map((p) => `${p.ticker}:${p.direction}:${p.weight ?? ""}`).sort().join(",")} />}
 
       {s && s.byIndustry.length > 1 && s.gross > 0 && (
         <section aria-label="Exposure by industry" className="panel p-4">
