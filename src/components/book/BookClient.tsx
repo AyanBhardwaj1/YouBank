@@ -663,7 +663,7 @@ function TrackRecord({ sig }: { sig: string }) {
               <div className="font-semibold">Calibration</div>
               <p className="text-muted">{calibrationLine(d.calibration)}</p>
               {d.calibration.buckets.length > 0 && <p className="mt-0.5">{d.calibration.buckets.map((b) => `when you said ${b.label}: ${Math.round(b.held * 100)}% held (${b.n})`).join(" · ")}</p>}
-              {d.calibration.bySource.length > 1 && <p className="mt-0.5 text-muted">By who forecast: {d.calibration.bySource.map((x) => `${x.source} ${x.brier.toFixed(3)} (${x.n})`).join(" · ")}</p>}
+              {d.calibration.bySource.length > 1 && <p className="mt-0.5 text-muted">Brier by who forecast (lower is better): {d.calibration.bySource.map((x) => `${x.source} ${x.brier.toFixed(3)} on ${x.n}`).join(" · ")}</p>}
             </div>
           )}
           {!s.closed ? <p className="text-[12px] text-muted">Nothing closed yet. &ldquo;Close position&rdquo; on any card records it here with its exit, the reason and how its thesis stood, so the record builds itself.</p> : (<>

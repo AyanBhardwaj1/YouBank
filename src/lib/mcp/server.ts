@@ -83,7 +83,7 @@ const checkThesisTool = def({
 function bookTool(userId: string) {
   return def({
     name: "book_status",
-    description: "The signed-in person's Book in YouBank: each position (long or short, weight, entry) with its thesis checked against SEC filings and the price. Says which theses are broken, on watch or intact, the figure behind every kill criterion with its period and source, exposure (gross, net, at risk) and P&L since entry, and a one-line risk headline when today's risk is already worked out (book_risk always has it). Optionally for one ticker.",
+    description: "The signed-in person's Book in YouBank: each position (long or short, weight, entry) with its thesis checked against SEC filings and the price. Says which theses are broken, on watch or intact, the figure behind every kill criterion with its period and source, exposure (gross, net, at risk) and P&L since entry, and a one-line risk headline when today's risk is already worked out (book_risk always has it). Where set, the PM's own forecast and the AI investment committee's last decision (add, hold, trim or exit, with its forecast and dissent). Optionally for one ticker.",
     schema: z.object({ ticker: z.string().max(12).optional() }),
     run: async ({ ticker }, ctx) => {
       const book = await loadBook(userId);
@@ -100,6 +100,13 @@ function bookTool(userId: string) {
         positions: evals.map((e) => ({
           ticker: e.ticker, name: e.name, direction: e.direction, weight_pct_nav: e.weight, verdict: e.verdict, score: e.score, price: e.price, pnl_since_entry: e.pnl, summary: e.summary,
           thesis: positions.find((p) => p.id === e.positionId)?.thesis,
+          ...(() => {
+            const p = positions.find((x) => x.id === e.positionId);
+            return {
+              ...(p?.conviction ? { pm_forecast: { no_kill_criterion_fails_pct: Math.round(p.conviction.p * 100), by: p.conviction.by, source: p.conviction.source } } : {}),
+              ...(p?.committee ? { ai_committee: { decision: p.committee.decision, on: p.committee.at.slice(0, 10), rationale: p.committee.rationale, dissent: p.committee.dissent, watch: p.committee.watch, ...(p.committee.forecast ? { no_kill_criterion_fails_pct: Math.round(p.committee.forecast.p * 100), by: p.committee.forecast.by } : {}) } } : {}),
+            };
+          })(),
           kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),
           next_earnings: e.earnings ? { date: e.earnings.date, estimated: e.earnings.estimated, in_days: e.earnings.inDays } : null,
