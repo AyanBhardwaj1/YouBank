@@ -36,7 +36,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 - **What it is.** A fund enters its positions: ticker, long or short, weight as % of NAV, and entry price. Each position has a one-line thesis, its pillars, and **kill criteria**: the numbers that would prove the thesis wrong. Examples: revenue growth at least 20%, gross margin at least 70%, a price stop.
 - **Checked on every load, against primary sources.** Each criterion is checked against the company's SEC XBRL filings and the price. YouBank shows the figure, its period and a link to the source. The thesis then reads *intact*, *on watch* (within 3 points of a percentage threshold, or 10% of any other) or *broken*, with the most urgent first. This costs no AI.
-- **The book at a glance.** Gross, net, long and short exposure; how much of NAV sits in a thesis that is broken or on watch; P&L since entry; dated catalysts; and this week's news for each name.
+- **The book at a glance.** Gross, net, long and short exposure; how much of NAV sits in a thesis that is broken or on watch; P&L since entry; the headroom to every kill criterion ("+4.7 pts", "−3.2 pts"); how long each verdict has held; the next earnings date and other dated catalysts; and this week's news for each name.
+- **A report to hand over.** A printable one-pager for an investment committee or an LP letter: exposure, then every thesis with its evidence and the red team's case.
 - **Red team.** One click runs an agent briefed as a short seller (or as a bull, for a short). It makes the strongest sourced case against the thesis, names the weakest pillar, and lists the signals that would prove the thesis wrong. It works alone, by design (see Okawa, above).
 - **Always on.** Every weekday after the US close, YouBank re-checks every book. It tells the person the moment a thesis breaks (urgent, even in quiet hours), comes close to a kill criterion, or holds again, and when a catalyst is a day away. Alerts go to the bell, Home's "Waiting for you" and the person's own push, Slack or email. Each alert opens the position it is about.
 - **For the whole team.** Each member chooses whether to share their book with their team. The team view (read-only) shows every shared position with its owner, each member's exposure, and any name one member holds long while another is short.
@@ -107,15 +108,15 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 | Piece | Where | Notes |
 |---|---|---|
-| The Book: logic | `src/lib/book/position.ts` | Pure; 32 tests in `scripts/test-book.ts` |
-| The Book: storage and checks | `src/lib/book/store.ts`, `src/app/api/book/**` | Stored in `profiles.extra.book` (max 25 positions); companies read six at a time; GET limited to 240 an hour, red team to 20 an hour |
-| The Book: alerts | `src/lib/book/alerts.ts`, `src/lib/book/watch.ts`, `src/app/api/cron/book` | Pure transition rules (tested); the cron runs weekdays at 21:25 UTC and writes the last verdicts to `profiles.extra.bookState` |
-| The Book: UI | `src/components/book/BookClient.tsx`, `src/app/app/book/`, Home widget `book` | Nav feature `book` (key G then K); on by default for markets and PE roles, and pinned for markets |
-| MCP: protocol | `src/lib/mcp/protocol.ts` | Pure JSON-RPC 2.0; 24 tests in `scripts/test-mcp.ts` |
+| The Book: logic | `src/lib/book/position.ts`, `src/lib/book/alerts.ts` | Pure; 64 tests in `scripts/test-book.ts` (checks, headroom, import, drafting, alerts, history, earnings) |
+| The Book: storage and checks | `src/lib/book/store.ts`, `src/app/api/book/**` | Stored in `profiles.extra.book` (max 25 positions); companies and earnings dates read six at a time; GET limited to 240 an hour, red team to 20 an hour; team sharing in `profiles.extra.bookShare` |
+| The Book: alerts | `src/lib/book/alerts.ts`, `src/lib/book/watch.ts`, `src/app/api/cron/book` | Pure transition rules (tested); the cron runs weekdays at 21:25 UTC, least recently checked first, and writes verdicts and daily history to `profiles.extra.bookState`; 102 books checked in about 2 s in a local load check |
+| The Book: UI | `src/components/book/BookClient.tsx`, `src/app/app/book/`, `src/app/report/book`, Home widget `book` | Nav feature `book` (key G then K); on by default for markets and PE roles, and pinned for markets |
+| MCP: protocol | `src/lib/mcp/protocol.ts` | Pure JSON-RPC 2.0 with tools and prompts; 40 tests in `scripts/test-mcp.ts` (keys, protocol, prompts, OAuth) |
 | MCP: OAuth | `src/lib/mcp/oauth.ts`, `src/lib/mcp/oauth-store.ts`, `src/app/.well-known/**`, `src/app/api/oauth/**`, `src/app/app/connect/authorize` | Pure checks are tested; clients and single-use codes are kept in `kv_cache`; the token is an MCP key |
-| MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | Keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 5); web research is excluded because it spends AI allowance |
-| Ledger: chain | `src/lib/ledger/chain.ts` | Pure; 19 tests in `scripts/test-ledger.ts`, including an independent re-check of an export |
-| Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/app/api/ledger/**`, `src/components/settings/LedgerSettings.tsx` | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; off until the person turns it on |
+| MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | Keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 10, one per connected app); web research is excluded because it spends AI allowance |
+| Ledger: chain | `src/lib/ledger/chain.ts` | Pure; 27 tests in `scripts/test-ledger.ts`, including an independent re-check of an export, anchors and storable text |
+| Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/lib/ledger/anchor.ts`, `src/app/api/ledger/**`, `src/app/api/cron/ledger`, `src/components/settings/LedgerSettings.tsx` | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; appends serialised per person; off until the person turns it on; daily email anchors at 23:35 UTC |
 
 **Before deploying,** apply the migration to the production database:
 
@@ -123,4 +124,4 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 DATABASE_URL=... pnpm exec tsx scripts/apply-sql.mts drizzle/0033_research_ledger.sql
 ```
 
-Without it, the ledger tab reports "not set up yet" and nothing is recorded. The Book and MCP need no migration.
+Without it, the ledger tab reports "not set up yet" and nothing is recorded. The Book and MCP need no migration. `vercel.json` adds two crons, `/api/cron/book` and `/api/cron/ledger`; both use the existing `CRON_SECRET`. An independent security review of the MCP, OAuth and ledger code found no critical or high issues, and its medium and low findings are fixed.
