@@ -143,6 +143,16 @@ export async function dismissProposal(userId: string, id: string): Promise<void>
   await requireDb().update(n).set({ readAt: new Date() }).where(and(eq(n.userId, userId), eq(n.key, `book:proposal:${id}`))).catch(() => undefined);
 }
 
+/** The bell, when a sitting the person may have walked away from is done. */
+export async function noteCommittee(userId: string, p: Position, c: Committee): Promise<void> {
+  if (!(await bookAlertsOn(userId).catch(() => true))) return;
+  await requireDb().insert(schema.newsNotifications).values({
+    userId, key: `book:${p.id}:committee:${c.at}`, kind: "alert", urgent: false, url: `/app/book?position=${p.id}`,
+    title: `${p.ticker}: the AI committee says ${c.decision}`.slice(0, 300),
+    body: `${c.rationale}${c.forecast ? ` Its forecast: ${Math.round(c.forecast.p * 100)}% that no kill criterion fails by ${c.forecast.by}.` : ""} Advice only; nothing in your book changed.`.slice(0, 600),
+  }).onConflictDoNothing();
+}
+
 export async function setCommittee(userId: string, id: string, committee: Committee): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   await updateExtra(userId, (extra) => ({

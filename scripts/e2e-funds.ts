@@ -149,6 +149,8 @@ async function main() {
     await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });
     const cm404 = await j("/api/book/committee", { method: "POST", body: JSON.stringify({ id: "no-such-position" }) });
     check("the committee needs a position in the book", cm404.status === 404, cm404.body);
+    const cmSt = await j(`/api/book/committee?id=${encodeURIComponent(target.id)}`);
+    check("a committee sitting reports where it stands", ["idle", "running", "done", "failed"].includes(cmSt.body?.state), cmSt.body);
   }
   const ddq = await fetch(`${BASE}/report/ddq`).then(async (r) => ({ status: r.status, text: await r.text() }));
   check("the AI due-diligence answers draft from the record, with the compliance pass", ddq.status === 200 && ddq.text.includes("AI due-diligence answers") && ddq.text.includes("Compliance pass"), ddq.status);

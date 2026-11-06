@@ -191,7 +191,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
         <Icon name="Users" className="h-3.5 w-3.5 text-accent" />
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">AI investment committee</h3>
         {c && <span className="text-[10.5px] text-muted">{when(c.at)}</span>}
-        <button type="button" disabled={!!busy} onClick={onRun} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "committee" ? "The committee is sitting… (two to three minutes)" : c ? "Convene again" : "Convene the committee"}</button>
+        <button type="button" disabled={!!busy} onClick={onRun} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "committee" ? "The committee is sitting… (two to three minutes; you can leave this page)" : c ? "Convene again" : "Convene the committee"}</button>
       </div>
       {c ? (
         <div className="space-y-1.5 text-[12px]">
@@ -225,11 +225,33 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
     try { await fetchJson("/api/book/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
     catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
   };
+  // The committee sits in the background (two to three minutes): poll until it is done, so leaving the page
+  // loses nothing, and pick up a sitting already running when the card opens.
+  const watching = useRef(false);
+  const follow = useCallback(async () => {
+    if (watching.current) return;
+    watching.current = true; setBusy("committee");
+    try {
+      for (let i = 0; i < 80; i++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        const st = await fetchJson<{ state: string; error?: string }>(`/api/book/committee?id=${encodeURIComponent(ev.positionId)}`);
+        if (st.state === "done") { onChanged?.(); return; }
+        if (st.state === "failed") { setErr(st.error || "The committee could not finish just now."); return; }
+        if (st.state !== "running") return;
+      }
+    } catch (e) { setErr(errorMessage(e)); } finally { watching.current = false; setBusy(""); }
+  }, [ev.positionId, onChanged]);
   const convene = async () => {
-    setBusy("committee"); setErr("");
-    try { await fetchJson("/api/book/committee", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
-    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+    setErr("");
+    try { await fetchJson("/api/book/committee", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); void follow(); }
+    catch (e) { setErr(errorMessage(e)); }
   };
+  useEffect(() => {
+    if (!open || owner) return;
+    let live = true;
+    fetchJson<{ state: string }>(`/api/book/committee?id=${encodeURIComponent(ev.positionId)}`).then((st) => { if (live && st.state === "running") void follow(); }).catch(() => {});
+    return () => { live = false; };
+  }, [open, owner, ev.positionId, follow]);
   // Closing records the position in the track record: exit (the price now unless given), reason and a note.
   const [closing, setClosing] = useState(false);
   const [exitPx, setExitPx] = useState(ev.price !== null ? String(ev.price) : "");
