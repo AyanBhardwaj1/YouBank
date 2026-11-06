@@ -691,7 +691,7 @@ function TrackRecord({ sig }: { sig: string }) {
             <div className="ctl border border-line p-2.5 text-[12px]">
               <div className="font-semibold">Calibration</div>
               <p className="text-muted">{calibrationLine(d.calibration)}</p>
-              {d.calibration.buckets.length > 0 && <p className="mt-0.5">{d.calibration.buckets.map((b) => `when you said ${b.label}: ${Math.round(b.held * 100)}% held (${b.n})`).join(" · ")}</p>}
+              {d.calibration.buckets.length > 0 && <p className="mt-0.5">{d.calibration.buckets.map((b) => `forecasts of ${b.label}: ${Math.round(b.held * 100)}% held (${b.n})`).join(" · ")}</p>}
               {d.calibration.bySource.length > 1 && <p className="mt-0.5 text-muted">Brier by who forecast (lower is better): {d.calibration.bySource.map((x) => `${x.source} ${x.brier.toFixed(3)} on ${x.n}`).join(" · ")}</p>}
               {d.calibration.bySource.some((x) => x.meant) && <p className="mt-0.5 text-muted" title="Platt scaling fitted on each forecaster's resolved forecasts, shrunk toward no correction">What a stated chance has meant so far: {d.calibration.bySource.filter((x) => x.meant).map((x) => `${x.source === "You" ? "your" : `${x.source}'s`} ${Math.round(x.meant!.said * 100)}% has behaved like ${Math.round(x.meant!.means * 100)}%`).join("; ")}.</p>}
             </div>
@@ -702,8 +702,8 @@ function TrackRecord({ sig }: { sig: string }) {
               <Stat label="Winners" value={s.hitRate === null ? "n/a" : `${Math.round(s.hitRate * 100)}%`} hint="Share of closed positions with a gain in their favour (entry and exit known)" />
               <Stat label="Average" value={pctS(s.avgReturn)} tone={s.avgReturn !== null && s.avgReturn < 0 ? "text-neg" : ""} />
               <Stat label="Payoff" value={s.payoff === null ? "n/a" : `${s.payoff.toFixed(2)}x`} hint="Average win over average loss" />
-              <Stat label="Exited on the break" value={s.broke ? `${s.exitedOnBreak} of ${s.broke}` : "n/a"} hint="Theses that broke while held and were closed within five days of breaking" />
-              <Stat label="Median days to exit" value={s.medianDaysToExit === null ? "n/a" : String(s.medianDaysToExit)} hint="From the first day a thesis read broken to the close" />
+              <Stat label="Exited on the break" value={s.broke ? `${s.exitedOnBreak} of ${s.broke}` : "n/a"} hint="Of the theses still broken when closed, those closed within five days of that break" />
+              <Stat label="Median days to exit" value={s.medianDaysToExit === null ? "n/a" : String(s.medianDaysToExit)} hint="From the start of the break still in force at the close, to the close" />
             </div>
             {s.counterfactual && (
               <p className="text-[12px]">Had the {s.counterfactual.n} broken thesis{s.counterfactual.n === 1 ? "" : "es"} been closed on the day {s.counterfactual.n === 1 ? "it" : "they"} broke: <span className="font-semibold">{pctS(s.counterfactual.onBreak)}</span> on average, against <span className="font-semibold">{pctS(s.counterfactual.taken)}</span> taken. <span className="text-muted">{s.counterfactual.onBreak > s.counterfactual.taken ? "The kill criteria would have helped." : "Holding past the break paid this time."}</span></p>

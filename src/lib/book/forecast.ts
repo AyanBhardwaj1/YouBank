@@ -7,7 +7,7 @@
  * - a position closed before the date without a break stays unresolved, never counted as a win.
  *
  * Over resolved forecasts it gives the Brier score (0 is perfect, 0.25 is a coin flip at 50%) and a
- * calibration table: "when you said 70-90%, 55% held". Forecasts made by AI apps (a proposal's
+ * calibration table: "forecasts of 70-90%: 55% held". Forecasts made by AI apps (a proposal's
  * conviction) keep their source, so a person's calibration can be set beside an AI's. Pure; tested in
  * scripts/test-book.ts.
  */

@@ -96,7 +96,7 @@ export type Scorecard = {
   closed: number; withReturn: number;
   hitRate: number | null; avgReturn: number | null; avgWin: number | null; avgLoss: number | null; payoff: number | null;
   byReason: { reason: CloseReason; label: string; n: number; avgReturn: number | null }[];
-  /** Theses that broke while held; how many were closed within five days of breaking; median days from break to exit. */
+  /** Theses still broken at the close; how many were closed within five days of that break; median days from it to the close. */
   broke: number; exitedOnBreak: number; medianDaysToExit: number | null;
   /** Where the price on the break day is known: the average return had each been closed then, against the return taken. */
   counterfactual: { n: number; onBreak: number; taken: number } | null;
@@ -119,8 +119,10 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
     const xs = rets.filter((x) => x.c.reason === reason).map((x) => x.r);
     return { reason, label: CLOSE_REASONS[reason], n: list.filter((c) => c.reason === reason).length, avgReturn: r4(mean(xs)) };
   }).filter((x) => x.n > 0);
-  const broke = list.filter((c) => c.brokeOn);
-  const lags = broke.map((c) => days(c.brokeOn!, c.closedAt)).filter((d) => d >= 0);
+  // A thesis still broken when it was closed, timed from the start of that broken run (one that broke and
+  // recovered before the close was not "exited on the break"); older records fall back to the first break.
+  const broke = list.filter((c) => c.verdictAtClose === "broken" && (c.brokenSince ?? c.brokeOn));
+  const lags = broke.map((c) => days((c.brokenSince ?? c.brokeOn)!, c.closedAt)).filter((d) => d >= 0);
   const cf = rets.filter((x) => x.c.brokeOn && x.c.priceAtBreak && x.c.entry).map((x) => ({ taken: x.r, onBreak: (x.c.priceAtBreak! / x.c.entry! - 1) * (x.c.direction === "short" ? -1 : 1) }));
   return {
     closed: list.length, withReturn: rets.length,
