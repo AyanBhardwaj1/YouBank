@@ -195,6 +195,10 @@ async function main() {
   const u = describeFailure(unique, 400);
   check("another database error is a 500 with a reference", u.status === 500 && !!u.ref && u.message.startsWith(OUR_SIDE) && !/profiles|insert/i.test(u.message), u);
   const column = Object.assign(new Error("Failed query: select 1"), { cause: Object.assign(new Error('column "kill_reason" does not exist'), { code: "42703" }) });
+  const dns = Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("getaddrinfo ENOTFOUND www.sec.gov"), { code: "ENOTFOUND" }) });
+  const unr = describeFailure(dns);
+  check("an outside service that cannot be reached is a 503 to retry, not our bug", unr.status === 503 && unr.message.startsWith("A data source we rely on is not answering") && !unr.message.includes("sec.gov"), unr);
+  check("a plain TypeError of our own stays a 500", describeFailure(new TypeError("x is not a function")).status === 500);
   check("a missing column also reads as being set up", isPendingMigration(column) && describeFailure(column).message.startsWith(SETTING_UP) && !isPendingMigration(unique));
   check("failureMessage for a missing table says being set up", failureMessage(drizzle, "test").startsWith(SETTING_UP));
   check("a missing table is recognised through Drizzle's wrapper", isMissingTable(drizzle));

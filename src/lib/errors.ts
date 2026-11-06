@@ -29,6 +29,19 @@ const statusOf = (e: unknown): number | null => {
 /** Our own fetch timeouts (AbortSignal.timeout) and aborted upstream calls. */
 export const isTimeout = (e: unknown) => ["TimeoutError", "AbortError"].includes((e as { name?: string } | null)?.name ?? "");
 
+const UNREACHABLE = "A data source we rely on is not answering right now. Try again shortly.";
+/**
+ * A network failure reaching an outside service (DNS, refused or reset connection): fetch's "fetch failed"
+ * with a system error as its cause. Not our bug and not the person's: a 503 they can retry.
+ */
+export function isUnreachable(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const own = (e as unknown as { code?: unknown }).code;
+  const cause = (e as { cause?: { code?: unknown } }).cause;
+  const code = typeof cause?.code === "string" ? cause.code : typeof own === "string" ? own : "";
+  return /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/.test(code) || (e.name === "TypeError" && e.message === "fetch failed");
+}
+
 /** The message a person may see. `ref` points at the log line when the real message was withheld. */
 export function publicMessage(e: unknown, ref?: string): string {
   if (isTimeout(e)) return TOO_SLOW;
@@ -68,6 +81,10 @@ export function describeFailure(e: unknown, fallbackStatus = 500, where?: string
   if (isPendingMigration(e)) {
     const ref = logError(e, { status: 503, where: where ?? "pending-migration" });
     return { status: 503, message: `${SETTING_UP} (ref ${ref}). Try again later, and if it keeps happening, quote the reference.`, ref };
+  }
+  if (isUnreachable(e)) {
+    const ref = logError(e, { status: 503, where: where ?? "upstream" });
+    return { status: 503, message: `${UNREACHABLE} (ref ${ref})`, ref };
   }
   const raw = e instanceof Error ? e.message : String(e ?? "");
   const internal = looksInternal(raw, e instanceof Error ? e.name : "");
