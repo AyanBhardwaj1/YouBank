@@ -19,6 +19,7 @@ import type { Proposal } from "@/lib/book/proposals";
 import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
 import { calibrationLine, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
+import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
 type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean; proposals?: Proposal[] };
@@ -176,6 +177,38 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
   );
 }
 
+/* ---------------- The AI investment committee ---------------- */
+
+const DECISION_CLS: Record<Decision, string> = { add: "bg-pos/10 text-pos", hold: "bg-elevated text-fg", trim: "bg-accent-soft text-accent", exit: "bg-neg/10 text-neg" };
+
+function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefined; busy: string; onRun: () => void; direction: "long" | "short" }) {
+  const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="rounded-md border border-line p-2.5" aria-label="AI investment committee">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <Icon name="Users" className="h-3.5 w-3.5 text-accent" />
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">AI investment committee</h3>
+        {c && <span className="text-[10.5px] text-muted">{when(c.at)}</span>}
+        <button type="button" disabled={!!busy} onClick={onRun} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "committee" ? "The committee is sitting… (two to three minutes)" : c ? "Convene again" : "Convene the committee"}</button>
+      </div>
+      {c ? (
+        <div className="space-y-1.5 text-[12px]">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`ctl px-2 py-0.5 text-[11px] font-semibold uppercase ${DECISION_CLS[c.decision]}`}>{DECISIONS[c.decision]}</span>
+            {c.forecast && <span className="text-[11.5px] text-muted">Chair&apos;s forecast: <span className="font-semibold text-fg">{Math.round(c.forecast.p * 100)}%</span> that no kill criterion fails before {c.forecast.by}. Scored in your track record beside your own.</span>}
+          </div>
+          {c.rationale && <p>{c.rationale}</p>}
+          {c.dissent && <p className="text-muted"><span className="font-semibold text-fg">Dissent:</span> {c.dissent}</p>}
+          {c.watch.length > 0 && <div><span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">Watch</span><ul className="list-disc pl-5">{c.watch.map((w) => <li key={w}>{w}</li>)}</ul></div>}
+          <details className="text-[11.5px]"><summary className="cursor-pointer text-muted hover:text-fg">The brief for ({c.bull.sources.length} source{c.bull.sources.length === 1 ? "" : "s"})</summary><div className="prose-sm mt-1 leading-relaxed"><Markdown text={c.bull.text} sources={c.bull.sources} /></div></details>
+          <details className="text-[11.5px]"><summary className="cursor-pointer text-muted hover:text-fg">The brief against ({c.bear.sources.length} source{c.bear.sources.length === 1 ? "" : "s"})</summary><div className="prose-sm mt-1 leading-relaxed"><Markdown text={c.bear.text} sources={c.bear.sources} /></div></details>
+          <p className="text-[10.5px] text-muted">Advice, not a trade: nothing in the Book changes. Kept in the research ledger.</p>
+        </div>
+      ) : <p className="text-[11.5px] text-muted">A {direction === "long" ? "bull" : "short seller"} and a skeptic each write a sourced brief alone, without seeing the other. A chair then weighs both against your kill criteria and recommends add, hold, trim or exit, with a 90-day forecast scored like yours.</p>}
+    </div>
+  );
+}
+
 /* ---------------- A position ---------------- */
 
 function PositionCard({ ev, position, history = [], focused, owner, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; focused?: boolean; /** Set in the team view: whose position it is, and the card is read-only. */ owner?: string; onEdit?: () => void; onChanged?: () => void }) {
@@ -188,6 +221,11 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
   const redTeam = async () => {
     setBusy("red"); setErr("");
     try { await fetchJson("/api/book/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+  };
+  const convene = async () => {
+    setBusy("committee"); setErr("");
+    try { await fetchJson("/api/book/committee", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
     catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
   };
   // Closing records the position in the track record: exit (the price now unless given), reason and a note.
@@ -298,6 +336,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
               ? <div className="prose-sm text-[12px] leading-relaxed"><Markdown text={position.redTeam.text} sources={position.redTeam.sources} /></div>
               : owner ? <p className="text-[11.5px] text-muted">No red team has been run on this position yet.</p> : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
           </div>
+          {!owner && <CommitteePanel c={position?.committee} busy={busy} onRun={convene} direction={ev.direction} />}
           {err && <p role="alert" className="text-neg">{err}</p>}
           <div className="flex flex-wrap gap-3 text-[11.5px]">
             {!owner && onEdit && <button type="button" onClick={onEdit} className="text-accent">Edit</button>}

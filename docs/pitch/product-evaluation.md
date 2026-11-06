@@ -58,9 +58,9 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 2. **Claim-level verification of AI answers.** Partly there: every figure is checked against the source it cites. Next: a per-answer "share of claims verified" stored in the ledger. On finance-agent benchmarks, top models still score about half (https://arxiv.org/abs/2508.00828), so a measured error rate sells.
 3. **Guardrails for agents.** ✓ Per-app pause and scopes (this round). FINRA's 2026 report names agents acting beyond their mandate as a risk (summary: https://www.debevoise.com/insights/publications/2025/12/finras-2026-regulatory-oversight-report-continued). Next: approval cards inside the AI app via MCP Apps (https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/), and a listing in the MCP Registry.
 4. **A point-in-time "honest replay".** Re-run a thesis check as of a past date using only filings accepted by then, to avoid look-ahead bias (https://www.nber.org/papers/w35247). Feasible on EDGAR's acceptance timestamps.
-5. **A structured investment committee.** Bull, bear, risk officer and judge, with dissent recorded. This extends the red team.
-6. **An exam-readiness pack and AI-washing check.** It turns the ledger into the binder an examiner asks for, and checks a deck or letter's AI claims against it. The SEC's FY2026 priorities focus on the accuracy of AI claims (summary: https://www.debevoise.com/insights/publications/2025/11/2026-sec-division-of-examinations-priorities).
-7. **A DDQ drafter and an investor-letter drafter.** They write from the Book, the track record and the ledger, with a Marketing Rule check.
+5. **A structured investment committee.** ✓ (this round). A bull and a bear write sourced briefs alone and in parallel; a chair decides add, hold, trim or exit, records the dissent and gives a 90-day forecast that is scored beside the PM's. Independent briefs rather than a debate, because debating agents drift to a shared consensus (see the Okawa note in hedge-funds.md).
+6. **An exam-readiness pack and AI-washing check.** The AI-washing check on letters ✓ (this round). It turns the ledger into the binder an examiner asks for, and checks a deck or letter's AI claims against it. The SEC's FY2026 priorities focus on the accuracy of AI claims (summary: https://www.debevoise.com/insights/publications/2025/11/2026-sec-division-of-examinations-priorities).
+7. **A DDQ drafter and an investor-letter drafter.** The letter drafter ✓ (this round). They write from the Book, the track record and the ledger, with a Marketing Rule check.
 8. **Earnings-call "say-do" tracking.** Needs transcripts, which EDGAR doesn't carry.
 
 ## 7. Metrics that would prove it works
@@ -73,7 +73,8 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 ## 8. Next, in order
 
 1. Test MCP sign-in, proposals and the pre-trade prompt live in Claude.ai and ChatGPT on the preview.
-2. Store a per-answer "verified claims" ratio in the ledger, and show it in the governance report.
+2. ✓ The per-answer figure check is now summed in the governance report and the LP letter.
 3. An approval card for proposals inside the AI app (MCP Apps), plus a registry listing.
 4. A point-in-time replay of a thesis.
-5. An investor-letter drafter that writes from the track record and calibration, with a Marketing Rule pass.
+5. ✓ The investor-letter drafter with a Marketing Rule pass.
+6. A DDQ drafter that answers the standard AI questions from the ledger.

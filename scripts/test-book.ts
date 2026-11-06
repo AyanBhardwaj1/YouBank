@@ -9,6 +9,7 @@ import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { calibration, calibrationLine, normalizeConviction, resolveForecast } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
+import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
@@ -284,6 +285,24 @@ ok("the compliance pass flags promises, superlatives, performance without a peri
 ok("text after a horizontal rule is still checked; the draft's own disclaimer is not", [lintLetter("Fine.\n---\nP.S. We guarantee it.", { ledgerOn: true }).length, lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").length], [1, 0]);
 ok("a 1% conviction is 1%, not 100%", normalizeConviction({ p: 1, by: "2027-02-01", at: "2026-11-01" })?.p, 0.01);
 ok("a period makes performance acceptable; an AI claim with the ledger on is a note, not a fault", [lintLetter("We returned 12% in 2026, net of fees.", { ledgerOn: false }).length, lintLetter("Machine learning helps us screen.", { ledgerOn: true }).map((f) => f.severity)], [0, ["info"]]);
+
+console.log("AI investment committee");
+const brief = (text: string) => ({ at: "2026-11-06T10:00:00.000Z", text, sources: [{ id: "S1", label: "10-Q", url: "https://www.sec.gov/x" }, { id: "S2", label: "bad", url: "http://insecure" }] });
+const cm = committeeFrom({ decision: "trim", probability: 62.4, rationale: "  The bear's   margin evidence carried it.  ", dissent: "Growth is still 30%.", watch: ["NRR", "", "FCF margin", "Billings", "Extra"] }, brief("For."), brief("Against."), new Date("2026-11-06T12:00:00Z"));
+ok("the chair's answer becomes a committee with a 90-day forecast from the AI committee", [cm.decision, cm.rationale, cm.watch, cm.forecast], ["trim", "The bear's margin evidence carried it.", ["NRR", "FCF margin", "Billings"], { p: 0.62, by: "2027-02-04", at: "2026-11-06", source: "AI committee" }]);
+ok("a probability out of range is clamped to 1-99", [committeeFrom({ decision: "hold", probability: 140, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, committeeFrom({ decision: "hold", probability: 0, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p], [0.99, 0.01]);
+const stored = normalizeCommittee(JSON.parse(JSON.stringify({ ...cm, forecast: { ...cm.forecast, source: "You" } })));
+ok("a stored committee round-trips, keeps only https sources, and its forecast is always the AI's", [stored?.decision, stored?.bull.sources.map((x) => x.id), stored?.forecast?.source], ["trim", ["S1"], "AI committee"]);
+ok("a malformed committee is dropped", [normalizeCommittee({ ...cm, decision: "buy" }), normalizeCommittee({ ...cm, bull: null }), normalizeCommittee(null)], [null, null, null]);
+const withCm = normalizePosition({ ...t, id: "cm01", committee: cm })!;
+ok("a position keeps its committee", withCm.committee?.decision, "trim");
+ok("the bull is briefed with the thesis and the criteria; the chair sees both briefs, labelled", [bullPrompt(withCm, null).includes(withCm.thesis), bullPrompt(withCm, null).includes("FOR"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief FOR (written alone) ---\nBULLTEXT"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief AGAINST (written alone) ---\nBEARTEXT")], [true, true, true, true]);
+const both = normalizePosition({ ...withCm, conviction: { p: 80, by: "2027-02-04", at: "2026-11-06" } })!;
+const calCm = calibrationOf([both], { cm01: [{ d: "2026-11-20", v: "broken", s: 40 }] }, [], new Date("2026-12-01T00:00:00Z"));
+ok("the PM's forecast and the committee's are scored side by side", [calCm.n, calCm.bySource.map((b) => b.source).sort()], [2, ["AI committee", "You"]]);
+const closedCm = closedFrom(both, "broken", [{ d: "2026-11-20", v: "broken", s: 40 }], 90, "thesis_broke", "", new Date("2026-11-21T00:00:00Z"));
+const reread = normalizeJournal([JSON.parse(JSON.stringify(closedCm))])[0];
+ok("a close keeps the committee's forecast and when it broke", [reread?.aiConviction?.p, reread?.aiConvictionBrokeOn, reread?.aiConviction?.source], [0.62, "2026-11-20", "AI committee"]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

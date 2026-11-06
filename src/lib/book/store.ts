@@ -18,6 +18,7 @@ import { updateExtra } from "@/lib/prefs/extra";
 import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
+import type { Committee } from "./committee";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -36,8 +37,11 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
   await updateExtra(userId, (extra) => {
     const list = normalizeBook(extra.book);
     const at = list.findIndex((x) => x.id === t.id);
-    // A red team is written by the server only; an edit keeps the one it has.
-    const next: Position = { ...t, createdAt: at >= 0 ? list[at].createdAt : now, updatedAt: now, ...(at >= 0 && list[at].redTeam ? { redTeam: list[at].redTeam } : {}) };
+    // A red team and a committee are written by the server only; an edit keeps the ones it has.
+    const prev = at >= 0 ? list[at] : null;
+    const { committee: _ignored, ...posted } = t;
+    void _ignored;
+    const next: Position = { ...posted, createdAt: prev ? prev.createdAt : now, updatedAt: now, ...(prev?.redTeam ? { redTeam: prev.redTeam } : {}), ...(prev?.committee ? { committee: prev.committee } : {}) };
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });
     if (at >= 0) list[at] = next; else list.unshift(next);
     saved = next;
@@ -117,6 +121,10 @@ export async function dismissProposal(userId: string, id: string): Promise<void>
   await updateExtra(userId, (extra) => ({ ...extra, bookProposals: normalizeProposals(extra.bookProposals).filter((x) => x.id !== id) }));
   const n = schema.newsNotifications;
   await requireDb().update(n).set({ readAt: new Date() }).where(and(eq(n.userId, userId), eq(n.key, `book:proposal:${id}`))).catch(() => undefined);
+}
+
+export async function setCommittee(userId: string, id: string, committee: Committee): Promise<void> {
+  await updateExtra(userId, (extra) => ({ ...extra, book: normalizeBook(extra.book).map((t) => (t.id === id ? normalizePosition({ ...t, committee }) ?? t : t)) }));
 }
 
 export async function setRedTeam(userId: string, id: string, redTeam: NonNullable<Position["redTeam"]>): Promise<void> {

@@ -9,7 +9,7 @@
  * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
  */
 import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
-import { breakAfter, calibration, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
+import { breakAfter, calibration, normalizeConviction, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -26,6 +26,8 @@ export type ClosedPosition = {
   verdictAtClose: Verdict; brokeOn: string | null; priceAtBreak: number | null;
   /** The forecast, and the first break after it was made (null when it held to the close). */
   conviction?: Conviction; convictionBrokeOn?: string | null;
+  /** The AI committee's forecast, kept the same way, so its calibration survives the close. */
+  aiConviction?: Conviction; aiConvictionBrokeOn?: string | null;
 };
 
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
@@ -43,6 +45,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     thesis: p.thesis, criteria: p.criteria,
     verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
     ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
+    ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
   };
 }
 
@@ -64,6 +67,7 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
       ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),
+      ...(() => { const a = normalizeConviction({ ...(r.aiConviction && typeof r.aiConviction === "object" ? r.aiConviction : {}), source: "AI committee" }); return a && r.aiConviction ? { aiConviction: a, aiConvictionBrokeOn: typeof r.aiConvictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.aiConvictionBrokeOn) ? r.aiConvictionBrokeOn : null } : {}; })(),
     });
   }
   return out.slice(0, JOURNAL_MAX);
@@ -124,14 +128,16 @@ export function scorecardLine(s: Scorecard): string {
 export function forecastItems(open: Position[], history: BookHistory, closed: ClosedPosition[], now = new Date()): ForecastItem[] {
   const items: ForecastItem[] = [];
   for (const p of open) {
-    if (!p.conviction) continue;
-    const r = resolveForecast(p.conviction, history[p.id] ?? [], now);
-    items.push({ ticker: p.ticker, p: p.conviction.p, by: p.conviction.by, source: p.conviction.source, ...r });
+    for (const f of [p.conviction, p.committee?.forecast ?? undefined]) {
+      if (!f) continue;
+      items.push({ ticker: p.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, history[p.id] ?? [], now) });
+    }
   }
   for (const c of closed) {
-    if (!c.conviction) continue;
-    const r = resolveForecast(c.conviction, [], now, c.closedAt, c.convictionBrokeOn ?? null);
-    items.push({ ticker: c.ticker, p: c.conviction.p, by: c.conviction.by, source: c.conviction.source, ...r });
+    for (const [f, broke] of [[c.conviction, c.convictionBrokeOn], [c.aiConviction, c.aiConvictionBrokeOn]] as const) {
+      if (!f) continue;
+      items.push({ ticker: c.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, [], now, c.closedAt, broke ?? null) });
+    }
   }
   return items;
 }

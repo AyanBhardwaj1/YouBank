@@ -111,7 +111,7 @@ export async function record(userId: string | null | undefined, content: Partial
 }
 
 /** The kind of entry for an AI feature name (src/lib/ai/usage). */
-export const kindOf = (feature: string): LedgerKind => (feature.startsWith("tool:") || feature.startsWith("studio") ? "workflow" : feature === "book.red-team" ? "red_team" : "chat");
+export const kindOf = (feature: string): LedgerKind => (feature.startsWith("tool:") || feature.startsWith("studio") ? "workflow" : feature === "book.red-team" || feature.startsWith("book.committee") ? "red_team" : "chat");
 
 export type LedgerPage = { entries: LedgerEntry[]; total: number; reviewed: Record<number, { decision: string; reviewer: string; at: string }> };
 
