@@ -21,6 +21,8 @@ export type Committee = {
   forecast: Conviction | null;
   /** Each independent chair's call, when several sat (the "silicon crowd"): their spread is shown. */
   samples?: { decision: Decision; p: number }[];
+  /** The price base rate the chairs were given to start from, when there was one (./baserate.ts). */
+  baseRate?: number;
 };
 
 const evidenceLines = (p: Position, ev: Evaluation | null) => [
@@ -97,7 +99,7 @@ export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decisio
 }
 
 /** A committee from the chair's answer and the two briefs, as of `now`: its forecast runs 90 days. */
-export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[]): Committee {
+export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[], baseRate?: number | null): Committee {
   const today = now.toISOString().slice(0, 10);
   const by = new Date(now.getTime() + 90 * 86_400_000).toISOString().slice(0, 10);
   return {
@@ -106,6 +108,7 @@ export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, 
     // A chance given as a fraction (0.72) is 72%, not 1%.
     forecast: normalizeConviction({ p: pctOf(chair.probability), by, at: today, source: AI_COMMITTEE }),
     ...(samples && samples.length > 1 ? { samples: samples.slice(0, 5) } : {}),
+    ...(typeof baseRate === "number" && baseRate >= 0 && baseRate <= 1 ? { baseRate: Math.round(baseRate * 100) / 100 } : {}),
   };
 }
 
@@ -126,5 +129,6 @@ export function normalizeCommittee(raw: unknown): Committee | null {
       }).slice(0, 5);
       return xs.length > 1 ? { samples: xs } : {};
     })(),
+    ...(typeof r.baseRate === "number" && r.baseRate >= 0 && r.baseRate <= 1 ? { baseRate: r.baseRate } : {}),
   };
 }

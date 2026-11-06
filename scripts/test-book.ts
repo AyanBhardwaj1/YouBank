@@ -304,6 +304,7 @@ ok("the chair's answer becomes a committee with a 90-day forecast from the AI co
 ok("a probability out of range is clamped to 1-99", [committeeFrom({ decision: "hold", probability: 140, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, committeeFrom({ decision: "hold", probability: 0, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p], [0.99, 0.01]);
 const stored = normalizeCommittee(JSON.parse(JSON.stringify({ ...cm, forecast: { ...cm.forecast, source: "You" } })));
 ok("a stored committee round-trips, keeps only https sources, and its forecast is always the AI's", [stored?.decision, stored?.bull.sources.map((x) => x.id), stored?.forecast?.source], ["trim", ["S1"], "AI committee"]);
+ok("the base rate the chairs started from is kept with the committee", [normalizeCommittee(JSON.parse(JSON.stringify(committeeFrom({ decision: "hold", probability: 60, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b"), new Date(), undefined, 0.634))))?.baseRate, committeeFrom({ decision: "hold", probability: 60, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).baseRate], [0.63, undefined]);
 ok("a malformed committee is dropped", [normalizeCommittee({ ...cm, decision: "buy" }), normalizeCommittee({ ...cm, bull: null }), normalizeCommittee(null)], [null, null, null]);
 const withCm = normalizePosition({ ...t, id: "cm01", committee: cm })!;
 ok("a position keeps its committee", withCm.committee?.decision, "trim");

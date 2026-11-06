@@ -185,7 +185,9 @@ export async function setCommittee(userId: string, id: string, committee: Commit
       found = true;
       // The committee's last forecast stays scored when it sits again (forecast.ts supersede).
       const past = supersede(t.pastForecasts, t.committee?.forecast, committee.forecast, today);
-      return normalizePosition({ ...t, committee, ...(past.length ? { pastForecasts: past } : {}) }) ?? t;
+      // The sitting goes into the decision journal too, so the record shows what the AI advised and when.
+      const log = withEntries(t.log, [`AI committee: ${committee.decision}${committee.forecast ? `, ${Math.round(committee.forecast.p * 100)}% that no kill criterion fails by ${committee.forecast.by}` : ""}.`], committee.at);
+      return normalizePosition({ ...t, committee, log, ...(past.length ? { pastForecasts: past } : {}) }) ?? t;
     }),
   }));
   return found;
