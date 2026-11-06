@@ -87,7 +87,7 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
   if (!bull || !bear) throw new SittingError(error || "The committee could not finish its briefs just now. Try again in a minute.");
   // A price base rate for the chairs to start from (baserate.ts), when today's risk is already worked out.
   const by = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
-  const vol = (await cachedRisk(await loadBook(userId)).catch(() => null))?.positions.find((x) => x.ticker === position.ticker)?.vol ?? null;
+  const vol = (await loadBook(userId).then((b) => cachedRisk(b)).catch(() => null))?.positions.find((x) => x.ticker === position.ticker)?.vol ?? null;
   const base = priceBaseRate(position, ev?.price ?? null, vol, by, new Date());
   const prompt = chairPrompt(position, ev ?? null, bull.text, bear.text, base ? { p: base.p, by } : null);
   const left = 285_000 - (Date.now() - t0);

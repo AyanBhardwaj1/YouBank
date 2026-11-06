@@ -21,7 +21,6 @@ import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
-import { weekBrief } from "@/lib/book/week";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -857,19 +856,21 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
   const byId = useMemo(() => new Map((data?.positions ?? []).map((p) => [p.id, p])), [data]);
   const s = data?.summary;
   const sizing = useMemo(() => (data ? sizingCheck(data.positions.map((p) => ({ ticker: p.ticker, weight: p.weight, p: p.conviction?.p ?? null }))) : null), [data]);
-  // "Since you last looked": what changed since this browser last opened the Book (a day or more ago),
-  // from the same logic as the week report. The visit is remembered per browser only.
-  const [since, setSince] = useState<{ days: number; headline: string; on: string } | null>(null);
+  // "Since you last looked": each position's verdict as this browser last saw it, against now, and committee
+  // sittings since then. A snapshot, not a date, so a change recorded later on the day of a visit is not lost.
+  const [since, setSince] = useState<{ on: string; lines: string[] } | null>(null);
   useEffect(() => {
     if (!data || !data.positions.length) return;
-    const KEY = "yb-book-seen", today = new Date().toISOString().slice(0, 10);
-    let seen: string | null = null;
-    try { seen = localStorage.getItem(KEY); localStorage.setItem(KEY, today); } catch { /* no storage */ }
-    if (!seen || !/^\d{4}-\d{2}-\d{2}$/.test(seen) || seen >= today) return;
-    const days = Math.min(60, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${seen}T00:00:00Z`)) / 86_400_000));
-    const w = weekBrief({ now: new Date(), days, book: data.positions, evals: data.evaluations, history: data.history ?? {}, closed: [], proposals: data.proposals ?? [] });
-    if (!w.changes.length && !w.resolved.length && !w.committees.length) return;
-    setTimeout(() => setSince({ days, on: seen!, headline: w.headline.replace(/^This week: /, "") }), 0);
+    const KEY = "yb-book-seen-v2";
+    let prev: { at: string; v: Record<string, string> } | null = null;
+    try { prev = JSON.parse(localStorage.getItem(KEY) ?? "null"); } catch { prev = null; }
+    const now: Record<string, string> = Object.fromEntries(data.evaluations.map((e) => [e.positionId, e.verdict]));
+    try { localStorage.setItem(KEY, JSON.stringify({ at: new Date().toISOString(), v: now })); } catch { /* no storage */ }
+    if (!prev || typeof prev.at !== "string" || !prev.v) return;
+    const word: Record<string, string> = { intact: "intact", watch: "on watch", broken: "broken", unknown: "no data" };
+    const lines = data.evaluations.filter((e) => prev!.v[e.positionId] && prev!.v[e.positionId] !== e.verdict && e.verdict !== "unknown").map((e) => `${e.ticker} ${word[prev!.v[e.positionId]] ?? prev!.v[e.positionId]} → ${word[e.verdict]}`);
+    for (const p of data.positions) if (p.committee && p.committee.at > prev.at) lines.push(`the AI committee sat on ${p.ticker} (${DECISIONS[p.committee.decision].toLowerCase()})`);
+    if (lines.length) setTimeout(() => setSince({ on: prev!.at.slice(0, 10), lines }), 0);
   }, [data]);
   // A filter whose last position left (edited, deleted or recovered) shows everything again rather than an empty list.
   const only = pick && s?.verdicts[pick] ? pick : null;
@@ -945,7 +946,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
       {since && (
         <section role="status" aria-label="Since you last looked" className="panel flex items-start gap-2 border-accent/40 p-3 text-[12px]">
           <Icon name="Clock" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
-          <div className="min-w-0 flex-1"><span className="font-semibold">Since you last looked ({since.on}):</span> {since.headline} <Link href="/report/week" className="text-accent hover:underline">The week in your book</Link></div>
+          <div className="min-w-0 flex-1"><span className="font-semibold">Since you last looked ({since.on}):</span> {since.lines.join("; ")}. <Link href="/report/week" className="text-accent hover:underline">The week in your book</Link></div>
           <button type="button" aria-label="Dismiss" onClick={() => setSince(null)} className="text-muted hover:text-fg"><Icon name="X" className="h-3.5 w-3.5" /></button>
         </section>
       )}

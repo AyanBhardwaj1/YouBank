@@ -36,23 +36,30 @@ export function priceLines(p: Pick<Position, "criteria" | "entry" | "direction">
   const out: { level: number; side: "floor" | "ceiling" }[] = [];
   for (const c of p.criteria) {
     if (c.metric === "price" && c.value > 0) out.push({ level: c.value, side: c.op === ">=" ? "floor" : "ceiling" });
-    if (c.metric === "return_since_entry" && p.entry && p.entry > 0 && c.op === ">=") {
-      // "At least -15% in the position's favour": a long's floor below entry, a short's ceiling above it.
+    if (c.metric === "return_since_entry" && p.entry && p.entry > 0) {
+      // "At least -15% in the position's favour" is a stop: a long's floor below entry, a short's ceiling above
+      // it. "At most +50%" is a profit-take: a long's ceiling, a short's floor.
       const level = p.direction === "long" ? p.entry * (1 + c.value / 100) : p.entry * (1 - c.value / 100);
-      if (level > 0) out.push({ level, side: p.direction === "long" ? "floor" : "ceiling" });
+      const floor = (c.op === ">=") === (p.direction === "long");
+      if (level > 0) out.push({ level, side: floor ? "floor" : "ceiling" });
     }
   }
   return out;
 }
 
 /**
- * The base rate for "no price kill criterion fails before `by`": the least of the per-line chances (the
- * binding line), or null without a price line, a price, a volatility or a future date.
+ * The base rate for "no price kill criterion fails before `by`" (the check on the `by` day included). The
+ * binding floor (the highest) and the binding ceiling (the lowest) decide it; with both, the chance of
+ * staying inside the band is bounded below by P(floor) + P(ceiling) - 1 (it matches a simulation closely).
+ * Null without a price line, a price, a volatility or a future date.
  */
 export function priceBaseRate(p: Pick<Position, "criteria" | "entry" | "direction">, price: number | null, volPct: number | null, by: string, now: Date): { p: number; lines: number } | null {
   const lines = priceLines(p);
-  const years = (Date.parse(`${by}T00:00:00Z`) - now.getTime()) / (365.25 * 86_400_000);
+  const years = (Date.parse(`${by}T00:00:00Z`) + 86_400_000 - now.getTime()) / (365.25 * 86_400_000);
   if (!lines.length || !price || price <= 0 || !volPct || volPct <= 0 || !(years > 0)) return null;
   const sigma = volPct / 100;
-  return { p: Math.min(...lines.map((l) => noTouch(price, l.level, sigma, years, l.side))), lines: lines.length };
+  const floors = lines.filter((l) => l.side === "floor").map((l) => l.level), ceilings = lines.filter((l) => l.side === "ceiling").map((l) => l.level);
+  const pf = floors.length ? noTouch(price, Math.max(...floors), sigma, years, "floor") : 1;
+  const pc = ceilings.length ? noTouch(price, Math.min(...ceilings), sigma, years, "ceiling") : 1;
+  return { p: floors.length && ceilings.length ? Math.max(0, pf + pc - 1) : Math.min(pf, pc), lines: lines.length };
 }

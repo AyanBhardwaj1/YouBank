@@ -478,6 +478,12 @@ console.log("Price base rate");
   const long = { direction: "long" as const, entry: 100, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -15 }, { id: "b", metric: "price" as const, op: ">=" as const, value: 70 }, { id: "c", metric: "gross_margin" as const, op: ">=" as const, value: 60 }] };
   const short = { direction: "short" as const, entry: 50, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -20 }] };
   ok("price lines: a long's stop below entry and a price floor; a short's stop above entry; fundamentals ignored", [priceLines(long), priceLines(short)], [[{ level: 85, side: "floor" }, { level: 70, side: "floor" }], [{ level: 60, side: "ceiling" }]]);
+ok("a profit-take ('at most +50%') is a long's ceiling and a short's floor", [priceLines({ direction: "long", entry: 100, criteria: [{ id: "p", metric: "return_since_entry", op: "<=", value: 50 }] }), priceLines({ direction: "short", entry: 100, criteria: [{ id: "p", metric: "return_since_entry", op: "<=", value: 40 }] })], [[{ level: 150, side: "ceiling" }], [{ level: 60, side: "floor" }]]);
+{
+  // A band (floor 85, ceiling 115) at 30% vol over 90 days: about 0.45 by simulation, not the 0.69 of the tighter line alone.
+  const band = priceBaseRate({ direction: "long", entry: 100, criteria: [{ id: "f", metric: "return_since_entry", op: ">=", value: -15 }, { id: "c", metric: "price", op: "<=", value: 115 }] }, 100, 30, "2027-02-03", new Date("2026-11-06T00:00:00Z"));
+  ok("a floor and a ceiling together: the band's chance, well under either line's", band !== null && band.p > 0.38 && band.p < 0.5, true);
+}
   const br = priceBaseRate(long, 100, 30, "2027-05-06", new Date("2026-11-06T00:00:00Z"));
   ok("the base rate is the binding line's, and absent without a price line, a price, a volatility or a future date", [br?.lines, br && br.p > 0.3 && br.p < 0.7, priceBaseRate({ ...long, criteria: [long.criteria[2]] }, 100, 30, "2027-05-06", new Date()), priceBaseRate(long, null, 30, "2027-05-06", new Date()), priceBaseRate(long, 100, null, "2027-05-06", new Date()), priceBaseRate(long, 100, 30, "2020-01-01", new Date())], [2, true, null, null, null, null]);
 }

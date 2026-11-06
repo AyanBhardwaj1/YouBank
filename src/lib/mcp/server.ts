@@ -97,11 +97,11 @@ function bookTool(userId: string) {
       const only = ticker ? tickerOf(ticker) : null;
       const positions = only ? book.filter((p) => p.ticker === only) : book;
       if (!positions.length) return JSON.stringify({ note: only ? `${only} is not in the book.` : "The book is empty. Positions are added in YouBank → Book.", link: siteLink("/app/book") });
-      const [evals, risk, closed] = await Promise.all([evaluateBook(positions), only ? Promise.resolve(null) : cachedRisk(book).catch(() => null), only ? Promise.resolve([]) : loadJournal(userId).catch(() => [])]);
+      const [evals, risk, closed] = await Promise.all([evaluateBook(positions), cachedRisk(book).catch(() => null), only ? Promise.resolve([]) : loadJournal(userId).catch(() => [])]);
       return JSON.stringify({
         summary: summarize(evals), link: siteLink("/app/book"),
         // The risk headline when it is already worked out today (book_risk has the detail and works it out).
-        ...(risk ? { risk: riskLine(risk) } : {}),
+        ...(risk && !only ? { risk: riskLine(risk) } : {}),
         // The track record over closed positions: hit rate, payoff, and how fast broken theses were exited.
         ...(closed.length ? { track_record: scorecardLine(scorecard(closed)) } : {}),
         positions: evals.map((e) => ({
