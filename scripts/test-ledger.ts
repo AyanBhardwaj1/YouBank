@@ -134,7 +134,8 @@ console.log("DDQ answers");
   };
   const items = draftDdq(base);
   const by = (id: string) => items.find((x) => x.id === id)?.a ?? "";
-  ok("nine questions, each answered", [items.length, items.every((x) => x.a.length > 20)], [9, true]);
+  ok("ten questions, each answered", [items.length, items.every((x) => x.a.length > 20)], [10, true]);
+  ok("the decisions answer counts the journal's notes", draftDdq({ ...base, journal: { positions: 6, withNotes: 2, notes: 5 } }).find((x) => x.id === "decisions")?.a.includes("2 of 6 positions carry the manager's own notes (5 in all)"), true);
   ok("answers come from the record: models, reviews, figure check, calibration, chain, app permissions", [
     by("models").includes("anthropic/claude-x (1)"), by("review").includes("1 rejected"), by("review").includes("Margin figure was stale"),
     by("accuracy").includes("9 of 10 checkable figures"), by("measure").includes("AI committee's Brier score is 0.090 on 1 resolved forecast and the portfolio managers' is 0.210 on 3"),

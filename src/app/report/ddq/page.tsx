@@ -40,7 +40,7 @@ export default async function DdqPage({ searchParams }: { searchParams: Promise<
     firm, period: period.label, now, g,
     ledger: { on: ledgerOn, since: settings?.since ?? null, chainOk: verification ? verification.ok : null, checked: verification?.checked ?? null, anchors: anchors.length, anchorsMatch: anchors.filter((a) => a.state === "matches").length },
     apps: keys.map((k) => ({ name: k.name, paused: k.policy.paused, book: k.policy.book, propose: k.policy.propose, lastUsedAt: k.lastUsedAt })),
-    calibration: calibrationOf(book, history, closed, now), committees: book.filter((p) => p.committee).length, committeeCalls: scorecard(closed).byCommittee,
+    calibration: calibrationOf(book, history, closed, now), committees: book.filter((p) => p.committee).length, committeeCalls: scorecard(closed).byCommittee, journal: { positions: book.length, withNotes: book.filter((p) => p.log?.some((e) => !e.auto)).length, notes: book.reduce((n, p) => n + (p.log?.filter((e) => !e.auto).length ?? 0), 0) },
   });
   const draft = ddqMarkdown(items, firm, period.label, now);
   const months = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
@@ -57,7 +57,7 @@ export default async function DdqPage({ searchParams }: { searchParams: Promise<
         <header className="mb-4">
           <div className="text-[11px] uppercase tracking-[0.12em] text-muted">Due diligence · {period.label}</div>
           <h1 className="mt-1 text-[22px] font-semibold">The AI questions an LP will ask, answered from your record</h1>
-          <p className="text-muted">Nine questions LPs and consultants ask about AI, each answered from the research ledger, your AI-app permissions and the track record. Bracketed text is what only the firm can say. Nothing here is sent anywhere.</p>
+          <p className="text-muted">Ten questions LPs and consultants ask about AI and process, each answered from the research ledger, your AI-app permissions and the track record. Bracketed text is what only the firm can say. Nothing here is sent anywhere.</p>
           {!ledgerOn && <p className="mt-1 font-semibold text-accent">The research ledger is off, so most answers have nothing to stand on. <Link href="/app/settings?tab=ledger" className="underline">Turn it on</Link> and they fill in from the next AI output.</p>}
         </header>
         <LetterEditor draft={draft} ledgerOn={ledgerOn} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-ddq-${user.id}-${period.label}`} label="Due-diligence answers" />

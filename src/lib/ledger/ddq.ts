@@ -21,6 +21,8 @@ export type DdqInput = {
   calibration: Calibration | null;
   /** Positions whose last AI committee sitting is on record. */
   committees: number;
+  /** The decision journal: positions held, how many carry the PM's own notes, and how many notes in all. */
+  journal?: { positions: number; withNotes: number; notes: number };
   /** Closed positions' returns by the committee's last call before the close (scorecard byCommittee). */
   committeeCalls?: { decision: "add" | "hold" | "trim" | "exit"; n: number; avgReturn: number | null }[];
 };
@@ -110,6 +112,16 @@ export function draftDdq(i: DdqInput): DdqItem[] {
       `Each application has its own revocable key with its own permissions${on ? ", and every call it makes is recorded in the research ledger" : "; calls are recorded only while the research ledger is on, and it is off"}.`,
       ...i.apps.map((a) => `${a.name}: ${a.paused ? "paused" : "active"}; ${a.book ? `may read the book${a.propose ? " and propose positions for review" : ", may not propose"}` : "public research tools only, no access to the book"}${a.lastUsedAt ? `; last used ${day(a.lastUsedAt)}` : "; not used yet"}.`),
       g && on && g.byApp.length ? `This period: ${g.byApp.reduce((s, a) => s + a.n, 0)} calls${g.errors ? `, ${g.errors} ending in an error` : ""}${g.proposals ? `, ${g.proposals} proposal${g.proposals === 1 ? "" : "s"}` : ""}.` : "",
+    ].filter(Boolean).join(" "),
+  });
+
+  const jr = i.journal;
+  items.push({
+    id: "decisions", topic: "Documenting decisions", q: "How are investment decisions, and the reasons for them, documented?",
+    a: [
+      "Every position carries written kill criteria and a dated decision journal. YouBank writes an entry itself whenever the weight, the forecast, the kill criteria, the thesis or the side changes, and the portfolio manager adds the reason. The journal is written by the server, so it cannot be backfilled, and it is kept through the close.",
+      jr && jr.positions ? `Today ${jr.withNotes} of ${jr.positions} positions carry the manager's own notes (${jr.notes} in all).` : "",
+      "[Say who reviews the journal, and how often.]",
     ].filter(Boolean).join(" "),
   });
 
