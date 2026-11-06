@@ -149,7 +149,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 | Ledger: chain and governance | `src/lib/ledger/chain.ts`, `src/lib/ledger/governance.ts` | Pure; 34 tests in `scripts/test-ledger.ts`, including an independent re-check of an export, anchors, storable text and the governance summary |
 | Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/lib/ledger/anchor.ts`, `src/app/api/ledger/**`, `src/app/api/cron/ledger`, `src/components/settings/LedgerSettings.tsx`, `src/app/report/ledger` (governance report) | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; appends serialised per person; off until the person turns it on; daily email anchors at 23:35 UTC |
 
-**End to end:** `scripts/e2e-funds.ts` runs 31 checks over the Book, MCP (including that only `propose_position` writes), proposals, OAuth sign-in, the ledger and the governance report against a local server (`pnpm exec tsx scripts/e2e-funds.ts --base http://localhost:3100`; see the script's header for set-up).
+**End to end:** `scripts/e2e-funds.ts` runs 36 checks over the Book, its risk, the what-if, the calendar, team risk, MCP (including that only `propose_position` writes), proposals, OAuth sign-in, the ledger and the governance report against a local server (`pnpm exec tsx scripts/e2e-funds.ts --base http://localhost:3100`; see the script's header for set-up).
 
 **Before deploying,** apply the migration to the production database:
 
