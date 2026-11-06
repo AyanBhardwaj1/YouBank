@@ -8,7 +8,7 @@
  * enough to compare the exit taken with "out on the break". Nothing is traded. Pure (safe on the client);
  * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
  */
-import type { BookHistory, HistoryPoint } from "./alerts";
+import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
 import { breakAfter, calibration, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
@@ -137,3 +137,26 @@ export function forecastItems(open: Position[], history: BookHistory, closed: Cl
 }
 
 export const calibrationOf = (open: Position[], history: BookHistory, closed: ClosedPosition[], now = new Date()): Calibration => calibration(forecastItems(open, history, closed, now));
+
+/**
+ * The daily check's note when a forecast resolves today: a break after it was made (and before its date),
+ * or its date reached with the thesis intact. One alert per forecast (keyed by position and date).
+ */
+export function forecastAlerts(open: Position[], history: BookHistory, now: Date, origin = ""): BookAlert[] {
+  const today = now.toISOString().slice(0, 10);
+  const out: BookAlert[] = [];
+  for (const p of open) {
+    if (!p.conviction) continue;
+    const r = resolveForecast(p.conviction, history[p.id] ?? [], now);
+    if (r.outcome === null || r.resolvedOn !== today) continue;
+    const pct = Math.round(p.conviction.p * 100);
+    out.push({
+      key: `book:${p.id}:forecast:${p.conviction.at}:${p.conviction.by}`, positionId: p.id, kind: r.outcome ? "recovered" : "watch", urgent: false,
+      url: `${origin}/app/book?position=${encodeURIComponent(p.id)}`,
+      title: `${p.ticker}: your ${pct}% forecast ${r.outcome ? "held" : "missed"}`,
+      body: r.outcome ? `No kill criterion failed between ${p.conviction.at} and ${p.conviction.by}. It counts toward your calibration in the track record.` : `A kill criterion failed on ${today}, before ${p.conviction.by}. At ${pct}% that was a ${(p.conviction.p ** 2).toFixed(2)} Brier miss; the track record shows your calibration.`,
+      reasons: [`Forecast ${pct}% to ${p.conviction.by}`],
+    });
+  }
+  return out;
+}

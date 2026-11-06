@@ -6,7 +6,7 @@ import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
-import { calibrationOf, closedFrom, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
+import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { calibration, calibrationLine, normalizeConviction, resolveForecast } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -268,6 +268,11 @@ const closedConv = closedFrom(withConv, "broken", hBreak, 100, "thesis_broke", "
 const prConv = proposalFrom({ ticker: "AMD", direction: "long", thesis: "Share gains continue.", conviction_pct: 65, review_by: "2027-03-31" }, "Claude (connected)", now);
 ok("an AI app's proposal carries its own forecast, marked as its", "proposal" in prConv ? [prConv.proposal.position.conviction?.p, prConv.proposal.position.conviction?.by, prConv.proposal.position.conviction?.source] : prConv, [0.65, "2027-03-31", "Claude (connected)"]);
 ok("positions and their closes keep the forecast; open and closed are scored together", [withConv.conviction, closedConv.conviction?.p, calibrationOf([withConv], { cv01: [{ d: "2026-11-01", v: "intact", s: 100 }] }, [{ ...closedConv, id: "cv02" }], new Date("2027-01-05T00:00:00Z")).n], [{ p: 0.75, by: "2026-12-31", at: "2026-10-01", source: "You" }, 0.75, 2]);
+
+const fcPos = normalizePosition({ ...t, id: "fc01", ticker: "CRWD", conviction: { p: 70, by: "2026-12-31", at: "2026-11-01" } })!;
+const brokeToday = forecastAlerts([fcPos], { fc01: [{ d: "2026-11-05", v: "intact", s: 100 }, { d: "2026-11-06", v: "broken", s: 50 }] }, now);
+const heldToday = forecastAlerts([fcPos], { fc01: [{ d: "2026-12-30", v: "intact", s: 100 }] }, new Date("2026-12-31T21:30:00Z"));
+ok("a forecast that resolves today alerts once: a miss on its break day, a hit on its date; nothing on other days", [brokeToday.map((a) => [a.title, a.key]), heldToday.map((a) => a.title), forecastAlerts([fcPos], { fc01: [{ d: "2026-11-06", v: "broken", s: 50 }] }, new Date("2026-11-08T21:30:00Z")).length], [[["CRWD: your 70% forecast missed", "book:fc01:forecast:2026-11-01:2026-12-31"]], ["CRWD: your 70% forecast held"], 0]);
 
 console.log("LP letter");
 const letterEv = evaluate(t, co, d, [], now);
