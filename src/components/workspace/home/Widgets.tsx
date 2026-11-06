@@ -295,7 +295,7 @@ export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
 /* ---------------- The Book: which theses hold (src/lib/book) ---------------- */
 
 type BookEval = { positionId: string; ticker: string; verdict: "intact" | "watch" | "broken" | "unknown"; summary: string; earnings?: { date: string; inDays: number; estimated: boolean } | null };
-type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> } };
+type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[] };
 const VERDICT_TONE: Record<BookEval["verdict"], string> = { broken: "bg-neg/15 text-neg", watch: "bg-accent-soft text-accent", unknown: "bg-elevated text-muted", intact: "bg-pos/15 text-pos" };
 export function BookWidget({ roomy }: Props) {
   const [b, setB] = useState<BookRes | null | "error">(null);
@@ -306,6 +306,12 @@ export function BookWidget({ roomy }: Props) {
       <H roomy={roomy} right={<Link href="/app/book" className="text-[11px] text-muted hover:text-fg">book →</Link>}>The Book</H>
       {b === null && <div className="shimmer h-16 ctl" />}
       {b === "error" && <div className={`${t} text-muted`}>The book could not be checked just now.</div>}
+      {b && b !== "error" && !!b.proposals?.length && (
+        <Link href={`/app/book?proposal=${b.proposals[0].id}`} className={`mb-1.5 flex items-baseline gap-1.5 ctl border border-accent/40 px-1.5 py-1 hover:bg-elevated ${t}`}>
+          <span className="font-semibold text-accent">{b.proposals.length} proposed</span>
+          <span className="min-w-0 flex-1 truncate text-muted">by your AI apps: {b.proposals.slice(0, 3).map((p) => `${p.position.direction} ${p.position.ticker}`).join(", ")}. Review →</span>
+        </Link>
+      )}
       {b && b !== "error" && b.evaluations.length === 0 && <div className={`${t} text-muted`}>No positions yet. <Link href="/app/book" className="text-accent">Add one</Link> with the numbers that would prove its thesis wrong, and YouBank checks them against filings and the market.</div>}
       {b && b !== "error" && b.evaluations.length > 0 && (
         <>

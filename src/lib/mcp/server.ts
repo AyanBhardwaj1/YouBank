@@ -17,7 +17,7 @@
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { addProposal, evaluateBook, loadBook, newsFor } from "@/lib/book/store";
+import { addProposal, evaluateBook, loadBook, newsFor, noteProposal } from "@/lib/book/store";
 import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
@@ -154,6 +154,8 @@ function proposeTool(userId: string, from: string) {
       const [e] = await evaluateBook([r.proposal.position]).catch(() => []);
       await addProposal(userId, r.proposal);
       const link = siteLink(`/app/book?proposal=${r.proposal.id}`);
+      // The bell says a proposal is waiting (unless the person switched the Book's alerts off). Best effort.
+      await noteProposal(userId, r.proposal).catch(() => undefined);
       return JSON.stringify({
         proposed: true, id: r.proposal.id, link,
         note: "Nothing was added to the Book. The person reviews the proposal on the Book page and adds or dismisses it.",

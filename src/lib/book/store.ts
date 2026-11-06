@@ -60,6 +60,16 @@ export async function addProposal(userId: string, p: Proposal): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, bookProposals: withProposal(normalizeProposals(extra.bookProposals), p) }));
 }
 
+/** A bell notification that an AI app proposed a position, unless the Book's alerts are off. One per proposal. */
+export async function noteProposal(userId: string, p: Proposal): Promise<void> {
+  if (!(await bookAlertsOn(userId).catch(() => true))) return;
+  await requireDb().insert(schema.newsNotifications).values({
+    userId, key: `book:proposal:${p.id}`, kind: "alert", urgent: false, url: `/app/book?proposal=${p.id}`,
+    title: `${p.from} proposed ${p.position.direction} ${p.position.ticker}`.slice(0, 300),
+    body: `${p.position.thesis}${p.rationale ? ` Why: ${p.rationale}` : ""} Nothing is in your book until you review it.`.slice(0, 600),
+  }).onConflictDoNothing();
+}
+
 export async function dismissProposal(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, bookProposals: normalizeProposals(extra.bookProposals).filter((x) => x.id !== id) }));
 }
