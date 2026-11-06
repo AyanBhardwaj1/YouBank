@@ -14,13 +14,29 @@ import { isMissingTable, logError } from "@/lib/errors";
 import { updateExtra } from "@/lib/prefs/extra";
 import { cleanContent, nextEntry, signoffContent, verifyChain, type LedgerContent, type LedgerEntry, type LedgerKind, type Verification } from "./chain";
 
-export type LedgerSettings = { on: boolean; since: string | null };
+export type LastAnchor = { seq: number; hash: string; at: string; to: string[] };
+export type LedgerSettings = {
+  on: boolean; since: string | null;
+  /** Email the chain's head every day it changed: to the person's own mailbox, and to one compliance address if given. */
+  anchorEmail: boolean; complianceEmail: string; lastAnchor: LastAnchor | null;
+};
 const cache = new Map<string, { at: number; on: boolean }>();
+const emailOk = (v: unknown): v is string => typeof v === "string" && v.length <= 200 && /^[^\s@<>",;]+@[^\s@<>",;]+\.[a-z]{2,}$/i.test(v);
+
+/** Stored ledger preferences, cleaned. Pure. */
+export function normalizeLedgerPrefs(raw: unknown): LedgerSettings {
+  const l = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const a = (l.lastAnchor && typeof l.lastAnchor === "object" ? l.lastAnchor : null) as Record<string, unknown> | null;
+  return {
+    on: l.on === true, since: typeof l.since === "string" ? l.since : null,
+    anchorEmail: l.anchorEmail === true, complianceEmail: emailOk(l.complianceEmail) ? l.complianceEmail.toLowerCase() : "",
+    lastAnchor: a && typeof a.seq === "number" && typeof a.hash === "string" && typeof a.at === "string" ? { seq: a.seq, hash: a.hash, at: a.at, to: Array.isArray(a.to) ? a.to.filter((x): x is string => typeof x === "string").slice(0, 3) : [] } : null,
+  };
+}
 
 export async function ledgerSettings(userId: string): Promise<LedgerSettings> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
-  const l = ((row?.extra as Record<string, unknown> | undefined)?.ledger ?? {}) as Record<string, unknown>;
-  return { on: l.on === true, since: typeof l.since === "string" ? l.since : null };
+  return normalizeLedgerPrefs((row?.extra as Record<string, unknown> | undefined)?.ledger);
 }
 
 async function isOn(userId: string): Promise<boolean> {
@@ -32,16 +48,26 @@ async function isOn(userId: string): Promise<boolean> {
   return on;
 }
 
-export async function setLedger(userId: string, on: boolean): Promise<LedgerSettings> {
-  let out: LedgerSettings = { on, since: null };
+/** Change the ledger's preferences: recording on or off, and daily anchoring by email. */
+export async function updateLedgerPrefs(userId: string, change: { on?: boolean; anchorEmail?: boolean; complianceEmail?: string; lastAnchor?: LastAnchor }): Promise<LedgerSettings> {
+  let out = normalizeLedgerPrefs(null);
+  if (change.complianceEmail && !emailOk(change.complianceEmail.trim())) throw Object.assign(new Error("That compliance address does not look like an email address."), { status: 400 });
   await updateExtra(userId, (extra) => {
-    const prev = (extra.ledger ?? {}) as Record<string, unknown>;
-    out = { on, since: on ? (prev.on === true && typeof prev.since === "string" ? prev.since : new Date().toISOString()) : null };
+    const prev = normalizeLedgerPrefs(extra.ledger);
+    const on = change.on ?? prev.on;
+    out = {
+      ...prev, on, since: on ? (prev.on && prev.since ? prev.since : new Date().toISOString()) : null,
+      ...(change.anchorEmail !== undefined ? { anchorEmail: change.anchorEmail } : {}),
+      ...(change.complianceEmail !== undefined ? { complianceEmail: change.complianceEmail.trim().toLowerCase() } : {}),
+      ...(change.lastAnchor ? { lastAnchor: change.lastAnchor } : {}),
+    };
     return { ...extra, ledger: out };
   });
-  cache.set(userId, { at: Date.now(), on });
+  cache.set(userId, { at: Date.now(), on: out.on });
   return out;
 }
+
+export const setLedger = (userId: string, on: boolean) => updateLedgerPrefs(userId, { on });
 
 const cols = { seq: schema.researchLedger.seq, at: schema.researchLedger.at, kind: schema.researchLedger.kind, subject: schema.researchLedger.subject, model: schema.researchLedger.model, prompt: schema.researchLedger.prompt, output: schema.researchLedger.output, sources: schema.researchLedger.sources, meta: schema.researchLedger.meta, prev: schema.researchLedger.prev, hash: schema.researchLedger.hash };
 type Row = { seq: number; at: Date; kind: string; subject: string; model: string; prompt: string; output: string; sources: LedgerEntry["sources"]; meta: Record<string, unknown>; prev: string; hash: string };

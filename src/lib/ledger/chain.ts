@@ -110,3 +110,20 @@ export function parseAnchors(text: string): { seq: number; hash: string }[] {
   }
   return out.slice(0, 50);
 }
+
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** The anchor email. Pure. */
+export function anchorMail(line: string, seq: number, origin: string): { subject: string; text: string; html: string } {
+  const how = "Keep this email. To check the ledger later, paste the line above into YouBank → Settings → Research ledger → \"Check lines you saved earlier\". If it still matches, every entry up to this one is exactly as it was today.";
+  return {
+    subject: `YouBank research ledger anchor: entry ${seq}`,
+    text: `${line}\n\n${how}\n\n${origin}/app/settings?tab=ledger`,
+    html: `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#15171a;padding:20px">
+<p style="font-size:13px;color:#6b7280;margin:0 0 8px">YouBank research ledger anchor</p>
+<pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f5f4ef;border:1px solid #e7e5dd;border-radius:8px;padding:12px;white-space:pre-wrap;word-break:break-all">${escHtml(line)}</pre>
+<p style="font-size:13px;line-height:1.6">${escHtml(how)}</p>
+<p style="font-size:12px"><a href="${origin}/app/settings?tab=ledger" style="color:#6b7280">Open the research ledger</a></p></body></html>`,
+  };
+}
+

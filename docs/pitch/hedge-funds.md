@@ -62,7 +62,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **What it records.** When it is on, every AI answer written for the person is appended with the prompt, model, sources and figure-check summary. That covers chat, deep research, workflows, red teams, desktop questions and background agents. Every call their AI apps make over MCP is recorded too.
 - **Tamper-evident.** Each entry's SHA-256 hash covers its content and the hash of the entry before it. Editing, removing or reordering any entry breaks the chain, and "Check the chain" says exactly which entry broke.
 - **Human review.** A reviewer can approve, reject or note any entry. The review is written as its own entry, so the record stays append-only.
-- **Anchored outside YouBank.** The chain's latest hash can be kept where YouBank cannot change it: a compliance file, an email, or a notarization on Base from the person's own wallet. Pasting a saved line back proves that every entry up to it is unchanged. We tested the scenario this exists for: an operator rewrote one entry and recomputed every later hash. The chain alone still verified, and both kinds of anchor caught it.
+- **Anchored outside YouBank.** The chain's latest hash can be kept where YouBank cannot change it: emailed automatically every day it moves (to the person, and to their compliance desk if they choose), kept in a compliance file, or notarized on Base from the person's own wallet. Pasting a saved line back proves that every entry up to it is unchanged. We tested the scenario this exists for: an operator rewrote one entry and recomputed every later hash. The chain alone still verified, and both kinds of anchor caught it.
 - **Checkable without YouBank.** The export (JSON Lines) states the recipe for re-checking the chain without YouBank's code. The test suite proves that the recipe works on its own.
 - **Why it matters.** Funds can now show *what the AI said, from which sources, and who signed off*. That is the evidence Rule 204-2 and current practitioner guidance point towards, and it is what makes AI use defensible to LPs and examiners.
 
@@ -92,7 +92,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ## 4. Honest limits (say these before an investor asks)
 
-- **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank, so anchoring has to be a habit. Automatic daily anchoring (for example through OpenTimestamps) is a follow-up.
+- **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank. Daily anchors by email make that automatic: they are sent from the person's own connected mailbox, optionally copied to a compliance address. A public timestamp service (such as OpenTimestamps) is a follow-up.
 - **MCP sign-in uses bearer keys, not OAuth.** Clients that only support OAuth discovery need `mcp-remote` or a header-capable configuration. OAuth 2.1 support is a follow-up.
 - **The Book checks LTM fundamentals and price only.** It does not check estimates, intra-quarter KPIs or alternative data yet. Criteria are limited to ten metrics.
 - **Not an order-management system.** Positions are entered by hand. There is no broker sync for the Book, and the Book places no trades.

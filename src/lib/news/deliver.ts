@@ -16,17 +16,20 @@ import type { CalEvent, WatchRow } from "./calendar";
 
 /* ---------------- Email ---------------- */
 
-/** Send to the person's own inbox from their connected mailbox. Returns the address, or throws why not. */
-export async function emailSelf(userId: string, origin: string, mail: { subject: string; text: string; html: string }): Promise<string> {
+/**
+ * Send to the person's own inbox from their connected mailbox (and, when given, to addresses they named
+ * themselves, such as their compliance desk). Returns the address, or throws why not.
+ */
+export async function emailSelf(userId: string, origin: string, mail: { subject: string; text: string; html: string }, alsoTo: string[] = []): Promise<string> {
   const accounts = await requireDb().select().from(schema.emailAccounts).where(and(eq(schema.emailAccounts.userId, userId), eq(schema.emailAccounts.status, "connected")));
   const account = accounts.find((a) => a.provider === "gmail") ?? accounts[0];
   if (!account) throw new Error("No connected mailbox: connect one in Relationships to get email");
   if (account.provider === "gmail") {
     const token = await accessTokenFor(account, origin);
-    await sendMessage(token, { to: [account.address], subject: mail.subject, body: mail.text, html: mail.html });
+    await sendMessage(token, { to: [account.address, ...alsoTo], subject: mail.subject, body: mail.text, html: mail.html });
   } else {
     const s = account.settings as ImapSettings;
-    await (await smtpTransport(s, decryptToken(account.secret))).sendMail({ from: { name: "YouBank", address: account.address }, to: account.address, subject: mail.subject, text: mail.text, html: mail.html });
+    await (await smtpTransport(s, decryptToken(account.secret))).sendMail({ from: { name: "YouBank", address: account.address }, to: [account.address, ...alsoTo], subject: mail.subject, text: mail.text, html: mail.html });
   }
   return account.address;
 }

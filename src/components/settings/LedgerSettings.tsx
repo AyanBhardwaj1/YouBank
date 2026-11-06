@@ -15,7 +15,8 @@ import { connectEvm, discoverEvmWallets, sendNotary, walletMessage, type EvmWall
 import type { LedgerEntry, LedgerKind } from "@/lib/ledger/chain";
 
 type Head = { seq: number; hash: string; at: string; line: string };
-type Page = { available: boolean; settings: { on: boolean; since: string | null }; entries: LedgerEntry[]; total: number; reviewed: Record<number, { decision: string; reviewer: string; at: string }>; head: Head | null };
+type Settings = { on: boolean; since: string | null; anchorEmail: boolean; complianceEmail: string; lastAnchor: { seq: number; hash: string; at: string; to: string[] } | null };
+type Page = { available: boolean; settings: Settings; entries: LedgerEntry[]; total: number; reviewed: Record<number, { decision: string; reviewer: string; at: string }>; head: Head | null };
 type Anchor = { seq: number | null; hash: string; source: string; state: "matches" | "differs" | "missing"; detail: string };
 type Check = { ok: boolean; checked: number; firstBad: number | null; problem: string; at: string; anchors?: Anchor[] };
 
@@ -80,7 +81,8 @@ function Entry({ e, review, onSigned }: { e: LedgerEntry; review?: Page["reviewe
  * these proves the entries up to that head were not rewritten afterwards, even by someone with access
  * to YouBank's database.
  */
-function Anchors({ head, onCheck }: { head: Head; onCheck: (c: Check) => void }) {
+function Anchors({ head, settings, onCheck, onSaved }: { head: Head; settings: Settings; onCheck: (c: Check) => void; onSaved: () => void }) {
+  const [compliance, setCompliance] = useState(settings.complianceEmail);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
@@ -89,6 +91,16 @@ function Anchors({ head, onCheck }: { head: Head; onCheck: (c: Check) => void })
   const [done, setDone] = useState("");
   const [result, setResult] = useState<Check | null>(null);
   useEffect(() => { void discoverEvmWallets().then(setWallets); }, []);
+  const save = async (change: { anchorEmail?: boolean; complianceEmail?: string }) => {
+    setBusy("save"); setErr("");
+    try { await fetchJson("/api/ledger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) }); onSaved(); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+  };
+  const sendNow = async () => {
+    setBusy("send"); setErr(""); setDone("");
+    try { const r = await fetchJson<{ sent: boolean }>("/api/ledger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ anchorNow: true }) }); setDone(r.sent ? `Entry ${head.seq}'s head line was emailed.` : settings.anchorEmail ? "The head has not moved since the last anchor." : "Turn on daily anchors first."); onSaved(); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+  };
   const checkSaved = async () => {
     setBusy("check"); setErr("");
     try { const c = await fetchJson<Check>("/api/ledger/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); setResult(c); onCheck(c); }
@@ -127,6 +139,18 @@ function Anchors({ head, onCheck }: { head: Head; onCheck: (c: Check) => void })
       <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
         <span className="text-muted">Or anchor the head on Base with your wallet (a self-transaction, no funds moved, a fraction of a cent):</span>
         {wallets === null ? <span className="text-faint">looking for wallets…</span> : wallets.length ? wallets.map((w) => <button key={w.id} type="button" disabled={!!busy} onClick={() => void anchor(w)} className={ghost}>{busy === "anchor" ? "Approve in your wallet…" : `Anchor with ${w.name}`}</button>) : <span className="text-faint">no Ethereum wallet in this browser.</span>}
+      </div>
+      <div className="space-y-1.5 border-t border-line pt-3">
+        <label className="flex items-center gap-2 text-[12.5px]">
+          <input type="checkbox" checked={settings.anchorEmail} disabled={!!busy} onChange={(e) => void save({ anchorEmail: e.target.checked })} />
+          Email the head to me every day it changes, so a copy always sits outside YouBank
+        </label>
+        <div className="flex flex-wrap items-center gap-1.5 pl-6">
+          <input value={compliance} onChange={(e) => setCompliance(e.target.value)} type="email" aria-label="Compliance address" placeholder="Also send to (optional): compliance@yourfund.com" className="ctl min-w-[240px] flex-1 border border-line bg-panel px-2 py-1.5 text-[12px] outline-none focus:border-accent" />
+          <button type="button" disabled={!!busy || compliance.trim() === settings.complianceEmail} onClick={() => void save({ complianceEmail: compliance })} className={ghost}>Save</button>
+          <button type="button" disabled={!!busy} onClick={() => void sendNow()} className={ghost}>{busy === "send" ? "Sending…" : "Send one now"}</button>
+        </div>
+        <p className="pl-6 text-[11px] text-muted">{settings.lastAnchor ? `Last anchored: entry ${settings.lastAnchor.seq}, ${stamp(settings.lastAnchor.at)}, to ${settings.lastAnchor.to.join(" and ")}.` : "Sent from your own connected mailbox (Relationships), after the day's last answers."}</p>
       </div>
       {done && <p role="status" className="text-[12px] text-pos">{done}</p>}
       {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
@@ -206,7 +230,7 @@ export function LedgerSettings() {
           {page && entries.length > 0 && entries[entries.length - 1].seq > 1 && entries.length < page.total && <button type="button" onClick={older} className="text-[12px] text-accent">Older entries</button>}
         </section>
       )}
-      {page?.available !== false && page?.head && <Anchors head={page.head} onCheck={setCheck} />}
+      {page?.available !== false && page?.head && <Anchors head={page.head} settings={page.settings} onCheck={setCheck} onSaved={load} />}
       {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
     </div>
   );

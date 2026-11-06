@@ -1,6 +1,6 @@
 /** The research ledger's chain (src/lib/ledger/chain.ts): pnpm exec tsx scripts/test-ledger.ts */
 import { createHash } from "node:crypto";
-import { canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
+import { anchorMail, canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -59,6 +59,9 @@ console.log("anchors");
 const line = headLine("ana@fund.com", chain[4]);
 ok("the head line names the entry and its hash", [line.includes("entry 5"), line.includes(chain[4].hash)], [true, true]);
 ok("pasted lines come back as anchors, any wording, deduped", parseAnchors(`${line}\n${line}\nentry #2: ${chain[1].hash.toUpperCase()}\nno hash here entry 3`), [{ seq: 5, hash: chain[4].hash }, { seq: 2, hash: chain[1].hash }]);
+const mail = anchorMail(line, 5, "https://youbank.example");
+ok("the anchor email carries the line, and pasting the email back finds it", [mail.subject, parseAnchors(mail.text)], ["YouBank research ledger anchor: entry 5", [{ seq: 5, hash: chain[4].hash }]]);
+ok("the email's HTML is escaped", anchorMail("<b>x</b> entry 1 " + "a".repeat(64), 1, "https://y").html.includes("<b>x</b>"), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
