@@ -24,6 +24,8 @@ export type ClosedPosition = {
   thesis: string; criteria: Criterion[];
   /** The verdict when it was closed, and the first day its thesis read broken (with that day's price, when kept). */
   verdictAtClose: Verdict; brokeOn: string | null; priceAtBreak: number | null;
+  /** When the thesis was broken at the close: the first day of that unbroken run of broken days. */
+  brokenSince?: string | null;
   /** The forecast, and the first break after it was made (null when it held to the close). */
   conviction?: Conviction; convictionBrokeOn?: string | null;
   /** The AI committee's forecast, kept the same way, so its calibration survives the close. */
@@ -46,6 +48,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     openedAt: p.createdAt, closedAt: now.toISOString(), reason, note: clip(note, 280),
     thesis: p.thesis, criteria: p.criteria,
     verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
+    brokenSince: verdict === "broken" ? (() => { let since: string | null = null; for (let i = history.length - 1; i >= 0 && history[i].v === "broken"; i--) since = history[i].d; return since ?? brokeAt?.d ?? null; })() : null,
     ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
     ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
@@ -69,6 +72,7 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       reason: isReason(r.reason) ? r.reason : "other", note: clip(r.note, 280), thesis: p.thesis, criteria: p.criteria,
       verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
+      ...(typeof r.brokenSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokenSince) ? { brokenSince: r.brokenSince } : {}),
       ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),
       ...(() => { const a = normalizeConviction({ ...(r.aiConviction && typeof r.aiConviction === "object" ? r.aiConviction : {}), source: "AI committee" }); return a && r.aiConviction ? { aiConviction: a, aiConvictionBrokeOn: typeof r.aiConvictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.aiConvictionBrokeOn) ? r.aiConvictionBrokeOn : null } : {}; })(),
       ...(() => {
@@ -97,8 +101,8 @@ export type Scorecard = {
   /** Where the price on the break day is known: the average return had each been closed then, against the return taken. */
   counterfactual: { n: number; onBreak: number; taken: number } | null;
   /**
-   * Process against outcome, so a lucky win is not read as skill: the process was sound when the position
-   * was not held more than five days past a broken thesis. Tickers in each box, newest first.
+   * Process against outcome, so a lucky win is not read as skill: the process was sound unless the thesis was
+   * still broken at the close and had been for more than five days. Over closes with a return; tickers in each box.
    */
   process: { earned: string[]; unlucky: string[]; lucky: string[]; deserved: string[] } | null;
 };
@@ -129,7 +133,10 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
       const box = { earned: [] as string[], unlucky: [] as string[], lucky: [] as string[], deserved: [] as string[] };
       for (const { c, r } of rets) {
         if (r === 0) continue;
-        const sound = !c.brokeOn || days(c.brokeOn, c.closedAt) <= 5;
+        // Held past a break: still broken at the close, and broken for more than five days by then (a break that
+        // recovered before the close does not count). Older records without the run fall back to the first break.
+        const since = c.verdictAtClose === "broken" ? (c.brokenSince ?? c.brokeOn) : null;
+        const sound = !since || days(since, c.closedAt) <= 5;
         box[sound ? (r > 0 ? "earned" : "unlucky") : (r > 0 ? "lucky" : "deserved")].push(c.ticker);
       }
       return box;
@@ -161,7 +168,8 @@ export function forecastItems(open: Position[], history: BookHistory, closed: Cl
   for (const c of closed) {
     for (const [f, broke] of [[c.conviction, c.convictionBrokeOn], [c.aiConviction, c.aiConvictionBrokeOn], ...(c.pastForecasts ?? []).map((x) => [x.f, x.brokeOn] as const)] as const) {
       if (!f) continue;
-      items.push({ ticker: c.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, [], now, c.closedAt, broke ?? null) });
+      const r = resolveForecast(f, [], now, c.closedAt, broke ?? null);
+      items.push({ ticker: c.ticker, p: f.p, by: f.by, source: f.source, ...r, ...(r.outcome === null && c.closedAt.slice(0, 10) < f.by ? { closedEarly: true } : {}) });
     }
   }
   return items;

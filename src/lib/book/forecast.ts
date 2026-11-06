@@ -15,7 +15,7 @@ import type { HistoryPoint } from "./alerts";
 
 /** p: the chance; by: the date it resolves; at: the day it was made (only later breaks count); source: who made it. */
 export type Conviction = { p: number; by: string; at: string; source: string };
-export type ForecastItem = { ticker: string; p: number; by: string; source: string; outcome: 0 | 1 | null; resolvedOn: string | null };
+export type ForecastItem = { ticker: string; p: number; by: string; source: string; outcome: 0 | 1 | null; resolvedOn: string | null; /** Closed before its date without a break: never scored, but counted. */ closedEarly?: boolean };
 
 const dateOk = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
 
@@ -33,7 +33,9 @@ export function normalizeConviction(raw: unknown): Conviction | null {
   return { p: Math.round(p * 100) / 100, by: r.by, at, source };
 }
 
-export const PAST_FORECASTS_MAX = 20;
+export const PAST_FORECASTS_MAX = 40;
+/** The shortest forecast accepted: long enough that a forecast cannot be farmed day by day. */
+export const MIN_HORIZON_DAYS = 30;
 export const AI_COMMITTEE = "AI committee";
 export const sameForecast = (a: Conviction, b: Conviction | null | undefined) => !!b && a.p === b.p && a.by === b.by && a.at === b.at && a.source === b.source;
 
@@ -54,11 +56,17 @@ export function supersede(past: Conviction[] | undefined, old: Conviction | null
  */
 export function freshForecast(posted: Conviction | undefined, prev: Conviction | undefined, today: string): { conviction?: Conviction; error?: string } {
   if (!posted) return {};
-  if (prev && posted.p === prev.p && posted.by === prev.by && (posted.source === prev.source || posted.source === AI_COMMITTEE)) return { conviction: prev };
+  // The same chance and date is the same forecast, whoever it is posted as: it keeps its date and author.
+  if (prev && posted.p === prev.p && posted.by === prev.by) return { conviction: prev };
   if (posted.by <= today) return { error: "A forecast must resolve after today." };
+  const min = new Date(Date.parse(`${today}T00:00:00Z`) + MIN_HORIZON_DAYS * 86_400_000).toISOString().slice(0, 10);
+  if (posted.by < min) return { error: `A forecast must look at least ${MIN_HORIZON_DAYS} days ahead (to ${min} or later).` };
   // Only the server writes the committee's forecasts; a posted one is the person's own.
   return { conviction: { ...posted, at: today, ...(posted.source === AI_COMMITTEE ? { source: "You" } : {}) } };
 }
+
+/** Whether any of these forecasts was made before today: deleting it would erase a forecast already on the record. */
+export const standing = (today: string, ...fs: (Conviction | null | undefined)[]) => fs.some((f) => !!f && f.at < today);
 
 /** The first day after the forecast was made that the thesis read broken. */
 export const breakAfter = (c: Conviction, history: HistoryPoint[]) => history.find((h) => h.v === "broken" && h.d > c.at)?.d ?? null;
@@ -79,6 +87,8 @@ export function resolveForecast(c: Conviction, history: HistoryPoint[], now: Dat
 
 export type Calibration = {
   n: number; open: number;
+  /** Of the open ones, those whose position closed before the date with no break: they can no longer resolve. */
+  closedEarly: number;
   brier: number | null;
   /** Average stated probability against the share that held: positive is overconfident. */
   bias: number | null;
@@ -94,7 +104,8 @@ export function calibration(items: ForecastItem[]): Calibration {
   const brierOf = (xs: typeof done) => xs.reduce((a, x) => a + (x.p - x.outcome) ** 2, 0) / xs.length;
   const sources = [...new Set(done.map((x) => x.source))];
   return {
-    n: done.length, open: items.length - done.length,
+    n: done.length, open: items.length - done.length - items.filter((x) => x.outcome === null && x.closedEarly).length,
+    closedEarly: items.filter((x) => x.outcome === null && x.closedEarly).length,
     brier: done.length ? r3(brierOf(done)) : null,
     bias: done.length ? r3(done.reduce((a, x) => a + x.p, 0) / done.length - done.reduce((a, x) => a + x.outcome, 0) / done.length) : null,
     buckets: BUCKETS.map(([lo, hi, label]) => {
@@ -107,7 +118,8 @@ export function calibration(items: ForecastItem[]): Calibration {
 
 /** One line for a person: the score and which way it leans. */
 export function calibrationLine(c: Calibration): string {
+  if (!c.n && c.closedEarly && !c.open) return `${c.closedEarly} forecast${c.closedEarly === 1 ? "" : "s"} closed before ${c.closedEarly === 1 ? "its" : "their"} date and left unscored; none resolved yet.`;
   if (!c.n) return c.open ? `${c.open} forecast${c.open === 1 ? "" : "s"} still open; none resolved yet.` : "No forecasts yet: give a position a conviction and a date.";
   const lean = c.bias === null || Math.abs(c.bias) < 0.05 ? "well calibrated" : c.bias > 0 ? `overconfident by ${Math.round(c.bias * 100)} points` : `underconfident by ${Math.round(-c.bias * 100)} points`;
-  return `Brier ${c.brier!.toFixed(3)} over ${c.n} resolved forecast${c.n === 1 ? "" : "s"} (0 is perfect, 0.25 a coin flip): ${lean}${c.open ? `; ${c.open} still open` : ""}.`;
+  return `Brier ${c.brier!.toFixed(3)} over ${c.n} resolved forecast${c.n === 1 ? "" : "s"} (0 is perfect, 0.25 a coin flip): ${lean}${c.open ? `; ${c.open} still open` : ""}${c.closedEarly ? `; ${c.closedEarly} closed before ${c.closedEarly === 1 ? "its" : "their"} date and left unscored` : ""}.`;
 }

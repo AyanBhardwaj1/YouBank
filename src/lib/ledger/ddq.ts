@@ -68,7 +68,8 @@ export function draftDdq(i: DdqInput): DdqItem[] {
   items.push({
     id: "accuracy", topic: "Accuracy", q: "How does the firm check the accuracy of AI output and guard against fabricated figures?",
     a: [
-      "Every AI answer must cite its sources, and every figure in an answer is checked automatically against the source it cites; figures that do not match or have no source are marked in the answer.",
+      "YouBank's AI answers cite their sources, and each figure in an answer is checked automatically against the source it cites; figures that do not match or have no source are marked in the answer.",
+      on ? "" : "The results of those checks are kept only while the research ledger is on, and it is off.",
       g && on && g.figures.answers ? `In ${i.period.toLowerCase()}, ${g.figures.verified} of ${g.figures.checkable} checkable figures across ${g.figures.answers} answers matched their source or were computed from cited figures (${pct(g.figures.verifiedShare)}); ${g.figures.noMatch} did not match and ${g.figures.uncited} had no source.` : "",
       g && on && g.ai ? `${pct(g.sourcedShare) ?? "n/a"} of AI outputs cited at least one source.` : "",
       "Position theses are checked against reported XBRL figures each day, not against AI summaries.",
@@ -103,7 +104,7 @@ export function draftDdq(i: DdqInput): DdqItem[] {
   items.push({
     id: "access", topic: "Controls on AI applications", q: "What can outside AI applications access, and how is that controlled?",
     a: !i.apps.length ? "No outside AI application is connected." : [
-      "Each application has its own revocable key with its own permissions, and every call it makes is recorded.",
+      `Each application has its own revocable key with its own permissions${on ? ", and every call it makes is recorded in the research ledger" : "; calls are recorded only while the research ledger is on, and it is off"}.`,
       ...i.apps.map((a) => `${a.name}: ${a.paused ? "paused" : "active"}; ${a.book ? `may read the book${a.propose ? " and propose positions for review" : ", may not propose"}` : "public research tools only, no access to the book"}${a.lastUsedAt ? `; last used ${day(a.lastUsedAt)}` : "; not used yet"}.`),
       g && on && g.byApp.length ? `This period: ${g.byApp.reduce((s, a) => s + a.n, 0)} calls${g.errors ? `, ${g.errors} ending in an error` : ""}${g.proposals ? `, ${g.proposals} proposal${g.proposals === 1 ? "" : "s"}` : ""}.` : "",
     ].filter(Boolean).join(" "),

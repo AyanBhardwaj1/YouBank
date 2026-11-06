@@ -53,7 +53,7 @@ export function draftLetter(i: LetterInput): string {
   const pr = i.record.process;
   if (pr) {
     const sound = pr.earned.length + pr.unlucky.length, all = sound + pr.lucky.length + pr.deserved.length;
-    if (all) lines.push(`We judge decisions as well as results: ${sound} of ${all} closed positions followed our process (none held more than five days past a broken thesis)${pr.lucky.length ? `, and ${pr.lucky.length} gain${pr.lucky.length === 1 ? "" : "s"} came after holding past a break, which we count as luck rather than skill` : ""}.`);
+    if (all) lines.push(`We judge decisions as well as results: ${sound} of the ${all} closed positions with a measurable return followed our process (none was still held more than five days after its thesis broke)${pr.lucky.length ? `, and ${pr.lucky.length} gain${pr.lucky.length === 1 ? "" : "s"} came after holding past a break, which we count as luck rather than skill` : ""}.`);
   }
   if (i.calibration && (i.calibration.n || i.calibration.open)) lines.push(`Calibration of our conviction: ${calibrationLine(i.calibration)}`);
   const aiCal = i.calibration?.bySource.find((x) => x.source === "AI committee"), pmCal = i.calibration?.bySource.find((x) => x.source === "You");

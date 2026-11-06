@@ -41,14 +41,16 @@ button:disabled{opacity:.5;cursor:default}.note{margin-top:8px;font-size:11.5px;
 <script>
 (function(){
   var METRICS = ${JSON.stringify(METRIC_LABELS)};
-  var nextId = 1, pending = {}, args = null, result = null;
+  var nextId = 1, pending = {}, args = null, result = null, cancelled = false;
   function send(msg){ window.parent.postMessage(msg, "*"); }
   function request(method, params){ var id = nextId++; send({ jsonrpc: "2.0", id: id, method: method, params: params || {} }); return new Promise(function(res, rej){ pending[id] = { res: res, rej: rej }; }); }
   function notify(method, params){ send({ jsonrpc: "2.0", method: method, params: params || {} }); }
   function el(tag, cls, text){ var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = String(text); return e; }
   function data(){
     if (!result) return null;
-    if (result.structuredContent && typeof result.structuredContent === "object") return result.structuredContent;
+    var sc = result.structuredContent;
+    // YouBank's tools answer { result, sources }; take the result.
+    if (sc && typeof sc === "object") return sc.result && typeof sc.result === "object" ? sc.result : sc;
     try { var t = (result.content || []).filter(function(c){ return c.type === "text"; })[0]; return t ? JSON.parse(t.text.split("\\n\\nSources")[0]) : null; } catch (e) { return null; }
   }
   function render(){
@@ -60,7 +62,7 @@ button:disabled{opacity:.5;cursor:default}.note{margin-top:8px;font-size:11.5px;
     if (typeof args.weight_pct_nav === "number") top.appendChild(el("span", "muted", args.weight_pct_nav + "% of NAV"));
     if (typeof args.conviction_pct === "number") top.appendChild(el("span", "muted", Math.round(args.conviction_pct) + "% conviction" + (args.review_by ? " to " + args.review_by : "")));
     var d = data();
-    top.appendChild(el("span", "state", !result ? "Proposing…" : (d && d.proposed) ? "Waiting for your review" : "Not proposed"));
+    top.appendChild(el("span", "state", !result ? (cancelled ? "Cancelled" : "Proposing…") : (d && d.proposed) ? "Waiting for your review" : "Not proposed"));
     card.appendChild(top);
     if (args.thesis) card.appendChild(el("p", "thesis", args.thesis));
     var checks = d && d.today && Array.isArray(d.today.criteria) ? d.today.criteria : null;
@@ -91,6 +93,7 @@ button:disabled{opacity:.5;cursor:default}.note{margin-top:8px;font-size:11.5px;
     if (m.method === "ui/notifications/tool-input" && m.params) { args = m.params.arguments || {}; render(); }
     else if (m.method === "ui/notifications/tool-result" && m.params) { result = m.params; render(); }
     else if (m.method === "ui/notifications/host-context-changed" && m.params) theme(m.params);
+    else if (m.method === "ui/notifications/tool-cancelled") { cancelled = true; render(); }
     else if (m.method === "ui/resource-teardown" && m.id != null) send({ jsonrpc: "2.0", id: m.id, result: {} });
   });
   function theme(ctx){ if (ctx && (ctx.theme === "light" || ctx.theme === "dark")) document.documentElement.setAttribute("data-theme", ctx.theme); }

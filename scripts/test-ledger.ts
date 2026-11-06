@@ -113,7 +113,7 @@ console.log("DDQ answers");
     firm: "Northwind", period: "November 2026", now: new Date("2026-11-30T12:00:00Z"), g: gd,
     ledger: { on: true, since: "2026-10-01T00:00:00Z", chainOk: true, checked: 3, anchors: 1, anchorsMatch: 1 },
     apps: [{ name: "Claude", paused: false, book: true, propose: true, lastUsedAt: "2026-11-02T11:00:00Z" }, { name: "ChatGPT", paused: true, book: false, propose: false, lastUsedAt: null }],
-    calibration: { n: 4, open: 1, brier: 0.2, bias: 0.05, buckets: [], bySource: [{ source: "You", n: 3, brier: 0.21 }, { source: "AI committee", n: 1, brier: 0.09 }] }, committees: 2,
+    calibration: { n: 4, open: 1, closedEarly: 0, brier: 0.2, bias: 0.05, buckets: [], bySource: [{ source: "You", n: 3, brier: 0.21 }, { source: "AI committee", n: 1, brier: 0.09 }] }, committees: 2,
   };
   const items = draftDdq(base);
   const by = (id: string) => items.find((x) => x.id === id)?.a ?? "";

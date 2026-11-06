@@ -19,7 +19,7 @@ import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
-import { freshForecast, supersede } from "./forecast";
+import { freshForecast, standing, supersede } from "./forecast";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -58,7 +58,14 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
 }
 
 export async function deletePosition(userId: string, id: string): Promise<void> {
-  await updateExtra(userId, (extra) => ({ ...extra, book: normalizeBook(extra.book).filter((t) => t.id !== id) }));
+  const today = new Date().toISOString().slice(0, 10);
+  await updateExtra(userId, (extra) => {
+    const list = normalizeBook(extra.book);
+    const p = list.find((t) => t.id === id);
+    // A forecast already on the record is not erased: close the position instead, and it stays scored.
+    if (p && standing(today, p.conviction, p.committee?.forecast, ...(p.pastForecasts ?? []))) throw Object.assign(new Error("This position carries a forecast already on the record. Close it instead, so the forecast stays scored."), { status: 409 });
+    return { ...extra, book: list.filter((t) => t.id !== id) };
+  });
 }
 
 /* ---------------- The track record: closed positions ---------------- */
@@ -98,7 +105,13 @@ export async function closePosition(userId: string, id: string, opts: { exit: nu
 
 /** Remove a record from the track record (one closed by mistake). */
 export async function deleteClosed(userId: string, id: string): Promise<void> {
-  await updateExtra(userId, (extra) => ({ ...extra, bookClosed: normalizeJournal(extra.bookClosed).filter((x) => x.id !== id) }));
+  await updateExtra(userId, (extra) => {
+    const list = normalizeJournal(extra.bookClosed);
+    const c = list.find((x) => x.id === id);
+    // A record whose forecasts were made before its close keeps them on the record.
+    if (c && standing(c.closedAt.slice(0, 10), c.conviction, c.aiConviction, ...(c.pastForecasts ?? []).map((x) => x.f))) throw Object.assign(new Error("This record holds forecasts made before it closed; it stays in the track record so they stay scored."), { status: 409 });
+    return { ...extra, bookClosed: list.filter((x) => x.id !== id) };
+  });
 }
 
 /* ---------------- Proposals from the person's AI apps ---------------- */

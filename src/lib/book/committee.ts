@@ -79,7 +79,8 @@ export function committeeFrom(chair: z.infer<typeof ChairSchema>, bull: RedTeam,
   return {
     at: now.toISOString(), bull, bear, decision: chair.decision,
     rationale: clip(chair.rationale, 800), dissent: clip(chair.dissent, 400), watch: chair.watch.map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
-    forecast: normalizeConviction({ p: Math.min(99, Math.max(1, Math.round(chair.probability))), by, at: today, source: AI_COMMITTEE }),
+    // A chance given as a fraction (0.72) is 72%, not 1%.
+    forecast: normalizeConviction({ p: Math.min(99, Math.max(1, Math.round(chair.probability > 0 && chair.probability < 1 ? chair.probability * 100 : chair.probability))), by, at: today, source: AI_COMMITTEE }),
   };
 }
 

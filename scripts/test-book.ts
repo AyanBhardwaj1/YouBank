@@ -332,11 +332,17 @@ ok("a coin-flip-or-worse thesis sized above the median is noted", sizingCheck([{
 const proc = scorecard([
   { ...c1, id: "q1", ticker: "WIN1", entry: 100, exit: 120, brokeOn: null },
   { ...c1, id: "q2", ticker: "LOSS1", entry: 100, exit: 90, brokeOn: "2026-10-10", closedAt: "2026-10-12T15:00:00.000Z" },
-  { ...c1, id: "q3", ticker: "LUCK", entry: 100, exit: 115, brokeOn: "2026-09-01", closedAt: "2026-10-12T15:00:00.000Z" },
-  { ...c1, id: "q4", ticker: "SAT", entry: 100, exit: 70, brokeOn: "2026-09-01", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q3", ticker: "LUCK", entry: 100, exit: 115, brokeOn: "2026-09-01", verdictAtClose: "broken" as const, brokenSince: "2026-09-20", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q4", ticker: "SAT", entry: 100, exit: 70, brokeOn: "2026-09-01", verdictAtClose: "broken" as const, brokenSince: null, closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q6", ticker: "BLIP", entry: 100, exit: 140, brokeOn: "2026-06-01", verdictAtClose: "intact" as const, closedAt: "2026-10-12T15:00:00.000Z" },
   { ...c1, id: "q5", ticker: "NOEXIT", entry: 100, exit: null },
 ].map((x) => ({ ...x, direction: "long" as const })));
-ok("process against outcome: a prompt exit or an intact thesis is sound; holding past a break is not", proc.process, { earned: ["WIN1"], unlucky: ["LOSS1"], lucky: ["LUCK"], deserved: ["SAT"] });
+ok("process against outcome: a prompt exit, an intact thesis or a break that recovered is sound; still broken for over five days at the close is not", proc.process, { earned: ["WIN1", "BLIP"], unlucky: ["LOSS1"], lucky: ["LUCK"], deserved: ["SAT"] });
+ok("the broken run at the close is measured from its own start, not the first break ever", closedFrom(normalizePosition({ ...t, id: "bs01" })!, "broken", [{ d: "2026-06-01", v: "broken", s: 0 }, { d: "2026-06-02", v: "intact", s: 100 }, { d: "2026-10-10", v: "broken", s: 0 }, { d: "2026-10-11", v: "broken", s: 0 }], 90, "thesis_broke", "", new Date("2026-10-12T00:00:00Z")).brokenSince, "2026-10-10");
+ok("a forecast must look at least 30 days ahead; the same chance and date posted under another name is the same forecast", [freshForecast({ ...f1, by: "2026-11-20" }, undefined, "2026-11-10").error?.includes("30 days"), freshForecast({ ...f1, source: "Claude" }, f1, "2026-11-10").conviction], [true, f1]);
+ok("a chair's chance given as a fraction is read as a percent", committeeFrom({ decision: "hold", probability: 0.72, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, 0.72);
+const early = calibrationOf([], {}, [{ ...c1, id: "ce1", conviction: { p: 0.8, by: "2027-03-01", at: "2026-09-01", source: "You" }, convictionBrokeOn: null, closedAt: "2026-10-01T00:00:00Z" }], new Date("2026-11-20T00:00:00Z"));
+ok("a forecast whose position closed early without a break is counted as unscored, not open", [early.n, early.open, early.closedEarly, calibrationLine(early).includes("closed before its date and left unscored")], [0, 0, 1, true]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

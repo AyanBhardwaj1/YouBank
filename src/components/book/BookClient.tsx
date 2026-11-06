@@ -17,7 +17,7 @@ import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
 import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
-import { calibrationLine, type Calibration } from "@/lib/book/forecast";
+import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
@@ -77,7 +77,8 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
   };
   const save = async () => {
     // A new or changed conviction needs a date still ahead (an unchanged one keeps the day it was made).
-    if (d.convP.trim() && !d.convAt && d.convBy <= new Date().toISOString().slice(0, 10)) { setErr("Give the conviction a date after today."); return; }
+    // A new or changed forecast looks at least 30 days ahead (the server holds the same rule: forecast.ts).
+    if (d.convP.trim() && !d.convAt && d.convBy < inDays(MIN_HORIZON_DAYS)) { setErr(`Give the forecast a date at least ${MIN_HORIZON_DAYS} days ahead.`); return; }
     setBusy(true); setErr("");
     try {
       await fetchJson("/api/book", {
@@ -200,7 +201,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
           </div>
           {c.rationale && <p>{c.rationale}</p>}
           {c.dissent && <p className="text-muted"><span className="font-semibold text-fg">Dissent:</span> {c.dissent}</p>}
-          {c.watch.length > 0 && <div><span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">Watch</span><ul className="list-disc pl-5">{c.watch.map((w) => <li key={w}>{w}</li>)}</ul></div>}
+          {c.watch.length > 0 && <div><span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">Watch</span><ul className="list-disc pl-5">{c.watch.map((w, i) => <li key={i}>{w}</li>)}</ul></div>}
           <details className="text-[11.5px]"><summary className="cursor-pointer text-muted hover:text-fg">The brief for ({c.bull.sources.length} source{c.bull.sources.length === 1 ? "" : "s"})</summary><div className="prose-sm mt-1 leading-relaxed"><Markdown text={c.bull.text} sources={c.bull.sources} /></div></details>
           <details className="text-[11.5px]"><summary className="cursor-pointer text-muted hover:text-fg">The brief against ({c.bear.sources.length} source{c.bear.sources.length === 1 ? "" : "s"})</summary><div className="prose-sm mt-1 leading-relaxed"><Markdown text={c.bear.text} sources={c.bear.sources} /></div></details>
           <p className="text-[10.5px] text-muted">Advice, not a trade: nothing in the Book changes. Kept in the research ledger.</p>

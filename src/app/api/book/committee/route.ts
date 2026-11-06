@@ -28,7 +28,9 @@ export async function POST(req: Request) {
     const [ev] = await evaluateBook([position]);
     const { persona, prefs } = await loadUserContext(user.id);
     const admin = isAdmin(user);
-    const deadline = Date.now() + 170_000;
+    // The whole sitting fits in maxDuration (300 s): briefs to about 150 s, the chair what is left, less a margin.
+    const started = Date.now();
+    const deadline = started + 150_000;
     let error = "";
     const side = (prompt: string, label: string, feature: string): Promise<RedTeam | null> =>
       runAsUser(user.id, () => runChat({
@@ -38,14 +40,19 @@ export async function POST(req: Request) {
         emit: (e) => { if (e.type === "error") error = e.message; },
       }), { admin }).then(({ text, sources }) => (text.trim() ? { at: new Date().toISOString(), text: text.slice(0, 8000), sources: sources.filter((s) => /^https:\/\//.test(s.url)).slice(0, 30) } : null));
     const [bull, bear] = await Promise.all([side(bullPrompt(position, ev ?? null), "bull", "book.committee.bull"), side(redTeamPrompt(position, ev ?? null), "bear", "book.committee.bear")]);
+    if (req.signal.aborted) return NextResponse.json({ error: "Stopped." }, { status: 499 });
     if (!bull || !bear) return NextResponse.json({ error: error || "The committee could not finish its briefs just now. Try again in a minute." }, { status: 502 });
     const prompt = chairPrompt(position, ev ?? null, bull.text, bear.text);
     let chair;
     try {
-      chair = await runAsUser(user.id, () => structured(ChairSchema, "book_committee", CHAIR_SYSTEM, prompt, { prefs, task: "chat", timeoutMs: 90_000 }), { admin });
+      const left = 285_000 - (Date.now() - started);
+      if (left < 20_000) throw new Error("no time left for the chair");
+      chair = await runAsUser(user.id, () => structured(ChairSchema, "book_committee", CHAIR_SYSTEM, prompt, { prefs, task: "chat", timeoutMs: Math.min(90_000, left) }), { admin });
     } catch {
       return NextResponse.json({ error: "The chair could not decide just now. Try again in a minute." }, { status: 502 });
     }
+    // A sitting the person walked away from is not saved half-finished.
+    if (req.signal.aborted) return NextResponse.json({ error: "Stopped." }, { status: 499 });
     const committee = committeeFrom(chair.data, bull, bear);
     await setCommittee(user.id, position.id, committee);
     await record(user.id, {
