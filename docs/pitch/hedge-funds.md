@@ -52,6 +52,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - Form D raises and startups;
   - a calculator and news for a ticker;
   - the person's **Book**, with every thesis checked.
+- **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing* and *Earnings prep* appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
 - **Keys.** Per-person keys, shown once and stored only as a SHA-256 hash. Each key is named for the app it serves and can be revoked. Calls are limited to 600 an hour.
 - **Set-up.** Ready-made set-up for Claude Code, mcpServers-file apps (Claude Desktop, Cursor, Windsurf), mcp-remote, and plain HTTP.
@@ -83,7 +84,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Run the red team. While it works, point at the exposure strip.
 3. **Connect AI apps.**
    - Make a key and paste the Claude Code line.
-   - In Claude, ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
+   - In Claude, pick the *Review my book* prompt, or ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
 4. **Research ledger.**
    - Turn it on and show the MCP call from step 3 already recorded.
    - Approve it, then press "Check the chain".

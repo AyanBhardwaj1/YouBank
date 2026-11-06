@@ -18,7 +18,7 @@ import { evaluateBook, loadBook, newsFor } from "@/lib/book/store";
 import { summarize, tickerOf } from "@/lib/book/position";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
-import { withSources, type McpServer } from "./protocol";
+import { withSources, type McpPrompt, type McpServer } from "./protocol";
 
 const OFFERED = new Set(["get_company_financials", "get_trading_comps", "search_companies", "search_filing", "read_filing", "edgar_fulltext_search", "read_document", "get_recent_filings", "get_xbrl_series", "get_insider_transactions", "calc", "form_d_search", "search_startups"]);
 
@@ -67,6 +67,60 @@ function bookTool(userId: string) {
   });
 }
 
+
+const tick = (v: string | undefined) => tickerOf(v ?? "") ?? (v ?? "").toUpperCase().slice(0, 10);
+const CITE = "Cite every figure with the source id the tool returned ([S1], [S2], …) and do not state a number no tool returned. If a tool has no data, say so.";
+
+/** Ready-made requests for the person's AI app (its slash menu): each names the YouBank tools to use. */
+export const PROMPTS: McpPrompt[] = [
+  {
+    name: "book_review", title: "Review my book", description: "Which theses are broken or close to breaking, why, what changed this week, and what to look at next.",
+    arguments: [],
+    build: () => [
+      "Review my book in YouBank.",
+      "1. Call book_status. Lead with the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk.",
+      "2. For each broken or on-watch name, call ticker_news and filing_changes (10-Q, section mdna) to find what moved it.",
+      "3. Then the intact names in one line each, and any catalyst in the next two weeks.",
+      "4. End with three things I should decide or check this week.",
+      CITE,
+    ].join("\n"),
+  },
+  {
+    name: "red_team", title: "Argue against a position", description: "The strongest sourced case against a position's thesis, its weakest pillar and the signals that would prove it wrong.",
+    arguments: [{ name: "ticker", description: "The position's ticker, e.g. SNOW", required: true }],
+    build: ({ ticker }) => [
+      `Act as a sceptical, well-informed opponent of my position in ${tick(ticker)}.`,
+      `1. Call book_status with ticker ${tick(ticker)} for my thesis, pillars and kill criteria (if it is not in my book, argue against the consensus view).`,
+      `2. Use get_company_financials, get_xbrl_series (revenue and margins over time), filing_changes and get_insider_transactions for ${tick(ticker)}.`,
+      "3. Give the three strongest counter-arguments with evidence, the weakest pillar and why, and what would have to happen in the next two quarters to prove the thesis wrong, as checkable signals.",
+      "Work alone: do not soften the case to agree with me. Under 450 words.",
+      CITE,
+    ].join("\n"),
+  },
+  {
+    name: "what_changed", title: "What changed in the latest filing", description: "New, dropped and reworded language in a company's latest 10-K or 10-Q against the one before, quoted.",
+    arguments: [{ name: "ticker", description: "e.g. CRWD", required: true }, { name: "form", description: "10-K (default) or 10-Q" }],
+    build: ({ ticker, form }) => [
+      `Call filing_changes for ${tick(ticker)} with form ${form === "10-Q" ? "10-Q" : "10-K"}, first for section risk and then mdna.`,
+      "Summarise what is new, what was dropped and what was reworded, most important first, quoting the language with the source id of the filing it is from. Say what each change could mean for an investor, and flag anything that touches my book (book_status).",
+      CITE,
+    ].join("\n"),
+  },
+  {
+    name: "earnings_prep", title: "Earnings prep", description: "Before a company reports: the trend, what the comps show, the news, and which of my kill criteria are at stake.",
+    arguments: [{ name: "ticker", description: "e.g. NVDA", required: true }],
+    build: ({ ticker }) => [
+      `Prepare me for ${tick(ticker)}'s next report.`,
+      `1. get_company_financials and get_xbrl_series for revenue and gross margin over the last eight quarters: the trend and its turning points.`,
+      `2. get_trading_comps for ${tick(ticker)}: where it trades against peers on growth and margins.`,
+      `3. ticker_news and get_recent_filings for anything new since the last report.`,
+      `4. book_status for ${tick(ticker)}: which kill criteria the report could break, and the numbers that would do it.`,
+      "End with the five questions I should want answered on the call.",
+      CITE,
+    ].join("\n"),
+  },
+];
+
 export function mcpServer(userId: string): McpServer {
   const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>];
   return {
@@ -82,6 +136,7 @@ export function mcpServer(userId: string): McpServer {
       return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema } };
     }),
     describeError: (e) => failureMessage(e, "mcp.tool"),
+    prompts: PROMPTS,
     call: async (name, args) => {
       const t = defs.find((d) => d.name === name);
       if (!t) return { text: `Unknown tool ${name}.`, isError: true };

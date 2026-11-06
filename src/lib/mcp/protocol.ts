@@ -13,12 +13,20 @@ export const LATEST_PROTOCOL = PROTOCOL_VERSIONS[0];
 
 export type McpToolInfo = { name: string; title: string; description: string; inputSchema: Record<string, unknown> };
 export type McpCallResult = { text: string; data?: unknown; isError?: boolean };
+/** A ready-made request an AI app shows in its slash menu; `build` writes the message from the arguments. */
+export type McpPrompt = {
+  name: string; title: string; description: string;
+  arguments: { name: string; description: string; required?: boolean }[];
+  build: (args: Record<string, string>) => string;
+};
+
 export type McpServer = {
   name: string; title: string; version: string; instructions: string;
   tools: McpToolInfo[];
   call: (name: string, args: Record<string, unknown>) => Promise<McpCallResult>;
   /** What a tool that threw may tell the model: screened and logged by the server (src/lib/errors failureMessage). */
   describeError?: (e: unknown) => string;
+  prompts?: McpPrompt[];
 };
 
 type Id = string | number | null;
@@ -44,12 +52,25 @@ export async function dispatch(msg: unknown, server: McpServer): Promise<RpcResp
       const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
       return ok(id, {
         protocolVersion: (PROTOCOL_VERSIONS as readonly string[]).includes(asked) ? asked : LATEST_PROTOCOL,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: false }, ...(server.prompts?.length ? { prompts: { listChanged: false } } : {}) },
         serverInfo: { name: server.name, title: server.title, version: server.version },
         instructions: server.instructions,
       });
     }
     case "ping": return ok(id, {});
+    case "prompts/list": return ok(id, { prompts: (server.prompts ?? []).map((p) => ({ name: p.name, title: p.title, description: p.description, arguments: p.arguments })) });
+    case "prompts/get": {
+      const p = (server.prompts ?? []).find((x) => x.name === params.name);
+      if (!p) return fail(id, ERR.invalidParams, `Unknown prompt: ${typeof params.name === "string" ? params.name : "(none)"}. Call prompts/list for the prompts.`);
+      const raw = params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments) ? (params.arguments as Record<string, unknown>) : {};
+      const args: Record<string, string> = {};
+      for (const a of p.arguments) {
+        const v = typeof raw[a.name] === "string" ? (raw[a.name] as string).trim().slice(0, 200) : "";
+        if (!v && a.required) return fail(id, ERR.invalidParams, `The prompt ${p.name} needs ${a.name}.`);
+        if (v) args[a.name] = v;
+      }
+      return ok(id, { description: p.description, messages: [{ role: "user", content: { type: "text", text: p.build(args) } }] });
+    }
     case "tools/list": return ok(id, { tools: server.tools.map((t) => ({ ...t, annotations: { readOnlyHint: true, openWorldHint: true } })) });
     case "tools/call": {
       const name = typeof params.name === "string" ? params.name : "";

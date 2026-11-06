@@ -1,6 +1,7 @@
 /** YouBank's MCP server: keys (src/lib/mcp/keys.ts) and the protocol (src/lib/mcp/protocol.ts). pnpm exec tsx scripts/test-mcp.ts */
 import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf } from "@/lib/mcp/keys";
 import { dispatch, LATEST_PROTOCOL, withSources, type McpServer } from "@/lib/mcp/protocol";
+import { mcpServer, PROMPTS } from "@/lib/mcp/server";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -51,6 +52,22 @@ async function main() {
   ok("not JSON-RPC 2.0", ((await dispatch({ id: 8, method: "ping" }, server)) as { error: { code: number } }).error.code, -32600);
   ok("a batch is refused (removed from the protocol in 2025-06-18)", ((await dispatch([{ jsonrpc: "2.0", id: 9, method: "ping" }], server)) as { error: { code: number } }).error.code, -32600);
   ok("a response from the client is accepted quietly", await dispatch({ jsonrpc: "2.0", id: 10, result: {} }, server), null);
+
+  console.log("prompts");
+  const withPrompts: McpServer = { ...server, prompts: [{ name: "red_team", title: "Red team", description: "d", arguments: [{ name: "ticker", description: "t", required: true }], build: (a) => `against ${a.ticker}` }] };
+  const init2 = await dispatch({ jsonrpc: "2.0", id: 20, method: "initialize", params: {} }, withPrompts) as { result: { capabilities: Record<string, unknown> } };
+  ok("prompts are announced only when there are some", [Object.keys(init2.result.capabilities), Object.keys(init.result.capabilities)], [["tools", "prompts"], ["tools"]]);
+  const pl = await dispatch({ jsonrpc: "2.0", id: 21, method: "prompts/list" }, withPrompts) as { result: { prompts: Record<string, unknown>[] } };
+  ok("prompts/list has no code in it", pl.result.prompts, [{ name: "red_team", title: "Red team", description: "d", arguments: [{ name: "ticker", description: "t", required: true }] }]);
+  const pg = await dispatch({ jsonrpc: "2.0", id: 22, method: "prompts/get", params: { name: "red_team", arguments: { ticker: " snow " } } }, withPrompts) as { result: { messages: { role: string; content: { text: string } }[] } };
+  ok("prompts/get writes the message from the arguments", [pg.result.messages[0].role, pg.result.messages[0].content.text], ["user", "against snow"]);
+  ok("a missing required argument and an unknown prompt are invalid params", [((await dispatch({ jsonrpc: "2.0", id: 23, method: "prompts/get", params: { name: "red_team" } }, withPrompts)) as { error: { code: number } }).error.code, ((await dispatch({ jsonrpc: "2.0", id: 24, method: "prompts/get", params: { name: "nope" } }, withPrompts)) as { error: { code: number } }).error.code], [-32602, -32602]);
+  const real = mcpServer("u");
+  const names = new Set(real.tools.map((t) => t.name));
+  const named = PROMPTS.flatMap((p) => (p.build({ ticker: "SNOW", form: "10-Q" }).match(/\b[a-z]+_[a-z_]+\b/g) ?? []).filter((w) => /^(get|book|ticker|filing|search|read|edgar|form)_/.test(w)));
+  ok("every tool a prompt names is one the server offers", named.filter((n) => !names.has(n)), []);
+  ok("the server offers four prompts, each asking for citations", PROMPTS.map((p) => [p.name, p.build({ ticker: "snow" }).includes("source id")]), [["book_review", true], ["red_team", true], ["what_changed", true], ["earnings_prep", true]]);
+  ok("a ticker argument is cleaned", PROMPTS[1].build({ ticker: "$snow" }).includes("position in SNOW."), true);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);
