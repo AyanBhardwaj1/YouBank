@@ -709,7 +709,7 @@ function TrackRecord({ sig }: { sig: string }) {
               <Stat label="Median days to exit" value={s.medianDaysToExit === null ? "n/a" : String(s.medianDaysToExit)} hint="From the start of the break still in force at the close, to the close" />
             </div>
             {s.counterfactual && (
-              <p className="text-[12px]">Had the {s.counterfactual.n} broken thesis{s.counterfactual.n === 1 ? "" : "es"} been closed on the day {s.counterfactual.n === 1 ? "it" : "they"} broke: <span className="font-semibold">{pctS(s.counterfactual.onBreak)}</span> on average, against <span className="font-semibold">{pctS(s.counterfactual.taken)}</span> taken. <span className="text-muted">{s.counterfactual.onBreak > s.counterfactual.taken ? "The kill criteria would have helped." : "Holding past the break paid this time."}</span></p>
+              <p className="text-[12px]">Had the {s.counterfactual.n} broken {s.counterfactual.n === 1 ? "thesis" : "theses"} been closed on the day {s.counterfactual.n === 1 ? "it" : "they"} broke: <span className="font-semibold">{pctS(s.counterfactual.onBreak)}</span> on average, against <span className="font-semibold">{pctS(s.counterfactual.taken)}</span> taken. <span className="text-muted">{s.counterfactual.onBreak > s.counterfactual.taken ? "The kill criteria would have helped." : "Holding past the break paid this time."}</span></p>
             )}
             {s.process && (s.process.earned.length + s.process.unlucky.length + s.process.lucky.length + s.process.deserved.length) > 0 && (
               <div aria-label="Process against outcome" className="text-[12px]">
