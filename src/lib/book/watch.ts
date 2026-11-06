@@ -42,7 +42,10 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
 /** Everyone with a book, within the time given. */
 export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number }> {
   const rows = await requireDb().select({ userId: schema.profiles.userId }).from(schema.profiles)
-    .where(sql`jsonb_typeof(${schema.profiles.extra}->'book') = 'array' and jsonb_array_length(${schema.profiles.extra}->'book') > 0`);
+    .where(sql`jsonb_typeof(${schema.profiles.extra}->'book') = 'array' and jsonb_array_length(${schema.profiles.extra}->'book') > 0`)
+    // Least recently checked first: a run that hits its deadline leaves the rest for the next one, and nobody
+    // is left at the back of the queue for good.
+    .orderBy(sql`(${schema.profiles.extra}->'bookState'->>'checkedAt') asc nulls first`);
   let checked = 0, alerts = 0, failed = 0;
   for (const { userId } of rows) {
     if (Date.now() > deadline) break;
