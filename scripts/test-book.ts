@@ -7,7 +7,7 @@ import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
-import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, supersede } from "@/lib/book/forecast";
+import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekBrief } from "@/lib/book/week";
@@ -361,7 +361,7 @@ console.log("The week in the book");
   const wb = weekBrief({ now: wNow, book: [pA, pB, pC], evals: [evA], history: hist, closed: [], proposals: [] });
   ok("a week's brief: what broke and recovered (from where it stood before the week), when the new verdict began, and what is coming", [wb.from, wb.changes.map((c) => [c.ticker, c.from, c.to, c.on]), wb.coming.map((c) => [c.ticker, c.label, c.inDays])], ["2026-11-02", [["AAA", "intact", "broken", "2026-11-06"], ["CCC", "broken", "intact", "2026-11-04"]], [["AAA", "Earnings", 3]]]);
   ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
-  ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict, and all 1 stand as they did.");
+  ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict.");
 }
 
 console.log("Pooled chairs");
@@ -369,7 +369,7 @@ console.log("Pooled chairs");
   const ch = (decision: "add" | "hold" | "trim" | "exit", probability: number, rationale: string = decision) => ({ decision, probability, rationale, dissent: "", watch: [] as string[] });
   const pool = poolChairs([ch("trim", 60, "a"), ch("trim", 70, "b"), ch("hold", 40, "c")])!;
   ok("three chairs: the majority decides, the probability is the mean in log-odds, the wording comes from the majority chair nearest it", [pool.chair.decision, pool.chair.probability, pool.chair.rationale, pool.samples], ["trim", 57, "a", [{ decision: "trim", p: 0.6 }, { decision: "trim", p: 0.7 }, { decision: "hold", p: 0.4 }]]);
-  ok("a split goes to the more cautious call; fractions count as percents; none is none", [poolChairs([ch("add", 80), ch("exit", 20)])!.chair.decision, poolChairs([ch("hold", 0.9), ch("hold", 90)])!.chair.probability, poolChairs([])], ["exit", 90, null]);
+  ok("a split takes the median call (add against exit is trim; add, hold and exit is hold); fractions count as percents; none is none", [poolChairs([ch("add", 80), ch("exit", 20)])!.chair.decision, poolChairs([ch("add", 80), ch("hold", 60), ch("exit", 20)])!.chair.decision, poolChairs([ch("hold", 0.9), ch("hold", 90)])!.chair.probability, poolChairs([])], ["trim", "hold", 90, null]);
   ok("log-odds pooling keeps a confident chair from being averaged away", poolChairs([ch("hold", 95), ch("hold", 50), ch("hold", 50)])!.chair.probability, 73);
   const withSamples = committeeFrom(pool.chair, brief("a"), brief("b"), new Date("2026-11-06T12:00:00Z"), pool.samples);
   ok("a committee keeps its chairs' spread through storage; a lone chair stores none", [normalizeCommittee(JSON.parse(JSON.stringify(withSamples)))?.samples?.length, withSamples.forecast?.p, committeeFrom(ch("hold", 50), brief("a"), brief("b"), new Date(), [{ decision: "hold", p: 0.5 }]).samples], [3, 0.57, undefined]);
@@ -395,6 +395,27 @@ console.log("AI claims against the record");
   const bad = lintLetter("Every AI output is reviewed by a person. Our AI tools' figures were 99% verified against their sources. A person approved 12% of AI outputs.", { ledgerOn: true, record: rec });
   ok("claims the ledger contradicts are flagged high; a true one is not", bad.filter((f) => f.rule === "AI claim contradicts the record").map((f) => f.why), ["The ledger shows 12% of AI outputs reviewed by a person, not all. Say what the record shows.", "The ledger shows 91% of AI figures verified against their source for this period, not 99%."]);
   ok("a review claim with no review record is flagged", lintLetter("All AI output is reviewed.", { ledgerOn: true, record: { reviewedShare: null, verifiedShare: null, outputs: 0 } }).map((f) => f.rule).includes("AI claim the record cannot show"), true);
+}
+
+console.log("Second review: edge cases");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pN = normalizePosition({ ...t, catalysts: [], id: "wkn1", ticker: "NEW" })!, pR = normalizePosition({ ...t, catalysts: [], id: "wkr1", ticker: "RTR" })!;
+  const wb2 = weekBrief({ now: wNow, book: [pN, pR], evals: [], history: {
+    wkn1: [{ d: "2026-11-03", v: "intact", s: 100 }, { d: "2026-11-05", v: "broken", s: 0 }],
+    wkr1: [{ d: "2026-10-30", v: "intact", s: 100 }, { d: "2026-11-04", v: "broken", s: 0 }, { d: "2026-11-06", v: "intact", s: 100 }],
+  }, closed: [], proposals: [] });
+  ok("the week sees a position new this week that broke, and a break that recovered within the week", [wb2.changes.map((c) => [c.ticker, c.from, c.path.join(">")]), wb2.headline], [[["NEW", "intact", "broken"], ["RTR", "intact", "broken>intact"]], "This week: 1 thesis broke (NEW); 1 broke and recovered within the week (RTR)."]);
+  const hi = Array.from({ length: 25 }, (_, k) => ({ p: 0.95, outcome: (k < 10 ? 1 : 0) as 0 | 1 }));
+  const fh = fitPlatt(hi);
+  const lo = Array.from({ length: 25 }, (_, k) => ({ p: k % 2 ? 0.1 : 0.14, outcome: (k < 22 ? 1 : 0) as 0 | 1 }));
+  const fl = fitPlatt(lo);
+  ok("the fit never says the opposite of what happened: an overconfident 95% that held 40% corrects down; a 12% that held 88% corrects up", [fh === null || recalibrate(0.95, fh) < 0.95, fl === null || recalibrate(0.12, fl) > 0.12], [true, true]);
+  const sampleP = normalizePosition({ ...t, id: "smp01", conviction: { p: 60, by: "2027-03-01", at: "2026-09-01", source: "Sample" } })!;
+  ok("sample forecasts are never scored, kept or on the record", [calibrationOf([sampleP], { smp01: [{ d: "2026-10-01", v: "broken", s: 0 }] }, [], new Date("2026-11-20T00:00:00Z")).n, supersede([], sampleP.conviction, null, "2026-11-20"), standing("2026-11-20", sampleP.conviction)], [0, [], false]);
+  const lintAi = (x: string) => lintLetter(x, { ledgerOn: true, record: { reviewedShare: 12, verifiedShare: 91, outputs: 42 } }).filter((f) => f.rule.startsWith("AI claim c")).length;
+  ok("ordinary sentences are not read as AI claims; a real one still is", [lintAi("We aim for every figure in this letter to be accurate."), lintAi("Our AI screening tool reviewed 40% more filings this quarter than last."), lintAi("We used AI to screen 1,200 companies, and 30% of our holdings were reviewed by the committee."), lintAi("Every AI output is reviewed by a person.")], [0, 0, 0, 1]);
+  ok("a break seen only at the close starts on the close day", closedFrom(normalizePosition({ ...t, id: "bsc1" })!, "broken", [{ d: "2026-06-01", v: "broken", s: 0 }, { d: "2026-06-02", v: "intact", s: 100 }], 90, "thesis_broke", "", new Date("2026-10-12T00:00:00Z")).brokenSince, "2026-10-12");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

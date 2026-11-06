@@ -35,11 +35,11 @@ const UNREACHABLE = "A data source we rely on is not answering right now. Try ag
  * with a system error as its cause. Not our bug and not the person's: a 503 they can retry.
  */
 export function isUnreachable(e: unknown): boolean {
-  if (!(e instanceof Error)) return false;
-  const own = (e as unknown as { code?: unknown }).code;
-  const cause = (e as { cause?: { code?: unknown } }).cause;
-  const code = typeof cause?.code === "string" ? cause.code : typeof own === "string" ? own : "";
-  return /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/.test(code) || (e.name === "TypeError" && e.message === "fetch failed");
+  // Only fetch's own failure with a network cause: an invalid header or a bad certificate is our bug, and
+  // our own database's connection errors are not "a data source" to retry blindly.
+  if (!(e instanceof Error) || e.name !== "TypeError" || e.message !== "fetch failed") return false;
+  const code = (e as { cause?: { code?: unknown } }).cause?.code;
+  return typeof code === "string" && /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/.test(code);
 }
 
 /** The message a person may see. `ref` points at the log line when the real message was withheld. */

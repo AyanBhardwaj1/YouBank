@@ -199,6 +199,7 @@ async function main() {
   const unr = describeFailure(dns);
   check("an outside service that cannot be reached is a 503 to retry, not our bug", unr.status === 503 && unr.message.startsWith("A data source we rely on is not answering") && !unr.message.includes("sec.gov"), unr);
   check("a plain TypeError of our own stays a 500", describeFailure(new TypeError("x is not a function")).status === 500);
+  check("fetch failing for a reason of ours (a bad header) and our database's own reset stay 500s", describeFailure(Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("invalid header"), { code: "UND_ERR_INVALID_ARG" }) })).status === 500 && describeFailure(Object.assign(new Error("Connection terminated unexpectedly"), { code: "ECONNRESET" })).status !== 503);
   check("a missing column also reads as being set up", isPendingMigration(column) && describeFailure(column).message.startsWith(SETTING_UP) && !isPendingMigration(unique));
   check("failureMessage for a missing table says being set up", failureMessage(drizzle, "test").startsWith(SETTING_UP));
   check("a missing table is recognised through Drizzle's wrapper", isMissingTable(drizzle));

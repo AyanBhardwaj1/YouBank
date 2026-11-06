@@ -4,7 +4,7 @@ import { loadUserContext } from "@/lib/ai/persona";
 import { runAsUser } from "@/lib/ai/usage";
 import { isAdmin } from "@/lib/auth/admin";
 import { guarded } from "@/lib/auth/user";
-import { cacheGet, cacheSet, inBackground } from "@/lib/cache";
+import { cacheGetShared, cacheSet, inBackground } from "@/lib/cache";
 import { rateLimit } from "@/lib/locks";
 import { logError } from "@/lib/errors";
 import { evaluateBook, loadBook, noteCommittee, setCommittee } from "@/lib/book/store";
@@ -21,7 +21,7 @@ type Sitting = { state: "running" | "done" | "failed"; at: string; error?: strin
 const KEY = (userId: string, id: string) => `book-committee:${userId}:${id}`;
 const TTL = 10 * 60_000;
 const status = async (userId: string, id: string): Promise<Sitting | null> => {
-  const raw = await cacheGet(KEY(userId, id)).catch(() => null);
+  const raw = await cacheGetShared(KEY(userId, id)).catch(() => null);
   try { return raw ? (JSON.parse(raw) as Sitting) : null; } catch { return null; }
 };
 
@@ -93,7 +93,8 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
   if (!pooled) throw new SittingError("The chair could not decide just now. Try again in a minute.");
   const chair = done[0];
   const committee = committeeFrom(pooled.chair, bull, bear, new Date(), pooled.samples);
-  await setCommittee(userId, position.id, committee);
+  // The position may have been closed or deleted while the committee sat: then nothing is kept or announced.
+  if (!(await setCommittee(userId, position.id, committee))) throw new SittingError("The position was closed or removed while the committee sat, so its decision was not kept.");
   await noteCommittee(userId, position, committee).catch(() => undefined);
   await record(userId, {
     kind: "red_team", subject: `Committee: ${position.ticker}`, model: `${chair.provider}/${chair.model}`, prompt: prompt.slice(0, 4000),

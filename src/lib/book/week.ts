@@ -14,7 +14,8 @@ import { DECISIONS, type Decision } from "./committee";
 export type WeekInput = { now: Date; days?: number; book: Position[]; evals: Evaluation[]; history: BookHistory; closed: ClosedPosition[]; proposals: Proposal[] };
 export type WeekBrief = {
   from: string; to: string;
-  changes: { positionId: string; ticker: string; from: Verdict; to: Verdict; on: string; summary: string }[];
+  /** path: each verdict in turn after `from` (more than one when it moved and came back within the week). */
+  changes: { positionId: string; ticker: string; from: Verdict; to: Verdict; on: string; path: Verdict[]; summary: string }[];
   resolved: { ticker: string; p: number; by: string; source: string; held: boolean; on: string }[];
   committees: { positionId: string; ticker: string; decision: Decision; on: string; p: number | null }[];
   closed: { ticker: string; reason: string; ret: number | null; on: string }[];
@@ -34,16 +35,20 @@ export function weekBrief(i: WeekInput): WeekBrief {
   const inWeek = (d: string) => d > from && d <= to;
   const byId = new Map(i.evals.map((e) => [e.positionId, e]));
 
-  // A verdict change: where it stood before the week against where it stands now, and the day the new one began.
+  // Every change of verdict in the week, from where it stood before (or, for a position new this week, its
+  // first check): "intact → broken" and also "intact → broken → intact" (broke and recovered).
   const changes: WeekBrief["changes"] = [];
   for (const p of i.book) {
     const pts = i.history[p.id] ?? [];
     const before = [...pts].reverse().find((h) => h.d <= from);
-    const last = pts[pts.length - 1];
-    if (!before || !last || !inWeek(last.d) || before.v === last.v) continue;
-    let k = pts.length - 1;
-    while (k > 0 && pts[k - 1].v === last.v && pts[k - 1].d > from) k--;
-    changes.push({ positionId: p.id, ticker: p.ticker, from: before.v, to: last.v, on: pts[k].d, summary: byId.get(p.id)?.summary ?? "" });
+    const inside = pts.filter((h) => inWeek(h.d));
+    if (!inside.length) continue;
+    let prev = (before ?? inside[0]).v;
+    const path: { v: Verdict; d: string }[] = [];
+    for (const h of before ? inside : inside.slice(1)) if (h.v !== prev) { path.push({ v: h.v, d: h.d }); prev = h.v; }
+    if (!path.length) continue;
+    const start = (before ?? inside[0]).v, last = path[path.length - 1];
+    changes.push({ positionId: p.id, ticker: p.ticker, from: start, to: last.v, on: last.d, path: path.map((x) => x.v), summary: byId.get(p.id)?.summary ?? "" });
   }
   const rank: Record<Verdict, number> = { broken: 0, watch: 1, unknown: 2, intact: 3 };
   changes.sort((a, b) => rank[a.to] - rank[b.to] || a.ticker.localeCompare(b.ticker));
@@ -68,16 +73,19 @@ export function weekBrief(i: WeekInput): WeekBrief {
   const proposals = i.proposals.map((p) => ({ ticker: p.position.ticker, from: p.from }));
 
   const parts: string[] = [];
-  const broke = changes.filter((c) => c.to === "broken"), recovered = changes.filter((c) => c.to === "intact"), watch = changes.filter((c) => c.to === "watch");
+  const roundTrip = changes.filter((c) => c.to === c.from && c.path.includes("broken"));
+  const moved = changes.filter((c) => c.to !== c.from);
+  const broke = moved.filter((c) => c.to === "broken"), recovered = moved.filter((c) => c.to === "intact"), watch = moved.filter((c) => c.to === "watch");
   if (broke.length) parts.push(`${plural(broke.length, "thesis", "theses")} broke (${list(broke.map((c) => c.ticker))})`);
   if (watch.length) parts.push(`${watch.length} moved on watch (${list(watch.map((c) => c.ticker))})`);
   if (recovered.length) parts.push(`${recovered.length} recovered (${list(recovered.map((c) => c.ticker))})`);
+  if (roundTrip.length) parts.push(`${roundTrip.length} broke and recovered within the week (${list(roundTrip.map((c) => c.ticker))})`);
   if (resolved.length) parts.push(`${plural(resolved.length, "forecast")} resolved, ${resolved.filter((r) => r.held).length} held`);
   if (committees.length) parts.push(`the AI committee sat on ${list(committees.map((c) => `${c.ticker} (${DECISIONS[c.decision].toLowerCase()})`))}`);
   if (closed.length) parts.push(`${closed.length} closed`);
   if (coming.length) parts.push(`${plural(coming.length, "date")} in the next two weeks`);
   if (proposals.length) parts.push(`${plural(proposals.length, "proposal")} waiting for review`);
-  const headline = parts.length ? `This week: ${parts.join("; ")}.` : `A quiet week: no thesis changed verdict${i.book.length ? `, and all ${i.book.length} stand as they did` : ""}.`;
+  const headline = parts.length ? `This week: ${parts.join("; ")}.` : "A quiet week: no thesis changed verdict.";
   return { from, to, changes, resolved, committees, closed, coming, proposals, headline };
 }
 

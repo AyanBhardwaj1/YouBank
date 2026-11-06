@@ -240,6 +240,8 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
         if (st.state === "failed") { setErr(st.error || "The committee could not finish just now."); return; }
         if (st.state !== "running") return;
       }
+      setErr("The committee is still sitting. Its decision will appear here and in the bell when it is done.");
+      onChanged?.();
     } catch (e) { setErr(errorMessage(e)); } finally { watching.current = false; setBusy(""); }
   }, [ev.positionId, onChanged]);
   const convene = async () => {

@@ -94,7 +94,11 @@ export function lintLetter(text: string, ctx: { ledgerOn: boolean; record?: AiRe
     // A claim about how AI is supervised, checked against the record (the SEC's exam staff compare the two).
     const rec = ctx.record;
     // Clause by clause, so "91% of figures matched, and 12% were reviewed" pairs each figure with its claim.
-    if (rec && ctx.ledgerOn && /\b(ai|model|machine|automated|algorithm)/i.test(s)) for (const cl of s.split(/[,;:(]\s*|\s+and\s+(?=\d)/)) {
+    if (rec && ctx.ledgerOn && /\b(ai|models?|machine|automated|algorithms?)\b/i.test(s)) for (const cl of s.split(/[,;:(]\s*|\s+and\s+(?=\d)/)) {
+      // A claim about AI's output: the clause names the AI or its output, and the number is not a change ("40% more").
+      if (!/\b(ai|models?|automated|algorithms?|outputs?|answers?|figures?)\b/i.test(cl) || /\d\s?%\s+(more|less|fewer|higher|lower|faster|slower)\b/i.test(cl)) continue;
+      // "Our AI tool reviewed…" has AI doing the reviewing, not being reviewed.
+      if (/\b(ai|models?|tools?|algorithms?)\b[^,;]*\b(reviewed|checked|verified)\s+(?!by)\w/i.test(cl) && !/\b(?:outputs?|answers?|figures?)\b[^,;]*\b(?:were|was|are|is)\b/i.test(cl)) continue;
       const all = /\b(?:all|every|each)\s+(?:(?:of\s+)?(?:our|the|its|their)\s+)?(?:ai|model|machine|automated|output|answer|figure|number|research)/i.test(cl) || /\b100\s?%/.test(cl);
       const said = Number(/(\d{1,3}(?:\.\d+)?)\s?%/.exec(cl)?.[1] ?? NaN);
       const check = (word: RegExp, share: number | null, what: string) => {

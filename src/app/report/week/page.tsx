@@ -40,7 +40,7 @@ export default async function WeekPage() {
         <H>Verdicts that changed</H>
         {w.changes.length ? (
           <ul className="mt-0.5 space-y-1">{w.changes.map((c) => (
-            <li key={c.positionId}><Link href={`/app/book?position=${encodeURIComponent(c.positionId)}`} className="font-semibold hover:underline">{c.ticker}</Link>: {verdictWord(c.from)} → <span className={`font-semibold ${TONE[c.to]}`}>{verdictWord(c.to)}</span> on {c.on}. <span className="text-muted">{c.summary}</span></li>
+            <li key={c.positionId}><Link href={`/app/book?position=${encodeURIComponent(c.positionId)}`} className="font-semibold hover:underline">{c.ticker}</Link>: {verdictWord(c.from)}{c.path.slice(0, -1).map((v, k) => <span key={k}> → {verdictWord(v)}</span>)} → <span className={`font-semibold ${TONE[c.to]}`}>{verdictWord(c.to)}</span> on {c.on}. <span className="text-muted">{c.summary}</span></li>
           ))}</ul>
         ) : none("No thesis changed verdict this week.")}
 

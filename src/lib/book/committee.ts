@@ -82,8 +82,8 @@ const logit = (p: number) => Math.log(p / (1 - p));
 /**
  * Several chairs who sat independently, pooled: the probability is the mean in log-odds (ensembles of LLM
  * forecasts beat single ones, and log-odds pooling keeps a confident minority from being averaged away);
- * the decision is the majority, a tie going to the more cautious call; the wording comes from the chair in
- * the majority whose probability is closest to the pooled one.
+ * the decision is the majority, or the median call when they split; the wording comes from the chair who
+ * made that call (else the one) whose probability is closest to the pooled one.
  */
 export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decision: Decision; p: number }[] } | null {
   if (!answers.length) return null;
@@ -92,9 +92,18 @@ export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decisio
   const votes = new Map<Decision, number>();
   for (const x of samples) votes.set(x.decision, (votes.get(x.decision) ?? 0) + 1);
   const top = Math.max(...votes.values());
-  const decision = CAUTION.find((d) => votes.get(d) === top)!;
-  const rep = answers.map((a, i) => ({ a, i })).filter(({ a }) => a.decision === decision)
-    .sort((x, y) => Math.abs(samples[x.i].p - pooled) - Math.abs(samples[y.i].p - pooled))[0].a;
+  const leaders = CAUTION.filter((d) => votes.get(d) === top);
+  // A strict majority decides; a split takes the median on the add-hold-trim-exit scale (an even split
+  // rounds toward caution), so add against exit is trim, and add, hold and exit is hold.
+  const ORDER: Decision[] = ["add", "hold", "trim", "exit"];
+  const ranks = samples.map((x) => ORDER.indexOf(x.decision)).sort((a, b) => a - b);
+  const mid = ranks.length % 2 ? ranks[ranks.length >> 1] : Math.ceil((ranks[ranks.length / 2 - 1] + ranks[ranks.length / 2]) / 2);
+  const decision: Decision = leaders.length === 1 ? leaders[0] : ORDER[mid];
+  // The wording comes from a chair who made the call, nearest the pooled chance; when none did (a split
+  // settled on the median), from the chair nearest the pooled chance, with the dissent kept as theirs.
+  const pick = (xs: { a: Chair; i: number }[]) => xs.sort((x, y) => Math.abs(samples[x.i].p - pooled) - Math.abs(samples[y.i].p - pooled))[0]?.a;
+  const all = answers.map((a, i) => ({ a, i }));
+  const rep = pick(all.filter(({ a }) => a.decision === decision)) ?? pick(all)!;
   return { chair: { ...rep, decision, probability: Math.round(pooled * 100) }, samples };
 }
 

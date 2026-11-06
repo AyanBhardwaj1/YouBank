@@ -9,7 +9,7 @@
  * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
  */
 import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
-import { breakAfter, calibration, normalizeConviction, PAST_FORECASTS_MAX, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
+import { breakAfter, calibration, isSample, normalizeConviction, PAST_FORECASTS_MAX, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -48,7 +48,8 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     openedAt: p.createdAt, closedAt: now.toISOString(), reason, note: clip(note, 280),
     thesis: p.thesis, criteria: p.criteria,
     verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
-    brokenSince: verdict === "broken" ? (() => { let since: string | null = null; for (let i = history.length - 1; i >= 0 && history[i].v === "broken"; i--) since = history[i].d; return since ?? brokeAt?.d ?? null; })() : null,
+    // A break the daily history has not recorded yet (seen only at the close) starts on the close day.
+    brokenSince: verdict === "broken" ? (() => { let since: string | null = null; for (let i = history.length - 1; i >= 0 && history[i].v === "broken"; i--) since = history[i].d; return since ?? now.toISOString().slice(0, 10); })() : null,
     ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
     ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
@@ -163,13 +164,13 @@ export function forecastItems(open: Position[], history: BookHistory, closed: Cl
   const items: ForecastItem[] = [];
   for (const p of open) {
     for (const f of [p.conviction, p.committee?.forecast ?? undefined, ...(p.pastForecasts ?? [])]) {
-      if (!f) continue;
+      if (!f || isSample(f)) continue;
       items.push({ ticker: p.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, history[p.id] ?? [], now) });
     }
   }
   for (const c of closed) {
     for (const [f, broke] of [[c.conviction, c.convictionBrokeOn], [c.aiConviction, c.aiConvictionBrokeOn], ...(c.pastForecasts ?? []).map((x) => [x.f, x.brokeOn] as const)] as const) {
-      if (!f) continue;
+      if (!f || isSample(f)) continue;
       const r = resolveForecast(f, [], now, c.closedAt, broke ?? null);
       items.push({ ticker: c.ticker, p: f.p, by: f.by, source: f.source, ...r, ...(r.outcome === null && c.closedAt.slice(0, 10) < f.by ? { closedEarly: true } : {}) });
     }

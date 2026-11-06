@@ -153,17 +153,20 @@ export async function noteCommittee(userId: string, p: Position, c: Committee): 
   }).onConflictDoNothing();
 }
 
-export async function setCommittee(userId: string, id: string, committee: Committee): Promise<void> {
+export async function setCommittee(userId: string, id: string, committee: Committee): Promise<boolean> {
   const today = new Date().toISOString().slice(0, 10);
+  let found = false;
   await updateExtra(userId, (extra) => ({
     ...extra,
     book: normalizeBook(extra.book).map((t) => {
       if (t.id !== id) return t;
+      found = true;
       // The committee's last forecast stays scored when it sits again (forecast.ts supersede).
       const past = supersede(t.pastForecasts, t.committee?.forecast, committee.forecast, today);
       return normalizePosition({ ...t, committee, ...(past.length ? { pastForecasts: past } : {}) }) ?? t;
     }),
   }));
+  return found;
 }
 
 export async function setRedTeam(userId: string, id: string, redTeam: NonNullable<Position["redTeam"]>): Promise<void> {

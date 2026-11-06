@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
+import { SAMPLE_SOURCE } from "@/lib/book/forecast";
 import { defaultTemplate, newId, parseImport, SAMPLE_BOOK, SAMPLE_CONVICTION, TEMPLATES } from "@/lib/book/position";
 import { addPositions } from "@/lib/book/store";
 
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
     const b = ((await req.json().catch(() => ({}))) ?? {}) as { text?: unknown; template?: unknown; sample?: unknown };
     if (b.sample === true) {
       const by = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
-      const r = await addPositions(user.id, SAMPLE_BOOK.map((p) => (SAMPLE_CONVICTION[p.ticker] ? { ...p, conviction: { p: SAMPLE_CONVICTION[p.ticker], by, source: "Sample" } } : p)));
+      const r = await addPositions(user.id, SAMPLE_BOOK.map((p) => (SAMPLE_CONVICTION[p.ticker] ? { ...p, conviction: { p: SAMPLE_CONVICTION[p.ticker], by, source: SAMPLE_SOURCE } } : p)));
       return NextResponse.json({ ...r, problems: [] });
     }
     if (typeof b.text !== "string" || !b.text.trim()) return NextResponse.json({ error: "Paste at least one line with a ticker." }, { status: 400 });

@@ -46,7 +46,7 @@ export const sameForecast = (a: Conviction, b: Conviction | null | undefined) =>
  */
 export function supersede(past: Conviction[] | undefined, old: Conviction | null | undefined, next: Conviction | null | undefined, today: string): Conviction[] {
   const list = past ?? [];
-  if (!old || sameForecast(old, next) || old.at >= today || list.some((x) => sameForecast(old, x))) return list;
+  if (!old || isSample(old) || sameForecast(old, next) || old.at >= today || list.some((x) => sameForecast(old, x))) return list;
   return [...list, old].slice(-PAST_FORECASTS_MAX);
 }
 
@@ -66,7 +66,10 @@ export function freshForecast(posted: Conviction | undefined, prev: Conviction |
 }
 
 /** Whether any of these forecasts was made before today: deleting it would erase a forecast already on the record. */
-export const standing = (today: string, ...fs: (Conviction | null | undefined)[]) => fs.some((f) => !!f && f.at < today);
+export const SAMPLE_SOURCE = "Sample";
+/** Sample forecasts (the sample book's) are illustrative: never scored, never kept, never "on the record". */
+export const isSample = (f: Conviction | null | undefined) => f?.source === SAMPLE_SOURCE;
+export const standing = (today: string, ...fs: (Conviction | null | undefined)[]) => fs.some((f) => !!f && !isSample(f) && f.at < today);
 
 /** The first day after the forecast was made that the thesis read broken. */
 export const breakAfter = (c: Conviction, history: HistoryPoint[]) => history.find((h) => h.v === "broken" && h.d > c.at)?.d ?? null;
@@ -110,21 +113,25 @@ const sig = (z: number) => 1 / (1 + Math.exp(-z));
  */
 export function fitPlatt(xs: { p: number; outcome: 0 | 1 }[], ridge = 2): { a: number; b: number } | null {
   if (xs.length < PLATT_MIN || xs.every((x) => x.outcome === xs[0].outcome)) return null;
-  let a = 1, b = 0;
-  for (let it = 0; it < 50; it++) {
+  const zs = xs.map((x) => lg(x.p));
+  // The penalised log-loss; each Newton step is halved until it goes down, so the fit cannot run away.
+  const loss = (a: number, b: number) => xs.reduce((s, x, k) => { const q = Math.min(1 - 1e-12, Math.max(1e-12, sig(a * zs[k] + b))); return s - (x.outcome ? Math.log(q) : Math.log(1 - q)); }, 0) + (ridge / 2) * ((a - 1) ** 2 + b ** 2);
+  let a = 1, b = 0, f = loss(a, b), converged = false;
+  for (let it = 0; it < 100 && !converged; it++) {
     let ga = ridge * (a - 1), gb = ridge * b, haa = ridge, hab = 0, hbb = ridge;
-    for (const x of xs) {
-      const z = lg(x.p), q = sig(a * z + b), w = q * (1 - q), e = q - x.outcome;
-      ga += e * z; gb += e; haa += w * z * z; hab += w * z; hbb += w;
-    }
+    xs.forEach((x, k) => { const z = zs[k], q = sig(a * z + b), w = q * (1 - q), e = q - x.outcome; ga += e * z; gb += e; haa += w * z * z; hab += w * z; hbb += w; });
     const det = haa * hbb - hab * hab;
-    if (Math.abs(det) < 1e-12) break;
+    if (!(det > 1e-12)) break;
     const da = (hbb * ga - hab * gb) / det, db = (haa * gb - hab * ga) / det;
-    a -= da; b -= db;
-    if (Math.abs(da) + Math.abs(db) < 1e-9) break;
+    let t = 1, moved = false;
+    for (let h = 0; h < 30; h++, t /= 2) { const fa = loss(a - t * da, b - t * db); if (fa <= f) { a -= t * da; b -= t * db; f = fa; moved = true; break; } }
+    if (!moved || Math.abs(t * da) + Math.abs(t * db) < 1e-9) converged = true;
   }
+  // A slope outside this range is not a correction anyone should read off a small record.
+  if (!converged || !(a > 0.05 && a < 5) || !Number.isFinite(b)) return null;
   return { a: Math.round(a * 1000) / 1000, b: Math.round(b * 1000) / 1000 };
 }
+
 export const recalibrate = (p: number, f: { a: number; b: number }) => sig(f.a * lg(p) + f.b);
 
 const BUCKETS: [number, number, string][] = [[0, 0.3, "under 30%"], [0.3, 0.5, "30-50%"], [0.5, 0.7, "50-70%"], [0.7, 0.9, "70-90%"], [0.9, 1.01, "90% and up"]];
