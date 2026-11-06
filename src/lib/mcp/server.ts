@@ -221,9 +221,11 @@ export const PROMPTS: McpPrompt[] = [
     name: "pre_trade_check", title: "Pre-trade check", description: "Before adding a position: where its kill criteria stand, what it does to the book's risk, what the latest filing and insiders say, and a go or no-go.",
     arguments: [{ name: "ticker", description: "e.g. AMD", required: true }, { name: "direction", description: "long (default) or short" }, { name: "weight", description: "% of NAV, e.g. 3 (default 2)" }],
     build: ({ ticker, direction, weight }) => {
-      const t = tick(ticker), side = direction === "short" ? "short" : "long", w = Number(weight) > 0 && Number(weight) <= 100 ? Number(weight) : 2;
+      // "Short", "SHORT", "s" mean short; "3%", "3 %" mean 3. Anything unreadable falls back, and the text says so.
+      const t = tick(ticker), side = /^\s*s/i.test(direction ?? "") ? "short" : "long";
+      const asked = parseFloat(String(weight ?? "").replace(/[%\s]/g, "")), w = asked > 0 && asked <= 100 ? asked : 2;
       return [
-        `Pre-trade check: ${side} ${t} at ${w}% of NAV.`,
+        `Pre-trade check: ${side} ${t} at ${w}% of NAV${weight && w !== asked ? ` (the weight "${String(weight).slice(0, 20)}" could not be read, so 2% is used; say if that is wrong)` : ""}.`,
         `1. get_company_financials for ${t}. Propose three kill criteria that would prove a ${side} thesis wrong, and run check_thesis with them: where each stands and its headroom.`,
         `2. book_risk with what_if { ticker: ${t}, direction: ${side}, weight_pct_nav: ${w} }: beta-adjusted net, VaR and the worst replay before and after, and which holdings ${t} moves with (more of the same bet, or a hedge).`,
         `3. filing_changes for ${t} (latest 10-Q, section risk) and get_insider_transactions: anything new or any insider selling that argues against it.`,

@@ -100,7 +100,8 @@ export function unescapeText(v: string): string {
 }
 
 export function escapeText(v: string): string {
-  return v.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  // Any line break, a lone CR included (a bare CR in a value reads as a new line to strict parsers).
+  return v.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r\n|\r|\n/g, "\\n");
 }
 
 export const textOf = (c: ICalComponent, name: string): string => {

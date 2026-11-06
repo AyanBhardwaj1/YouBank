@@ -214,6 +214,11 @@ const ics = bookCalendar([calEv], "https://youbank.example", now);
 const vevents = ics.split("BEGIN:VEVENT").length - 1;
 ok("an all-day event for the next earnings and each coming catalyst (not past ones), with CRLF lines", [vevents, ics.includes("DTSTART;VALUE=DATE:20261119\r\nDTEND;VALUE=DATE:20261120"), ics.includes("SUMMARY:SNOW earnings (estimated)"), ics.includes("SUMMARY:SNOW: Investor day\\; Q&A\\, live"), ics.endsWith("END:VCALENDAR\r\n"), ics.split("\r\n").every((l) => Buffer.byteLength(l, "utf8") <= 75)], [2, true, true, true, true, true]);
 ok("the earnings event says what the report must show and links to the position", [ics.replace(/\r\n /g, "").includes("What the report must show:\\nAt least $1\\,140M"), ics.replace(/\r\n /g, "").includes("URL:https://youbank.example/app/book?position=abcd")], [true, true]);
+const twice = bookCalendar([calEv, { ...calEv, positionId: "efgh", catalysts: [] }], "https://youbank.example", now);
+const moved = bookCalendar([{ ...calEv, earnings: { date: "2026-11-24", estimated: false, inDays: 18 } }], "https://youbank.example", new Date(now.getTime() + 3_600_000));
+const uidOf = (x: string) => /UID:(book-earnings-[^\r]+)/.exec(x)?.[1];
+const seqOf = (x: string) => Number(/SEQUENCE:(\d+)/.exec(x)?.[1]);
+ok("one earnings event per ticker; a moved date keeps the UID with a higher SEQUENCE; a lone CR is escaped", [twice.split("SUMMARY:SNOW earnings").length - 1, uidOf(moved) === uidOf(ics), seqOf(moved) > seqOf(ics), icsText("a\rb")], [1, true, true, "a\\nb"]);
 ok("text escaping and folding (never inside a character)", [icsText("a;b,c\\d\ne"), fold("x".repeat(80)).split("\r\n ").map((l) => l.length), fold("é".repeat(40)).split("\r\n ").every((l) => !l.includes("\uFFFD"))], ["a\\;b\\,c\\\\d\\ne", [75, 5], true]);
 
 console.log(`\n${pass} passed, ${fail} failed`);

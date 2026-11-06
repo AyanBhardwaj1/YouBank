@@ -70,8 +70,11 @@ export async function noteProposal(userId: string, p: Proposal): Promise<void> {
   }).onConflictDoNothing();
 }
 
+/** A proposal dismissed, or added (the editor saved it): gone from the list, and its bell notice marked read. */
 export async function dismissProposal(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, bookProposals: normalizeProposals(extra.bookProposals).filter((x) => x.id !== id) }));
+  const n = schema.newsNotifications;
+  await requireDb().update(n).set({ readAt: new Date() }).where(and(eq(n.userId, userId), eq(n.key, `book:proposal:${id}`))).catch(() => undefined);
 }
 
 export async function setRedTeam(userId: string, id: string, redTeam: NonNullable<Position["redTeam"]>): Promise<void> {
