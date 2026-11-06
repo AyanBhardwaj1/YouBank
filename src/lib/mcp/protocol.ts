@@ -1,8 +1,8 @@
 /**
  * The Model Context Protocol, as YouBank's server speaks it: JSON-RPC 2.0 over Streamable HTTP, one
  * request per POST answered with one JSON body (no server-initiated stream), stateless. Methods:
- * initialize (version negotiated: the client's when we support it, else our newest), ping, tools/list and
- * tools/call; notifications are accepted without a reply. A tool that fails answers a result with
+ * initialize (version negotiated: the client's when we support it, else our newest), ping, tools/list,
+ * tools/call, prompts/list and prompts/get, and resources/list and resources/read (MCP Apps views); notifications are accepted without a reply. A tool that fails answers a result with
  * `isError: true` and a message, so the model can read it and recover; only a malformed request or an
  * unknown method is a JSON-RPC error. Spec: https://modelcontextprotocol.io/specification. Pure, given the
  * server it is handed; tested in scripts/test-mcp.ts.
@@ -11,7 +11,9 @@
 export const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 export const LATEST_PROTOCOL = PROTOCOL_VERSIONS[0];
 
-export type McpToolInfo = { name: string; title: string; description: string; inputSchema: Record<string, unknown>; /** Set on a tool that writes; others are read-only. */ annotations?: { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean } };
+export type McpToolInfo = { name: string; title: string; description: string; inputSchema: Record<string, unknown>; /** Set on a tool that writes; others are read-only. */ annotations?: { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean }; /** e.g. an MCP Apps view: { ui: { resourceUri } } (./apps.ts). */ _meta?: Record<string, unknown> };
+/** A resource the server serves by URI (resources/list, resources/read): here, MCP Apps views. */
+export type McpResourceInfo = { uri: string; name: string; title: string; description: string; mimeType: string; text: string; _meta?: Record<string, unknown> };
 export type McpCallResult = { text: string; data?: unknown; isError?: boolean };
 /** A ready-made request an AI app shows in its slash menu; `build` writes the message from the arguments. */
 export type McpPrompt = {
@@ -27,6 +29,7 @@ export type McpServer = {
   /** What a tool that threw may tell the model: screened and logged by the server (src/lib/errors failureMessage). */
   describeError?: (e: unknown) => string;
   prompts?: McpPrompt[];
+  resources?: McpResourceInfo[];
 };
 
 type Id = string | number | null;
@@ -52,7 +55,7 @@ export async function dispatch(msg: unknown, server: McpServer): Promise<RpcResp
       const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
       return ok(id, {
         protocolVersion: (PROTOCOL_VERSIONS as readonly string[]).includes(asked) ? asked : LATEST_PROTOCOL,
-        capabilities: { tools: { listChanged: false }, ...(server.prompts?.length ? { prompts: { listChanged: false } } : {}) },
+        capabilities: { tools: { listChanged: false }, ...(server.prompts?.length ? { prompts: { listChanged: false } } : {}), ...(server.resources?.length ? { resources: { listChanged: false } } : {}) },
         serverInfo: { name: server.name, title: server.title, version: server.version },
         instructions: server.instructions,
       });
@@ -70,6 +73,14 @@ export async function dispatch(msg: unknown, server: McpServer): Promise<RpcResp
         if (v) args[a.name] = v;
       }
       return ok(id, { description: p.description, messages: [{ role: "user", content: { type: "text", text: p.build(args) } }] });
+    }
+    case "resources/list": return ok(id, { resources: (server.resources ?? []).map((r) => ({ uri: r.uri, name: r.name, title: r.title, description: r.description, mimeType: r.mimeType })) });
+    case "resources/templates/list": return ok(id, { resourceTemplates: [] });
+    case "resources/read": {
+      const r = (server.resources ?? []).find((x) => x.uri === params.uri);
+      // -32002 is MCP's "resource not found".
+      if (!r) return { jsonrpc: "2.0", id, error: { code: -32002, message: `Resource not found: ${typeof params.uri === "string" ? params.uri.slice(0, 200) : "(none)"}` } };
+      return ok(id, { contents: [{ uri: r.uri, mimeType: r.mimeType, text: r.text, ...(r._meta ? { _meta: r._meta } : {}) }] });
     }
     case "tools/list": return ok(id, { tools: server.tools.map((t) => ({ ...t, annotations: t.annotations ?? { readOnlyHint: true, openWorldHint: true } })) });
     case "tools/call": {

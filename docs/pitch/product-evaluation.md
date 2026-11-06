@@ -56,7 +56,7 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 
 1. **A thesis forecast ledger with Brier scores.** ✓ Calibration (this round). LLM forecasters are reported near superforecaster level on ForecastBench, e.g. the Bridgewater AIA Forecaster (https://arxiv.org/html/2511.07678v1). YouBank sets the PM's calibration beside the AI's.
 2. **Claim-level verification of AI answers.** Partly there: every figure is checked against the source it cites. Next: a per-answer "share of claims verified" stored in the ledger. On finance-agent benchmarks, top models still score about half (https://arxiv.org/abs/2508.00828), so a measured error rate sells.
-3. **Guardrails for agents.** ✓ Per-app pause and scopes (this round). FINRA's 2026 report names agents acting beyond their mandate as a risk (summary: https://www.debevoise.com/insights/publications/2025/12/finras-2026-regulatory-oversight-report-continued). Next: approval cards inside the AI app via MCP Apps (https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/), and a listing in the MCP Registry.
+3. **Guardrails for agents.** ✓ Per-app pause and scopes (this round). FINRA's 2026 report names agents acting beyond their mandate as a risk (summary: https://www.debevoise.com/insights/publications/2025/12/finras-2026-regulatory-oversight-report-continued). A proposal card inside the AI app via MCP Apps ✓ (this round; https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/). Next: a listing in the MCP Registry.
 4. **A point-in-time "honest replay".** Re-run a thesis check as of a past date using only filings accepted by then, to avoid look-ahead bias (https://www.nber.org/papers/w35247). Feasible on EDGAR's acceptance timestamps.
 5. **A structured investment committee.** ✓ (this round). A bull and a bear write sourced briefs alone and in parallel; a chair decides add, hold, trim or exit, records the dissent and gives a 90-day forecast that is scored beside the PM's. Independent briefs rather than a debate, because debating agents drift to a shared consensus (see the Okawa note in hedge-funds.md).
 6. **An exam-readiness pack and AI-washing check.** The AI-washing check on letters ✓ (this round). It turns the ledger into the binder an examiner asks for, and checks a deck or letter's AI claims against it. The SEC's FY2026 priorities focus on the accuracy of AI claims (summary: https://www.debevoise.com/insights/publications/2025/11/2026-sec-division-of-examinations-priorities).
@@ -74,7 +74,7 @@ A research pass (via web search; sec.gov and arxiv.org were blocked here, so mos
 
 1. Test MCP sign-in, proposals and the pre-trade prompt live in Claude.ai and ChatGPT on the preview.
 2. ✓ The per-answer figure check is now summed in the governance report and the LP letter.
-3. An approval card for proposals inside the AI app (MCP Apps), plus a registry listing.
+3. ✓ A proposal card inside the AI app (MCP Apps). Still to do: a registry listing, and a live test of the card in Claude and ChatGPT.
 4. A point-in-time replay of a thesis.
 5. ✓ The investor-letter drafter with a Marketing Rule pass.
 6. ✓ A DDQ drafter that answers the standard AI questions from the ledger.

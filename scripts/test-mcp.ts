@@ -51,7 +51,7 @@ async function main() {
   ok("a tool's own error JSON is isError too", withSources(JSON.stringify({ error: "Unknown ticker" }), []).isError, true);
   const unknown = await dispatch({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "rm_rf" } }, server) as { error: { code: number } };
   ok("an unknown tool is invalid params", unknown.error.code, -32602);
-  ok("an unknown method", ((await dispatch({ jsonrpc: "2.0", id: 7, method: "resources/list" }, server)) as { error: { code: number } }).error.code, -32601);
+  ok("an unknown method", ((await dispatch({ jsonrpc: "2.0", id: 7, method: "completion/complete" }, server)) as { error: { code: number } }).error.code, -32601);
   ok("not JSON-RPC 2.0", ((await dispatch({ id: 8, method: "ping" }, server)) as { error: { code: number } }).error.code, -32600);
   ok("a batch is refused (removed from the protocol in 2025-06-18)", ((await dispatch([{ jsonrpc: "2.0", id: 9, method: "ping" }], server)) as { error: { code: number } }).error.code, -32600);
   ok("a response from the client is accepted quietly", await dispatch({ jsonrpc: "2.0", id: 10, result: {} }, server), null);
@@ -84,6 +84,16 @@ async function main() {
   const listed = await dispatch({ jsonrpc: "2.0", id: 30, method: "tools/list" }, real) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean; destructiveHint?: boolean } }[] } };
   const ann = Object.fromEntries(listed.result.tools.map((t) => [t.name, t.annotations]));
   ok("only propose_position writes (and destroys nothing); every other tool says read-only", [ann.propose_position, listed.result.tools.filter((t) => t.name !== "propose_position").every((t) => t.annotations.readOnlyHint === true), !!ann.book_risk], [{ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, true, true]);
+
+  console.log("MCP Apps");
+  const listedUi = (await dispatch({ jsonrpc: "2.0", id: 40, method: "tools/list" }, real) as { result: { tools: { name: string; _meta?: { ui?: { resourceUri?: string } } }[] } }).result.tools;
+  ok("propose_position declares its card; no other tool does", listedUi.filter((t) => t._meta).map((t) => [t.name, t._meta?.ui?.resourceUri]), [["propose_position", "ui://youbank/proposal-card"]]);
+  const initUi = await dispatch({ jsonrpc: "2.0", id: 41, method: "initialize", params: { protocolVersion: "2025-06-18" } }, real) as { result: { capabilities: Record<string, unknown> } };
+  const rl = await dispatch({ jsonrpc: "2.0", id: 42, method: "resources/list" }, real) as { result: { resources: { uri: string; mimeType: string }[] } };
+  const rr = await dispatch({ jsonrpc: "2.0", id: 43, method: "resources/read", params: { uri: "ui://youbank/proposal-card" } }, real) as { result: { contents: { uri: string; mimeType: string; text: string }[] } };
+  ok("the card is a resource: announced, listed and read as an MCP Apps HTML document", ["resources" in initUi.result.capabilities, rl.result.resources.map((r) => [r.uri, r.mimeType]), rr.result.contents[0].mimeType, rr.result.contents[0].text.startsWith("<!doctype html>"), /ui\/initialize/.test(rr.result.contents[0].text) && /ui\/open-link/.test(rr.result.contents[0].text)], [true, [["ui://youbank/proposal-card", "text/html;profile=mcp-app"]], "text/html;profile=mcp-app", true, true]);
+  ok("an unknown resource is -32002; an app that may not propose gets no card", [((await dispatch({ jsonrpc: "2.0", id: 44, method: "resources/read", params: { uri: "ui://nope" } }, real)) as { error: { code: number } }).error.code, noPropose.resources, (await dispatch({ jsonrpc: "2.0", id: 45, method: "tools/list" }, noPropose) as { result: { tools: { _meta?: unknown }[] } }).result.tools.some((t) => t._meta)], [-32002, [], false]);
+  ok("the card makes no outside requests and builds no HTML from data", [/\bfetch\(|XMLHttpRequest|<script src|<link /.test(rr.result.contents[0].text), /innerHTML/.test(rr.result.contents[0].text)], [false, false]);
 
   console.log("oauth");
   const O = "https://youbank.example";

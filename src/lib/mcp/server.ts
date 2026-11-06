@@ -20,6 +20,7 @@ import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { addProposal, evaluateBook, loadBook, loadBookHistory, loadJournal, newsFor, noteProposal } from "@/lib/book/store";
 import { calibrationOf, closedReturn, CLOSE_REASONS, scorecard, scorecardLine } from "@/lib/book/journal";
 import { calibrationLine } from "@/lib/book/forecast";
+import { PROPOSAL_CARD, PROPOSAL_CARD_URI } from "./apps";
 import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
@@ -305,8 +306,10 @@ export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy 
     tools: defs.map((t) => {
       const inputSchema = { ...(t.parameters as Record<string, unknown>) };
       delete inputSchema.$schema;
-      return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema }, ...(WRITES.has(t.name) ? { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } } : {}) };
+      return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema }, ...(WRITES.has(t.name) ? { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } } : {}), ...(t.name === "propose_position" ? { _meta: { ui: { resourceUri: PROPOSAL_CARD_URI } } } : {}) };
     }),
+    // MCP Apps: the card shown for a proposal, only to an app that may propose.
+    resources: defs.some((t) => t.name === "propose_position") ? [PROPOSAL_CARD] : [],
     describeError: (e) => failureMessage(e, "mcp.tool"),
     // A prompt that names a tool this app may not use is not offered either.
     prompts: PROMPTS.filter((p) => (p.build({ ticker: "X" }).match(/\b(?:book|propose)_[a-z_]+\b/g) ?? []).every((n) => defs.some((t) => t.name === n))),
