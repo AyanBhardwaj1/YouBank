@@ -368,6 +368,12 @@ export const defaultTemplate = (d: Direction) => TEMPLATES.find((t) => t.id === 
  * written the way a desk would. Marked as a sample in each thesis so it is never mistaken for advice;
  * prices and weights are illustrative.
  */
+/**
+ * The sample book's forecasts (the chance no kill criterion fails in 90 days), labelled "Sample" so they
+ * never pass as the person's own. The largest position carries the lowest conviction on purpose, so the
+ * sizing check has something to say in a demo.
+ */
+export const SAMPLE_CONVICTION: Record<string, number> = { NVDA: 50, CRWD: 75, COST: 85, SNOW: 55, INTC: 65 };
 export const SAMPLE_BOOK: Omit<Position, "id" | "createdAt" | "updatedAt">[] = [
   { ticker: "NVDA", direction: "long", weight: 6, entry: null, thesis: "Sample: data-centre demand keeps growth far above 30% while gross margin holds in the 70s.", pillars: ["Hyperscaler capex keeps rising", "Software and networking deepen the moat"], criteria: [{ id: "smpl-nvda-1", metric: "revenue_growth", op: ">=", value: 30 }, { id: "smpl-nvda-2", metric: "gross_margin", op: ">=", value: 70 }], catalysts: [] },
   { ticker: "CRWD", direction: "long", weight: 4, entry: null, thesis: "Sample: platform consolidation keeps growth above 20% with expanding free cash flow.", pillars: ["Module attach rates rise", "Vendor consolidation favours platforms"], criteria: [{ id: "smpl-crwd-1", metric: "revenue_growth", op: ">=", value: 20 }, { id: "smpl-crwd-2", metric: "fcf_margin", op: ">=", value: 20 }, { id: "smpl-crwd-3", metric: "gross_margin", op: ">=", value: 72 }], catalysts: [] },
