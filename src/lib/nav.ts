@@ -23,7 +23,7 @@ export const FEATURES: NavFeature[] = [
   { id: "home", href: "/app", label: "Home", icon: "Home", blurb: "Your brief, tools and watchlist" },
   {
     id: "book", href: "/app/book", label: "Book", icon: "Briefcase", blurb: "Your positions, each thesis checked against filings and the market, with a red team",
-    links: [{ label: "Positions", href: "/app/book" }, { label: "Printable report", href: "/report/book" }, { label: "LP letter", href: "/report/letter" }, { label: "Connect AI apps", href: "/app/settings?tab=connect" }, { label: "Research ledger", href: "/app/settings?tab=ledger" }, { label: "AI governance report", href: "/report/ledger" }],
+    links: [{ label: "Positions", href: "/app/book" }, { label: "Printable report", href: "/report/book" }, { label: "LP letter", href: "/report/letter" }, { label: "Connect AI apps", href: "/app/settings?tab=connect" }, { label: "Research ledger", href: "/app/settings?tab=ledger" }, { label: "AI governance report", href: "/report/ledger" }, { label: "AI due-diligence answers", href: "/report/ddq" }],
   },
   {
     id: "terminal", href: "/app/terminal", label: "Terminal", icon: "Terminal", blurb: "Markets, comps, filings and news",

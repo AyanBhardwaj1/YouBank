@@ -1,6 +1,8 @@
 /** The research ledger's chain (src/lib/ledger/chain.ts): pnpm exec tsx scripts/test-ledger.ts */
 import { createHash } from "node:crypto";
 import { governance, periodOf, type GovRow } from "@/lib/ledger/governance";
+import { ddqMarkdown, draftDdq, type DdqInput } from "@/lib/ledger/ddq";
+import { lintLetter } from "@/lib/book/letter";
 import { anchorMail, storable, canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
 
 let pass = 0, fail = 0;
@@ -98,6 +100,37 @@ ok("the figure check adds up over AI answers: matched or computed of checkable",
 ok("an empty period has no shares, not zero", [governance([], "a", "b").sourcedShare, governance([], "a", "b").reviewedShare], [null, null]);
 const pm = periodOf("2026-02", new Date("2026-11-06T12:00:00Z")), p30 = periodOf(undefined, new Date("2026-11-06T12:00:00Z")), bad = periodOf("2026-13", new Date("2026-11-06T12:00:00Z"));
 ok("a month runs to the first of the next; anything else is the last 30 days", [pm.from, pm.to, pm.label, p30.from, p30.label, bad.label], ["2026-02-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z", "February 2026", "2026-10-07T12:00:00.000Z", "The last 30 days", "The last 30 days"]);
+
+console.log("DDQ answers");
+{
+  const gRows: GovRow[] = [
+    { seq: 1, at: "2026-11-02T10:00:00Z", kind: "chat", subject: "Q", model: "anthropic/claude-x", meta: { figures: { checkable: 10, matched: 8, computed: 1, noMatch: 1, uncited: 0 } }, sources: 3 },
+    { seq: 2, at: "2026-11-02T11:00:00Z", kind: "mcp", subject: "book_status via Claude", model: "", meta: { tool: "book_status" }, sources: 0 },
+    { seq: 3, at: "2026-11-03T09:00:00Z", kind: "signoff", subject: "Review of entry 1", model: "", meta: { ref: 1, decision: "rejected", reviewer: "ana@x" }, sources: 0, note: "Margin figure was stale" },
+  ];
+  const gd = governance(gRows, "2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z");
+  const base: DdqInput = {
+    firm: "Northwind", period: "November 2026", now: new Date("2026-11-30T12:00:00Z"), g: gd,
+    ledger: { on: true, since: "2026-10-01T00:00:00Z", chainOk: true, checked: 3, anchors: 1, anchorsMatch: 1 },
+    apps: [{ name: "Claude", paused: false, book: true, propose: true, lastUsedAt: "2026-11-02T11:00:00Z" }, { name: "ChatGPT", paused: true, book: false, propose: false, lastUsedAt: null }],
+    calibration: { n: 4, open: 1, brier: 0.2, bias: 0.05, buckets: [], bySource: [{ source: "You", n: 3, brier: 0.21 }, { source: "AI committee", n: 1, brier: 0.09 }] }, committees: 2,
+  };
+  const items = draftDdq(base);
+  const by = (id: string) => items.find((x) => x.id === id)?.a ?? "";
+  ok("nine questions, each answered", [items.length, items.every((x) => x.a.length > 20)], [9, true]);
+  ok("answers come from the record: models, reviews, figure check, calibration, chain, app permissions", [
+    by("models").includes("anthropic/claude-x (1)"), by("review").includes("1 rejected"), by("review").includes("Margin figure was stale"),
+    by("accuracy").includes("9 of 10 checkable figures"), by("measure").includes("AI committee's Brier score is 0.090 on 1 resolved forecast and the portfolio managers' is 0.210 on 3"),
+    by("records").includes("all 3 entries check"), by("records").includes("that copy matches"), by("access").includes("ChatGPT: paused; public research tools only"), by("use").includes("Claude may propose a position"),
+  ], Array(9).fill(true));
+  const off = draftDdq({ ...base, ledger: { ...base.ledger, on: false }, apps: [] });
+  ok("with the ledger off, record-based answers say so instead of inventing", [by("review").includes("[The research ledger is off") === false, off.find((x) => x.id === "review")?.a.startsWith("[The research ledger is off"), off.find((x) => x.id === "access")?.a], [true, true, "No outside AI application is connected."]);
+  const md = ddqMarkdown(items, "Northwind", "November 2026", base.now);
+  ok("the Markdown passes the letter's compliance pass (only notes, no faults)", lintLetter(md, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
+  ok("an anchor that does not match is flagged for the firm, not stated as fact", draftDdq({ ...base, ledger: { ...base.ledger, anchors: 2, anchorsMatch: 1 } }).find((x) => x.id === "records")?.a.includes("[1 of the 2 copies"), true);
+  ok("two keys with one name are named once", draftDdq({ ...base, apps: [base.apps[0], base.apps[0]] }).find((x) => x.id === "use")?.a.includes("Claude (2 keys) may propose"), true);
+  ok("a broken chain is not papered over", draftDdq({ ...base, ledger: { ...base.ledger, chainOk: false } }).find((x) => x.id === "records")?.a.includes("did not check"), true);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

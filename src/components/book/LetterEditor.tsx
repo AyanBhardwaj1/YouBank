@@ -11,7 +11,7 @@ import { lintLetter } from "@/lib/book/letter";
 
 const TONE = { high: "border-neg/50 bg-neg/10 text-neg", medium: "border-accent/50 bg-accent-soft text-accent", info: "border-line text-muted" } as const;
 
-export function LetterEditor({ draft, ledgerOn, storageKey }: { draft: string; ledgerOn: boolean; storageKey: string }) {
+export function LetterEditor({ draft, ledgerOn, storageKey, label = "Letter" }: { draft: string; ledgerOn: boolean; storageKey: string; /** The text box's name for screen readers. */ label?: string }) {
   const [text, setText] = useState(draft);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -25,7 +25,7 @@ export function LetterEditor({ draft, ledgerOn, storageKey }: { draft: string; l
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="space-y-2">
-        <textarea aria-label="Letter" value={text} onChange={(e) => setText(e.target.value)} spellCheck className="ctl min-h-[60vh] w-full border border-line bg-bg p-3 font-mono text-[12.5px] leading-relaxed focus:border-accent/60 focus:outline-none" />
+        <textarea aria-label={label} value={text} onChange={(e) => setText(e.target.value)} spellCheck className="ctl min-h-[60vh] w-full border border-line bg-bg p-3 font-mono text-[12.5px] leading-relaxed focus:border-accent/60 focus:outline-none" />
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => void copy()} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Copy" className="h-3.5 w-3.5" />{copied ? "Copied" : "Copy as Markdown"}</button>
           <button type="button" onClick={() => setText(draft)} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg">Start again from the draft</button>

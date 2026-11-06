@@ -41,6 +41,7 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
           <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
             <Link href="/report/ledger" className={`ctl px-2 py-1 ${typeof month !== "string" ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>Last 30 days</Link>
             {months.map((m) => <Link key={m} href={`/report/ledger?month=${m}`} className={`ctl px-2 py-1 ${month === m ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{m}</Link>)}
+            <Link href={`/report/ddq${typeof month === "string" ? `?month=${month}` : ""}`} className="ctl px-2 py-1 text-muted hover:text-fg">DDQ answers</Link>
             <PrintButton />
           </div>
         </div>
