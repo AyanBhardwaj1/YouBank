@@ -3,7 +3,8 @@
  * book, import, checks with headroom), the MCP server (keys, initialize, tools, prompts, check_thesis),
  * proposals from AI apps, risk, the pre-trade what-if, the calendar and team risk, MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay
  * refused, a confidential client's secret) and the research ledger (recording an MCP call, the chain check, the
- * export, the governance report).
+ * export, the governance report), the track record, forecasts that cannot be backdated or forged, the committee's
+ * guard, the DDQ answers and the MCP Apps proposal card.
  *
  * Run against a local server signed in as a development user whose profile exists (finish onboarding once,
  * or seed auth_users and profiles), with company data reachable or cached. Never against production:
@@ -70,7 +71,12 @@ async function main() {
   check("an app kept from the Book does not see the Book's tools", noBook.length > 0 && !noBook.includes("book_status") && !noBook.includes("propose_position") && noBook.includes("check_thesis"), noBook);
   await j("/api/settings/mcp-keys", { method: "PATCH", body: JSON.stringify({ id: keyId, book: true, propose: true }) });
   const prompts = await rpc(K, "prompts/list");
-  check("five prompts", (prompts.body.result?.prompts ?? []).length === 5, prompts.body);
+  check("six prompts, the committee among them", (prompts.body.result?.prompts ?? []).length === 6 && prompts.body.result.prompts.some((x: { name: string }) => x.name === "investment_committee"), prompts.body);
+  check("initialize announces resources (the MCP Apps proposal card)", !!init.body.result?.capabilities?.resources, init.body.result?.capabilities);
+  const cardRes = await rpc(K, "resources/read", { uri: "ui://youbank/proposal-card" });
+  check("the proposal card is served as an MCP Apps view and declared on propose_position", cardRes.body.result?.contents?.[0]?.mimeType === "text/html;profile=mcp-app" && ((tools.body.result?.tools ?? []) as { name: string; _meta?: { ui?: { resourceUri?: string } } }[]).find((t) => t.name === "propose_position")?._meta?.ui?.resourceUri === "ui://youbank/proposal-card", cardRes.body);
+  const tr = await rpc(K, "tools/call", { name: "book_track_record", arguments: {} });
+  check("book_track_record answers with the scorecard and calibration", typeof tr.body.result?.structuredContent?.result?.summary === "string" && !!tr.body.result?.structuredContent?.result?.calibration, tr.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });
   check("check_thesis answers with a verdict and sources", !!ct.body.result && ["intact", "watch", "broken", "unknown"].includes(ct.body.result.structuredContent?.result?.verdict), ct.body);
   const listedTools = (tools.body.result?.tools ?? []) as { name: string; annotations?: { readOnlyHint?: boolean } }[];
@@ -128,6 +134,24 @@ async function main() {
     check("the scorecard counts it", typeof j1.body.scorecard?.closed === "number" && j1.body.scorecard.closed >= 1, j1.body.scorecard);
     await j(`/api/book/journal?id=${victim.id}`, { method: "DELETE" });
   }
+
+  console.log("forecasts and the AI committee");
+  const target = (await j("/api/book")).body.positions[0] as Record<string, unknown> & { id: string; conviction?: unknown };
+  if (target) {
+    const today = new Date().toISOString().slice(0, 10);
+    const later = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10);
+    const back = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: { p: 80, by: later, at: "2026-01-01" }, committee: { decision: "add", at: "2026-01-01T00:00:00Z" }, pastForecasts: [{ p: 0.99, by: later, at: "2025-01-01" }] }) });
+    check("a backdated forecast is dated today; a posted committee and earlier forecasts are ignored", back.status === 200 && back.body.position?.conviction?.at === today && !back.body.position?.pastForecasts && back.body.position?.committee === undefined, back.body.position);
+    const past = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: { p: 99, by: "2026-01-31", at: "2025-12-01" } }) });
+    check("a forecast that resolves in the past is refused", past.status === 400 && /after today/.test(past.body?.error ?? ""), past.body);
+    const relabel = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: { p: 60, by: later, source: "AI committee" } }) });
+    check("a posted forecast cannot claim to be the AI committee's", relabel.body.position?.conviction?.source !== "AI committee", relabel.body.position?.conviction);
+    await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });
+    const cm404 = await j("/api/book/committee", { method: "POST", body: JSON.stringify({ id: "no-such-position" }) });
+    check("the committee needs a position in the book", cm404.status === 404, cm404.body);
+  }
+  const ddq = await fetch(`${BASE}/report/ddq`).then(async (r) => ({ status: r.status, text: await r.text() }));
+  check("the AI due-diligence answers draft from the record, with the compliance pass", ddq.status === 200 && ddq.text.includes("AI due-diligence answers") && ddq.text.includes("Compliance pass"), ddq.status);
 
   const letter = await fetch(`${BASE}/report/letter`).then(async (r) => ({ status: r.status, text: await r.text() }));
   check("the LP letter drafts from the book, with its compliance pass", letter.status === 200 && letter.text.includes("Compliance pass") && letter.text.includes("Dear partners"), letter.status);
