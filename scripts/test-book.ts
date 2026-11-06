@@ -514,6 +514,8 @@ console.log("Decision journal");
   const withLog = normalizePosition({ ...a, log })!;
   const closedLog = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(withLog, "intact", [], 120, "target", "", new Date("2026-11-20T00:00:00Z"))))])[0]?.log;
   ok("the journal is kept through the close, ending with it", [closedLog?.length, closedLog?.[closedLog.length - 1]?.text], [3, "Closed: target reached at $120."]);
+  const withNote = closedFrom(withLog, "intact", [], 120, "target", "Took profits at the target", new Date("2026-11-20T00:00:00Z")).log;
+  ok("the close's note joins the journal beside the close", withNote?.slice(-2).map((x) => [x.text, !!x.auto]), [["Closed: target reached at $120.", true], ["Took profits at the target", false]]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

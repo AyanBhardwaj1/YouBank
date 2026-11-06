@@ -59,7 +59,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
     ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
     ...(p.committee ? { aiDecision: p.committee.decision } : {}),
-    log: withEntries(p.log, [`Closed: ${CLOSE_REASONS[reason].toLowerCase()}${num(exit) ? ` at $${num(exit)}` : ""}.`], now.toISOString()),
+    log: withEntries(p.log, [`Closed: ${CLOSE_REASONS[reason].toLowerCase()}${num(exit) ? ` at $${num(exit)}` : ""}.`], now.toISOString(), note),
   };
 }
 
