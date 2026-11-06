@@ -25,6 +25,8 @@ const TOOLS = [
   ["Filings", "search, read sections, EDGAR full text, recent filings, any sec.gov document"], ["What changed", "the latest 10-K or 10-Q against the one before"],
   ["XBRL series and insiders", "any reported concept over time; Form 4 transactions"], ["Private markets", "Form D raises and the startup directory"],
   ["News", "this week's Newsroom stories for a ticker"], ["Your Book", "every position's thesis checked, exposure and P&L"], ["Check a thesis", "any kill criteria against filings and price, without saving"],
+  ["Risk and the week", "the book's VaR and stress replays, a trade's what-if, and what changed this week"], ["Track record", "closes, process against outcome, and calibration by who forecast"],
+  ["Compliance check", "investor text checked for Marketing Rule language, AI claims against the ledger, and figures against filings"], ["Propose a position", "for your review in the Book; nothing is added without you"],
 ];
 
 function Snippet({ title, code }: { title: string; code: string }) {
@@ -79,7 +81,7 @@ export function ConnectAISettings() {
         <ul className="mt-3 grid gap-x-4 gap-y-1 text-[12px] sm:grid-cols-2">
           {TOOLS.map(([t, d]) => <li key={t}><span className="font-semibold">{t}</span> <span className="text-muted">· {d}</span></li>)}
         </ul>
-        <p className="mt-3 text-[12px] text-muted"><span className="font-semibold text-fg">Ready-made prompts</span> appear in your app&apos;s slash or prompt menu: <i>Review my book</i>, <i>Argue against a position</i>, <i>What changed in the latest filing</i>, <i>Earnings prep</i> and <i>Pre-trade check</i>. Each tells the AI which YouBank tools to use and to cite every figure.</p>
+        <p className="mt-3 text-[12px] text-muted"><span className="font-semibold text-fg">Ready-made prompts</span> appear in your app&apos;s slash or prompt menu: <i>Review my book</i>, <i>Argue against a position</i>, <i>Convene an investment committee</i>, <i>Draft LP commentary</i> (checked by YouBank&apos;s compliance pass before you see it), <i>What changed in the latest filing</i>, <i>Earnings prep</i> and <i>Pre-trade check</i>. Each tells the AI which YouBank tools to use and to cite every figure.</p>
       </section>
 
       <section className="panel space-y-3 p-4">
