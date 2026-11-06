@@ -264,7 +264,8 @@ export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy 
       return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema }, ...(WRITES.has(t.name) ? { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } } : {}) };
     }),
     describeError: (e) => failureMessage(e, "mcp.tool"),
-    prompts: PROMPTS,
+    // A prompt that names a tool this app may not use is not offered either.
+    prompts: PROMPTS.filter((p) => (p.build({ ticker: "X" }).match(/\b(?:book|propose)_[a-z_]+\b/g) ?? []).every((n) => defs.some((t) => t.name === n))),
     call: async (name, args) => {
       const t = defs.find((d) => d.name === name);
       if (!t) return { text: `Unknown tool ${name}.`, isError: true };

@@ -72,7 +72,7 @@ export function lintLetter(text: string, ctx: { ledgerOn: boolean }): LetterFind
     if (!out.some((f) => f.rule === rule && f.excerpt === excerpt)) out.push({ rule, severity, excerpt: excerpt.slice(0, 200), why });
   };
   // The draft's own bracketed prompts and disclaimer are not claims.
-  const body = text.split(/\n---\n/)[0];
+  const body = text.replace(/\n---\n\*Past performance is not indicative[\s\S]*?\*\s*$/, "");
   for (const s of sentences(body)) {
     if (/^\[.*\]$/.test(s)) continue;
     if (/\b(guarantee[ds]?|risk[- ]free|can(?:no|')t lose|no downside|sure thing|certain to|will (?:double|triple|outperform))\b/i.test(s)) add("Promissory or guaranteeing language", "high", s, "The Marketing Rule bars statements implying a guaranteed or riskless result.");

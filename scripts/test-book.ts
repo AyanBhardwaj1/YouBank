@@ -276,6 +276,8 @@ ok("the draft covers the book, closes, process, risk and AI use, with a disclaim
 ok("the draft passes its own compliance pass", lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
 const lint = lintLetter("We guarantee strong results. Our fund is the best in its class. We returned 32% for investors. Gross return was 18%. A backtest shows we would have gained 40% since 2015. Our AI-powered process finds alpha.", { ledgerOn: false });
 ok("the compliance pass flags promises, superlatives, performance without a period, gross without net, hypotheticals and unbacked AI claims", lint.map((f) => [f.rule, f.severity]), [["Promissory or guaranteeing language", "high"], ["Unsupported superlative", "medium"], ["Performance without a time period", "medium"], ["Performance without a time period", "medium"], ["Gross performance without net", "high"], ["Hypothetical performance", "medium"], ["AI claim without a record", "high"]]);
+ok("text after a horizontal rule is still checked; the draft's own disclaimer is not", [lintLetter("Fine.\n---\nP.S. We guarantee it.", { ledgerOn: true }).length, lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").length], [1, 0]);
+ok("a 1% conviction is 1%, not 100%", normalizeConviction({ p: 1, by: "2027-02-01", at: "2026-11-01" })?.p, 0.01);
 ok("a period makes performance acceptable; an AI claim with the ledger on is a note, not a fault", [lintLetter("We returned 12% in 2026, net of fees.", { ledgerOn: false }).length, lintLetter("Machine learning helps us screen.", { ledgerOn: true }).map((f) => f.severity)], [0, ["info"]]);
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -74,6 +74,8 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
     } catch (e) { setErr(errorMessage(e)); } finally { setDrafting(false); }
   };
   const save = async () => {
+    // A new or changed conviction needs a date still ahead (an unchanged one keeps the day it was made).
+    if (d.convP.trim() && !d.convAt && d.convBy <= new Date().toISOString().slice(0, 10)) { setErr("Give the conviction a date after today."); return; }
     setBusy(true); setErr("");
     try {
       await fetchJson("/api/book", {
@@ -301,7 +303,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             {!owner && onEdit && <button type="button" onClick={onEdit} className="text-accent">Edit</button>}
             <Link href={`/app/terminal?ticker=${encodeURIComponent(ev.ticker)}`} className="text-muted hover:text-fg">Open in Terminal</Link>
             <Link href={`/app/edge?view=theses`} className="text-muted hover:text-fg">Investigate with an agent (Edge theses)</Link>
-            {!owner && <button type="button" disabled={!!busy} aria-expanded={closing} onClick={() => setClosing((c) => !c)} className="ml-auto text-muted hover:text-neg">Close position</button>}
+            {!owner && <button type="button" disabled={!!busy} aria-expanded={closing} onClick={() => { if (!closing && ev.price !== null) setExitPx(String(ev.price)); setClosing((c) => !c); }} className="ml-auto text-muted hover:text-neg">Close position</button>}
           </div>
           {closing && !owner && (
             <form onSubmit={close} aria-label={`Close ${ev.ticker}`} className="ctl space-y-2 border border-line p-2.5">

@@ -24,7 +24,8 @@ export function normalizeConviction(raw: unknown): Conviction | null {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   let p = typeof r.p === "number" ? r.p : Number(r.p);
   if (!Number.isFinite(p)) return null;
-  if (p > 1) p = p / 100;
+  // 1 and up is a percent (1 means 1%); below 1 a fraction.
+  if (p >= 1) p = p / 100;
   if (p < 0.01 || p > 0.99 || !dateOk(r.by)) return null;
   const source = typeof r.source === "string" && r.source.trim() ? r.source.trim().slice(0, 80) : "You";
   const at = dateOk(r.at) ? r.at : new Date().toISOString().slice(0, 10);
