@@ -18,6 +18,7 @@ import { updateExtra } from "@/lib/prefs/extra";
 import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
+import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
@@ -228,22 +229,28 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
  * added up: each member's weights are a share of their own book, so a sum would mean nothing. Cached per
  * book and day like the Book's own risk panel.
  */
-export async function teamRisk(teamId: number, members: { userId: string }[], now = new Date()): Promise<Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }>> {
+export async function teamRisk(teamId: number, members: { userId: string }[], now = new Date()): Promise<Record<string, RiskHeadline>> {
   if (!members.length) return {};
-  const { riskOf } = await import("./risk-store");
+  const [{ riskOf }, { headline }] = await Promise.all([import("./risk-store"), import("./risk")]);
   const rows = await requireDb().select({ userId: schema.profiles.userId, extra: schema.profiles.extra }).from(schema.profiles)
     .where(sql`${schema.profiles.userId} in (${sql.join(members.map((m) => sql`${m.userId}`), sql`, `)})`);
-  const out: Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }> = {};
-  for (const r of rows) {
+  const books = rows.flatMap((r) => {
     const extra = (r.extra ?? {}) as Record<string, unknown>;
-    if (!sharesOf(extra).includes(teamId)) continue;
-    const book = normalizeBook(extra.book);
-    if (!book.some((p) => p.weight)) continue;
-    const risk = await riskOf(book, now).catch(() => null);
-    if (!risk) continue;
-    const w = risk.scenarios.filter((x) => x.pnl !== null).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))[0];
-    out[r.userId] = { betaNet: risk.betaNet, var95: risk.var95, worst: w ? { label: w.label, pnl: w.pnl as number } : null };
-  }
+    const book = sharesOf(extra).includes(teamId) ? normalizeBook(extra.book) : [];
+    return book.some((p) => p.weight) ? [{ userId: r.userId, book }] : [];
+  });
+  // Four at a time (each may fetch a year of prices the first time today), and none past 80 s, inside the route's two minutes.
+  const out: Record<string, RiskHeadline> = {};
+  const stop = Date.now() + 80_000;
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(4, books.length) }, async () => {
+    while (i < books.length) {
+      const b = books[i++];
+      if (Date.now() > stop) continue;
+      const risk = await riskOf(b.book, now).catch(() => null);
+      if (risk) out[b.userId] = headline(risk);
+    }
+  }));
   return out;
 }
 

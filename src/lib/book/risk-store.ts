@@ -1,7 +1,7 @@
 /**
  * The Book's risk on the server (src/lib/book/risk.ts has the arithmetic): daily closes for the held names and
- * SPY since 2020 (the market data layer, each answer cached), worked out and kept for six hours per book, so
- * a page load, the report and an MCP call share one computation.
+ * SPY since 2020 (the market data layer, each answer cached), worked out once per book and trading day (the day
+ * rolls over after the US close), so a page load, the report, an MCP call and the after-close job share it.
  */
 import { createHash } from "node:crypto";
 import { cacheGet, cacheSet } from "@/lib/cache";
@@ -9,14 +9,17 @@ import { dailyCloses } from "@/lib/copytrade/prices";
 import type { Position } from "./position";
 import { BENCHMARK, bookRisk, HISTORY_FROM, whatIf, type RiskInput, type SourcedRisk, type WhatIf } from "./risk";
 
-const TTL_MS = 6 * 3_600_000;
+// Daily closes change once a day, after the US close: the key rolls over at 21:00 UTC (after the close in winter
+// and summer), and a complete answer is kept until then, so the after-close job's warm-up serves the next morning.
+const TTL_MS = 24 * 3_600_000;
+export const riskDay = (now: Date) => new Date(now.getTime() - 21 * 3_600_000).toISOString().slice(0, 10);
 export type { SourcedRisk };
 
 const inputOf = (book: Position[]) => book.map((p) => ({ ticker: p.ticker, direction: p.direction, weight: p.weight }));
 
 /** Keyed by what the arithmetic reads (names, sides, weights) and the day, so an edited thesis does not refetch. */
 export const riskKey = (book: Position[], now: Date) =>
-  `book-risk:v1:${createHash("sha256").update(JSON.stringify([now.toISOString().slice(0, 10), [...inputOf(book)].sort((a, b) => a.ticker.localeCompare(b.ticker) || a.direction.localeCompare(b.direction))])).digest("base64url").slice(0, 32)}`;
+  `book-risk:v2:${createHash("sha256").update(JSON.stringify([riskDay(now), [...inputOf(book)].sort((a, b) => a.ticker.localeCompare(b.ticker) || a.direction.localeCompare(b.direction))])).digest("base64url").slice(0, 32)}`;
 
 /** Today's risk for this book if it was already worked out (by the page, the report or MCP); never fetches. */
 export async function cachedRisk(book: Position[], now = new Date()): Promise<SourcedRisk | null> {

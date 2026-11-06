@@ -72,7 +72,8 @@ export async function watchAllBooks(deadline: number): Promise<{ people: number;
   // With the time left once every book is checked: today's risk for each book with weights, so the risk panel,
   // the report and MCP's book_status have it ready (prices are shared across books through the market cache).
   let risk = 0;
-  if (checked === rows.length) {
+  // Every book was reached (checked, or failed and logged): one bad book does not stop the warm-up for everyone.
+  if (checked + failed === rows.length) {
     const { riskOf } = await import("./risk-store");
     for (const { userId } of rows) {
       if (Date.now() > deadline) break;

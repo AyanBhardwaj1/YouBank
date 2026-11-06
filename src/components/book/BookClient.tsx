@@ -15,7 +15,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
-import type { SourcedRisk, WhatIf } from "@/lib/book/risk";
+import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
@@ -543,12 +543,20 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
   const [d, setD] = useState<TeamData | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [risk, setRisk] = useState<Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }> | null>(null);
+  // Each member's own risk, for one request (the latest): an older answer arriving late is dropped.
+  const [risk, setRisk] = useState<{ req: number; map: Record<string, RiskHeadline> | null; err: string }>({ req: 0, map: null, err: "" });
+  const reqRef = useRef(0);
+  const [latest, setLatest] = useState(0);
   const load = useCallback(() => {
     fetchJson<TeamData>(`/api/book/team?team=${team.id}`).then((x) => { setD(x); setErr(""); }).catch((e) => setErr(errorMessage(e)));
-    // Each member's own risk follows (prices can take a moment the first time today); the table shows meanwhile.
-    fetchJson<{ risk: NonNullable<typeof risk> }>(`/api/book/team?team=${team.id}&risk=1`).then((x) => setRisk(x.risk)).catch(() => setRisk({}));
+    // The risk follows (prices can take a moment the first time today); the table shows meanwhile.
+    const req = ++reqRef.current;
+    setLatest(req);
+    fetchJson<{ risk: Record<string, RiskHeadline> }>(`/api/book/team?team=${team.id}&risk=1`)
+      .then((x) => { if (req === reqRef.current) setRisk({ req, map: x.risk, err: "" }); })
+      .catch((e) => { if (req === reqRef.current) setRisk({ req, map: {}, err: errorMessage(e) }); });
   }, [team.id]);
+  const riskMap = risk.req === latest ? risk.map : null;
   useEffect(() => { load(); }, [load]);
   const toggle = async () => { setBusy(true); try { await onShare(!sharing); load(); } finally { setBusy(false); } };
   return (
@@ -570,9 +578,10 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
           <table className="w-full text-[12px]">
             <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Member</th><th className="font-medium">Positions</th><th className="font-medium">Gross</th><th className="font-medium">Net</th><th className="font-medium">At risk</th><th className="font-medium">Broken / watch</th><th className="font-medium" title="Each member's own book: beta-adjusted net, % of their NAV">Beta-adj. net</th><th className="font-medium" title="Each member's own book: historical one-day 95% VaR, % of their NAV">1-day VaR</th><th className="font-medium">Worst replay</th></tr></thead>
             <tbody>{d.members.map((m) => (
-              <tr key={m.userId} className="border-t border-line/60"><td className="py-1">{m.name}</td><td className="num">{m.positions}</td><td className="num">{navPct(m.summary.gross)}</td><td className="num">{navPct(m.summary.net)}</td><td className={`num ${m.summary.atRiskWeight > 0 ? "text-neg" : ""}`}>{navPct(m.summary.atRiskWeight)}</td><td className="num">{m.summary.verdicts.broken} / {m.summary.verdicts.watch}</td>{(() => { const r = risk?.[m.userId]; return risk === null ? <td colSpan={3} className="text-muted">working out…</td> : <><td className="num">{r?.betaNet != null ? signed(r.betaNet, 1) : "n/a"}</td><td className="num">{r?.var95 != null ? `${r.var95.toFixed(2)}%` : "n/a"}</td><td className="whitespace-nowrap">{r?.worst ? <span title={r.worst.label}><span className={`num ${r.worst.pnl < 0 ? "text-neg" : "text-pos"}`}>{signed(r.worst.pnl)}</span> <span className="text-muted">{r.worst.label}</span></span> : "n/a"}</td></>; })()}</tr>
+              <tr key={m.userId} className="border-t border-line/60"><td className="py-1">{m.name}</td><td className="num">{m.positions}</td><td className="num">{navPct(m.summary.gross)}</td><td className="num">{navPct(m.summary.net)}</td><td className={`num ${m.summary.atRiskWeight > 0 ? "text-neg" : ""}`}>{navPct(m.summary.atRiskWeight)}</td><td className="num">{m.summary.verdicts.broken} / {m.summary.verdicts.watch}</td>{(() => { const r = riskMap?.[m.userId]; return riskMap === null ? <td colSpan={3} className="text-muted">working out…</td> : <><td className="num">{r?.betaNet != null ? signed(r.betaNet, 1) : "n/a"}</td><td className="num">{r?.var95 != null ? `${r.var95.toFixed(2)}%` : "n/a"}</td><td className="whitespace-nowrap">{r?.worst ? <span title={r.worst.label}><span className={`num ${r.worst.pnl < 0 ? "text-neg" : "text-pos"}`}>{signed(r.worst.pnl)}</span> <span className="text-muted">{r.worst.label}</span></span> : "n/a"}</td></>; })()}</tr>
             ))}</tbody>
           </table>
+          {risk.err && riskMap !== null && <p role="alert" className="mt-2 text-[11.5px] text-neg">The members&apos; risk could not be worked out just now: {risk.err}</p>}
         </section>
       )}
       {d && d.members.length === 0 && <p className="panel p-4 text-[12.5px] text-muted">Nobody on {team.name} shares a book yet. Share yours with the switch above; each member chooses for themselves.</p>}

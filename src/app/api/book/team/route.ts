@@ -22,10 +22,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ teams: teams.map((t) => ({ id: t.id, name: t.name, members: t.memberCount })), sharing: sharesOf(row?.extra as Record<string, unknown>) }, { headers: { "Cache-Control": "private, no-store" } });
     }
     await requireTeam(id, user.id, "view");
+    // ?risk=1: each sharing member's own risk headline, asked for after the book so the table shows at once (its own limit).
+    if (new URL(req.url).searchParams.get("risk") === "1") {
+      await rateLimit(`book-team-risk:${user.id}`, 120, 3_600_000, "The team's risk was asked for many times this hour. Try again later.");
+      return NextResponse.json({ risk: await teamRisk(id, await listMembers(id)) }, { headers: { "Cache-Control": "private, no-store" } });
+    }
     await rateLimit(`book-team:${user.id}`, 120, 3_600_000, "The team book was checked many times this hour. Try again in a few minutes.");
     const members = await listMembers(id);
-    // ?risk=1: each sharing member's own risk headline, asked for after the book so the table shows at once.
-    if (new URL(req.url).searchParams.get("risk") === "1") return NextResponse.json({ risk: await teamRisk(id, members) }, { headers: { "Cache-Control": "private, no-store" } });
     return NextResponse.json({ ...(await teamBook(id, members.map((m) => ({ userId: m.userId, name: m.name, email: m.email })))), memberCount: members.length }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }

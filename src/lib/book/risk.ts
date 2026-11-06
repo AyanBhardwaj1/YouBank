@@ -212,7 +212,8 @@ export type WhatIf = {
   note: string;
 };
 
-const headline = (r: BookRisk): RiskHeadline => {
+/** The headline figures of a book's risk: beta-adjusted net, VaR, ES and the worst replay. */
+export const headline = (r: BookRisk): RiskHeadline => {
   const w = r.scenarios.filter((x) => x.pnl !== null).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))[0];
   return { betaNet: r.betaNet, vol: r.vol, var95: r.var95, es95: r.es95, worst: w ? { label: w.label, pnl: w.pnl as number } : null };
 };
