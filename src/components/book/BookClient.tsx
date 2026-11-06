@@ -366,6 +366,7 @@ export function BookClient({ focus }: { focus?: string }) {
   const [sampling, setSampling] = useState(false);
   const [teams, setTeams] = useState<TeamList | null>(null);
   const [view, setView] = useState<number | "mine">("mine");
+  const [only, setOnly] = useState<Verdict | null>(null);
   useEffect(() => { fetchJson<TeamList>("/api/book/team").then(setTeams).catch(() => setTeams(null)); }, []);
   const share = async (teamId: number, on: boolean) => {
     const r = await fetchJson<{ sharing: number[] }>("/api/book/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: teamId, share: on }) });
@@ -432,7 +433,10 @@ export function BookClient({ focus }: { focus?: string }) {
           <Stat label="At risk" value={navPct(s.atRiskWeight)} tone={s.atRiskWeight > 0 ? "text-neg" : ""} hint="Weight in positions whose thesis is broken or on watch" />
           <Stat label="P&L since entry" value={s.pnlContribution === null ? "n/a" : `${s.pnlContribution >= 0 ? "+" : ""}${s.pnlContribution.toFixed(2)}% NAV`} tone={s.pnlContribution === null ? "" : s.pnlContribution >= 0 ? "text-pos" : "text-neg"} hint="Weight times return since entry, over positions with both" />
           <div className="ml-auto flex items-end gap-1.5">
-            {(Object.keys(VERDICT) as Verdict[]).filter((k) => s.verdicts[k]).map((k) => <span key={k} className={`ctl px-2 py-1 text-[11px] font-semibold ${VERDICT[k].cls}`}>{s.verdicts[k]} {VERDICT[k].label.toLowerCase()}</span>)}
+            {(Object.keys(VERDICT) as Verdict[]).filter((k) => s.verdicts[k]).map((k) => (
+              <button key={k} type="button" aria-pressed={only === k} title={only === k ? "Show every position" : `Show only positions ${VERDICT[k].label.toLowerCase()}`} onClick={() => setOnly((o) => (o === k ? null : k))}
+                className={`ctl px-2 py-1 text-[11px] font-semibold ${VERDICT[k].cls} ${only && only !== k ? "opacity-40" : ""} ${only === k ? "ring-1 ring-current" : ""}`}>{s.verdicts[k]} {VERDICT[k].label.toLowerCase()}</button>
+            ))}
           </div>
         </section>
       )}
@@ -453,7 +457,7 @@ export function BookClient({ focus }: { focus?: string }) {
 
       {data && data.evaluations.length > 0 && (
         <ul className="space-y-2">
-          {data.evaluations.map((ev) => {
+          {data.evaluations.filter((ev) => !only || ev.verdict === only).map((ev) => {
             const p = byId.get(ev.positionId);
             return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
