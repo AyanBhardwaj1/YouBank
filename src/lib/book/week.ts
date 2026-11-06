@@ -21,6 +21,8 @@ export type WeekBrief = {
   closed: { ticker: string; reason: string; ret: number | null; on: string }[];
   coming: { positionId: string; ticker: string; label: string; date: string; inDays: number }[];
   proposals: { ticker: string; from: string }[];
+  /** The PM's own decision-journal notes from the week (not YouBank's automatic entries). */
+  notes: { ticker: string; on: string; text: string }[];
   headline: string;
 };
 
@@ -81,6 +83,9 @@ export function weekBrief(i: WeekInput): WeekBrief {
   coming.sort((a, b) => a.inDays - b.inDays || a.ticker.localeCompare(b.ticker));
 
   const proposals = i.proposals.map((p) => ({ ticker: p.position.ticker, from: p.from }));
+  const notes = [...i.book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...i.closed.map((c) => ({ ticker: c.ticker, log: c.log ?? [] }))]
+    .flatMap((x) => x.log.filter((e) => !e.auto && inWeek(e.at.slice(0, 10))).map((e) => ({ ticker: x.ticker, on: e.at.slice(0, 10), text: e.text })))
+    .sort((a, b) => b.on.localeCompare(a.on));
 
   const parts: string[] = [];
   const roundTrip = changes.filter((c) => c.to === c.from && c.path.includes("broken"));
@@ -96,7 +101,7 @@ export function weekBrief(i: WeekInput): WeekBrief {
   if (coming.length) parts.push(`${plural(coming.length, "date")} in the next two weeks`);
   if (proposals.length) parts.push(`${plural(proposals.length, "proposal")} waiting for review`);
   const headline = parts.length ? `This week: ${parts.join("; ")}.` : "A quiet week: no thesis changed verdict.";
-  return { from, to, changes, resolved, committees, closed, coming, proposals, headline };
+  return { from, to, changes, resolved, committees, closed, coming, proposals, notes, headline };
 }
 
 export const verdictWord = (v: Verdict) => WORD[v];

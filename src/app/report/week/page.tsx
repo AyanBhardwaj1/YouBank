@@ -64,6 +64,11 @@ export default async function WeekPage() {
         <H>The next two weeks</H>
         {w.coming.length ? <ul className="mt-0.5 space-y-0.5">{w.coming.map((c, i) => <li key={i}><span className="num">{c.date}</span> · <span className="font-semibold">{c.ticker}</span> {c.label}{c.inDays === 0 ? " (today)" : ` (in ${c.inDays} day${c.inDays === 1 ? "" : "s"})`}</li>)}</ul> : none("No earnings or catalysts on the calendar.")}
 
+        {w.notes.length > 0 && (<>
+          <H>Your notes this week</H>
+          <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>: {n.text}</li>)}</ul>
+        </>)}
+
         {w.proposals.length > 0 && (<>
           <H>Waiting for your review</H>
           <p className="mt-0.5">{w.proposals.map((p) => `${p.ticker} from ${p.from}`).join(" · ")}. <Link href="/app/book" className="text-accent hover:underline">Review them</Link>.</p>

@@ -370,6 +370,8 @@ console.log("The week in the book");
   const wb = weekBrief({ now: wNow, book: [pA, pB, pC], evals: [evA], history: hist, closed: [], proposals: [] });
   ok("a week's brief: what broke and recovered (from where it stood before the week), when the new verdict began, and what is coming", [wb.from, wb.changes.map((c) => [c.ticker, c.from, c.to, c.on]), wb.coming.map((c) => [c.ticker, c.label, c.inDays])], ["2026-11-02", [["AAA", "intact", "broken", "2026-11-06"], ["CCC", "broken", "intact", "2026-11-04"]], [["AAA", "Earnings", 3]]]);
   ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
+  const pJ = normalizePosition({ ...t, catalysts: [], id: "wkj1", ticker: "JRN", log: [{ at: "2026-11-05T10:00:00Z", text: "Sized down ahead of the print" }, { at: "2026-11-05T10:00:00Z", text: "Weight 4% → 2% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old note" }] })!;
+  ok("the week lists the PM's own notes from the week, not YouBank's entries or older notes", weekBrief({ now: wNow, book: [pJ], evals: [], history: {}, closed: [], proposals: [] }).notes, [{ ticker: "JRN", on: "2026-11-05", text: "Sized down ahead of the print" }]);
   ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict.");
 }
 
