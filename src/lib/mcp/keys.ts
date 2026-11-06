@@ -28,7 +28,7 @@ export function normalizePolicy(raw: unknown): KeyPolicy {
 }
 
 /** The tools a policy allows out of the server's list: no Book, no Book tools; no proposing, no propose_position. */
-export const BOOK_TOOLS = new Set(["book_status", "book_risk", "propose_position"]);
+export const BOOK_TOOLS = new Set(["book_status", "book_risk", "book_track_record", "propose_position"]);
 export function toolAllowed(policy: KeyPolicy, tool: string): boolean {
   if (policy.paused) return false;
   if (!policy.book && BOOK_TOOLS.has(tool)) return false;

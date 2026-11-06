@@ -17,8 +17,9 @@
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { addProposal, evaluateBook, loadBook, loadJournal, newsFor, noteProposal } from "@/lib/book/store";
-import { scorecard, scorecardLine } from "@/lib/book/journal";
+import { addProposal, evaluateBook, loadBook, loadBookHistory, loadJournal, newsFor, noteProposal } from "@/lib/book/store";
+import { calibrationOf, closedReturn, CLOSE_REASONS, scorecard, scorecardLine } from "@/lib/book/journal";
+import { calibrationLine } from "@/lib/book/forecast";
 import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
@@ -36,7 +37,7 @@ const TITLES: Record<string, string> = {
   read_filing: "Read a filing section", edgar_fulltext_search: "EDGAR full-text search", read_document: "Read an SEC document", get_recent_filings: "Recent filings",
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
   filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
-  book_risk: "My book's risk and stress tests", propose_position: "Propose a position for my review",
+  book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", propose_position: "Propose a position for my review",
 };
 /** Tools that write something (a proposal only); every other tool is read-only. */
 const WRITES = new Set(["propose_position"]);
@@ -140,6 +141,29 @@ function riskTool(userId: string) {
       const r = await riskOf(book);
       const src = ctx.addSource(`Daily closes for the held names and SPY (${r.sources.join(", ") || "market data"}), ${r.window ? `${r.window.from} to ${r.window.to}` : "no window"}`, siteLink("/app/book?view=risk"));
       return JSON.stringify({ headline: riskLine(r), source: src, link: siteLink("/app/book?view=risk"), units: "% of NAV", ...r, sources: undefined });
+    },
+  });
+}
+
+/** The track record: what closed and why, calibration of the forecasts (the PM's against the AI's), and process against outcome. */
+function trackRecordTool(userId: string) {
+  return def({
+    name: "book_track_record",
+    description: "The signed-in person's track record in YouBank: closed positions with their reason, return and how the thesis stood; the scorecard (hit rate, payoff, how quickly broken theses were exited, what holding past the break cost); process against outcome (wins earned by the process against lucky ones); and the calibration of every forecast on a position, scored with the Brier score, by who made it (the PM, an AI app or the AI investment committee). Returns are unweighted price moves before costs, not fund performance.",
+    schema: z.object({}),
+    run: async (_args, ctx) => {
+      const [book, closed, history] = await Promise.all([loadBook(userId), loadJournal(userId).catch(() => []), loadBookHistory(userId).catch(() => ({}))]);
+      const s = scorecard(closed);
+      const cal = calibrationOf(book, history, closed);
+      const src = ctx.addSource("The person's YouBank track record (closed positions and resolved forecasts)", siteLink("/app/book"));
+      return JSON.stringify({
+        summary: scorecardLine(s), calibration_line: calibrationLine(cal), source: src, link: siteLink("/app/book"),
+        scorecard: { closed: s.closed, hit_rate: s.hitRate, avg_return: s.avgReturn, avg_win: s.avgWin, avg_loss: s.avgLoss, payoff: s.payoff, broke_while_held: s.broke, exited_within_5_days_of_break: s.exitedOnBreak, median_days_to_exit: s.medianDaysToExit, closed_on_break_instead: s.counterfactual, by_reason: s.byReason },
+        process_vs_outcome: s.process,
+        calibration: { resolved: cal.n, open: cal.open, brier: cal.brier, overconfidence: cal.bias, buckets: cal.buckets, by_source: cal.bySource },
+        recent_closes: closed.slice(0, 15).map((c) => ({ ticker: c.ticker, direction: c.direction, opened: c.openedAt.slice(0, 10), closed: c.closedAt.slice(0, 10), reason: CLOSE_REASONS[c.reason], return: closedReturn(c), thesis_broke_on: c.brokeOn, note: c.note || undefined })),
+        units: "returns as fractions (0.12 is 12%), in the position's favour",
+      });
     },
   });
 }
@@ -268,7 +292,7 @@ export const PROMPTS: McpPrompt[] = [
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
 export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy = DEFAULT_POLICY): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
     // What this app may use (Settings → Connect AI apps): tools it may not use are neither listed nor callable.
     .filter((t) => toolAllowed(policy, t.name));
   return {
