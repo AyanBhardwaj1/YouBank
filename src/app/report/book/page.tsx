@@ -68,7 +68,7 @@ export default async function BookReport() {
             </section>
             <p className="mt-2 text-[11.5px] text-muted">{s.verdicts.broken} broken · {s.verdicts.watch} on watch · {s.verdicts.intact} intact{s.verdicts.unknown ? ` · ${s.verdicts.unknown} without data` : ""}. Weights are % of NAV as entered; &ldquo;at risk&rdquo; is the weight in positions whose thesis is broken or on watch.</p>
 
-            <table className="mt-4 w-full border-collapse text-[11.5px]">
+            <div className="mt-4 overflow-x-auto print:overflow-visible"><table className="w-full min-w-[520px] border-collapse text-[11.5px] [&_td]:pr-3 [&_th]:pr-3">
               <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1">Position</th><th>Side</th><th className="text-right">Weight</th><th className="text-right">Price</th><th className="text-right">Since entry</th><th className="pl-3">Thesis</th></tr></thead>
               <tbody>{evals.map((e) => (
                 <tr key={e.positionId} className="border-b border-line/50 align-top">
@@ -77,7 +77,7 @@ export default async function BookReport() {
                   <td className="num text-right">{pct(e.pnl)}</td><td className={`pl-3 font-semibold ${TONE[e.verdict]}`}>{VERDICT[e.verdict]}</td>
                 </tr>
               ))}</tbody>
-            </table>
+            </table></div>
 
             {evals.map((e) => {
               const p = byId.get(e.positionId);
@@ -92,7 +92,7 @@ export default async function BookReport() {
                   {!!p?.pillars.length && <ul className="mt-1 list-disc pl-5 text-muted">{p.pillars.map((x) => <li key={x}>{x}</li>)}</ul>}
                   <p className="mt-1.5 italic text-muted">{e.summary}</p>
                   {e.checks.length > 0 && (
-                    <table className="mt-2 w-full border-collapse text-[11px]">
+                    <div className="mt-2 overflow-x-auto print:overflow-visible"><table className="w-full min-w-[560px] border-collapse text-[11px]">
                       <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-0.5">Kill criterion</th><th>Now</th><th>Needs</th><th>Room</th><th>State</th><th>Source</th></tr></thead>
                       <tbody>{e.checks.map((c) => (
                         <tr key={c.criterion.id} className="border-b border-line/40 align-top">
@@ -101,7 +101,7 @@ export default async function BookReport() {
                           <td className="text-muted">{c.evidence ? <><a href={c.evidence.url} className="underline decoration-dotted">{c.evidence.source}</a>, {c.evidence.period}</> : "—"}</td>
                         </tr>
                       ))}</tbody>
-                    </table>
+                    </table></div>
                   )}
                   {e.catalysts.length > 0 && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {e.catalysts.map((c) => `${c.label} (${c.date})`).join("; ")}</p>}
                   {p?.redTeam && (

@@ -294,7 +294,7 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
   return (
     <div className="space-y-3">
       <section className="panel flex flex-wrap items-center gap-3 p-3 text-[12.5px]">
-        <span className="min-w-0 flex-1 text-muted">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""}</span>
+        <span className="min-w-0 basis-full text-muted sm:basis-0 sm:flex-1">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""}</span>
         <label className="flex items-center gap-2"><input type="checkbox" checked={sharing} disabled={busy} onChange={() => void toggle()} />Share my book with {team.name}</label>
       </section>
       {err && <div role="alert" className="panel p-3 text-[12px] text-neg">{err}</div>}
@@ -363,7 +363,7 @@ export function BookClient({ focus }: { focus?: string }) {
     <div className="scroll-touch h-full overflow-auto">
     <div data-book-top className="mx-auto max-w-5xl space-y-4 p-4">
       <header className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <h1 className="text-[18px] font-semibold">The Book</h1>
           <p className="text-[12.5px] text-muted">Every position with a thesis that can be proved wrong. Each kill criterion is checked against SEC filings and the market on every load, with the figure, its period and a link to the source.</p>
         </div>
