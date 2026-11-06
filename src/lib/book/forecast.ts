@@ -34,6 +34,7 @@ export function normalizeConviction(raw: unknown): Conviction | null {
 }
 
 export const PAST_FORECASTS_MAX = 20;
+export const AI_COMMITTEE = "AI committee";
 export const sameForecast = (a: Conviction, b: Conviction | null | undefined) => !!b && a.p === b.p && a.by === b.by && a.at === b.at && a.source === b.source;
 
 /**
@@ -53,9 +54,10 @@ export function supersede(past: Conviction[] | undefined, old: Conviction | null
  */
 export function freshForecast(posted: Conviction | undefined, prev: Conviction | undefined, today: string): { conviction?: Conviction; error?: string } {
   if (!posted) return {};
-  if (prev && posted.p === prev.p && posted.by === prev.by && posted.source === prev.source) return { conviction: prev };
+  if (prev && posted.p === prev.p && posted.by === prev.by && (posted.source === prev.source || posted.source === AI_COMMITTEE)) return { conviction: prev };
   if (posted.by <= today) return { error: "A forecast must resolve after today." };
-  return { conviction: { ...posted, at: today } };
+  // Only the server writes the committee's forecasts; a posted one is the person's own.
+  return { conviction: { ...posted, at: today, ...(posted.source === AI_COMMITTEE ? { source: "You" } : {}) } };
 }
 
 /** The first day after the forecast was made that the thesis read broken. */

@@ -10,7 +10,7 @@
  * cleaning of a stored committee. The run is in src/app/api/book/committee; tested in scripts/test-book.ts.
  */
 import { z } from "zod";
-import { normalizeConviction, type Conviction } from "./forecast";
+import { AI_COMMITTEE, normalizeConviction, type Conviction } from "./forecast";
 import { METRICS, type Evaluation, type Position, type RedTeam } from "./position";
 
 export const DECISIONS = { add: "Add", hold: "Hold", trim: "Trim", exit: "Exit" } as const;
@@ -79,7 +79,7 @@ export function committeeFrom(chair: z.infer<typeof ChairSchema>, bull: RedTeam,
   return {
     at: now.toISOString(), bull, bear, decision: chair.decision,
     rationale: clip(chair.rationale, 800), dissent: clip(chair.dissent, 400), watch: chair.watch.map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
-    forecast: normalizeConviction({ p: Math.min(99, Math.max(1, Math.round(chair.probability))), by, at: today, source: "AI committee" }),
+    forecast: normalizeConviction({ p: Math.min(99, Math.max(1, Math.round(chair.probability))), by, at: today, source: AI_COMMITTEE }),
   };
 }
 
@@ -92,6 +92,6 @@ export function normalizeCommittee(raw: unknown): Committee | null {
     at: r.at, bull, bear, decision: r.decision as Decision,
     rationale: clip(r.rationale, 800), dissent: clip(r.dissent, 400),
     watch: (Array.isArray(r.watch) ? r.watch : []).map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
-    forecast: r.forecast ? normalizeConviction({ ...(r.forecast as object), source: "AI committee" }) : null,
+    forecast: r.forecast ? normalizeConviction({ ...(r.forecast as object), source: AI_COMMITTEE }) : null,
   };
 }
