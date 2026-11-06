@@ -301,6 +301,29 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
         </div>
       </section>
 
+      {/* for funds: the Book, MCP, the research ledger */}
+      <section id="funds" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <Reveal>
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">For funds</h2>
+          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Every thesis held to its numbers. Every AI answer on the record.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] leading-relaxed text-muted">Nearly every fund now uses AI; few can show what it did, or prove it. YouBank checks the book against primary sources after every close, works inside the AI apps your team already uses, and keeps a record your compliance desk can verify without trusting us.</p>
+        </Reveal>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          {[
+            { icon: "Briefcase", t: "The Book", b: "Each position's thesis comes with the numbers that would prove it wrong. After every US close they are checked against SEC filings and the price, with the figure, its period and the source. You hear the day a thesis breaks, and a red team argues the other side with citations." },
+            { icon: "Bot", t: "In Claude, ChatGPT and your agents", b: "YouBank is an MCP server: fundamentals, filings and what changed in them, comps, insiders and your own book, called from the AI app you already use. Every figure comes back cited. Ready-made prompts: review my book, argue against a position, earnings prep." },
+            { icon: "ScrollText", t: "A research ledger", b: "Every AI answer and AI-app call is kept with its prompt, model and sources, hash-chained so any edit shows, and can be anchored outside YouBank every day. Reviewers sign off on entries, and the export can be checked with five lines of code." },
+          ].map((x, i) => (
+            <Reveal key={x.t} delay={i * 60}>
+              <div className="h-full panel p-4">
+                <h3 className="flex items-center gap-2 text-[13.5px] font-semibold"><Icon name={x.icon} className="h-4 w-4 text-accent" />{x.t}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{x.b}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* terminal */}
       <section id="terminal" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
