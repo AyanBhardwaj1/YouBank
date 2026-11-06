@@ -7,11 +7,11 @@ import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
-import { calibration, calibrationLine, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, resolveForecast, supersede } from "@/lib/book/forecast";
+import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, supersede } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekBrief } from "@/lib/book/week";
-import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee } from "@/lib/book/committee";
+import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
@@ -361,6 +361,29 @@ console.log("The week in the book");
   ok("a week's brief: what broke and recovered (from where it stood before the week), when the new verdict began, and what is coming", [wb.from, wb.changes.map((c) => [c.ticker, c.from, c.to, c.on]), wb.coming.map((c) => [c.ticker, c.label, c.inDays])], ["2026-11-02", [["AAA", "intact", "broken", "2026-11-06"], ["CCC", "broken", "intact", "2026-11-04"]], [["AAA", "Earnings", 3]]]);
   ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
   ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict, and all 1 stand as they did.");
+}
+
+console.log("Pooled chairs");
+{
+  const ch = (decision: "add" | "hold" | "trim" | "exit", probability: number, rationale: string = decision) => ({ decision, probability, rationale, dissent: "", watch: [] as string[] });
+  const pool = poolChairs([ch("trim", 60, "a"), ch("trim", 70, "b"), ch("hold", 40, "c")])!;
+  ok("three chairs: the majority decides, the probability is the mean in log-odds, the wording comes from the majority chair nearest it", [pool.chair.decision, pool.chair.probability, pool.chair.rationale, pool.samples], ["trim", 57, "a", [{ decision: "trim", p: 0.6 }, { decision: "trim", p: 0.7 }, { decision: "hold", p: 0.4 }]]);
+  ok("a split goes to the more cautious call; fractions count as percents; none is none", [poolChairs([ch("add", 80), ch("exit", 20)])!.chair.decision, poolChairs([ch("hold", 0.9), ch("hold", 90)])!.chair.probability, poolChairs([])], ["exit", 90, null]);
+  ok("log-odds pooling keeps a confident chair from being averaged away", poolChairs([ch("hold", 95), ch("hold", 50), ch("hold", 50)])!.chair.probability, 73);
+  const withSamples = committeeFrom(pool.chair, brief("a"), brief("b"), new Date("2026-11-06T12:00:00Z"), pool.samples);
+  ok("a committee keeps its chairs' spread through storage; a lone chair stores none", [normalizeCommittee(JSON.parse(JSON.stringify(withSamples)))?.samples?.length, withSamples.forecast?.p, committeeFrom(ch("hold", 50), brief("a"), brief("b"), new Date(), [{ decision: "hold", p: 0.5 }]).samples], [3, 0.57, undefined]);
+}
+
+console.log("Calibration correction");
+{
+  // An overconfident forecaster: says 90% and is right 60% of the time, 30 times.
+  const over = Array.from({ length: 30 }, (_, k) => ({ p: 0.9, outcome: (k % 10 < 6 ? 1 : 0) as 0 | 1 }));
+  const f = fitPlatt(over)!;
+  ok("an overconfident 90% is corrected toward what happened (60%), shrunk toward no correction", [f !== null, recalibrate(0.9, f) < 0.9 && recalibrate(0.9, f) > 0.55], [true, true]);
+  ok("too few, or all the same, fits nothing", [fitPlatt(over.slice(0, 10)), fitPlatt(Array.from({ length: 25 }, () => ({ p: 0.7, outcome: 1 as const })))], [null, null]);
+  const items = over.map((x, k) => ({ ticker: `T${k}`, p: x.p, by: "x", source: "You", outcome: x.outcome, resolvedOn: "x" }));
+  const cal20 = calibration(items);
+  ok("the calibration says what a source's stated chance has meant", [cal20.bySource[0].meant?.said, (cal20.bySource[0].meant?.means ?? 1) < 0.9], [0.9, true]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

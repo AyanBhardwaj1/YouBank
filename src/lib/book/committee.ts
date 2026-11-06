@@ -18,8 +18,10 @@ export type Decision = keyof typeof DECISIONS;
 export type Committee = {
   at: string; bull: RedTeam; bear: RedTeam;
   decision: Decision; rationale: string; dissent: string; watch: string[];
-  /** The chair's forecast, as source "AI committee". */
+  /** The chair's forecast, as source "AI committee": pooled over the independent samples. */
   forecast: Conviction | null;
+  /** Each independent chair's call, when several sat (the "silicon crowd"): their spread is shown. */
+  samples?: { decision: Decision; p: number }[];
 };
 
 const evidenceLines = (p: Position, ev: Evaluation | null) => [
@@ -72,15 +74,40 @@ const brief = (v: unknown): RedTeam | null => {
   return { at: r.at, text: r.text.slice(0, 8000), sources };
 };
 
+type Chair = z.infer<typeof ChairSchema>;
+const pctOf = (x: number) => Math.min(99, Math.max(1, Math.round(x > 0 && x < 1 ? x * 100 : x)));
+const CAUTION: Decision[] = ["exit", "trim", "hold", "add"];
+const logit = (p: number) => Math.log(p / (1 - p));
+
+/**
+ * Several chairs who sat independently, pooled: the probability is the mean in log-odds (ensembles of LLM
+ * forecasts beat single ones, and log-odds pooling keeps a confident minority from being averaged away);
+ * the decision is the majority, a tie going to the more cautious call; the wording comes from the chair in
+ * the majority whose probability is closest to the pooled one.
+ */
+export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decision: Decision; p: number }[] } | null {
+  if (!answers.length) return null;
+  const samples = answers.map((a) => ({ decision: a.decision, p: pctOf(a.probability) / 100 }));
+  const pooled = 1 / (1 + Math.exp(-samples.reduce((s, x) => s + logit(x.p), 0) / samples.length));
+  const votes = new Map<Decision, number>();
+  for (const x of samples) votes.set(x.decision, (votes.get(x.decision) ?? 0) + 1);
+  const top = Math.max(...votes.values());
+  const decision = CAUTION.find((d) => votes.get(d) === top)!;
+  const rep = answers.map((a, i) => ({ a, i })).filter(({ a }) => a.decision === decision)
+    .sort((x, y) => Math.abs(samples[x.i].p - pooled) - Math.abs(samples[y.i].p - pooled))[0].a;
+  return { chair: { ...rep, decision, probability: Math.round(pooled * 100) }, samples };
+}
+
 /** A committee from the chair's answer and the two briefs, as of `now`: its forecast runs 90 days. */
-export function committeeFrom(chair: z.infer<typeof ChairSchema>, bull: RedTeam, bear: RedTeam, now = new Date()): Committee {
+export function committeeFrom(chair: z.infer<typeof ChairSchema>, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[]): Committee {
   const today = now.toISOString().slice(0, 10);
   const by = new Date(now.getTime() + 90 * 86_400_000).toISOString().slice(0, 10);
   return {
     at: now.toISOString(), bull, bear, decision: chair.decision,
     rationale: clip(chair.rationale, 800), dissent: clip(chair.dissent, 400), watch: chair.watch.map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
     // A chance given as a fraction (0.72) is 72%, not 1%.
-    forecast: normalizeConviction({ p: Math.min(99, Math.max(1, Math.round(chair.probability > 0 && chair.probability < 1 ? chair.probability * 100 : chair.probability))), by, at: today, source: AI_COMMITTEE }),
+    forecast: normalizeConviction({ p: pctOf(chair.probability), by, at: today, source: AI_COMMITTEE }),
+    ...(samples && samples.length > 1 ? { samples: samples.slice(0, 5) } : {}),
   };
 }
 
@@ -94,5 +121,12 @@ export function normalizeCommittee(raw: unknown): Committee | null {
     rationale: clip(r.rationale, 800), dissent: clip(r.dissent, 400),
     watch: (Array.isArray(r.watch) ? r.watch : []).map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
     forecast: r.forecast ? normalizeConviction({ ...(r.forecast as object), source: AI_COMMITTEE }) : null,
+    ...(() => {
+      const xs = (Array.isArray(r.samples) ? r.samples : []).flatMap((x) => {
+        const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+        return typeof o.decision === "string" && o.decision in DECISIONS && typeof o.p === "number" && o.p > 0 && o.p < 1 ? [{ decision: o.decision as Decision, p: Math.round(o.p * 100) / 100 }] : [];
+      }).slice(0, 5);
+      return xs.length > 1 ? { samples: xs } : {};
+    })(),
   };
 }

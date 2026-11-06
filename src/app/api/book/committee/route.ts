@@ -9,7 +9,7 @@ import { rateLimit } from "@/lib/locks";
 import { logError } from "@/lib/errors";
 import { evaluateBook, loadBook, noteCommittee, setCommittee } from "@/lib/book/store";
 import { redTeamPrompt, type Position, type RedTeam } from "@/lib/book/position";
-import { bullPrompt, CHAIR_SYSTEM, ChairSchema, chairPrompt, committeeFrom } from "@/lib/book/committee";
+import { bullPrompt, CHAIR_SYSTEM, ChairSchema, chairPrompt, committeeFrom, poolChairs } from "@/lib/book/committee";
 import { record } from "@/lib/ledger/store";
 import type { AiPrefs } from "@/lib/ai/models";
 
@@ -85,14 +85,19 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
   const prompt = chairPrompt(position, ev ?? null, bull.text, bear.text);
   const left = 285_000 - (Date.now() - t0);
   if (left < 20_000) throw new SittingError("The briefs took too long for the chair to sit. Try again in a minute.");
-  const chair = await runAsUser(userId, () => structured(ChairSchema, "book_committee", CHAIR_SYSTEM, prompt, { prefs, task: "chat", timeoutMs: Math.min(90_000, left) }), { admin })
-    .catch(() => { throw new SittingError("The chair could not decide just now. Try again in a minute."); });
-  const committee = committeeFrom(chair.data, bull, bear);
+  // Three chairs sit independently, in parallel, and are pooled (committee.ts poolChairs): an ensemble of
+  // forecasts is better calibrated than one, and their spread shows how settled the call is.
+  const runs = await Promise.allSettled([0, 1, 2].map(() => runAsUser(userId, () => structured(ChairSchema, "book_committee", CHAIR_SYSTEM, prompt, { prefs, task: "chat", timeoutMs: Math.min(90_000, left) }), { admin })));
+  const done = runs.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  const pooled = poolChairs(done.map((r) => r.data));
+  if (!pooled) throw new SittingError("The chair could not decide just now. Try again in a minute.");
+  const chair = done[0];
+  const committee = committeeFrom(pooled.chair, bull, bear, new Date(), pooled.samples);
   await setCommittee(userId, position.id, committee);
   await noteCommittee(userId, position, committee).catch(() => undefined);
   await record(userId, {
     kind: "red_team", subject: `Committee: ${position.ticker}`, model: `${chair.provider}/${chair.model}`, prompt: prompt.slice(0, 4000),
-    output: JSON.stringify({ decision: committee.decision, probability: committee.forecast?.p ?? null, rationale: committee.rationale, dissent: committee.dissent, watch: committee.watch }),
+    output: JSON.stringify({ decision: committee.decision, probability: committee.forecast?.p ?? null, chairs: pooled.samples, rationale: committee.rationale, dissent: committee.dissent, watch: committee.watch }),
     sources: [...bull.sources, ...bear.sources].slice(0, 60), meta: { feature: "book.committee.chair" },
   }).catch(() => {});
 }

@@ -199,6 +199,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
             <span className={`ctl px-2 py-0.5 text-[11px] font-semibold uppercase ${DECISION_CLS[c.decision]}`}>{DECISIONS[c.decision]}</span>
             {c.forecast && <span className="text-[11.5px] text-muted">Chair&apos;s forecast: <span className="font-semibold text-fg">{Math.round(c.forecast.p * 100)}%</span> that no kill criterion fails before {c.forecast.by}. Scored in your track record beside your own.</span>}
           </div>
+          {c.samples && c.samples.length > 1 && <p className="text-[11px] text-muted" title="Each chair read the same briefs and decided alone; the forecast is their mean in log-odds, the decision the majority">{c.samples.length} chairs sat independently: {c.samples.map((x) => `${DECISIONS[x.decision]} ${Math.round(x.p * 100)}%`).join(" · ")}{new Set(c.samples.map((x) => x.decision)).size > 1 ? ". They split, so treat the call as close." : "."}</p>}
           {c.rationale && <p>{c.rationale}</p>}
           {c.dissent && <p className="text-muted"><span className="font-semibold text-fg">Dissent:</span> {c.dissent}</p>}
           {c.watch.length > 0 && <div><span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">Watch</span><ul className="list-disc pl-5">{c.watch.map((w, i) => <li key={i}>{w}</li>)}</ul></div>}
@@ -692,6 +693,7 @@ function TrackRecord({ sig }: { sig: string }) {
               <p className="text-muted">{calibrationLine(d.calibration)}</p>
               {d.calibration.buckets.length > 0 && <p className="mt-0.5">{d.calibration.buckets.map((b) => `when you said ${b.label}: ${Math.round(b.held * 100)}% held (${b.n})`).join(" · ")}</p>}
               {d.calibration.bySource.length > 1 && <p className="mt-0.5 text-muted">Brier by who forecast (lower is better): {d.calibration.bySource.map((x) => `${x.source} ${x.brier.toFixed(3)} on ${x.n}`).join(" · ")}</p>}
+              {d.calibration.bySource.some((x) => x.meant) && <p className="mt-0.5 text-muted" title="Platt scaling fitted on each forecaster's resolved forecasts, shrunk toward no correction">What a stated chance has meant so far: {d.calibration.bySource.filter((x) => x.meant).map((x) => `${x.source === "You" ? "your" : `${x.source}'s`} ${Math.round(x.meant!.said * 100)}% has behaved like ${Math.round(x.meant!.means * 100)}%`).join("; ")}.</p>}
             </div>
           )}
           {!s.closed ? <p className="text-[12px] text-muted">Nothing closed yet. &ldquo;Close position&rdquo; on any card records it here with its exit, the reason and how its thesis stood, so the record builds itself.</p> : (<>

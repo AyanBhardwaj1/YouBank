@@ -93,8 +93,39 @@ export type Calibration = {
   /** Average stated probability against the share that held: positive is overconfident. */
   bias: number | null;
   buckets: { label: string; n: number; avgP: number; held: number }[];
-  bySource: { source: string; n: number; brier: number }[];
+  bySource: { source: string; n: number; brier: number; /** With 20 or more resolved: what this source's average stated chance has behaved like. */ meant?: { said: number; means: number } }[];
 };
+
+/** The fewest resolved forecasts a correction is fitted on. */
+export const PLATT_MIN = 20;
+const clampP = (p: number) => Math.min(0.99, Math.max(0.01, p));
+const lg = (p: number) => Math.log(clampP(p) / (1 - clampP(p)));
+const sig = (z: number) => 1 / (1 + Math.exp(-z));
+
+/**
+ * Platt scaling: outcome ≈ sigmoid(a·logit(p) + b), fitted by Newton's method on the forecasts' own record,
+ * with a ridge that pulls toward "no correction" (a = 1, b = 0) so a small record cannot swing it far.
+ * a < 1 means overconfident (stated chances too extreme), b shifts the whole scale. Null under PLATT_MIN
+ * or when every outcome was the same.
+ */
+export function fitPlatt(xs: { p: number; outcome: 0 | 1 }[], ridge = 2): { a: number; b: number } | null {
+  if (xs.length < PLATT_MIN || xs.every((x) => x.outcome === xs[0].outcome)) return null;
+  let a = 1, b = 0;
+  for (let it = 0; it < 50; it++) {
+    let ga = ridge * (a - 1), gb = ridge * b, haa = ridge, hab = 0, hbb = ridge;
+    for (const x of xs) {
+      const z = lg(x.p), q = sig(a * z + b), w = q * (1 - q), e = q - x.outcome;
+      ga += e * z; gb += e; haa += w * z * z; hab += w * z; hbb += w;
+    }
+    const det = haa * hbb - hab * hab;
+    if (Math.abs(det) < 1e-12) break;
+    const da = (hbb * ga - hab * gb) / det, db = (haa * gb - hab * ga) / det;
+    a -= da; b -= db;
+    if (Math.abs(da) + Math.abs(db) < 1e-9) break;
+  }
+  return { a: Math.round(a * 1000) / 1000, b: Math.round(b * 1000) / 1000 };
+}
+export const recalibrate = (p: number, f: { a: number; b: number }) => sig(f.a * lg(p) + f.b);
 
 const BUCKETS: [number, number, string][] = [[0, 0.3, "under 30%"], [0.3, 0.5, "30-50%"], [0.5, 0.7, "50-70%"], [0.7, 0.9, "70-90%"], [0.9, 1.01, "90% and up"]];
 const r3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -112,7 +143,12 @@ export function calibration(items: ForecastItem[]): Calibration {
       const xs = done.filter((x) => x.p >= lo && x.p < hi);
       return { label, n: xs.length, avgP: xs.length ? r3(xs.reduce((a, x) => a + x.p, 0) / xs.length) : 0, held: xs.length ? r3(xs.reduce((a, x) => a + x.outcome, 0) / xs.length) : 0 };
     }).filter((b) => b.n > 0),
-    bySource: sources.map((source) => { const xs = done.filter((x) => x.source === source); return { source, n: xs.length, brier: r3(brierOf(xs)) }; }).sort((a, b) => b.n - a.n),
+    bySource: sources.map((source) => {
+      const xs = done.filter((x) => x.source === source);
+      const f = fitPlatt(xs);
+      const said = xs.reduce((a, x) => a + x.p, 0) / xs.length;
+      return { source, n: xs.length, brier: r3(brierOf(xs)), ...(f ? { meant: { said: Math.round(said * 100) / 100, means: Math.round(recalibrate(said, f) * 100) / 100 } } : {}) };
+    }).sort((a, b) => b.n - a.n),
   };
 }
 
