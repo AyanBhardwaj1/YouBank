@@ -160,7 +160,7 @@ function trackRecordTool(userId: string) {
       const src = ctx.addSource("The person's YouBank track record (closed positions and resolved forecasts)", siteLink("/app/book"));
       return JSON.stringify({
         summary: scorecardLine(s), calibration_line: calibrationLine(cal), source: src, link: siteLink("/app/book"),
-        scorecard: { closed: s.closed, hit_rate: s.hitRate, avg_return: s.avgReturn, avg_win: s.avgWin, avg_loss: s.avgLoss, payoff: s.payoff, broke_while_held: s.broke, exited_within_5_days_of_break: s.exitedOnBreak, median_days_to_exit: s.medianDaysToExit, closed_on_break_instead: s.counterfactual, by_reason: s.byReason },
+        scorecard: { closed: s.closed, hit_rate: s.hitRate, avg_return: s.avgReturn, avg_win: s.avgWin, avg_loss: s.avgLoss, payoff: s.payoff, still_broken_at_close: s.broke, exited_within_5_days_of_break: s.exitedOnBreak, median_days_to_exit: s.medianDaysToExit, closed_on_break_instead: s.counterfactual, by_reason: s.byReason },
         process_vs_outcome: s.process,
         calibration: { resolved: cal.n, open: cal.open, brier: cal.brier, overconfidence: cal.bias, buckets: cal.buckets, by_source: cal.bySource },
         recent_closes: closed.slice(0, 15).map((c) => ({ ticker: c.ticker, direction: c.direction, opened: c.openedAt.slice(0, 10), closed: c.closedAt.slice(0, 10), reason: CLOSE_REASONS[c.reason], return: closedReturn(c), thesis_broke_on: c.brokeOn, note: c.note || undefined })),
