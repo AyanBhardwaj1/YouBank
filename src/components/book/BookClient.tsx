@@ -63,7 +63,7 @@ const fieldBox = "ctl border border-line bg-bg px-2 py-1.5 text-[12px] placehold
 const field = `${fieldBox} w-full`;
 
 /** `heading` replaces the title (a proposal under review: a new position, without the templates). */
-function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string }) {
+function Editor({ initial, onSaved, onCancel, heading, market }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
   const [d, setD] = useState<Draft>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -137,6 +137,11 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
         <input aria-label="Conviction, % chance" value={d.convP} onChange={(e) => setD((x) => ({ ...x, convP: e.target.value, convSource: undefined, convAt: undefined }))} inputMode="numeric" placeholder="70" className={`${fieldBox} w-16`} />
         <span>% chance no kill criterion fails before</span>
         <input aria-label="Conviction date" type="date" value={d.convBy} onChange={(e) => setD((x) => ({ ...x, convBy: e.target.value, convSource: undefined, convAt: undefined }))} className={`${fieldBox} w-40`} />
+        {(() => {
+          const pos = { direction: d.direction, entry: d.entry ? Number(d.entry) : null, criteria: d.criteria.filter((c) => c.value.trim() && Number.isFinite(Number(c.value))).map((c, k) => ({ id: `d${k}`, metric: c.metric, op: c.op, value: Number(c.value) })) };
+          const base = market ? priceBaseRate(pos, market.price, market.vol, d.convBy, new Date()) : null;
+          return base ? <span className="basis-full text-[11px] text-fg sm:basis-auto">Base rate from price alone: <span className="font-semibold">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to that date. Start there, then adjust for the fundamentals.</span> : null;
+        })()}
         <span className="basis-full text-[11px] sm:basis-auto">Optional. YouBank scores it when it resolves, so the track record shows how well calibrated the book&apos;s conviction is{d.convSource && d.convSource !== "You" ? ` (this one is ${d.convSource}'s)` : ""}.</span>
       </div>
       <div>
@@ -910,7 +915,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
       )}
 
-      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
         if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));
