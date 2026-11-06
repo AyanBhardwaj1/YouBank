@@ -217,7 +217,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
                       <td className="pr-2 text-muted">{c.target}</td>
                       <td className={`num pr-2 ${!c.headroom ? "text-muted" : c.headroom.value < 0 ? "text-neg" : c.state === "near" ? "text-accent" : "text-muted"}`}>{c.headroom?.shown ?? "—"}</td>
                       <td className={`pr-2 font-semibold ${STATE[c.state].cls}`}>{STATE[c.state].label}</td>
-                      <td className="hidden text-muted sm:table-cell">{c.evidence ? <a href={c.evidence.url} target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">{c.evidence.source}, {c.evidence.period}</a> : "—"}</td>
+                      <td className="hidden text-muted sm:table-cell">{c.evidence ? <a href={c.evidence.url} target="_blank" rel="noreferrer" className="hover:text-fg hover:underline">{c.evidence.source}, {c.evidence.period}</a> : c.note ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

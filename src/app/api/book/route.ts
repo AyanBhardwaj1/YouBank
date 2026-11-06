@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
-import { bookAlertsOn, deletePosition, evaluateBook, loadBook, noteHistory, savePosition, setBookAlerts } from "@/lib/book/store";
+import { bookAlertsOn, deletePosition, evaluateBook, loadBook, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
+import { cachedInsiderFact } from "@/lib/book/insiders";
+import { inBackground } from "@/lib/cache";
+import type { Position } from "@/lib/book/position";
 import { summarize } from "@/lib/book/position";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 /** GET: the person's book: each position, where its kill criteria stand now, and exposure (src/lib/book). */
 export async function GET() {
@@ -27,6 +31,9 @@ export async function POST(req: Request) {
     }
     const saved = await savePosition(user.id, body);
     if (!saved) return NextResponse.json({ error: "A position needs a ticker and a one-line thesis." }, { status: 400 });
+    // An insider-selling criterion: work the figure out now, after the answer, rather than at the next close.
+    const p = saved as Position;
+    if (p.criteria.some((c) => c.metric === "insider_selling") && !(await cachedInsiderFact(p.ticker))) inBackground(warmInsiders([p.ticker], Date.now() + 60_000));
     return NextResponse.json({ position: saved });
   });
 }

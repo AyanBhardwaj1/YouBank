@@ -46,7 +46,7 @@ const tickerNewsTool = def({
 /** Check kill criteria for any ticker now, without saving: the Book's check, on demand. */
 const checkThesisTool = def({
   name: "check_thesis",
-  description: "Check a thesis's kill criteria against a company's SEC XBRL filings and price right now, the way YouBank's Book does, without saving anything. Give the ticker, long or short, and criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%). Returns each criterion's figure, period, source, headroom and state (pass, near, fail, unknown) and the overall verdict. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price.",
+  description: "Check a thesis's kill criteria against a company's SEC XBRL filings and price right now, the way YouBank's Book does, without saving anything. Give the ticker, long or short, and criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%). Returns each criterion's figure, period, source, headroom and state (pass, near, fail, unknown) and the overall verdict. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling (open-market net selling over 90 days from Form 4s, $M; only when YouBank has a complete figure for the name).",
   schema: z.object({
     ticker: z.string().min(1).max(12),
     direction: z.enum(["long", "short"]).default("long"),

@@ -14,6 +14,7 @@
  */
 import type { CompanyData } from "@/lib/types";
 import type { Derived } from "@/lib/metrics";
+import type { InsiderFact } from "./insiders";
 
 export type Direction = "long" | "short";
 export type Op = ">=" | "<=";
@@ -30,6 +31,8 @@ export const METRICS = {
   ev_revenue: { label: "EV / LTM revenue", unit: "x", read: (_c: CompanyData, d: Derived) => d.evRevLtm },
   pe: { label: "P/E (LTM)", unit: "x", read: (_c: CompanyData, d: Derived) => d.peLtm },
   price: { label: "Share price", unit: "usd", read: (c: CompanyData) => c.price?.last ?? null },
+  /** From Form 4 filings, not the company record: checkCriterion reads it from the insider fact it is given. */
+  insider_selling: { label: "Insider net selling, 90 days ($M)", unit: "usdmm", read: (): number | null => null },
 } as const;
 export type MetricKey = keyof typeof METRICS;
 export const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
@@ -110,6 +113,8 @@ export type CheckResult = {
   headroom: { value: number; shown: string } | null;
   /** Where the number comes from: period and a link a person can open. */
   evidence: { period: string; source: string; url: string } | null;
+  /** Why there is no figure, when that is worth saying (insider selling not worked out yet, or incomplete). */
+  note?: string;
 };
 export type Verdict = "intact" | "watch" | "broken" | "unknown";
 export type PositionNews = { id: number; headline: string; at: string };
@@ -160,15 +165,17 @@ export function headroomOf(c: Criterion, actual: number): { value: number; shown
 
 const targetOf = (c: Criterion) => `${c.op === ">=" ? "at least" : "at most"} ${fmtMetric(c.metric, isPct(c.metric) ? c.value / 100 : c.value)}`;
 
-export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): CheckResult {
+export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, insider: InsiderFact | null = null): CheckResult {
   const m = METRICS[c.metric];
-  const actual = m.read(company, d);
+  const actual = c.metric === "insider_selling" ? (insider?.complete ? insider.value : null) : m.read(company, d);
   const threshold = isPct(c.metric) ? c.value / 100 : c.value;
   const target = targetOf(c);
-  const evidence = actual === null ? null : c.metric === "price"
+  const evidence = actual === null ? null : c.metric === "insider_selling" && insider
+    ? { period: `${insider.since} to ${insider.asOf.slice(0, 10)}`, source: `SEC Form 4 filings (${insider.filings} filed, ${insider.trades} open-market trade${insider.trades === 1 ? "" : "s"})`, url: insider.url }
+    : c.metric === "price"
     ? (company.price ? { period: `as of ${company.price.asOf.slice(0, 16).replace("T", " ")} UTC`, source: `${company.price.source ?? "price feed"}${company.price.stale ? " (stale)" : ""}`, url: `https://www.nasdaq.com/market-activity/stocks/${company.ticker.toLowerCase()}` } : null)
     : { period: `LTM to ${company.ltm.periodEnd || "latest filing"}`, source: "SEC XBRL company facts", url: company.sources.factsUrl };
-  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null, headroom: null };
+  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null, headroom: null, ...(c.metric === "insider_selling" ? { note: insider ? `No complete figure: ${insider.note}.` : "Worked out from Form 4 filings after each US close." } : {}) };
   const pass = c.op === ">=" ? actual >= threshold : actual <= threshold;
   const state: CheckState = !pass ? "fail" : nearness(c.metric, actual, threshold) ? "near" : "pass";
   return { criterion: c, label: m.label, state, actual, shown: fmtMetric(c.metric, actual), target, evidence, headroom: headroomOf(c, actual) };
@@ -181,8 +188,8 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): 
  */
 export type NextEarnings = { date: string | null; estimated: boolean } | null;
 
-export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null): Evaluation {
-  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
+export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null, insider: InsiderFact | null = null): Evaluation {
+  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d, insider)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
   const known = checks.filter((c) => c.state !== "unknown");
   const failed = known.filter((c) => c.state === "fail");
   const near = known.filter((c) => c.state === "near");

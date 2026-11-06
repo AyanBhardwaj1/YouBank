@@ -13,7 +13,7 @@ import { deliverAlert } from "@/lib/news/alerts";
 import { readerFor } from "@/lib/news/reader";
 import { updateExtra } from "@/lib/prefs/extra";
 import { alertsFor, normalizeBookState, type BookAlert } from "./alerts";
-import { evaluateBook, loadBook } from "./store";
+import { evaluateBook, loadBook, warmInsiders } from "./store";
 
 /** Check one person's book and send what changed. Returns the alerts sent. */
 export async function watchBook(userId: string, now = new Date()): Promise<BookAlert[]> {
@@ -42,17 +42,22 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
 }
 
 /** Everyone with a book, within the time given. */
-export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number }> {
+export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number; insiders: number }> {
   const rows = await requireDb().select({ userId: schema.profiles.userId }).from(schema.profiles)
     .where(sql`jsonb_typeof(${schema.profiles.extra}->'book') = 'array' and jsonb_array_length(${schema.profiles.extra}->'book') > 0`)
     // Least recently checked first: a run that hits its deadline leaves the rest for the next one, and nobody
     // is left at the back of the queue for good.
     .orderBy(sql`(${schema.profiles.extra}->'bookState'->>'checkedAt') asc nulls first`);
   let checked = 0, alerts = 0, failed = 0;
+  // Insider selling first, for the names whose criteria use it (each fetched once, however many books hold it),
+  // within a third of the time.
+  const held = await requireDb().execute<{ tickers: unknown }>(sql`select coalesce(jsonb_agg(distinct p->>'ticker'), '[]'::jsonb) as tickers from ${schema.profiles}, jsonb_array_elements(case when jsonb_typeof(${schema.profiles.extra}->'book') = 'array' then ${schema.profiles.extra}->'book' else '[]'::jsonb end) p where exists (select 1 from jsonb_array_elements(coalesce(p->'criteria', '[]'::jsonb)) c where c->>'metric' = 'insider_selling')`);
+  const tickers = Array.isArray(held.rows[0]?.tickers) ? (held.rows[0].tickers as unknown[]) : [];
+  const insiders = await warmInsiders(tickers.filter((t): t is string => typeof t === "string").slice(0, 300), Date.now() + Math.max(0, deadline - Date.now()) / 3);
   for (const { userId } of rows) {
     if (Date.now() > deadline) break;
     try { alerts += (await watchBook(userId)).length; checked++; }
     catch (e) { failed++; logError(e, { where: "book-watch" }); }
   }
-  return { people: rows.length, checked, alerts, failed, unfinished: rows.length - checked - failed };
+  return { people: rows.length, checked, alerts, failed, unfinished: rows.length - checked - failed, insiders };
 }

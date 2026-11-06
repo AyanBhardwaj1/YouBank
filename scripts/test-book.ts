@@ -2,6 +2,8 @@
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
 import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
+import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders";
+import type { InsiderTx } from "@/lib/edgar/insiders";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
@@ -145,6 +147,17 @@ ok("earnings tomorrow alerts once per date", eAlert.map((a) => [a.title, a.key])
 console.log("export");
 const rows = bookRows([ev, evaluate({ ...t, id: "nocrit", criteria: [] }, co, d, [], now)], [t]);
 ok("a header, a row per criterion, and one for a position without criteria; headroom as a number with its unit", [rows.length, rows[0][0], rows[1][10], rows[1][13], rows[1][14], rows[2][13], rows[3][14], rows[4][10]], [5, "ticker", "Revenue growth (LTM, y/y)", 4.7, "pts", -3.2, "% of threshold", ""]);
+
+console.log("insider selling");
+const tx = (code: string, shares: number | null, price: number | null, date = "2026-10-01", derivative = false) => ({ filed: date, owner: "o", relationship: "", security: "Common", date, code, codeLabel: "", shares, price, owned: null, acquired: code === "P", derivative, url: "" }) as InsiderTx;
+ok("sales less purchases, open market only, in $M", netSelling([tx("S", 100_000, 50), tx("P", 20_000, 50), tx("M", 1e6, 1), tx("F", 5e4, 50), tx("S", 1e5, 50, "2026-07-01"), tx("S", 1e5, 50, "2026-10-01", true)], "2026-08-08"), { value: 4, trades: 2, priced: true });
+ok("a counted trade without a price makes the figure incomplete", netSelling([tx("S", 1000, null)], "2026-08-08").priced, false);
+const recent = { filingDate: ["2026-11-01", "2026-10-20", "2026-09-01", "2026-07-01"], form: ["4", "8-K", "4/A", "4"] };
+ok("filings in the window; complete when the list reaches back before it", [windowFilings(recent, true, "2026-08-08"), windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, true, "2026-08-08").complete, windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, false, "2026-08-08").complete], [{ indexes: [0, 2], complete: true }, false, true]);
+const fact = (value: number | null, complete: boolean): InsiderFact => ({ value, complete, filings: 3, trades: 2, since: "2026-08-08", asOf: "2026-11-06T21:30:00Z", url: "https://www.sec.gov/x", note: complete ? "" : "1 of 3 Form 4 filings could not be read" });
+const ins = { id: "i1", metric: "insider_selling" as const, op: "<=" as const, value: 5 };
+ok("a complete figure is checked, with its filings as evidence", [checkCriterion(ins, co, d, fact(4, true)).state, checkCriterion(ins, co, d, fact(4.6, true)).state, checkCriterion(ins, co, d, fact(4, true)).evidence?.source, checkCriterion(ins, co, d, fact(8, true)).state], ["pass", "near", "SEC Form 4 filings (3 filed, 2 open-market trades)", "fail"]);
+ok("an incomplete or missing figure is no data, with the reason, never a pass", [checkCriterion(ins, co, d, fact(0, false)).state, checkCriterion(ins, co, d, fact(0, false)).note, checkCriterion(ins, co, d, null).state, checkCriterion(ins, co, d, null).note], ["unknown", "No complete figure: 1 of 3 Form 4 filings could not be read.", "unknown", "Worked out from Form 4 filings after each US close."]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -8,8 +8,10 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { getCompanyData } from "@/lib/company";
 import { nasdaqEarningsDate, nasdaqEnabled } from "@/lib/market/nasdaq";
+import { cachedInsiderFact, fetchInsiderFact } from "./insiders";
 import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
+import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
@@ -79,10 +81,13 @@ export async function evaluateBook(book: Position[], now = new Date()): Promise<
       companies.set(t, c); earnings.set(t, e);
     }
   }));
+  // Insider selling is read from its cache only (worked out in the daily check, or when such a position is saved).
+  const insiderTickers = [...new Set(book.filter((p) => p.criteria.some((c) => c.metric === "insider_selling")).map((p) => p.ticker))];
+  const insiders = new Map(await Promise.all(insiderTickers.map(async (t) => [t, await cachedInsiderFact(t)] as const)));
   const news = await newsFor(tickers);
   return book.map((t) => {
     const c = companies.get(t.ticker) ?? null;
-    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now, earnings.get(t.ticker) ?? null);
+    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now, earnings.get(t.ticker) ?? null, insiders.get(t.ticker) ?? null);
   }).sort(byUrgency);
 }
 
@@ -186,4 +191,16 @@ export async function bookAlertsOn(userId: string): Promise<boolean> {
 export async function setBookAlerts(userId: string, on: boolean): Promise<boolean> {
   await updateExtra(userId, (extra) => ({ ...extra, bookAlerts: on }));
   return on;
+}
+
+/** Work out insider selling for these tickers now (EDGAR), within the time given; each is cached 30 hours. */
+export async function warmInsiders(tickers: string[], deadline: number): Promise<number> {
+  let done = 0;
+  for (const t of tickers) {
+    if (Date.now() > deadline) break;
+    const c = await getCompanyData(t).catch(() => null);
+    if (!c?.cik) continue;
+    await fetchInsiderFact(t, c.cik).then(() => { done++; }, (e) => logError(e, { where: "book-insiders" }));
+  }
+  return done;
 }
