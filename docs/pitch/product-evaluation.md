@@ -22,6 +22,8 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 | Every AI answer on the record | A hash-chained ledger anchored outside YouBank, reviews, a governance report, the AI-use line in the LP report | Strong. It is the best answer to "how do you supervise AI?" from a DDQ. |
 | A track record of process | The track record (hit rate, payoff, exit discipline, the cost of holding past a break, process against outcome) and calibration (Brier scores, a correction once 20 forecasts resolve), with forecasts that can't be backdated, farmed or withdrawn | New this round. It is the piece LPs ask for, and it builds itself as positions close. Integrity matters more than features here: two reviews found ways to game it, now closed. |
 | An AI committee, kept score | Independent bull and bear briefs, three pooled chairs, a 90-day forecast scored beside the PM's, run in the background with a bell | New this round. Its value is only provable over months of resolved forecasts; until then it is a structured second opinion. |
+| Decisions you can explain later | A decision journal on every position (server-written entries for every change, the PM's notes, an AI app's proposal recorded in its own name), quoted in the LP letter and the week, and answering the DDQ's "how are decisions documented" | New this round. It turns "trust our process" into a dated record; its value grows with use, so the pitch should show one position with a few months of entries. |
+| Forecasts anchored to a base rate | The chance a position's price lines hold, from its own volatility, beside the PM's forecast, in the editor, for the committee's chairs and over MCP; kill criteria that cannot fail are called out | New this round. Reference-class forecasting is the cheapest calibration gain there is; it covers price lines only and says so. |
 | Investor writing that passes compliance | LP letter and DDQ drafted from the record; a deterministic pass for Marketing Rule language, AI claims checked against the ledger, and figures checked against the filings | New this round. It turns the ledger into something the COO uses every quarter. |
 
 ## 3. Strengths, from an investor's point of view
@@ -37,7 +39,7 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 2. **Demo risk from live data.** The Book's "aha" moments (verdicts, risk, the next report) need SEC and price data. If EDGAR is slow during the pitch, the sample book reads "No data". *Mitigation:* risk is now warmed when the Book loads and after each close, but run the demo on an account whose book was warmed that morning.
 3. **No audited performance and no OMS link.** Positions are entered by hand and returns are unweighted price moves. This is fine for process evidence, but an LP must never read it as a track record of returns. The UI and report say "not audited performance".
 4. **AI features untested against a live model in this environment.** Drafting, the red team and the AI apps' end of MCP have only been exercised through the SDK and stubs here. Test them live before the pitch.
-5. **Single founder, wide surface.** Breadth means many places to break. 48 test suites, a 52-check end-to-end run, a full-app UX crawl and four independent code reviews this round help, but the fund surface is what must be flawless.
+5. **Single founder, wide surface.** Breadth means many places to break. 48 test suites, a 54-check end-to-end run, full-app UX crawls and six independent code reviews this round help, but the fund surface is what must be flawless.
 6. **The moat is process, not data.** A large vendor could copy kill criteria. The defensible parts are the accumulating ledger, calibration and track record per customer (switching cost) and being the controlled AI layer over the customer's book.
 
 ## 5. A UX walkthrough as a new fund user (findings, then fixes)
@@ -56,6 +58,8 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 | Track record | One position could read both "exited late" and "sound process" | One rule: only a break still in force at the close, timed from its start |
 | A data source down | Some screens said "something went wrong on our side" (a 500) | A 503 that says a data source is not answering, for every route |
 | Weekly habit | Nothing to open when no alert fired | "The week in your book": changes, resolved forecasts, committee calls, the next two weeks |
+| Adding an AI app's proposal | The app's reasoning could end up looking like the PM's own note | The app's reasoning is recorded in its own name by the server; "Why?" stays the PM's |
+| Returning to the Book | No sense of what changed since the last visit | "Since you last looked": verdict changes and committee sittings since this browser's last snapshot |
 
 ## 6. What the research says to build (Nov 2026)
 
