@@ -10,6 +10,7 @@ import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJourn
 import { calibration, calibrationLine, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, resolveForecast, supersede } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
+import { weekBrief } from "@/lib/book/week";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -343,6 +344,24 @@ ok("a forecast must look at least 30 days ahead; the same chance and date posted
 ok("a chair's chance given as a fraction is read as a percent", committeeFrom({ decision: "hold", probability: 0.72, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, 0.72);
 const early = calibrationOf([], {}, [{ ...c1, id: "ce1", conviction: { p: 0.8, by: "2027-03-01", at: "2026-09-01", source: "You" }, convictionBrokeOn: null, closedAt: "2026-10-01T00:00:00Z" }], new Date("2026-11-20T00:00:00Z"));
 ok("a forecast whose position closed early without a break is counted as unscored, not open", [early.n, early.open, early.closedEarly, calibrationLine(early).includes("closed before its date and left unscored")], [0, 0, 1, true]);
+
+console.log("The week in the book");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pA = normalizePosition({ ...t, catalysts: [], id: "wk01", ticker: "AAA", conviction: { p: 80, by: "2026-11-06", at: "2026-08-01" } })!;
+  const pB = normalizePosition({ ...t, id: "wk02", ticker: "BBB" })!;
+  const pC = normalizePosition({ ...t, id: "wk03", ticker: "CCC" })!;
+  const hist = {
+    wk01: [{ d: "2026-10-30", v: "intact" as const, s: 100 }, { d: "2026-11-05", v: "watch" as const, s: 60 }, { d: "2026-11-06", v: "broken" as const, s: 30 }, { d: "2026-11-07", v: "broken" as const, s: 30 }],
+    wk02: [{ d: "2026-10-30", v: "intact" as const, s: 100 }, { d: "2026-11-08", v: "intact" as const, s: 100 }],
+    wk03: [{ d: "2026-11-01", v: "broken" as const, s: 0 }, { d: "2026-11-04", v: "intact" as const, s: 100 }],
+  };
+  const evA = { ...evaluate(pA, co, d, [], wNow), earnings: { date: "2026-11-12", estimated: false, inDays: 3 } };
+  const wb = weekBrief({ now: wNow, book: [pA, pB, pC], evals: [evA], history: hist, closed: [], proposals: [] });
+  ok("a week's brief: what broke and recovered (from where it stood before the week), when the new verdict began, and what is coming", [wb.from, wb.changes.map((c) => [c.ticker, c.from, c.to, c.on]), wb.coming.map((c) => [c.ticker, c.label, c.inDays])], ["2026-11-02", [["AAA", "intact", "broken", "2026-11-06"], ["CCC", "broken", "intact", "2026-11-04"]], [["AAA", "Earnings", 3]]]);
+  ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
+  ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict, and all 1 stand as they did.");
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
