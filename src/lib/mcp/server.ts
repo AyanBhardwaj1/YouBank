@@ -17,7 +17,8 @@
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { addProposal, evaluateBook, loadBook, loadBookHistory, loadJournal, newsFor, noteProposal } from "@/lib/book/store";
+import { addProposal, evaluateBook, loadBook, loadBookHistory, loadJournal, loadProposals, newsFor, noteProposal } from "@/lib/book/store";
+import { weekBrief } from "@/lib/book/week";
 import { calibrationOf, closedReturn, CLOSE_REASONS, scorecard, scorecardLine } from "@/lib/book/journal";
 import { calibrationLine } from "@/lib/book/forecast";
 import { PROPOSAL_CARD, PROPOSAL_CARD_URI } from "./apps";
@@ -38,7 +39,7 @@ const TITLES: Record<string, string> = {
   read_filing: "Read a filing section", edgar_fulltext_search: "EDGAR full-text search", read_document: "Read an SEC document", get_recent_filings: "Recent filings",
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
   filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
-  book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", propose_position: "Propose a position for my review",
+  book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", book_week: "My book this week", propose_position: "Propose a position for my review",
 };
 /** Tools that write something (a proposal only); every other tool is read-only. */
 const WRITES = new Set(["propose_position"]);
@@ -169,6 +170,23 @@ function trackRecordTool(userId: string) {
   });
 }
 
+/** The last seven days of the Book: what changed, resolved and is coming (src/lib/book/week.ts). */
+function weekTool(userId: string) {
+  return def({
+    name: "book_week",
+    description: "The last seven days of the signed-in person's Book in YouBank: theses that changed verdict (from what, to what, and the day), forecasts that resolved (held or missed), the AI investment committee's sittings, positions closed, earnings and catalysts in the next two weeks, and proposals waiting for review, with a one-line headline. For a Monday-morning review.",
+    schema: z.object({}),
+    run: async (_args, ctx) => {
+      const now = new Date();
+      const [book, history, closed, proposals] = await Promise.all([loadBook(userId), loadBookHistory(userId).catch(() => ({})), loadJournal(userId).catch(() => []), loadProposals(userId).catch(() => [])]);
+      const evals = await evaluateBook(book, now);
+      const w = weekBrief({ now, book, evals, history, closed, proposals });
+      const src = ctx.addSource("The person's YouBank Book: daily thesis checks, forecasts and the track record", siteLink("/report/week"));
+      return JSON.stringify({ ...w, source: src, link: siteLink("/report/week") });
+    },
+  });
+}
+
 /** A position the AI app proposes: kept for the person to review on the Book page, never added by itself. */
 function proposeTool(userId: string, from: string) {
   return def({
@@ -293,7 +311,7 @@ export const PROMPTS: McpPrompt[] = [
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
 export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy = DEFAULT_POLICY): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, weekTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
     // What this app may use (Settings → Connect AI apps): tools it may not use are neither listed nor callable.
     .filter((t) => toolAllowed(policy, t.name));
   return {

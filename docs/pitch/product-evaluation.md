@@ -18,7 +18,7 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 |---|---|---|
 | Every thesis held to its numbers | Kill criteria checked against SEC XBRL and prices after every close, with headroom, history, alerts and the next report's revenue bar | Strong and unusual. No competitor we found sells accountability for theses. |
 | Risk a small fund doesn't have | Beta-adjusted net, historical VaR and ES, stacked bets, five stress replays, a pre-trade what-if, risk per team member | Good for the segment. It is historical, not a factor model, and the product says so. |
-| AI inside the apps you already use | An MCP server with 20 tools and 6 prompts, OAuth so one URL connects, proposals the PM approves, a pause switch per app | Ahead of the market on control. It needs a live test with Claude.ai and ChatGPT before the pitch. |
+| AI inside the apps you already use | An MCP server with 21 tools and 6 prompts, OAuth so one URL connects, proposals the PM approves, a pause switch per app | Ahead of the market on control. It needs a live test with Claude.ai and ChatGPT before the pitch. |
 | Every AI answer on the record | A hash-chained ledger anchored outside YouBank, reviews, a governance report, the AI-use line in the LP report | Strong. It is the best answer to "how do you supervise AI?" from a DDQ. |
 | A track record of process | The track record (hit rate, payoff, exit discipline, the cost of holding past a break) and calibration (Brier scores on conviction) | New this round. It is the piece LPs ask for, and it builds itself as positions close. |
 

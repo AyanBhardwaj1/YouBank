@@ -76,6 +76,8 @@ async function main() {
   const cardRes = await rpc(K, "resources/read", { uri: "ui://youbank/proposal-card" });
   check("the proposal card is served as an MCP Apps view and declared on propose_position", cardRes.body.result?.contents?.[0]?.mimeType === "text/html;profile=mcp-app" && ((tools.body.result?.tools ?? []) as { name: string; _meta?: { ui?: { resourceUri?: string } } }[]).find((t) => t.name === "propose_position")?._meta?.ui?.resourceUri === "ui://youbank/proposal-card", cardRes.body);
   const tr = await rpc(K, "tools/call", { name: "book_track_record", arguments: {} });
+  const wk = await rpc(K, "tools/call", { name: "book_week", arguments: {} });
+  check("book_week answers with the week's headline and sections", typeof wk.body.result?.structuredContent?.result?.headline === "string" && Array.isArray(wk.body.result?.structuredContent?.result?.changes), wk.body);
   check("book_track_record answers with the scorecard and calibration", typeof tr.body.result?.structuredContent?.result?.summary === "string" && !!tr.body.result?.structuredContent?.result?.calibration, tr.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });
   check("check_thesis answers with a verdict and sources", !!ct.body.result && ["intact", "watch", "broken", "unknown"].includes(ct.body.result.structuredContent?.result?.verdict), ct.body);
