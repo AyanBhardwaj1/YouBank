@@ -48,6 +48,10 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
       alerts.push({ key: `book:${e.positionId}:recovered:${day}`, positionId: e.positionId, kind: "recovered", urgent: false, url,
         title: `${side}: thesis holds again`, body: e.summary, reasons: [`Was ${was === "broken" ? "broken" : "on watch"}`] });
     }
+    if (e.earnings && (e.earnings.inDays === 0 || e.earnings.inDays === 1)) {
+      alerts.push({ key: `book:${e.positionId}:earnings:${e.earnings.date}`, positionId: e.positionId, kind: "catalyst", urgent: false, url,
+        title: `${e.ticker} reports ${e.earnings.inDays === 0 ? "today" : "tomorrow"}${e.earnings.estimated ? " (estimated)" : ""}`, body: `${side}. The thesis is ${e.verdict === "intact" ? "intact" : e.verdict === "watch" ? "on watch" : "broken"}: ${e.summary}`, reasons: [`Earnings on ${e.earnings.date}`] });
+    }
     for (const c of e.catalysts) {
       if (c.inDays !== 0 && c.inDays !== 1) continue;
       alerts.push({ key: `book:${e.positionId}:catalyst:${c.id}:${c.date}`, positionId: e.positionId, kind: "catalyst", urgent: false, url,

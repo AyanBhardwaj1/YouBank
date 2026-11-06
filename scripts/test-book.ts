@@ -135,5 +135,12 @@ ok("a draft is cleaned like a saved position: unknown metrics, bad dates and ser
 ok("no ticker, no draft", draftToPosition({ ticker: "", thesis: "x" }), null);
 ok("the brief lists every metric with its unit", ["revenue_growth", "ev_revenue", "US$ millions", "given as percent"].every((w) => DRAFT_SYSTEM.includes(w)), true);
 
+console.log("earnings dates");
+const withE = evaluate({ ...t, catalysts: [] }, co, d, [], now, { date: "2026-11-07", estimated: true });
+ok("the next earnings date shows with days to go, and counts as a near catalyst", [withE.earnings, withE.summary.includes("earnings in 1 days") || withE.verdict === "broken"], [{ date: "2026-11-07", estimated: true, inDays: 1 }, true]);
+ok("far, past or missing dates are left out", [evaluate(t, co, d, [], now, { date: "2027-06-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: "2026-10-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: null, estimated: false }).earnings], [null, null, null]);
+const eAlert = alertsFor(first.next, [{ ...mk("c", "intact"), earnings: { date: "2026-11-07", estimated: true, inDays: 1 } }], now).alerts;
+ok("earnings tomorrow alerts once per date", eAlert.map((a) => [a.title, a.key]), [["C reports tomorrow (estimated)", "book:c:earnings:2026-11-07"]]);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

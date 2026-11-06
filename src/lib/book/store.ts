@@ -7,10 +7,11 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { getCompanyData } from "@/lib/company";
+import { nasdaqEarningsDate, nasdaqEnabled } from "@/lib/market/nasdaq";
 import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
-import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type Position, type PositionNews } from "./position";
+import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
@@ -65,15 +66,23 @@ export async function newsFor(tickers: string[]): Promise<Map<string, PositionNe
 export async function evaluateBook(book: Position[], now = new Date()): Promise<Evaluation[]> {
   const tickers = [...new Set(book.map((t) => t.ticker))];
   const companies = new Map<string, Awaited<ReturnType<typeof getCompanyData>>>();
+  const earnings = new Map<string, NextEarnings>();
+  const calendar = nasdaqEnabled();
   let i = 0;
-  // Six at a time: a desk of 25 names does not open 25 SEC reads at once.
+  // Six at a time: a desk of 25 names does not open 25 SEC reads at once. The earnings date (the exchange's
+  // calendar, cached six hours) is read beside the filings, waited for at most 2.5 s; without it a position
+  // simply shows none.
   await Promise.all(Array.from({ length: Math.min(6, tickers.length) }, async () => {
-    while (i < tickers.length) { const t = tickers[i++]; companies.set(t, await getCompanyData(t).catch(() => null)); }
+    while (i < tickers.length) {
+      const t = tickers[i++];
+      const [c, e] = await Promise.all([getCompanyData(t).catch(() => null), calendar ? Promise.race([nasdaqEarningsDate(t).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 2500))]) : Promise.resolve(null)]);
+      companies.set(t, c); earnings.set(t, e);
+    }
   }));
   const news = await newsFor(tickers);
   return book.map((t) => {
     const c = companies.get(t.ticker) ?? null;
-    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now);
+    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now, earnings.get(t.ticker) ?? null);
   }).sort(byUrgency);
 }
 

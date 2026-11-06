@@ -119,6 +119,8 @@ export type Evaluation = {
   /** Return since entry in the position's favour (a short gains when the price falls), as a fraction. */
   pnl: number | null;
   checks: CheckResult[]; catalysts: (Catalyst & { inDays: number })[]; news: PositionNews[];
+  /** The company's next earnings date from the exchange's calendar (estimated until the company confirms it). */
+  earnings: { date: string; estimated: boolean; inDays: number } | null;
   /** One plain sentence for the list and Home. */
   summary: string; checkedAt: string;
 };
@@ -177,7 +179,9 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): 
  * checked yet, intact otherwise. The score is the share of checkable criteria passing with room (a close
  * one counts half).
  */
-export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date): Evaluation {
+export type NextEarnings = { date: string | null; estimated: boolean } | null;
+
+export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null): Evaluation {
   const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
   const known = checks.filter((c) => c.state !== "unknown");
   const failed = known.filter((c) => c.state === "fail");
@@ -187,15 +191,17 @@ export function evaluate(p: Position, company: CompanyData | null, d: Derived | 
   const day = 86_400_000;
   const catalysts = p.catalysts.map((c) => ({ ...c, inDays: Math.round((Date.parse(`${c.date}T00:00:00Z`) - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / day) }))
     .filter((c) => c.inDays >= -7).sort((a, b) => a.inDays - b.inDays);
-  const soon = catalysts.find((c) => c.inDays >= 0 && c.inDays <= 14);
+  const daysTo = (iso: string) => Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / day);
+  const earnings = next?.date && /^\d{4}-\d{2}-\d{2}/.test(next.date) && daysTo(next.date) >= -1 && daysTo(next.date) <= 120 ? { date: next.date.slice(0, 10), estimated: next.estimated, inDays: daysTo(next.date) } : null;
+  const soon = catalysts.find((c) => c.inDays >= 0 && c.inDays <= 14) ?? (earnings && earnings.inDays >= 0 && earnings.inDays <= 14 ? { label: "earnings", inDays: earnings.inDays } : undefined);
   const price = company?.price?.last ?? null;
   const pnl = price !== null && p.entry ? (price / p.entry - 1) * (p.direction === "short" ? -1 : 1) : null;
   const summary = !company ? `${p.ticker}: the company's filings could not be read just now.`
     : failed.length ? `Kill criterion hit: ${failed[0].label} is ${failed[0].shown}, needed ${failed[0].target}.`
     : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
     : !known.length ? (p.criteria.length ? "No criterion can be checked from the data yet." : "Add a kill criterion so YouBank can tell you when this thesis breaks.")
-    : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} days`}` : ""}.`;
-  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), summary, checkedAt: now.toISOString() };
+    : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} day${soon.inDays === 1 ? "" : "s"}`}` : ""}.`;
+  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, summary, checkedAt: now.toISOString() };
 }
 
 /** Most urgent first: broken, then watch, then unknown, then intact; lower score first within each. */

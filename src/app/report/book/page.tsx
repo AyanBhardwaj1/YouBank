@@ -103,7 +103,7 @@ export default async function BookReport() {
                       ))}</tbody>
                     </table></div>
                   )}
-                  {e.catalysts.length > 0 && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {e.catalysts.map((c) => `${c.label} (${c.date})`).join("; ")}</p>}
+                  {(e.catalysts.length > 0 || e.earnings) && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {[...(e.earnings ? [`Earnings${e.earnings.estimated ? " (estimated)" : ""} (${e.earnings.date})`] : []), ...e.catalysts.map((c) => `${c.label} (${c.date})`)].join("; ")}</p>}
                   {p?.redTeam && (
                     <div className="mt-2 border-l-2 border-line pl-3">
                       <div className="text-[10px] uppercase tracking-wider text-muted">The case against (red team, {p.redTeam.at.slice(0, 10)})</div>

@@ -224,12 +224,15 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
               </table>
             </div>
           )}
-          {(ev.catalysts.length > 0 || ev.news.length > 0) && (
+          {(ev.catalysts.length > 0 || ev.news.length > 0 || !!ev.earnings) && (
             <div className="grid gap-3 sm:grid-cols-2">
-              {ev.catalysts.length > 0 && (
+              {(ev.catalysts.length > 0 || !!ev.earnings) && (
                 <div>
                   <h3 className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Catalysts</h3>
-                  <ul className="space-y-0.5">{ev.catalysts.map((c) => <li key={c.id} className="flex justify-between gap-2"><span>{c.label}</span><span className="num text-muted">{c.date} · {c.inDays < 0 ? `${-c.inDays}d ago` : c.inDays === 0 ? "today" : `in ${c.inDays}d`}</span></li>)}</ul>
+                  <ul className="space-y-0.5">
+                    {ev.earnings && <li className="flex justify-between gap-2"><span>Earnings{ev.earnings.estimated ? " (estimated)" : ""}</span><span className="num text-muted">{ev.earnings.date} · {ev.earnings.inDays < 0 ? "yesterday" : ev.earnings.inDays === 0 ? "today" : `in ${ev.earnings.inDays}d`}</span></li>}
+                    {ev.catalysts.map((c) => <li key={c.id} className="flex justify-between gap-2"><span>{c.label}</span><span className="num text-muted">{c.date} · {c.inDays < 0 ? `${-c.inDays}d ago` : c.inDays === 0 ? "today" : `in ${c.inDays}d`}</span></li>)}
+                  </ul>
                 </div>
               )}
               {ev.news.length > 0 && (
