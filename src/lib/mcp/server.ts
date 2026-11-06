@@ -17,8 +17,11 @@
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { addProposal, evaluateBook, loadBook, loadBookHistory, loadJournal, loadProposals, newsFor, noteProposal } from "@/lib/book/store";
+import { addProposal, evaluateBook, holdingFacts, loadBook, loadBookHistory, loadJournal, loadProposals, newsFor, noteProposal } from "@/lib/book/store";
 import { weekBrief } from "@/lib/book/week";
+import { lintLetter } from "@/lib/book/letter";
+import { governance, periodOf } from "@/lib/ledger/governance";
+import { governanceRows, ledgerSettings } from "@/lib/ledger/store";
 import { calibrationOf, closedReturn, CLOSE_REASONS, scorecard, scorecardLine } from "@/lib/book/journal";
 import { calibrationLine } from "@/lib/book/forecast";
 import { PROPOSAL_CARD, PROPOSAL_CARD_URI } from "./apps";
@@ -39,7 +42,7 @@ const TITLES: Record<string, string> = {
   read_filing: "Read a filing section", edgar_fulltext_search: "EDGAR full-text search", read_document: "Read an SEC document", get_recent_filings: "Recent filings",
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
   filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
-  book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", book_week: "My book this week", propose_position: "Propose a position for my review",
+  book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", book_week: "My book this week", compliance_check: "Compliance check for investor text", propose_position: "Propose a position for my review",
 };
 /** Tools that write something (a proposal only); every other tool is read-only. */
 const WRITES = new Set(["propose_position"]);
@@ -187,6 +190,31 @@ function weekTool(userId: string) {
   });
 }
 
+/** The compliance pass on text the AI app (or the person) wrote for investors (src/lib/book/letter.ts lintLetter). */
+function complianceTool(userId: string) {
+  return def({
+    name: "compliance_check",
+    description: "Check text written for investors (an LP letter, a DDQ answer, a pitch paragraph) before it goes out, the way YouBank's LP letter does: promissory or guaranteeing language, unsupported superlatives, performance without a time period, gross without net, hypothetical or back-tested results, AI claims with no record behind them, claims about how AI is supervised checked against the research ledger (e.g. 'every AI output is reviewed'), and figures about the person's holdings (revenue growth, gross, operating and FCF margin) checked against their SEC filings. Rule-based and deterministic: a first read for the compliance officer, not legal advice. Returns each finding with its severity, the sentence and why.",
+    schema: z.object({ text: z.string().min(1).max(20_000) }),
+    run: async ({ text }, ctx) => {
+      const now = new Date();
+      const period = periodOf(undefined, now);
+      const [book, settings, rows] = await Promise.all([loadBook(userId), ledgerSettings(userId).catch(() => null), governanceRows(userId, period.from, period.to).catch(() => null)]);
+      const facts = await holdingFacts(book, now);
+      const g = rows ? governance(rows.rows, period.from, period.to, rows.later) : null;
+      const ledgerOn = !!settings?.on;
+      const findings = lintLetter(text, { ledgerOn, record: g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null, facts });
+      const src = facts.length ? ctx.addSource("SEC XBRL company facts for the held companies, as YouBank's Book reads them", siteLink("/app/book")) : null;
+      return JSON.stringify({
+        verdict: findings.some((f) => f.severity === "high") ? "fix before sending" : findings.some((f) => f.severity === "medium") ? "review" : "nothing flagged",
+        findings: findings.map((f) => ({ severity: f.severity, rule: f.rule, sentence: f.excerpt, why: f.why })),
+        checked_against: { research_ledger: ledgerOn ? "on (last 30 days)" : "off", holdings_with_figures: [...new Set(facts.map((f) => f.ticker))], source: src },
+        note: "A first read, not legal advice: the firm's compliance officer signs off.",
+      });
+    },
+  });
+}
+
 /** A position the AI app proposes: kept for the person to review on the Book page, never added by itself. */
 function proposeTool(userId: string, from: string) {
   return def({
@@ -311,7 +339,7 @@ export const PROMPTS: McpPrompt[] = [
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
 export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy = DEFAULT_POLICY): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, weekTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, weekTool(userId) as unknown as ToolDef<unknown>, complianceTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
     // What this app may use (Settings → Connect AI apps): tools it may not use are neither listed nor callable.
     .filter((t) => toolAllowed(policy, t.name));
   return {

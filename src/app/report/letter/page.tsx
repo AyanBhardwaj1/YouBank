@@ -5,11 +5,11 @@ import { db, schema } from "@/db";
 import { LetterEditor } from "@/components/book/LetterEditor";
 import { currentUser } from "@/lib/auth/user";
 import { calibrationOf, scorecard } from "@/lib/book/journal";
-import { draftLetter, factsFrom } from "@/lib/book/letter";
+import { draftLetter } from "@/lib/book/letter";
 import { summarize } from "@/lib/book/position";
 import { headline } from "@/lib/book/risk";
 import { cachedRisk } from "@/lib/book/risk-store";
-import { evaluateBook, loadBook, loadBookHistory, loadJournal } from "@/lib/book/store";
+import { evaluateBook, holdingFacts, loadBook, loadBookHistory, loadJournal } from "@/lib/book/store";
 import { governance, periodOf } from "@/lib/ledger/governance";
 import { governanceRows, ledgerSettings } from "@/lib/ledger/store";
 
@@ -34,9 +34,7 @@ export default async function LetterPage() {
     db.select({ firmName: schema.profiles.firmName }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).then((r) => r[0]),
   ]);
   // For the figure check: every holding's main metrics, not only those its kill criteria name (company data is cached).
-  const PROBE = ["revenue_growth", "gross_margin", "operating_margin", "fcf_margin"] as const;
-  const probe = book.map((p) => ({ ...p, criteria: PROBE.map((metric, k) => ({ id: `fact-${k}`, metric, op: ">=" as const, value: 0 })) }));
-  const [evals, risk, factEvals] = await Promise.all([evaluateBook(book, now), cachedRisk(book, now).catch(() => null), evaluateBook(probe, now).catch(() => [])]);
+  const [evals, risk, facts] = await Promise.all([evaluateBook(book, now), cachedRisk(book, now).catch(() => null), holdingFacts(book, now)]);
   const g = rows ? governance(rows.rows, last30.from, last30.to, rows.later) : null;
   const ledgerOn = !!settings?.on;
   const draft = draftLetter({
@@ -56,7 +54,7 @@ export default async function LetterPage() {
           <h1 className="mt-1 text-[22px] font-semibold">A draft from your book, to rewrite in your own voice</h1>
           <p className="text-muted">Written from the Book, the track record, calibration, risk and the research ledger as of {now.toISOString().slice(0, 10)}. Bracketed lines are yours to fill in.</p>
         </header>
-        <LetterEditor draft={draft} ledgerOn={ledgerOn} facts={factsFrom(factEvals)} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-letter-${user.id}-${period}`} />
+        <LetterEditor draft={draft} ledgerOn={ledgerOn} facts={facts} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-letter-${user.id}-${period}`} />
       </div>
     </main>
   );

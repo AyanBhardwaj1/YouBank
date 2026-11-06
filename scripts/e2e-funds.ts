@@ -78,6 +78,9 @@ async function main() {
   const tr = await rpc(K, "tools/call", { name: "book_track_record", arguments: {} });
   const wk = await rpc(K, "tools/call", { name: "book_week", arguments: {} });
   check("book_week answers with the week's headline and sections", typeof wk.body.result?.structuredContent?.result?.headline === "string" && Array.isArray(wk.body.result?.structuredContent?.result?.changes), wk.body);
+  const cc = await rpc(K, "tools/call", { name: "compliance_check", arguments: { text: "We guarantee strong returns. Every AI output is reviewed by a person." } });
+  const ccr = cc.body.result?.structuredContent?.result;
+  check("compliance_check flags a promise in text an AI app drafted", ccr?.verdict === "fix before sending" && ccr.findings.some((f: { rule: string }) => f.rule === "Promissory or guaranteeing language"), cc.body);
   check("book_track_record answers with the scorecard and calibration", typeof tr.body.result?.structuredContent?.result?.summary === "string" && !!tr.body.result?.structuredContent?.result?.calibration, tr.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });
   check("check_thesis answers with a verdict and sources", !!ct.body.result && ["intact", "watch", "broken", "unknown"].includes(ct.body.result.structuredContent?.result?.verdict), ct.body);

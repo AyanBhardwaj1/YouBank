@@ -66,7 +66,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ### YouBank inside the fund's own AI apps: an MCP server (`/api/mcp`, Settings → Connect AI apps)
 
-- **What it offers.** Twenty-one tools over the Model Context Protocol, twenty of them read-only, (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
+- **What it offers.** Twenty-two tools over the Model Context Protocol, twenty-one of them read-only, (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
   - SEC XBRL fundamentals and comps;
   - filing search and reading, EDGAR full text and recent filings;
   - XBRL time series and insider transactions;
@@ -78,6 +78,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - `book_risk`: the book's beta, VaR, stacked bets and stress replays;
   - `book_track_record`: the scorecard, process against outcome, and calibration by who forecast;
   - `book_week`: the last seven days of the book (verdict changes, resolved forecasts, the next two weeks);
+  - `compliance_check`: the LP letter's compliance pass on any text the AI app drafts for investors, with AI claims checked against the ledger and figures against the filings;
   - `propose_position`: the one tool that writes, and all it writes is a proposal for the person to review (MCP marks it not read-only and not destructive).
 - **Ready-made prompts.** *Review my book*, *Argue against a position*, *Investment committee*, *What changed in the latest filing*, *Earnings prep* and *Pre-trade check* (kill criteria, the risk what-if, the latest filing and insiders, then go or no-go, and a proposal if you say go) appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
@@ -163,7 +164,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 | The Book: UI | `src/components/book/BookClient.tsx`, `src/app/app/book/`, `src/app/report/book`, Home widget `book` | Nav feature `book` (key G then K); on by default for markets and PE roles, and pinned for markets |
 | MCP: protocol | `src/lib/mcp/protocol.ts` | Pure JSON-RPC 2.0 with tools, prompts and per-tool annotations (only `propose_position` is not read-only); 45 tests in `scripts/test-mcp.ts` (keys, protocol, prompts, OAuth) |
 | MCP: OAuth | `src/lib/mcp/oauth.ts`, `src/lib/mcp/oauth-store.ts`, `src/app/.well-known/**`, `src/app/api/oauth/**`, `src/app/app/connect/authorize` | Pure checks are tested; clients and single-use codes are kept in `kv_cache`; the token is an MCP key |
-| MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | 21 tools and 6 prompts; keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 10, one per connected app); proposals go to `profiles.extra.bookProposals` (max 10, 30 an hour) and the bell; web research is excluded because it spends AI allowance |
+| MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | 22 tools and 6 prompts; keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 10, one per connected app); proposals go to `profiles.extra.bookProposals` (max 10, 30 an hour) and the bell; web research is excluded because it spends AI allowance |
 | Ledger: chain and governance | `src/lib/ledger/chain.ts`, `src/lib/ledger/governance.ts` | Pure; 34 tests in `scripts/test-ledger.ts`, including an independent re-check of an export, anchors, storable text and the governance summary |
 | Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/lib/ledger/anchor.ts`, `src/app/api/ledger/**`, `src/app/api/cron/ledger`, `src/components/settings/LedgerSettings.tsx`, `src/app/report/ledger` (governance report) | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; appends serialised per person; off until the person turns it on; daily email anchors at 23:35 UTC |
 

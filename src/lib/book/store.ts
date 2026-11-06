@@ -19,6 +19,7 @@ import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
+import { factsFrom, type FilingFact } from "./letter";
 import { freshForecast, standing, supersede } from "./forecast";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
@@ -197,6 +198,13 @@ function within<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
 }
 
 /** Every position's thesis checked, most urgent first. A company that cannot be read leaves it "unknown". */
+/** Every holding's main percent metrics from its filings (revenue growth, gross, operating and FCF margin), for checking figures written about it. */
+export async function holdingFacts(book: Position[], now = new Date()): Promise<FilingFact[]> {
+  const PROBE = ["revenue_growth", "gross_margin", "operating_margin", "fcf_margin"] as const;
+  const probe = book.map((p) => ({ ...p, criteria: PROBE.map((metric, k) => ({ id: `fact-${k}`, metric, op: ">=" as const, value: 0 })) }));
+  return factsFrom(await evaluateBook(probe, now).catch(() => []));
+}
+
 export async function evaluateBook(book: Position[], now = new Date()): Promise<Evaluation[]> {
   const tickers = [...new Set(book.map((t) => t.ticker))];
   const companies = new Map<string, Awaited<ReturnType<typeof getCompanyData>>>();
