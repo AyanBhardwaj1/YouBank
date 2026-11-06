@@ -44,6 +44,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - each name's share of the book's risk, where a hedge shows as a negative share;
   - pairs that move together: two longs that are one bet in two tickets, or a short that really hedges a long;
   - today's book replayed through the COVID crash, the 2022 rate shock, SVB, the 2024 yen carry unwind and the April 2025 tariff shock, each name with its own move. A name that was not trading then is listed as left out, never counted as flat.
+- **Before a trade.** Type a ticker, a side and a weight to see the book's beta, VaR and worst replay now and after the trade, plus which holdings the name moves with. That answers "is this a new idea or a second ticket on a bet we already have?" The same check runs on every position an AI app proposes, and over MCP (`book_risk` with `what_if`).
 - **What the next report must show.** For a revenue criterion, YouBank works out the revenue the coming quarter needs for the criterion to hold once that quarter enters the twelve months. For example: "At least $1,140M next quarter (+14% y/y; last quarter +21%) keeps LTM growth at or above 20%." It comes from the last eight quarters on SEC XBRL and is said only when those quarters add up to the reported LTM. It appears on the position, in the day-before-earnings alert and in the report.
 - **New filings, read for you.** When a held company files a 10-Q or 10-K, YouBank compares its risk factors with the previous filing and says what was added, removed or reworded. It shows on the position, and its holders get one alert.
 - **A report to hand over.** A printable one-pager for an investment committee or an LP letter: exposure, then every thesis with its evidence and the red team's case.
@@ -109,6 +110,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Point at "By industry" (the book's real sector bet) and at any "New 10-Q" card: what changed in the risk factors, read the evening it was filed.
    - Write a position in plain words ("Long Costco: comps hold above 5%, insiders not selling more than $20M") and press "Draft it".
    - Open "Risk and stress tests": the beta-adjusted net, the one-day VaR, the two longs that are really one bet, and what today's book would have lost in the COVID crash and the 2022 rate shock.
+   - Under "Before a trade", try a long in a name that rhymes with one already held (AMD next to NVDA). Watch beta and VaR rise, and YouBank say it is more of the same bet.
    - On a name reporting soon, point at "What the next report must show": the revenue number to watch on the call.
    - Run the red team. While it works, point at the exposure strip.
 3. **Connect AI apps.**
