@@ -66,7 +66,7 @@ export default async function WeekPage() {
 
         {w.notes.length > 0 && (<>
           <H>Your notes this week</H>
-          <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>: {n.text}</li>)}</ul>
+          <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>{n.with ? <span className="text-muted"> ({n.with})</span> : null}: {n.text}</li>)}</ul>
         </>)}
 
         {w.unexplained.length > 0 && (<>

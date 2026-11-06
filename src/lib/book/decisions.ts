@@ -52,6 +52,18 @@ export function changesOf(prev: Position | null, next: Position): string[] {
   return out;
 }
 
+/**
+ * The PM's own notes, each with the changes saved alongside it (same moment), so a quoted note keeps its
+ * context: "Sized up after the call" beside "Weight 3% → 5% of NAV". An AI app's proposal entry is not
+ * context for the PM's words and is left out.
+ */
+export function notesOf(log: LogEntry[]): { at: string; text: string; with?: string }[] {
+  return log.filter((e) => !e.auto).map((e) => {
+    const same = log.filter((x) => x.auto && x.at === e.at && !x.text.startsWith("Proposed by ")).map((x) => x.text.replace(/\.$/, ""));
+    return { at: e.at, text: e.text, ...(same.length ? { with: same.join("; ") } : {}) };
+  });
+}
+
 /** The journal with the automatic entries for a save, and an optional note, appended. */
 export function withEntries(log: LogEntry[] | undefined, texts: string[], at: string, note?: string): LogEntry[] {
   const typed = clip(note, 500);

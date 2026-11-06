@@ -10,6 +10,7 @@ import { closedReturn, CLOSE_REASONS, forecastItems, type ClosedPosition } from 
 import type { Evaluation, Position, Verdict } from "./position";
 import type { Proposal } from "./proposals";
 import { DECISIONS, type Decision } from "./committee";
+import { notesOf } from "./decisions";
 
 export type WeekInput = { now: Date; days?: number; book: Position[]; evals: Evaluation[]; history: BookHistory; closed: ClosedPosition[]; proposals: Proposal[] };
 export type WeekBrief = {
@@ -22,7 +23,7 @@ export type WeekBrief = {
   coming: { positionId: string; ticker: string; label: string; date: string; inDays: number }[];
   proposals: { ticker: string; from: string }[];
   /** The PM's own decision-journal notes from the week (not YouBank's automatic entries). */
-  notes: { ticker: string; on: string; text: string }[];
+  notes: { ticker: string; on: string; text: string; /** The changes saved with the note. */ with?: string }[];
   /** Positions held before the week that YouBank recorded a change on this week with no note from the PM: the journal has the what, not the why. */
   unexplained: { positionId: string; ticker: string; changes: string[] }[];
   headline: string;
@@ -86,7 +87,7 @@ export function weekBrief(i: WeekInput): WeekBrief {
 
   const proposals = i.proposals.map((p) => ({ ticker: p.position.ticker, from: p.from }));
   const notes = [...i.book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...i.closed.map((c) => ({ ticker: c.ticker, log: c.log ?? [] }))]
-    .flatMap((x) => x.log.filter((e) => !e.auto && inWeek(e.at.slice(0, 10))).map((e) => ({ ticker: x.ticker, on: e.at.slice(0, 10), text: e.text })))
+    .flatMap((x) => notesOf(x.log).filter((n) => inWeek(n.at.slice(0, 10))).map((n) => ({ ticker: x.ticker, on: n.at.slice(0, 10), text: n.text, ...(n.with ? { with: n.with } : {}) })))
     .sort((a, b) => b.on.localeCompare(a.on));
 
   const unexplained = i.book

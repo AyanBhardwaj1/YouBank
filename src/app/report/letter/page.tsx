@@ -9,6 +9,7 @@ import { draftLetter } from "@/lib/book/letter";
 import { summarize } from "@/lib/book/position";
 import { headline } from "@/lib/book/risk";
 import { cachedRisk } from "@/lib/book/risk-store";
+import { notesOf } from "@/lib/book/decisions";
 import { evaluateBook, holdingFacts, loadBook, loadBookHistory, loadJournal } from "@/lib/book/store";
 import { governance, periodOf } from "@/lib/ledger/governance";
 import { governanceRows, ledgerSettings } from "@/lib/ledger/store";
@@ -44,7 +45,7 @@ export default async function LetterPage() {
     // The PM's own journal notes (not YouBank's automatic entries), open and closed positions, newest first.
     // A close's own note is already in "What we closed", so it is not quoted again here.
     notes: [...book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...closed.map((c) => ({ ticker: c.ticker, log: (c.log ?? []).filter((e) => !(e.at === c.closedAt && e.text === c.note)) }))]
-      .flatMap((x) => x.log.filter((e) => !e.auto).map((e) => ({ ticker: x.ticker, at: e.at, text: e.text })))
+      .flatMap((x) => notesOf(x.log).map((n) => ({ ticker: x.ticker, ...n })))
       .sort((a, b) => b.at.localeCompare(a.at)),
   });
   return (
