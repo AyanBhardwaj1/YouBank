@@ -20,11 +20,12 @@ import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type Clos
 import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
+import { priceBaseRate } from "@/lib/book/baserate";
 import { weekBrief } from "@/lib/book/week";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
-type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean; proposals?: Proposal[] };
+type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean; proposals?: Proposal[]; /** One-year volatility by ticker, when today's risk is worked out. */ vols?: Record<string, number> };
 
 const VERDICT: Record<Verdict, { label: string; cls: string }> = {
   intact: { label: "Intact", cls: "bg-pos/15 text-pos" },
@@ -215,7 +216,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
 
 /* ---------------- A position ---------------- */
 
-function PositionCard({ ev, position, history = [], focused, owner, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; focused?: boolean; /** Set in the team view: whose position it is, and the card is read-only. */ owner?: string; onEdit?: () => void; onChanged?: () => void }) {
+function PositionCard({ ev, position, history = [], vol = null, focused, owner, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; /** One-year volatility, %, for the price base rate. */ vol?: number | null; focused?: boolean; /** Set in the team view: whose position it is, and the card is read-only. */ owner?: string; onEdit?: () => void; onChanged?: () => void }) {
   const [open, setOpen] = useState(ev.verdict === "broken" || !!focused);
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, [focused]);
@@ -287,6 +288,11 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             <div className="text-[11px] text-muted">{ev.name}</div>
             <p className="mt-0.5 text-[13px]">{position?.thesis}</p>
             {position?.conviction && <p className="mt-0.5 text-[11.5px] text-muted">Conviction: <span className="font-semibold text-fg">{Math.round(position.conviction.p * 100)}%</span> that no kill criterion fails before {position.conviction.by}, set {position.conviction.at}{position.conviction.source !== "You" ? ` (${position.conviction.source})` : ""}</p>}
+            {(() => {
+              const by = position?.conviction?.by ?? inDays(90);
+              const base = position ? priceBaseRate(position, ev.price, vol, by, new Date()) : null;
+              return base ? <p className="mt-0.5 text-[11.5px] text-muted" title="The chance the price never touches a price line in the kill criteria before the date, as a driftless random walk with the stock's one-year volatility. Fundamentals are not included.">Base rate from price alone: <span className="font-semibold text-fg">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to {by} ({vol}% volatility, no drift; fundamentals not included).</p> : null;
+            })()}
             {position && !position.conviction && !owner && onEdit && <p className="mt-0.5 text-[11.5px] text-muted">No forecast yet. <button type="button" onClick={onEdit} className="text-accent hover:underline">Add a forecast</button> (how sure you are its kill criteria hold, and until when) and YouBank scores it.</p>}
             {!!position?.pastForecasts?.length && <p className="mt-0.5 text-[11px] text-muted" title={position.pastForecasts.map((f) => `${Math.round(f.p * 100)}% to ${f.by}, set ${f.at} (${f.source})`).join("\n")}>{position.pastForecasts.length} earlier forecast{position.pastForecasts.length === 1 ? " was" : "s were"} changed and {position.pastForecasts.length === 1 ? "is" : "are"} still scored at {position.pastForecasts.length === 1 ? "its" : "their"} own date{position.pastForecasts.length === 1 ? "" : "s"}.</p>}
             {(() => {
@@ -989,7 +995,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
         <ul className="space-y-2">
           {data.evaluations.filter((ev) => !only || ev.verdict === only).map((ev) => {
             const p = byId.get(ev.positionId);
-            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); setReviewing(null); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
+            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} vol={data.vols?.[ev.ticker] ?? null} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); setReviewing(null); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
         </ul>
       )}

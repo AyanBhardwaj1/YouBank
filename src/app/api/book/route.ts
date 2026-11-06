@@ -22,7 +22,11 @@ export async function GET() {
     // At most six warm-ups an hour per person (Home polls this too), and none when today's figures are cached.
     if (positions.some((p) => p.weight)) inBackground((async () => { if (!(await cachedRisk(positions)) && (await withinRate(`book-risk-warm:${user.id}`, 6, 3_600_000).catch(() => false))) await riskOf(positions); })());
     const [history, alerts, proposals] = await Promise.all([noteHistory(user.id, evaluations).catch(() => ({})), bookAlertsOn(user.id).catch(() => true), loadProposals(user.id).catch(() => [])]);
-    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts, proposals }, { headers: { "Cache-Control": "private, no-store" } });
+    // Each name's one-year volatility, when today's risk is already worked out (never computed for this): the
+    // card's price base rate for a forecast (baserate.ts).
+    const risk = positions.some((p) => p.weight) ? await cachedRisk(positions).catch(() => null) : null;
+    const vols = Object.fromEntries((risk?.positions ?? []).filter((x) => x.vol !== null).map((x) => [x.ticker, x.vol as number]));
+    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts, proposals, vols }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
 

@@ -11,6 +11,7 @@ import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForec
 import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
+import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -466,6 +467,18 @@ console.log("Forecasts about to be scored");
   const pL = normalizePosition({ ...t, catalysts: [], id: "fsc2", ticker: "FSL", conviction: { p: 70, by: "2027-01-15", at: "2026-09-01" } })!;
   const pX = normalizePosition({ ...t, catalysts: [], id: "fsc3", ticker: "FSX", conviction: { p: 70, by: "2026-11-15", at: "2026-09-01", source: "Sample" } })!;
   ok("an open forecast due within two weeks is listed as coming; a later or sample one is not", weekBrief({ now: wNow, book: [pS, pL, pX], evals: [], history: { fsc1: [{ d: "2026-10-01", v: "intact", s: 100 }] }, closed: [], proposals: [] }).coming.map((c) => [c.ticker, c.label, c.inDays]), [["FSC", "Your 70% forecast is scored", 6]]);
+}
+
+console.log("Price base rate");
+{
+  ok("the normal CDF", [phi(0).toFixed(4), phi(1.96).toFixed(4), phi(-1.96).toFixed(4)], ["0.5000", "0.9750", "0.0250"]);
+  // S=100, floor 80, 40% vol, one year: 1 - 2*phi(-ln(1.25)/0.4) = 1 - 2*phi(-0.5579) = 0.4231
+  ok("reflection principle: a floor 20% below at 40% vol over a year holds about 42% of the time; a line already crossed, 0", [noTouch(100, 80, 0.4, 1, "floor", false).toFixed(3), noTouch(100, 120, 0.4, 1, "floor"), noTouch(100, 125, 0.4, 1, "ceiling", false).toFixed(3), noTouch(100, 80, 0.4, 1, "floor") > 0.423], ["0.423", 0, "0.423", true]);
+  const long = { direction: "long" as const, entry: 100, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -15 }, { id: "b", metric: "price" as const, op: ">=" as const, value: 70 }, { id: "c", metric: "gross_margin" as const, op: ">=" as const, value: 60 }] };
+  const short = { direction: "short" as const, entry: 50, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -20 }] };
+  ok("price lines: a long's stop below entry and a price floor; a short's stop above entry; fundamentals ignored", [priceLines(long), priceLines(short)], [[{ level: 85, side: "floor" }, { level: 70, side: "floor" }], [{ level: 60, side: "ceiling" }]]);
+  const br = priceBaseRate(long, 100, 30, "2027-05-06", new Date("2026-11-06T00:00:00Z"));
+  ok("the base rate is the binding line's, and absent without a price line, a price, a volatility or a future date", [br?.lines, br && br.p > 0.3 && br.p < 0.7, priceBaseRate({ ...long, criteria: [long.criteria[2]] }, 100, 30, "2027-05-06", new Date()), priceBaseRate(long, null, 30, "2027-05-06", new Date()), priceBaseRate(long, 100, null, "2027-05-06", new Date()), priceBaseRate(long, 100, 30, "2020-01-01", new Date())], [2, true, null, null, null, null]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
