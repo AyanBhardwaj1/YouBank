@@ -21,6 +21,8 @@ export type LetterInput = {
   closed: ClosedPosition[]; record: Scorecard; calibration: Calibration | null;
   risk: { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null } | null;
   ai: { outputs: number; reviewedShare: number | null; verifiedShare: number | null; ledgerOn: boolean } | null;
+  /** The PM's own decision-journal notes from the period (not YouBank's automatic entries), newest first. */
+  notes?: { ticker: string; at: string; text: string }[];
 };
 
 const pct = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}%`;
@@ -47,6 +49,12 @@ export function draftLetter(i: LetterInput): string {
       const r = closedReturn(c);
       lines.push(`- **${c.ticker}** (${c.direction}, held ${c.openedAt.slice(0, 10)} to ${c.closedAt.slice(0, 10)}): ${CLOSE_REASONS[c.reason].toLowerCase()}${c.note ? `: ${c.note}` : ""}${r !== null ? ` (${pct(r * 100)} on the position, before costs)` : ""}.`);
     }
+  }
+  const notes = (i.notes ?? []).filter((n) => Date.parse(n.at) >= i.now.getTime() - 92 * 86_400_000).slice(0, 6);
+  if (notes.length) {
+    lines.push(``, `## Decisions, in our words at the time`);
+    for (const n of notes) lines.push(`- **${n.ticker}**, ${n.at.slice(0, 10)}: "${n.text}"`);
+    lines.push(`[Pick the ones that show how we think; each is from the position's dated decision journal.]`);
   }
   lines.push(``, `## Our process, measured`);
   lines.push(i.record.closed ? `Track record since we began keeping it: ${scorecardLine(i.record)} These are unweighted price moves on individual positions, before fees and costs, not fund performance.` : `We began keeping a track record of every closed position this quarter; it will appear here as positions close.`);

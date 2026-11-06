@@ -41,6 +41,10 @@ export default async function LetterPage() {
     firm: profile?.firmName ?? "", period, now, evals, summary: summarize(evals), closed, record: scorecard(closed), calibration: calibrationOf(book, history, closed, now),
     risk: risk ? headline(risk) : null,
     ai: g ? { outputs: g.ai, reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, ledgerOn } : null,
+    // The PM's own journal notes (not YouBank's automatic entries), open and closed positions, newest first.
+    notes: [...book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...closed.map((c) => ({ ticker: c.ticker, log: c.log ?? [] }))]
+      .flatMap((x) => x.log.filter((e) => !e.auto).map((e) => ({ ticker: x.ticker, at: e.at, text: e.text })))
+      .sort((a, b) => b.at.localeCompare(a.at)),
   });
   return (
     <main className="min-h-dvh bg-bg text-fg">
