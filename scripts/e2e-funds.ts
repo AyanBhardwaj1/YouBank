@@ -129,6 +129,9 @@ async function main() {
     await j(`/api/book/journal?id=${victim.id}`, { method: "DELETE" });
   }
 
+  const letter = await fetch(`${BASE}/report/letter`).then(async (r) => ({ status: r.status, text: await r.text() }));
+  check("the LP letter drafts from the book, with its compliance pass", letter.status === 200 && letter.text.includes("Compliance pass") && letter.text.includes("Dear partners"), letter.status);
+
   console.log("risk, the what-if and the calendar");
   const risk = await j("/api/book/risk");
   check("the book's risk answers with five stress replays (figures need prices; without them it says what is left out)", risk.status === 200 && Array.isArray(risk.body.scenarios) && risk.body.scenarios.length === 5 && Array.isArray(risk.body.excluded), risk.body?.excluded);

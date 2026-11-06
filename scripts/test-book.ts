@@ -8,6 +8,7 @@ import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { calibration, calibrationLine, normalizeConviction, resolveForecast } from "@/lib/book/forecast";
+import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
@@ -267,6 +268,15 @@ const closedConv = closedFrom(withConv, "broken", hBreak, 100, "thesis_broke", "
 const prConv = proposalFrom({ ticker: "AMD", direction: "long", thesis: "Share gains continue.", conviction_pct: 65, review_by: "2027-03-31" }, "Claude (connected)", now);
 ok("an AI app's proposal carries its own forecast, marked as its", "proposal" in prConv ? [prConv.proposal.position.conviction?.p, prConv.proposal.position.conviction?.by, prConv.proposal.position.conviction?.source] : prConv, [0.65, "2027-03-31", "Claude (connected)"]);
 ok("positions and their closes keep the forecast; open and closed are scored together", [withConv.conviction, closedConv.conviction?.p, calibrationOf([withConv], { cv01: [{ d: "2026-11-01", v: "intact", s: 100 }] }, [{ ...closedConv, id: "cv02" }], new Date("2027-01-05T00:00:00Z")).n], [{ p: 0.75, by: "2026-12-31", at: "2026-10-01", source: "You" }, 0.75, 2]);
+
+console.log("LP letter");
+const letterEv = evaluate(t, co, d, [], now);
+const letter = draftLetter({ firm: "Northwind Capital", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [{ ...c1, closedAt: "2026-10-13T15:00:00.000Z" }], record: scorecard([c1]), calibration: calibration([{ ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }]), risk: { betaNet: 12.3, var95: 0.8, worst: { label: "COVID crash", pnl: -3.4 } }, ai: { outputs: 42, reviewedShare: 12, verifiedShare: 91, ledgerOn: true } });
+ok("the draft covers the book, closes, process, risk and AI use, with a disclaimer", ["## The book (Q4 2026)", "## What we closed, and why", "**SNOW**", "## Our process, measured", "Calibration of our conviction", "## Risk", "## How we use AI", "42 AI outputs", "91% of the figures", "Northwind Capital", "not fund performance"].map((x) => letter.includes(x)), Array(11).fill(true));
+ok("the draft passes its own compliance pass", lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
+const lint = lintLetter("We guarantee strong results. Our fund is the best in its class. We returned 32% for investors. Gross return was 18%. A backtest shows we would have gained 40% since 2015. Our AI-powered process finds alpha.", { ledgerOn: false });
+ok("the compliance pass flags promises, superlatives, performance without a period, gross without net, hypotheticals and unbacked AI claims", lint.map((f) => [f.rule, f.severity]), [["Promissory or guaranteeing language", "high"], ["Unsupported superlative", "medium"], ["Performance without a time period", "medium"], ["Performance without a time period", "medium"], ["Gross performance without net", "high"], ["Hypothetical performance", "medium"], ["AI claim without a record", "high"]]);
+ok("a period makes performance acceptable; an AI claim with the ledger on is a note, not a fault", [lintLetter("We returned 12% in 2026, net of fees.", { ledgerOn: false }).length, lintLetter("Machine learning helps us screen.", { ledgerOn: true }).map((f) => f.severity)], [0, ["info"]]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
