@@ -16,10 +16,11 @@ import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import type { SourcedRisk } from "@/lib/book/risk";
+import type { Proposal } from "@/lib/book/proposals";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
-type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean };
+type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean; proposals?: Proposal[] };
 
 const VERDICT: Record<Verdict, { label: string; cls: string }> = {
   intact: { label: "Intact", cls: "bg-pos/15 text-pos" },
@@ -49,9 +50,11 @@ const draftOf = (p: Position): Draft => ({
 });
 const unitHint = (m: MetricKey) => (isPct(m) ? "%" : METRICS[m].unit === "usd" ? "$" : METRICS[m].unit === "usdmm" ? "$M" : METRICS[m].unit === "x" ? "x" : "pts");
 
-const field = "ctl w-full border border-line bg-bg px-2 py-1.5 text-[12px] placeholder:text-faint focus:border-accent/60 focus:outline-none";
+const fieldBox = "ctl border border-line bg-bg px-2 py-1.5 text-[12px] placeholder:text-faint focus:border-accent/60 focus:outline-none";
+const field = `${fieldBox} w-full`;
 
-function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () => void; onCancel: () => void }) {
+/** `heading` replaces the title (a proposal under review: a new position, without the templates). */
+function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string }) {
   const [d, setD] = useState<Draft>(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -82,8 +85,8 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
   return (
     <section className="panel space-y-3 p-4" aria-label={d.id ? "Edit position" : "New position"}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-[13px] font-semibold">{d.id ? `Edit ${d.ticker}` : "New position"}</h2>
-        {!d.id && (
+        <h2 className="text-[13px] font-semibold">{heading ?? (d.id ? `Edit ${d.ticker}` : "New position")}</h2>
+        {!d.id && !heading && (
           <div className="ml-auto flex flex-wrap gap-1 text-[11px]">
             <span className="text-muted">Start from:</span>
             {TEMPLATES.map((t) => (
@@ -93,7 +96,7 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
           </div>
         )}
       </div>
-      {!d.id && (
+      {!d.id && !heading && (
         <div className="ctl border border-line bg-bg/60 p-2.5">
           <label htmlFor="book-words" className="text-[11.5px] font-semibold">Say it in your own words, and YouBank drafts the kill criteria</label>
           <textarea id="book-words" value={words} onChange={(e) => setWords(e.target.value)} maxLength={2000} placeholder="Long Snowflake: AI workloads re-accelerate consumption back above 20% growth, and gross margin has to get past 70%. Out if the stock breaks $150." className={`${field} mt-1 min-h-[56px]`} />
@@ -118,13 +121,13 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
         <div className="space-y-1.5">
           {d.criteria.map((c, i) => (
             <div key={i} className="flex flex-wrap items-center gap-1.5">
-              <select aria-label="Metric" className={`${field} w-auto flex-1`} value={c.metric} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, metric: e.target.value as MetricKey } : x)))}>
+              <select aria-label="Metric" className={`${fieldBox} min-w-[12rem] flex-1`} value={c.metric} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, metric: e.target.value as MetricKey } : x)))}>
                 {METRIC_KEYS.map((m) => <option key={m} value={m}>{METRICS[m].label}</option>)}
               </select>
-              <select aria-label="Condition" className={`${field} w-auto`} value={c.op} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, op: e.target.value as Op } : x)))}>
+              <select aria-label="Condition" className={`${fieldBox} w-auto`} value={c.op} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, op: e.target.value as Op } : x)))}>
                 <option value=">=">at least</option><option value="<=">at most</option>
               </select>
-              <input aria-label="Threshold" className={`${field} w-24`} inputMode="decimal" value={c.value} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder={unitHint(c.metric)} />
+              <input aria-label="Threshold" className={`${fieldBox} w-24`} inputMode="decimal" value={c.value} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder={unitHint(c.metric)} />
               <span className="w-6 text-[11px] text-muted">{unitHint(c.metric)}</span>
               <button type="button" aria-label="Remove criterion" className="text-muted hover:text-neg" onClick={() => set("criteria", d.criteria.filter((_, j) => j !== i))}><Icon name="X" className="h-3.5 w-3.5" /></button>
               {c.note && <span className={`w-full pl-1 text-[10.5px] ${/^suggested/i.test(c.note) ? "text-accent" : "text-muted"}`}>{c.note}</span>}
@@ -138,8 +141,8 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
         <div className="space-y-1.5">
           {d.catalysts.map((c, i) => (
             <div key={i} className="flex items-center gap-1.5">
-              <input aria-label="Catalyst" className={`${field} flex-1`} value={c.label} onChange={(e) => set("catalysts", d.catalysts.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="Q3 earnings" />
-              <input aria-label="Date" type="date" className={`${field} w-40`} value={c.date} onChange={(e) => set("catalysts", d.catalysts.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
+              <input aria-label="Catalyst" className={`${fieldBox} min-w-[10rem] flex-1`} value={c.label} onChange={(e) => set("catalysts", d.catalysts.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="Q3 earnings" />
+              <input aria-label="Date" type="date" className={`${fieldBox} w-40`} value={c.date} onChange={(e) => set("catalysts", d.catalysts.map((x, j) => (j === i ? { ...x, date: e.target.value } : x)))} />
               <button type="button" aria-label="Remove catalyst" className="text-muted hover:text-neg" onClick={() => set("catalysts", d.catalysts.filter((_, j) => j !== i))}><Icon name="X" className="h-3.5 w-3.5" /></button>
             </div>
           ))}
@@ -233,6 +236,13 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
               {ev.filing.summary.map((x, i) => <p key={i} className="mt-0.5 text-[11.5px] text-muted">{x}</p>)}
             </div>
           )}
+          {!!ev.nextPrint?.length && (
+            <div className="ctl border border-line p-2.5">
+              <h3 className="mb-1 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted"><Icon name="Target" className="h-3.5 w-3.5" />What the next report must show{ev.earnings ? ` · ${ev.earnings.date}${ev.earnings.estimated ? " (est.)" : ""}` : ""}</h3>
+              <ul className="space-y-0.5">{ev.nextPrint.map((b) => <li key={b.criterionId} className={b.settled ? "text-muted" : ""}>{b.line}</li>)}</ul>
+              <p className="mt-1 text-[11px] text-faint">From the last eight quarters&apos; revenue on SEC XBRL: the quarter that enters the twelve months against the one that leaves.</p>
+            </div>
+          )}
           {(ev.catalysts.length > 0 || ev.news.length > 0 || !!ev.earnings) && (
             <div className="grid gap-3 sm:grid-cols-2">
               {(ev.catalysts.length > 0 || !!ev.earnings) && (
@@ -296,7 +306,7 @@ function Importer({ onDone, onCancel }: { onDone: (r: ImportRes) => void; onCanc
       <p className="text-[12px] text-muted">Copy rows from a spreadsheet or your OMS: a ticker, long or short, the weight (% of NAV), the entry price and a thesis, in any order. A header row is fine. Tickers already in the book are kept as they are.</p>
       <textarea value={text} onChange={(e) => setText(e.target.value)} aria-label="Positions" spellCheck={false} placeholder={"NVDA\tLong\t6%\t$118\tData-centre demand stays ahead of supply\nINTC\tShort\t3%\t$31\tFoundry capex burns cash"} className={`${field} num min-h-[120px]`} />
       <label className="flex flex-wrap items-center gap-2 text-[12px] text-muted">Kill criteria to start with
-        <select value={template} onChange={(e) => setTemplate(e.target.value)} className={`${field} w-auto`}>
+        <select value={template} onChange={(e) => setTemplate(e.target.value)} className={`${fieldBox} w-auto`}>
           <option value="auto">Suggested: growth for longs, deteriorating for shorts</option>
           {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           <option value="none">None: I will write them</option>
@@ -307,6 +317,43 @@ function Importer({ onDone, onCancel }: { onDone: (r: ImportRes) => void; onCanc
         <button type="button" disabled={busy || !text.trim()} onClick={go} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">{busy ? "Importing…" : "Import"}</button>
         <button type="button" onClick={onCancel} className="ctl px-3 py-1.5 text-[12px] text-muted hover:text-fg">Cancel</button>
       </div>
+    </section>
+  );
+}
+
+/* ---------------- Proposed by the person's AI apps ---------------- */
+
+const ago = (iso: string) => {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+  return m < 60 ? `${m || 1} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
+/** Positions an AI app proposed over MCP: nothing is in the book until the person reviews one and saves it. */
+function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[]; held: Set<string>; focus?: string; onReview: (p: Proposal) => void; onDismiss: (p: Proposal) => void }) {
+  return (
+    <section aria-label="Proposed by your AI apps" className="panel p-4">
+      <h2 className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold"><Icon name="Sparkles" className="h-4 w-4 text-accent" />Proposed by your AI apps <span className="font-normal text-muted">· {list.length}</span></h2>
+      <p className="mb-2 text-[11.5px] text-muted">Sent from Claude, ChatGPT or another connected app. None of these are in your book: review one to edit and add it, or dismiss it.</p>
+      <ul className="space-y-2">
+        {list.map((x) => (
+          <li key={x.id} className={`ctl border p-3 ${x.id === focus ? "border-accent/60" : "border-line"}`}>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-[13px] font-semibold">{x.position.ticker}</span>
+              <span className={`ctl px-1.5 py-0.5 text-[10.5px] font-semibold uppercase ${x.position.direction === "long" ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg"}`}>{x.position.direction}</span>
+              {x.position.weight !== null && <span className="num text-[11.5px] text-muted">{navPct(x.position.weight)} of NAV</span>}
+              <span className="ml-auto text-[11px] text-faint">from {x.from} · {ago(x.at)}</span>
+            </div>
+            <p className="mt-1 text-[12.5px]">{x.position.thesis}</p>
+            {x.rationale && <p className="mt-0.5 text-[11.5px] text-muted">Why: {x.rationale}</p>}
+            {x.position.criteria.length > 0 && <p className="mt-1 text-[11.5px] text-muted">Kill criteria: {x.position.criteria.map((c) => `${METRICS[c.metric].label} ${c.op === ">=" ? "at least" : "at most"} ${c.value}${isPct(c.metric) ? "%" : ""}`).join("; ")}</p>}
+            {held.has(x.position.ticker) && <p className="mt-1 text-[11.5px] text-accent">{x.position.ticker} is already in your book; adding this keeps both.</p>}
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={() => onReview(x)} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg">Review and add</button>
+              <button type="button" onClick={() => onDismiss(x)} className="ctl border border-line px-3 py-1 text-[12px] text-muted hover:text-fg">Dismiss</button>
+            </div>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -471,7 +518,7 @@ function Stat({ label, value, tone, hint }: { label: string; value: string; tone
   );
 }
 
-export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boolean }) {
+export function BookClient({ focus, riskOpen, proposal }: { focus?: string; riskOpen?: boolean; proposal?: string }) {
   const [data, setData] = useState<BookData | null>(null);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -481,6 +528,8 @@ export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boo
   const [teams, setTeams] = useState<TeamList | null>(null);
   const [view, setView] = useState<number | "mine">("mine");
   const [pick, setOnly] = useState<Verdict | null>(null);
+  // The proposal being reviewed in the editor: saving the position clears it.
+  const [reviewing, setReviewing] = useState<{ id: string; heading: string } | null>(null);
   useEffect(() => { fetchJson<TeamList>("/api/book/team").then(setTeams).catch(() => setTeams(null)); }, []);
   const share = async (teamId: number, on: boolean) => {
     const r = await fetchJson<{ sharing: number[] }>("/api/book/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: teamId, share: on }) });
@@ -510,8 +559,8 @@ export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boo
         <div className="flex gap-2">
           {!!data?.evaluations.length && <Link href="/report/book" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="FileText" className="h-3.5 w-3.5" />Report</Link>}
           {!!data?.evaluations.length && <a href="/api/book/export" download className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Download" className="h-3.5 w-3.5" />CSV</a>}
-          <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
-          <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
+          <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); setReviewing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
+          <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); setReviewing(null); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
         </div>
       </header>
 
@@ -536,7 +585,18 @@ export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boo
         </div>
       )}
 
-      {editing && <Editor key={editing.id ?? "new"} initial={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
+      {!!data?.proposals?.length && !editing && (
+        <Proposals list={data.proposals} held={new Set(data.positions.map((p) => p.ticker))} focus={proposal}
+          onReview={(x) => { setReviewing({ id: x.id, heading: `Review ${x.position.ticker}, proposed by ${x.from}` }); setImporting(false); setEditing({ ...draftOf(x.position), id: undefined }); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); }}
+          onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
+      )}
+
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+        const done = reviewing?.id;
+        setEditing(null); setReviewing(null);
+        if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => undefined);
+        load();
+      }} />}
 
       {err && <div role="alert" className="panel p-3 text-[12px] text-neg">{err} <button type="button" onClick={load} className="ml-2 text-accent">Try again</button></div>}
       {!data && !err && <div className="shimmer h-40 ctl" />}
@@ -587,7 +647,7 @@ export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boo
           <h2 className="mt-2 text-[14px] font-semibold">Put your book in, and YouBank watches every thesis</h2>
           <p className="mx-auto mt-1 max-w-xl text-[12.5px] text-muted">Write each position&apos;s thesis with the numbers that would prove it wrong: growth at least 20%, gross margin at least 70%, a price stop. YouBank checks them against the company&apos;s filings and price, flags the ones close to breaking, and can run a red team that argues the other side with sources.</p>
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <button type="button" onClick={() => setEditing(emptyDraft())} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg">Add your first position</button>
+            <button type="button" onClick={() => { setEditing(emptyDraft()); setReviewing(null); }} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg">Add your first position</button>
             <button type="button" onClick={() => setImporting(true)} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg">Paste from a spreadsheet</button>
             <button type="button" disabled={sampling} onClick={sample} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-50">{sampling ? "Loading…" : "Try a sample book"}</button>
           </div>
@@ -599,7 +659,7 @@ export function BookClient({ focus, riskOpen }: { focus?: string; riskOpen?: boo
         <ul className="space-y-2">
           {data.evaluations.filter((ev) => !only || ev.verdict === only).map((ev) => {
             const p = byId.get(ev.positionId);
-            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
+            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); setReviewing(null); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
         </ul>
       )}

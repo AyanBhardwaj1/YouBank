@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   let msg: unknown;
   try { msg = await req.json(); } catch { return rpcError(ERR.parse, "The body is not valid JSON.", 400); }
   try {
-    const res = await runAsUser(who.userId, () => dispatch(msg, mcpServer(who.userId)));
+    const res = await runAsUser(who.userId, () => dispatch(msg, mcpServer(who.userId, who.keyName)));
     // Calls from the person's AI apps go in their research ledger too, when they keep one.
     const m = msg as { method?: unknown; params?: { name?: unknown; arguments?: unknown } };
     if (m?.method === "tools/call" && res?.result) {

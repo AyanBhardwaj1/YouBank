@@ -5,6 +5,8 @@ import { alertsFor, gateAlerts, needsPoint, normalizeBookState, recordHistory, s
 import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders";
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
+import { nextPrint } from "@/lib/book/print";
+import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
@@ -179,6 +181,30 @@ ok("one alert per filing", alertsFor(first.next, [{ ...mk("c", "intact"), filing
 const fAlerts = alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts;
 const offRun = gateAlerts(fAlerts, [], true), onRun = gateAlerts(fAlerts, offRun.muted, false);
 ok("alerts off: nothing sent and the filing remembered; back on, it is not sent late; other alerts still go", [offRun.send.length, offRun.muted, onRun.send.length, gateAlerts([...fAlerts, ...eAlert], offRun.muted, false).send.map((a) => a.key)], [0, ["book:c:filing:10-Q:2026-11-03"], 0, ["book:c:earnings:2026-11-07"]]);
+
+console.log("what the next report must show");
+const qs = ["2024-10-31", "2025-01-31", "2025-04-30", "2025-07-31", "2025-10-31", "2026-01-31", "2026-04-30", "2026-07-31"].map((end, i) => ({ label: `Q${i + 1}`, end, revenue: 800 + 50 * i }));
+const qco = { ticker: "Q", quarters: qs, ltm: { revenue: 4300 } } as unknown as CompanyData;
+const bars = nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }, { id: "r", metric: "revenue", op: ">=", value: 3000 }, { id: "m", metric: "gross_margin", op: ">=", value: 60 }], qco);
+ok("growth ≥ 20%: next quarter needs 1.2 × 3,700 − 3,300 = $1,140M, +14.0% on the year-ago quarter", [bars.length, bars[0].need, bars[0].yoy, bars[0].lastYoy, bars[0].yearAgo, bars[0].line], [2, 1140, 0.14, 0.2105, "Q5", "At least $1,140M of revenue next quarter (+14.0% y/y against Q5; last quarter +21.1%) keeps LTM revenue growth at or above 20%."]);
+ok("a level the three staying quarters already clear is settled", [bars[1].settled, bars[1].line], [true, "LTM revenue at or above $3,000M holds whatever next quarter's revenue is."]);
+ok("no answer when the quarters disagree with the LTM, skip a quarter, or are too few", [nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, ltm: { revenue: 5000 } } as unknown as CompanyData).length, nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, quarters: qs.filter((_, i) => i !== 3) } as unknown as CompanyData).length, nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, quarters: qs.slice(2) } as unknown as CompanyData).length], [0, 0, 0]);
+ok("at most: a ceiling the staying quarters already pass cannot hold", nextPrint([{ id: "r", metric: "revenue", op: "<=", value: 3000 }], qco)[0].line, "LTM revenue at or below $3,000M cannot hold after next quarter: the three quarters that stay already exceed it.");
+ok("evaluate carries it", evaluate({ ...t, criteria: [{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }] }, { ...co, quarters: qs, ltm: { ...co.ltm, revenue: 4300 } } as unknown as CompanyData, d, [], now).nextPrint?.[0].need, 1140);
+
+console.log("proposals from AI apps");
+const pr = proposalFrom({ ticker: "nvda", direction: "long", thesis: "Data-center demand outruns supply through 2027.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 70 }], weight_pct_nav: 3, rationale: "Margins held above 70% for six quarters [S1]." }, "Claude (connected)", now);
+ok("a proposal is a cleaned position, with who sent it and why", "proposal" in pr ? [pr.proposal.position.ticker, pr.proposal.position.weight, pr.proposal.position.criteria.length, pr.proposal.from, /^pr-[a-z0-9]+-[a-z0-9]+$/.test(pr.proposal.id)] : pr, ["NVDA", 3, 1, "Claude (connected)", true]);
+ok("no ticker or thesis, or criteria none of which can be read: refused with a reason", [("error" in proposalFrom({ ticker: "", thesis: "x" }, "a", now)), ("error" in proposalFrom({ ticker: "NVDA", thesis: "A thesis here", kill_criteria: [{ metric: "vibes", op: ">=", value: 1 }] }, "a", now))], [true, true]);
+if ("proposal" in pr) {
+  const again = proposalFrom({ ticker: "NVDA", direction: "long", thesis: "Updated thesis for the same name.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 72 }] }, "Claude (connected)", new Date(now.getTime() + 1000));
+  const other = proposalFrom({ ticker: "NVDA", direction: "long", thesis: "Another app's view.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 65 }] }, "ChatGPT (connected)", now);
+  const list = "proposal" in again && "proposal" in other ? withProposal(withProposal(withProposal([], pr.proposal), other.proposal), again.proposal) : [];
+  ok("the same app's newer proposal for the same name and side replaces its older one; another app's stays", list.map((x) => [x.from, x.position.thesis.slice(0, 7)]), [["Claude (connected)", "Updated"], ["ChatGPT (connected)", "Another"]]);
+  let many = [] as ReturnType<typeof withProposal>;
+  for (let i = 0; i < 14; i++) { const x = proposalFrom({ ticker: `T${String.fromCharCode(65 + i)}`, direction: "long", thesis: "A thesis here." }, "a", now); if ("proposal" in x) many = withProposal(many, { ...x.proposal, id: `pr-${i}-abcd` }); }
+  ok("at most ten are kept, newest first; stored junk is dropped", [many.length, many[0].position.ticker, normalizeProposals([...many, { id: "x" }, null, { ...many[0] }]).length], [PROPOSALS_MAX, "TN", PROPOSALS_MAX]);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

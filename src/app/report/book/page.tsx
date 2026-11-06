@@ -119,6 +119,7 @@ export default async function BookReport() {
                     </table></div>
                   )}
                   {e.filing && <p className="mt-1.5"><span className="text-muted">New {e.filing.form} ({e.filing.filed}):</span> {filingLine(e.filing)}</p>}
+                  {!!e.nextPrint?.length && <p className="mt-1.5"><span className="text-muted">Next report must show:</span> {e.nextPrint.map((b) => b.line).join(" ")}</p>}
                   {(e.catalysts.length > 0 || e.earnings) && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {[...(e.earnings ? [`Earnings${e.earnings.estimated ? " (estimated)" : ""} (${e.earnings.date})`] : []), ...e.catalysts.map((c) => `${c.label} (${c.date})`)].join("; ")}</p>}
                   {p?.redTeam && (
                     <div className="mt-2 border-l-2 border-line pl-3">

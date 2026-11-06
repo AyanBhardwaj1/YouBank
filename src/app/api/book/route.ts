@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
-import { bookAlertsOn, deletePosition, evaluateBook, loadBook, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
+import { bookAlertsOn, deletePosition, evaluateBook, loadBook, loadProposals, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
 import { cachedInsiderFact } from "@/lib/book/insiders-store";
 import { inBackground } from "@/lib/cache";
 import type { Position } from "@/lib/book/position";
@@ -10,15 +10,15 @@ import { summarize } from "@/lib/book/position";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-/** GET: the person's book: each position, where its kill criteria stand now, and exposure (src/lib/book). */
+/** GET: the person's book: each position, where its kill criteria stand now, exposure, and positions their AI apps proposed (src/lib/book). */
 export async function GET() {
   return guarded(async (user) => {
     await rateLimit(`book-check:${user.id}`, 240, 3_600_000, "The book was checked many times this hour. Try again in a few minutes.");
     const positions = await loadBook(user.id);
     const evaluations = await evaluateBook(positions);
     // Today's point in each thesis's history (the daily check writes it too); a failure only costs the point.
-    const [history, alerts] = await Promise.all([noteHistory(user.id, evaluations).catch(() => ({})), bookAlertsOn(user.id).catch(() => true)]);
-    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts }, { headers: { "Cache-Control": "private, no-store" } });
+    const [history, alerts, proposals] = await Promise.all([noteHistory(user.id, evaluations).catch(() => ({})), bookAlertsOn(user.id).catch(() => true), loadProposals(user.id).catch(() => [])]);
+    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts, proposals }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
 

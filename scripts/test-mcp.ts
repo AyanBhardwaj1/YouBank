@@ -70,6 +70,9 @@ async function main() {
   ok("every tool a prompt names is one the server offers", named.filter((n) => !names.has(n)), []);
   ok("the server offers four prompts, each asking for citations", PROMPTS.map((p) => [p.name, p.build({ ticker: "snow" }).includes("source id")]), [["book_review", true], ["red_team", true], ["what_changed", true], ["earnings_prep", true]]);
   ok("a ticker argument is cleaned", PROMPTS[1].build({ ticker: "$snow" }).includes("position in SNOW."), true);
+  const listed = await dispatch({ jsonrpc: "2.0", id: 30, method: "tools/list" }, real) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean; destructiveHint?: boolean } }[] } };
+  const ann = Object.fromEntries(listed.result.tools.map((t) => [t.name, t.annotations]));
+  ok("only propose_position writes (and destroys nothing); every other tool says read-only", [ann.propose_position, listed.result.tools.filter((t) => t.name !== "propose_position").every((t) => t.annotations.readOnlyHint === true), !!ann.book_risk], [{ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, true, true]);
 
   console.log("oauth");
   const O = "https://youbank.example";

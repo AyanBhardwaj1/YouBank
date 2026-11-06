@@ -11,7 +11,7 @@
 export const PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"] as const;
 export const LATEST_PROTOCOL = PROTOCOL_VERSIONS[0];
 
-export type McpToolInfo = { name: string; title: string; description: string; inputSchema: Record<string, unknown> };
+export type McpToolInfo = { name: string; title: string; description: string; inputSchema: Record<string, unknown>; /** Set on a tool that writes; others are read-only. */ annotations?: { readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean } };
 export type McpCallResult = { text: string; data?: unknown; isError?: boolean };
 /** A ready-made request an AI app shows in its slash menu; `build` writes the message from the arguments. */
 export type McpPrompt = {
@@ -71,7 +71,7 @@ export async function dispatch(msg: unknown, server: McpServer): Promise<RpcResp
       }
       return ok(id, { description: p.description, messages: [{ role: "user", content: { type: "text", text: p.build(args) } }] });
     }
-    case "tools/list": return ok(id, { tools: server.tools.map((t) => ({ ...t, annotations: { readOnlyHint: true, openWorldHint: true } })) });
+    case "tools/list": return ok(id, { tools: server.tools.map((t) => ({ ...t, annotations: t.annotations ?? { readOnlyHint: true, openWorldHint: true } })) });
     case "tools/call": {
       const name = typeof params.name === "string" ? params.name : "";
       if (!server.tools.some((t) => t.name === name)) return fail(id, ERR.invalidParams, `Unknown tool: ${name || "(none)"}. Call tools/list for the tools.`);

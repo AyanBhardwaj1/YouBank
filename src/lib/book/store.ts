@@ -3,7 +3,8 @@
  * server: every position's thesis against its company's SEC record and price (src/lib/company.ts, cached
  * six hours for filings and a minute in memory), its next earnings date, cached insider-selling and
  * new-filing facts (./insiders-store.ts, ./filings-store.ts) and this week's Newsroom stories that name its
- * ticker. Also bulk adds, daily history points, team sharing and the alerts switch. Saves go through the
+ * ticker. Also bulk adds, daily history points, team sharing, the alerts switch and positions proposed by
+ * the person's AI apps (./proposals.ts). Saves go through the
  * profile row lock (src/lib/prefs/extra.ts), like every preference.
  */
 import { and, desc, eq, gte, sql } from "drizzle-orm";
@@ -16,6 +17,7 @@ import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
 import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
+import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
@@ -44,6 +46,22 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
 
 export async function deletePosition(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, book: normalizeBook(extra.book).filter((t) => t.id !== id) }));
+}
+
+/* ---------------- Proposals from the person's AI apps ---------------- */
+
+export async function loadProposals(userId: string): Promise<Proposal[]> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  return normalizeProposals((row?.extra as Record<string, unknown> | undefined)?.bookProposals);
+}
+
+/** Keep a proposal for the person to review; it never touches the book itself. */
+export async function addProposal(userId: string, p: Proposal): Promise<void> {
+  await updateExtra(userId, (extra) => ({ ...extra, bookProposals: withProposal(normalizeProposals(extra.bookProposals), p) }));
+}
+
+export async function dismissProposal(userId: string, id: string): Promise<void> {
+  await updateExtra(userId, (extra) => ({ ...extra, bookProposals: normalizeProposals(extra.bookProposals).filter((x) => x.id !== id) }));
 }
 
 export async function setRedTeam(userId: string, id: string, redTeam: NonNullable<Position["redTeam"]>): Promise<void> {

@@ -70,7 +70,7 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
     }
     if (e.earnings && (e.earnings.inDays === 0 || e.earnings.inDays === 1)) {
       alerts.push({ key: `book:${e.positionId}:earnings:${e.earnings.date}`, positionId: e.positionId, kind: "catalyst", urgent: false, url,
-        title: `${e.ticker} reports ${e.earnings.inDays === 0 ? "today" : "tomorrow"}${e.earnings.estimated ? " (estimated)" : ""}`, body: `${side}. The thesis is ${e.verdict === "intact" ? "intact" : e.verdict === "watch" ? "on watch" : "broken"}: ${e.summary}`, reasons: [`Earnings on ${e.earnings.date}`] });
+        title: `${e.ticker} reports ${e.earnings.inDays === 0 ? "today" : "tomorrow"}${e.earnings.estimated ? " (estimated)" : ""}`, body: `${side}. The thesis is ${e.verdict === "intact" ? "intact" : e.verdict === "watch" ? "on watch" : "broken"}: ${e.summary}${(() => { const b = e.nextPrint?.find((x) => !x.settled); return b ? ` ${b.line}` : ""; })()}`, reasons: [`Earnings on ${e.earnings.date}`] });
     }
     for (const c of e.catalysts) {
       if (c.inDays !== 0 && c.inDays !== 1) continue;

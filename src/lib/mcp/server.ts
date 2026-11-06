@@ -2,20 +2,23 @@
  * YouBank as an MCP server: the research tools the in-app AI uses, offered to the person's own AI apps
  * (Claude, ChatGPT, Cursor, an in-house agent) under their account. Every figure comes back with the
  * source it is from (SEC XBRL facts, the filing, the price feed), so an answer written elsewhere can be
- * checked the same way as one written here. Read-only: nothing here trades, sends or changes anything.
+ * checked the same way as one written here. Nothing here trades, sends or changes the person's data; the
+ * one tool that writes (propose_position) leaves a proposal for the person to review, never a position.
  *
  * What is offered: company fundamentals and comps from SEC XBRL, filing search and reading (sec.gov
  * only), EDGAR full-text search, recent filings, XBRL series, insider transactions, what changed in the
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
  * for a ticker, the person's Book with each thesis checked, the Book's risk (beta, VaR, correlated bets,
- * stress replays), and any kill criteria checked on demand (check_thesis); plus four ready-made prompts. Web research is left out: it spends the
+ * stress replays), any kill criteria checked on demand (check_thesis), and a position proposed for the person
+ * to review (propose_position); plus four ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { evaluateBook, loadBook, newsFor } from "@/lib/book/store";
+import { addProposal, evaluateBook, loadBook, newsFor } from "@/lib/book/store";
+import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
 import { riskLine } from "@/lib/book/risk";
@@ -31,7 +34,10 @@ const TITLES: Record<string, string> = {
   read_filing: "Read a filing section", edgar_fulltext_search: "EDGAR full-text search", read_document: "Read an SEC document", get_recent_filings: "Recent filings",
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
   filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
+  book_risk: "My book's risk and stress tests", propose_position: "Propose a position for my review",
 };
+/** Tools that write something (a proposal only); every other tool is read-only. */
+const WRITES = new Set(["propose_position"]);
 
 /** This week's Newsroom stories that name a ticker, most important first, with links into YouBank. */
 const tickerNewsTool = def({
@@ -90,6 +96,10 @@ function bookTool(userId: string) {
           kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),
           next_earnings: e.earnings ? { date: e.earnings.date, estimated: e.earnings.estimated, in_days: e.earnings.inDays } : null,
+          next_report_must_show: e.nextPrint?.length ? (() => {
+            const src = ctx.addSource(`${e.ticker} quarterly revenue, SEC XBRL company facts (last eight quarters)`, e.checks.find((c) => c.criterion.metric.startsWith("revenue") && c.evidence)?.evidence?.url ?? "https://data.sec.gov/");
+            return e.nextPrint.map((b) => ({ line: b.line, revenue_needed_usd_mm: b.settled ? null : b.need, op: b.op, implied_yoy: b.yoy, last_quarter_yoy: b.lastYoy, source: src }));
+          })() : undefined,
           new_filing: e.filing ? { form: e.filing.form, filed: e.filing.filed, risk_factors: e.filing.counts, note: filingLine(e.filing), source: ctx.addSource(`${e.ticker} ${e.filing.form} filed ${e.filing.filed}`, e.filing.url) } : null,
         })),
       });
@@ -109,6 +119,36 @@ function riskTool(userId: string) {
       const r = await riskOf(book);
       const src = ctx.addSource(`Daily closes for the held names and SPY (${r.sources.join(", ") || "market data"}), ${r.window ? `${r.window.from} to ${r.window.to}` : "no window"}`, siteLink("/app/book?view=risk"));
       return JSON.stringify({ headline: riskLine(r), source: src, link: siteLink("/app/book?view=risk"), units: "% of NAV", ...r, sources: undefined });
+    },
+  });
+}
+
+/** A position the AI app proposes: kept for the person to review on the Book page, never added by itself. */
+function proposeTool(userId: string, from: string) {
+  return def({
+    name: "propose_position",
+    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M).",
+    schema: z.object({
+      ticker: z.string().min(1).max(12),
+      direction: z.enum(["long", "short"]),
+      thesis: z.string().min(5).max(280),
+      pillars: z.array(z.string().max(200)).max(6).optional(),
+      kill_criteria: z.array(z.object({ metric: z.enum(METRIC_KEYS as [string, ...string[]]), op: z.enum([">=", "<="]), value: z.number(), note: z.string().max(140).optional() })).min(1).max(8),
+      catalysts: z.array(z.object({ label: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).max(8).optional(),
+      weight_pct_nav: z.number().min(0).max(100).optional(),
+      rationale: z.string().max(600).optional(),
+    }),
+    run: async (args, ctx) => {
+      const r = proposalFrom(args as Record<string, unknown>, from);
+      if ("error" in r) return JSON.stringify({ error: r.error });
+      const [e] = await evaluateBook([r.proposal.position]).catch(() => []);
+      await addProposal(userId, r.proposal);
+      const link = siteLink(`/app/book?proposal=${r.proposal.id}`);
+      return JSON.stringify({
+        proposed: true, id: r.proposal.id, link,
+        note: "Nothing was added to the Book. The person reviews the proposal on the Book page and adds or dismisses it.",
+        today: e && e.verdict !== "unknown" ? { verdict: e.verdict, summary: e.summary, criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })) } : { verdict: "unknown", note: "The company's filings could not be read just now." },
+      });
     },
   });
 }
@@ -160,15 +200,16 @@ export const PROMPTS: McpPrompt[] = [
       `1. get_company_financials and get_xbrl_series for revenue and gross margin over the last eight quarters: the trend and its turning points.`,
       `2. get_trading_comps for ${tick(ticker)}: where it trades against peers on growth and margins.`,
       `3. ticker_news and get_recent_filings for anything new since the last report.`,
-      `4. book_status for ${tick(ticker)}: which kill criteria the report could break, and the numbers that would do it.`,
+      `4. book_status for ${tick(ticker)}: which kill criteria the report could break, and the numbers that would do it (next_report_must_show gives the revenue the quarter needs for each revenue criterion to hold).`,
       "End with the five questions I should want answered on the call.",
       CITE,
     ].join("\n"),
   },
 ];
 
-export function mcpServer(userId: string): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>];
+/** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
+export function mcpServer(userId: string, from = "An AI app"): McpServer {
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>];
   return {
     name: "youbank", title: "YouBank research", version: "1.0.0",
     instructions: [
@@ -179,7 +220,7 @@ export function mcpServer(userId: string): McpServer {
     tools: defs.map((t) => {
       const inputSchema = { ...(t.parameters as Record<string, unknown>) };
       delete inputSchema.$schema;
-      return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema } };
+      return { name: t.name, title: TITLES[t.name] ?? t.name, description: t.description, inputSchema: { type: "object", ...inputSchema }, ...(WRITES.has(t.name) ? { annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } } : {}) };
     }),
     describeError: (e) => failureMessage(e, "mcp.tool"),
     prompts: PROMPTS,

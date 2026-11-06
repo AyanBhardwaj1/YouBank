@@ -18,6 +18,7 @@ import type { CompanyData } from "@/lib/types";
 import type { Derived } from "@/lib/metrics";
 import type { InsiderFact } from "./insiders";
 import { isFresh, type FilingFact } from "./filings";
+import { nextPrint, type PrintBar } from "./print";
 
 export type Direction = "long" | "short";
 export type Op = ">=" | "<=";
@@ -133,6 +134,8 @@ export type Evaluation = {
   earnings: { date: string; estimated: boolean; inDays: number } | null;
   /** A 10-Q or 10-K filed in the last two weeks, with what changed in its risk factors. */
   filing: FilingFact | null;
+  /** What the next report must show for each revenue criterion to hold (src/lib/book/print.ts). */
+  nextPrint?: PrintBar[];
   /** One plain sentence for the list and Home. */
   summary: string; checkedAt: string;
 };
@@ -217,7 +220,7 @@ export function evaluate(p: Position, company: CompanyData | null, d: Derived | 
     : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
     : !known.length ? (p.criteria.length ? "No criterion can be checked from the data yet." : "Add a kill criterion so YouBank can tell you when this thesis breaks.")
     : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} day${soon.inDays === 1 ? "" : "s"}`}` : ""}.`;
-  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, industry: (company?.industry || company?.sicLabel || "").trim() || "Unclassified", verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, filing: isFresh(filing, now) ? filing : null, summary, checkedAt: now.toISOString() };
+  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, industry: (company?.industry || company?.sicLabel || "").trim() || "Unclassified", verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, filing: isFresh(filing, now) ? filing : null, nextPrint: company ? nextPrint(p.criteria, company) : [], summary, checkedAt: now.toISOString() };
 }
 
 /** Most urgent first: broken, then watch, then unknown, then intact; lower score first within each. */
