@@ -308,12 +308,14 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
           <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Every thesis held to its numbers. Every AI answer on the record.</p>
           <p className="mt-2 max-w-[80ch] text-[12.5px] leading-relaxed text-muted">Nearly every fund now uses AI; few can show what it did, or prove it. YouBank checks the book against primary sources after every close, works inside the AI apps your team already uses, and keeps a record your compliance desk can verify without trusting us.</p>
         </Reveal>
-        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {[
             { icon: "Briefcase", t: "The Book", b: "Each position's thesis comes with the numbers that would prove it wrong. After every US close they are checked against SEC filings and the price, with the figure, its period and the source. You hear the day a thesis breaks, see the revenue the next report must show, and a red team argues the other side with citations." },
             { icon: "Activity", t: "Risk before and after the trade", b: "Beta-adjusted net, value at risk, the names that are really one bet, and today's book replayed through COVID, 2022 and April 2025. Check a trade before you make it: what it does to the book, and what it moves with." },
             { icon: "Bot", t: "In Claude, ChatGPT and your agents", b: "YouBank is an MCP server: fundamentals, filings and what changed in them, comps, insiders, your own book and its risk, called from the AI app you already use. Every figure comes back cited. Your agents can propose a position; nothing enters the book until you review it." },
-            { icon: "ScrollText", t: "A research ledger", b: "Every AI answer and AI-app call is kept with its prompt, model and sources, hash-chained so any edit shows, and anchored outside YouBank every day. Reviewers sign off on entries, and a one-page governance report answers the DDQ question about AI." },
+            { icon: "Users", t: "An AI committee, kept score", b: "A bull and a bear write sourced briefs on a position without seeing each other; a chair recommends add, hold, trim or exit and names the dissent. Its forecasts are scored against yours, and a track record separates wins your process earned from lucky ones." },
+            { icon: "Newspaper", t: "Letters and DDQs, checked", b: "Draft the quarterly LP letter from the book and the track record, and answer an LP's AI questions from the ledger. A compliance pass reads every edit for promises, performance without a period and AI claims you can't back. A first read; your compliance officer signs off." },
+            { icon: "ScrollText", t: "A research ledger", b: "Every AI answer and AI-app call is kept with its prompt, model and sources, hash-chained so any edit shows, and can be anchored outside YouBank every day. Reviewers sign off on entries, and a one-page governance report answers the DDQ question about AI." },
           ].map((x, i) => (
             <Reveal key={x.t} delay={i * 60}>
               <div className="h-full panel p-4">
