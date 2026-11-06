@@ -67,7 +67,7 @@ export function ConnectAISettings() {
       <section className="panel p-4">
         <div className="flex items-center gap-2"><Icon name="Bot" className="h-4 w-4 text-accent" /><h2 className="text-[14px] font-semibold">Use YouBank from your AI apps</h2></div>
         <p className="mt-1 text-[12.5px] text-muted">
-          YouBank is an MCP server: Claude, ChatGPT, Cursor and your own agents can call its research tools under your account. Every figure comes back with the filing, XBRL fact or price feed it is from, so an answer written elsewhere can be checked the same way as one written here. Read-only: nothing trades, sends or changes.
+          YouBank is an MCP server: Claude, ChatGPT, Cursor and your own agents can call its research tools under your account. Every figure comes back with the filing, XBRL fact or price feed it is from, so an answer written elsewhere can be checked the same way as one written here. Nothing trades, sends or changes your data: an app can only propose a position, which waits in your Book until you add it.
         </p>
         <ul className="mt-3 grid gap-x-4 gap-y-1 text-[12px] sm:grid-cols-2">
           {TOOLS.map(([t, d]) => <li key={t}><span className="font-semibold">{t}</span> <span className="text-muted">· {d}</span></li>)}

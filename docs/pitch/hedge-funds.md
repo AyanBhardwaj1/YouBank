@@ -38,6 +38,13 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **Checked on every load, against primary sources.** Each criterion is checked against the company's SEC XBRL filings and the price. YouBank shows the figure, its period and a link to the source. The thesis then reads *intact*, *on watch* (within 3 points of a percentage threshold, or 10% of any other) or *broken*, with the most urgent first. This costs no AI.
 - **The book at a glance.** Gross, net, long and short exposure; how much of NAV sits in a thesis that is broken or on watch; P&L since entry; the headroom to every kill criterion ("+4.7 pts", "−3.2 pts"); how long each verdict has held; the next earnings date and other dated catalysts; and this week's news for each name.
 - **Concentration.** Exposure by industry (long, short and net), so it is visible when a book is one sector bet.
+- **Risk and stress tests.** From a year of daily closes and today's weights:
+  - beta-adjusted net exposure, so a fall of 10% in the S&P 500 reads as a % of NAV;
+  - volatility, and a one-day 95% value at risk and expected shortfall, taken from the book's own history rather than a normal curve;
+  - each name's share of the book's risk, where a hedge shows as a negative share;
+  - pairs that move together: two longs that are one bet in two tickets, or a short that really hedges a long;
+  - today's book replayed through the COVID crash, the 2022 rate shock, SVB, the 2024 yen carry unwind and the April 2025 tariff shock, each name with its own move. A name that was not trading then is listed as left out, never counted as flat.
+- **What the next report must show.** For a revenue criterion, YouBank works out the revenue the coming quarter needs for the criterion to hold once that quarter enters the twelve months. For example: "At least $1,140M next quarter (+14% y/y; last quarter +21%) keeps LTM growth at or above 20%." It comes from the last eight quarters on SEC XBRL and is said only when those quarters add up to the reported LTM. It appears on the position, in the day-before-earnings alert and in the report.
 - **New filings, read for you.** When a held company files a 10-Q or 10-K, YouBank compares its risk factors with the previous filing and says what was added, removed or reworded. It shows on the position, and its holders get one alert.
 - **A report to hand over.** A printable one-pager for an investment committee or an LP letter: exposure, then every thesis with its evidence and the red team's case.
 - **Red team.** One click runs an agent briefed as a short seller (or as a bull, for a short). It makes the strongest sourced case against the thesis, names the weakest pillar, and lists the signals that would prove the thesis wrong. It works alone, by design (see Okawa, above).
@@ -45,11 +52,12 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **For the whole team.** Each member chooses whether to share their book with their team. The team view (read-only) shows every shared position with its owner, each member's exposure, and any name one member holds long while another is short.
 - **Say it in plain words.** "Long Snowflake: growth back above 20%, gross margin past 70%, out below $150" becomes a position with three kill criteria to check and change before saving. Thresholds the AI chose itself are marked "suggested", and the output passes the same validation as any saved position.
 - **In minutes, not an afternoon.** Paste rows from a spreadsheet or an OMS export, in any column order. Each position starts with sensible kill criteria. For a demo, "Try a sample book" loads five well-known names.
+- **Agents propose, the PM decides.** A connected AI app (Claude, ChatGPT, an in-house agent) can propose a position with its thesis, kill criteria and reasoning (`propose_position`). It lands on the Book page marked with the app that sent it, and nothing enters the book until the person reviews it in the editor and saves it. The proposal and the reasoning behind it are in the research ledger.
 - **Why it is different.** Research tools answer questions and agents investigate. The Book holds the fund to what it said it believed, and flags the moment the numbers say otherwise. Templates (growth, compounder, value, short) take a new user from nothing to a monitored book in minutes. Multi-day agent investigations remain in Edge → Theses.
 
 ### YouBank inside the fund's own AI apps: an MCP server (`/api/mcp`, Settings → Connect AI apps)
 
-- **What it offers.** Seventeen read-only tools over the Model Context Protocol (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
+- **What it offers.** Nineteen tools over the Model Context Protocol, eighteen of them read-only, (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
   - SEC XBRL fundamentals and comps;
   - filing search and reading, EDGAR full text and recent filings;
   - XBRL time series and insider transactions;
@@ -58,6 +66,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - a calculator and news for a ticker;
   - the person's **Book**, with every thesis checked;
   - `check_thesis`: any kill criteria checked against filings and the price on demand, without saving.
+  - `book_risk`: the book's beta, VaR, stacked bets and stress replays;
+  - `propose_position`: the one tool that writes, and all it writes is a proposal for the person to review (MCP marks it not read-only and not destructive).
 - **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing* and *Earnings prep* appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
 - **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration, for public and confidential clients. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
@@ -90,10 +100,13 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Open the broken one and show the failed criterion, the figure, its period, the headroom (how far past the line), and the link to the XBRL facts.
    - Point at "By industry" (the book's real sector bet) and at any "New 10-Q" card: what changed in the risk factors, read the evening it was filed.
    - Write a position in plain words ("Long Costco: comps hold above 5%, insiders not selling more than $20M") and press "Draft it".
+   - Open "Risk and stress tests": the beta-adjusted net, the one-day VaR, the two longs that are really one bet, and what today's book would have lost in the COVID crash and the 2022 rate shock.
+   - On a name reporting soon, point at "What the next report must show": the revenue number to watch on the call.
    - Run the red team. While it works, point at the exposure strip.
 3. **Connect AI apps.**
    - In Claude, add a custom connector with the server URL, approve it on YouBank's consent page, and watch the new key appear in Settings. Or make a key and paste the Claude Code line.
    - In Claude, pick the *Review my book* prompt, or ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
+   - Ask Claude to research a short idea and "propose it to my book". Refresh the Book: the proposal is there, marked "from Claude", with its reasoning. Press "Review and add", change the weight, and save.
 4. **Research ledger.**
    - Turn it on and show the MCP call from step 3 already recorded.
    - Approve it, then press "Check the chain".
@@ -105,6 +118,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank. Daily anchors by email make that automatic: they are sent from the person's own connected mailbox, optionally copied to a compliance address. A public timestamp service (such as OpenTimestamps) is a follow-up.
 - **MCP sign-in is tested with the official MCP SDK, not yet with each vendor.** The OAuth flow (discovery, registration, PKCE, consent, token) passes end to end with the official MCP TypeScript SDK client. It has not yet been tried against Claude.ai's and ChatGPT's live connector UIs, so try it once on the deployed preview before the pitch. Tokens do not expire; they are revoked in Settings.
 - **The Book checks LTM fundamentals, price and insider selling.** It does not check estimates, intra-quarter KPIs or alternative data yet. Insider selling (Form 4 open-market sales less purchases over 90 days) is shown only when every filing in the window was read; otherwise it reads as no data. It is worked out after each close and when such a position is saved, and 10b5-1 plan sales are not told apart.
+- **Risk is historical.** VaR, beta and the stress replays use daily closes with today's weights. They are not a factor model and not a forecast, and they leave out names with under six months of prices. "What the next report must show" covers revenue criteria only; margins need more than revenue to project.
 - **Not an order-management system.** Positions are entered by hand. There is no broker sync for the Book, and the Book places no trades.
 - **Research figures.** The 95% adoption figure is from AIMA's 2025 generative-AI research, not the 2026 emerging-manager survey. An often-repeated "17% credit AI with performance" figure could not be traced to a primary source and is not used here.
 
