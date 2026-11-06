@@ -45,7 +45,8 @@ export default async function LetterPage() {
     // The PM's own journal notes (not YouBank's automatic entries), open and closed positions, newest first.
     // A close's own note is already in "What we closed", so it is not quoted again here.
     notes: [...book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...closed.map((c) => ({ ticker: c.ticker, log: (c.log ?? []).filter((e) => !(e.at === c.closedAt && e.text === c.note)) }))]
-      .flatMap((x) => notesOf(x.log).map((n) => ({ ticker: x.ticker, ...n })))
+      // Only the PM's words: the changes beside them (sizes, entries, forecasts) stay on internal pages.
+      .flatMap((x) => notesOf(x.log).map((n) => ({ ticker: x.ticker, at: n.at, text: n.text })))
       .sort((a, b) => b.at.localeCompare(a.at)),
   });
   return (

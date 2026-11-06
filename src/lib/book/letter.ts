@@ -22,7 +22,7 @@ export type LetterInput = {
   risk: { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null } | null;
   ai: { outputs: number; reviewedShare: number | null; verifiedShare: number | null; ledgerOn: boolean } | null;
   /** The PM's own decision-journal notes from the period (not YouBank's automatic entries), newest first. */
-  notes?: { ticker: string; at: string; text: string; /** The changes saved with the note. */ with?: string }[];
+  notes?: { ticker: string; at: string; text: string }[];
 };
 
 const pct = (x: number, d = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(d)}%`;
@@ -53,7 +53,7 @@ export function draftLetter(i: LetterInput): string {
   const notes = (i.notes ?? []).filter((n) => Date.parse(n.at) >= i.now.getTime() - 92 * 86_400_000).slice(0, 6);
   if (notes.length) {
     lines.push(``, `## Decisions, in our words at the time`);
-    for (const n of notes) lines.push(`- **${n.ticker}**, ${n.at.slice(0, 10)}${n.with ? ` (${n.with})` : ""}: "${n.text}"`);
+    for (const n of notes) lines.push(`- **${n.ticker}**, ${n.at.slice(0, 10)}: "${n.text}"`);
     lines.push(`[Pick the ones that show how we think; each is from the position's dated decision journal.]`);
   }
   lines.push(``, `## Our process, measured`);

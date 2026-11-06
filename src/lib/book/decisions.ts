@@ -53,13 +53,25 @@ export function changesOf(prev: Position | null, next: Position): string[] {
 }
 
 /**
- * The PM's own notes, each with the changes saved alongside it (same moment), so a quoted note keeps its
- * context: "Sized up after the call" beside "Weight 3% → 5% of NAV". An AI app's proposal entry is not
- * context for the PM's words and is left out.
+ * An entry YouBank wrote for a change the PM made (not the AI committee's sitting, not an AI app's proposal):
+ * the changes a note from the PM is expected to explain.
+ */
+export const isPmChange = (e: LogEntry) => !!e.auto && !/^(AI committee:|Proposed by )/.test(e.text);
+
+/**
+ * The PM's own notes, each with the changes it explains, so a quoted note keeps its context: "Sized up after
+ * the call" beside "Weight 3% → 5% of NAV". Those are the PM's changes saved with the note or since the
+ * previous note, within the week before it (a note typed in the journal after a resize answers that resize).
  */
 export function notesOf(log: LogEntry[]): { at: string; text: string; with?: string }[] {
-  return log.filter((e) => !e.auto).map((e) => {
-    const same = log.filter((x) => x.auto && x.at === e.at && !x.text.startsWith("Proposed by ")).map((x) => x.text.replace(/\.$/, ""));
+  const sorted = [...log].sort((a, b) => a.at.localeCompare(b.at));
+  let prev = "";
+  return sorted.filter((e) => !e.auto).map((e) => {
+    const t = Date.parse(e.at);
+    const floor = Number.isFinite(t) ? new Date(t - 7 * 86_400_000).toISOString() : e.at;
+    const since = prev > floor ? prev : floor;
+    const same = sorted.filter((x) => isPmChange(x) && x.at <= e.at && (x.at > since || x.at === e.at)).map((x) => x.text.replace(/\.$/, ""));
+    prev = e.at;
     return { at: e.at, text: e.text, ...(same.length ? { with: same.join("; ") } : {}) };
   });
 }

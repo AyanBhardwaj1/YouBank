@@ -60,7 +60,7 @@ This is an honest look at YouBank as a startup selling to small hedge funds. It 
 | Weekly habit | Nothing to open when no alert fired | "The week in your book": changes, resolved forecasts, committee calls, the next two weeks |
 | Adding an AI app's proposal | The app's reasoning could end up looking like the PM's own note | The app's reasoning is recorded in its own name by the server; "Why?" stays the PM's |
 | Returning to the Book | No sense of what changed since the last visit | "Since you last looked": verdict changes and committee sittings since this browser's last snapshot |
-| Keeping the journal useful | Changes recorded with no reason; a broken thesis left alone with no one noticing | The week lists changes without a reason and broken theses with nothing done since (and how long); the note box asks for the missing reason; a quoted note carries the change it explained |
+| Keeping the journal useful | Changes recorded with no reason; a broken thesis left alone with no one noticing | The week lists changes without a reason and broken theses with nothing done since (and how long); the note box asks for the missing reason; on the week page a note carries the change it explained (the LP letter quotes the words only) |
 
 ## 6. What the research says to build (Nov 2026)
 

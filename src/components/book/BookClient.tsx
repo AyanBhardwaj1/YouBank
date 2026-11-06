@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { actedText, brokenNow } from "@/lib/book/discipline";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
@@ -22,7 +23,7 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import type { LogEntry } from "@/lib/book/decisions";
+import { isPmChange, type LogEntry } from "@/lib/book/decisions";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -205,8 +206,8 @@ function DecisionJournal({ log, id, readOnly, onChanged }: { log: LogEntry[]; id
   if (readOnly && !log.length) return null;
   const shown = all ? [...log].reverse() : [...log].reverse().slice(0, 4);
   // The newest entry is YouBank's record of a change, and the PM has not said why since: ask for it.
-  const newest = log.reduce<LogEntry | undefined>((a, x) => (!a || x.at >= a.at ? x : a), undefined);
-  const unexplained = newest?.auto && !log.some((x) => !x.auto && x.at >= newest.at) ? newest : undefined;
+  const newest = log.filter(isPmChange).reduce<LogEntry | undefined>((a, x) => (!a || x.at >= a.at ? x : a), undefined);
+  const unexplained = newest && !log.some((x) => !x.auto && x.at >= newest.at) ? newest : undefined;
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -357,6 +358,14 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-muted">
                   <span>{st.days === 0 ? `${word} since today` : `${word} for ${st.days} day${st.days === 1 ? "" : "s"} (since ${st.since})`} · {history.length} daily check{history.length === 1 ? "" : "s"}</span>
                   {scores.length > 1 && <Sparkline values={scores} width={96} height={18} stroke={st.verdict === "broken" ? "var(--neg)" : st.verdict === "watch" ? "var(--accent)" : "var(--pos)"} />}
+                  {(() => {
+                    // Broken: has anything been done since (a resize or a change of side, from the journal)?
+                    const b = position ? brokenNow([position], { [position.id]: history })[0] : undefined;
+                    if (!b) return null;
+                    return b.actedAfter === null
+                      ? <span className="font-semibold text-neg">Nothing done since the break</span>
+                      : <span>{actedText(b).replace(/^./, (c) => c.toUpperCase())}</span>;
+                  })()}
                 </div>
               );
             })()}

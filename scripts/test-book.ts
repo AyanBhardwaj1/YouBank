@@ -287,8 +287,8 @@ const letterEv = evaluate(t, co, d, [], now);
 const letter = draftLetter({ firm: "Northwind Capital", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [{ ...c1, closedAt: "2026-10-13T15:00:00.000Z" }], record: scorecard([c1]), calibration: calibration([{ ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }]), risk: { betaNet: 12.3, var95: 0.8, worst: { label: "COVID crash", pnl: -3.4 } }, ai: { outputs: 42, reviewedShare: 12, verifiedShare: 91, ledgerOn: true } });
 ok("the draft covers the book, closes, process, risk and AI use, with a disclaimer", ["## The book (Q4 2026)", "## What we closed, and why", "**SNOW**", "## Our process, measured", "Calibration of our conviction", "## Risk", "## How we use AI", "42 AI outputs", "91% of the figures", "Northwind Capital", "not fund performance"].map((x) => letter.includes(x)), Array(11).fill(true));
 {
-  const withNotes = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null, notes: [{ ticker: "SNOW", at: new Date(now.getTime() - 5 * 86_400_000).toISOString(), text: "Trimmed: margins slipped below plan", with: "Weight 5% → 3% of NAV" }, { ticker: "OLD", at: "2020-01-01T00:00:00Z", text: "too old" }] });
-  ok("the letter quotes the PM's own journal notes from the quarter, dated", [withNotes.includes("## Decisions, in our words at the time"), withNotes.includes('**SNOW**'), withNotes.includes('(Weight 5% → 3% of NAV): "Trimmed: margins slipped below plan"'), withNotes.includes("too old")], [true, true, true, false]);
+  const withNotes = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null, notes: [{ ticker: "SNOW", at: new Date(now.getTime() - 5 * 86_400_000).toISOString(), text: "Trimmed: margins slipped below plan" }, { ticker: "OLD", at: "2020-01-01T00:00:00Z", text: "too old" }] });
+  ok("the letter quotes the PM's own journal notes from the quarter, dated", [withNotes.includes("## Decisions, in our words at the time"), withNotes.includes('**SNOW**'), withNotes.includes('2026') && withNotes.includes(': "Trimmed: margins slipped below plan"'), withNotes.includes("too old")], [true, true, true, false]);
   ok("the quoted notes, with their changes, pass the compliance pass", lintLetter(withNotes, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
 }
 ok("the draft passes its own compliance pass", lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
@@ -374,12 +374,20 @@ console.log("The week in the book");
   ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
   const pJ = normalizePosition({ ...t, catalysts: [], id: "wkj1", ticker: "JRN", log: [{ at: "2026-11-05T10:00:00Z", text: "Sized down ahead of the print" }, { at: "2026-11-05T10:00:00Z", text: "Weight 4% → 2% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old note" }] })!;
   ok("the week lists the PM's own notes from the week with the change saved alongside, not YouBank's entries or older notes", weekBrief({ now: wNow, book: [pJ], evals: [], history: {}, closed: [], proposals: [] }).notes, [{ ticker: "JRN", on: "2026-11-05", text: "Sized down ahead of the print", with: "Weight 4% → 2% of NAV" }]);
+  ok("a note typed after a resize explains it; an earlier note's changes are not repeated; the AI committee is not the PM's change", notesOf([
+    { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-11-01T11:00:00Z", text: "first" },
+    { at: "2026-11-03T10:00:00Z", text: "AI committee: hold.", auto: true }, { at: "2026-11-04T10:00:00Z", text: "Weight 3% → 1% of NAV.", auto: true }, { at: "2026-11-04T12:00:00Z", text: "cut after the miss" },
+    { at: "2026-10-01T10:00:00Z", text: "Weight 1% → 2% of NAV.", auto: true },
+  ]).map((n) => [n.text, n.with ?? null]), [["first", "Weight 2% → 3% of NAV"], ["cut after the miss", "Weight 3% → 1% of NAV"]]);
   ok("a note's context leaves out an AI app's proposal entry", notesOf([{ at: "a", text: "Proposed by Claude, whose reasoning was: \"x\"", auto: true }, { at: "a", text: "Opened: long X.", auto: true }, { at: "a", text: "mine" }, { at: "b", text: "later" }]), [{ at: "a", text: "mine", with: "Opened: long X" }, { at: "b", text: "later" }]);
   const pU = normalizePosition({ ...t, catalysts: [], id: "wku1", ticker: "UNX", log: [{ at: "2026-11-06T10:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old reason" }] })!;
   const wU = weekBrief({ now: wNow, book: [pJ, pU], evals: [], history: {}, closed: [], proposals: [] });
   const pNew = normalizePosition({ ...t, catalysts: [], id: "wkn1", ticker: "NEW", log: [{ at: "2026-11-06T10:00:00Z", text: "Opened at 2% of NAV.", auto: true }] })!;
   ok("a position opened this week is not a change without a reason", weekBrief({ now: wNow, book: [pNew], evals: [], history: {}, closed: [], proposals: [] }).unexplained, []);
   ok("the week lists positions changed this week with no note on why, not ones the PM explained", wU.unexplained, [{ positionId: "wku1", ticker: "UNX", changes: ["Weight 3% → 5% of NAV."] }]);
+  const pAI = normalizePosition({ ...t, catalysts: [], id: "wka1", ticker: "AIC", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-05T10:00:00Z", text: "AI committee: hold, 70%.", auto: true }] })!;
+  const pLate = normalizePosition({ ...t, catalysts: [], id: "wkl1", ticker: "LAT", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-03T10:00:00Z", text: "monday note" }, { at: "2026-11-06T10:00:00Z", text: "Weight 2% → 4% of NAV.", auto: true }] })!;
+  ok("the AI committee's sitting is not the PM's change; a note earlier in the week does not explain a later change", weekBrief({ now: wNow, book: [pAI, pLate], evals: [], history: {}, closed: [], proposals: [] }).unexplained.map((u) => u.ticker), ["LAT"]);
   ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict.");
 }
 
@@ -540,10 +548,11 @@ console.log("Decision journal");
   const acted = normalizePosition({ ...t, id: "dsc1", ticker: "ACT", log: [{ at: "2026-11-12T15:00:00Z", text: "Thesis rewritten.", auto: true }, { at: "2026-11-13T15:00:00Z", text: "Weight 5% → 2% of NAV.", auto: true }] })!;
   const idle = normalizePosition({ ...t, id: "dsc2", ticker: "IDL", log: [{ at: "2026-11-01T15:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-11-16T15:00:00Z", text: "watching it" }] })!;
   const fine = normalizePosition({ ...t, id: "dsc3", ticker: "FIN" })!;
-  const hist = { ...H("dsc1", [["2026-11-09", "intact"], ["2026-11-10", "broken"], ["2026-11-11", "broken"]]), ...H("dsc2", [["2026-11-12", "intact"], ["2026-11-14", "broken"], ["2026-11-19", "broken"]]), ...H("dsc3", [["2026-11-14", "broken"], ["2026-11-19", "intact"]]) };
+  const hist = { ...H("dsc1", [["2026-11-09", "intact"], ["2026-11-10", "broken"], ["2026-11-11", "broken"], ["2026-11-19", "broken"]]), ...H("dsc2", [["2026-11-12", "intact"], ["2026-11-14", "broken"], ["2026-11-19", "broken"]]), ...H("dsc3", [["2026-11-14", "broken"], ["2026-11-19", "intact"]]) };
   const b = brokenNow([acted, idle, fine], hist, dNow);
   ok("broken now: nothing done first; a thesis edit, a note or a resize before the break is not acting on it; recovered positions are left out", b.map((x) => [x.ticker, x.since, x.actedAfter, x.days]), [["IDL", "2026-11-14", null, 6], ["ACT", "2026-11-10", 3, 10]]);
-  ok("broken now: one line", brokenNowLine(b), "Broken now: nothing done since the break on IDL (6 days); ACT resized 3 days after its break.");
+  ok("broken now: the action is named, and a stale broken reading (no data since) is not broken now", [b[1].action, brokenNow([fine], H("dsc3", [["2026-11-10", "broken"]]), dNow).length], ["cut", 0]);
+  ok("broken now: one line", brokenNowLine(b), "Broken now: nothing done since the break on IDL (6 days); ACT cut 3 days after the break.");
   ok("broken now: a break seen today reads as today", brokenNowLine(brokenNow([fine], H("dsc3", [["2026-11-20", "broken"]]), dNow)), "Broken now: nothing done since the break on FIN (broke today).");
   ok("broken now: nothing to say when no thesis is broken", brokenNowLine(brokenNow([fine], hist, dNow)), "");
 }

@@ -10,7 +10,7 @@ import { closedReturn, CLOSE_REASONS, forecastItems, type ClosedPosition } from 
 import type { Evaluation, Position, Verdict } from "./position";
 import type { Proposal } from "./proposals";
 import { DECISIONS, type Decision } from "./committee";
-import { notesOf } from "./decisions";
+import { isPmChange, notesOf } from "./decisions";
 
 export type WeekInput = { now: Date; days?: number; book: Position[]; evals: Evaluation[]; history: BookHistory; closed: ClosedPosition[]; proposals: Proposal[] };
 export type WeekBrief = {
@@ -92,9 +92,14 @@ export function weekBrief(i: WeekInput): WeekBrief {
 
   const unexplained = i.book
     .map((p) => ({ p, week: (p.log ?? []).filter((e) => inWeek(e.at.slice(0, 10))) }))
+    // The PM's changes this week made after their latest note (an AI committee sitting is not the PM's change).
     // Only positions held before the week: a book imported or opened this week is not a list of changes.
-    .filter(({ p, week }) => (p.log ?? []).some((e) => e.at.slice(0, 10) <= from) && week.some((e) => e.auto) && !week.some((e) => !e.auto))
-    .map(({ p, week }) => ({ positionId: p.id, ticker: p.ticker, changes: week.filter((e) => e.auto).map((e) => e.text) }))
+    .map(({ p, week }) => {
+      const lastNote = (p.log ?? []).filter((e) => !e.auto).reduce((m, e) => (e.at > m ? e.at : m), "");
+      return { p, open: week.filter((e) => isPmChange(e) && e.at > lastNote) };
+    })
+    .filter(({ p, open }) => open.length && (p.log ?? []).some((e) => e.at.slice(0, 10) <= from))
+    .map(({ p, open }) => ({ positionId: p.id, ticker: p.ticker, changes: open.map((e) => e.text) }))
     .sort((a, b) => a.ticker.localeCompare(b.ticker));
 
   const parts: string[] = [];
