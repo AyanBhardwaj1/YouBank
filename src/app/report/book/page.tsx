@@ -135,6 +135,7 @@ export default async function BookReport() {
                   {e.filing && <p className="mt-1.5"><span className="text-muted">New {e.filing.form} ({e.filing.filed}):</span> {filingLine(e.filing)}</p>}
                   {!!e.nextPrint?.length && <p className="mt-1.5"><span className="text-muted">Next report must show:</span> {e.nextPrint.map((b) => b.line).join(" ")}</p>}
                   {(e.catalysts.length > 0 || e.earnings) && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {[...(e.earnings ? [`Earnings${e.earnings.estimated ? " (estimated)" : ""} (${e.earnings.date})`] : []), ...e.catalysts.map((c) => `${c.label} (${c.date})`)].join("; ")}</p>}
+                  {p?.conviction && <p className="mt-1.5"><span className="text-muted">Our forecast ({p.conviction.at}{p.conviction.source !== "You" ? `, from ${p.conviction.source}` : ""}):</span> {Math.round(p.conviction.p * 100)}% that no kill criterion fails by {p.conviction.by}.</p>}
                   {p?.committee && (
                     <p className="mt-1.5"><span className="text-muted">AI committee ({p.committee.at.slice(0, 10)}):</span> <span className="font-semibold">{DECISIONS[p.committee.decision]}</span>{p.committee.forecast ? `, ${Math.round(p.committee.forecast.p * 100)}% that no kill criterion fails by ${p.committee.forecast.by}` : ""}. {p.committee.rationale}{p.committee.dissent ? <span className="text-muted"> Dissent: {p.committee.dissent}</span> : null}</p>
                   )}
