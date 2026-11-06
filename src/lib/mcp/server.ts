@@ -10,7 +10,7 @@
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
  * for a ticker, the person's Book with each thesis checked, the Book's risk (beta, VaR, correlated bets,
  * stress replays), any kill criteria checked on demand (check_thesis), and a position proposed for the person
- * to review (propose_position); plus six ready-made prompts. Web research is left out: it spends the
+ * to review (propose_position); plus seven ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */
@@ -297,6 +297,18 @@ export const PROMPTS: McpPrompt[] = [
     ].join("\n"),
   },
   {
+    name: "lp_commentary", title: "Draft LP commentary", description: "A short investor commentary on the book from its theses, track record and the week, run through YouBank's compliance check before it is shown.",
+    arguments: [{ name: "period", description: "e.g. Q4 2026 (optional)" }],
+    build: ({ period }) => [
+      `Draft a short commentary for our limited partners${period ? ` for ${period}` : ""}: the book, theses under pressure and why, what we closed and why, and how our process measured up.`,
+      "1. Call book_status, book_track_record and book_week for the facts. Use only figures the tools returned; position returns are price moves before costs, never fund performance.",
+      "2. Write under 350 words in plain language. No promises, no superlatives, no hypothetical results, and do not describe our AI use beyond what the tools show.",
+      "3. Call compliance_check with your draft. Fix every high finding and say how you handled each medium one. Then show the final text, followed by the findings that remain.",
+      "This is a draft for the PM to rewrite and the compliance officer to sign off.",
+      CITE,
+    ].join("\n"),
+  },
+  {
     name: "what_changed", title: "What changed in the latest filing", description: "New, dropped and reworded language in a company's latest 10-K or 10-Q against the one before, quoted.",
     arguments: [{ name: "ticker", description: "e.g. CRWD", required: true }, { name: "form", description: "10-K (default) or 10-Q" }],
     build: ({ ticker, form }) => [
@@ -358,7 +370,7 @@ export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy 
     resources: defs.some((t) => t.name === "propose_position") ? [PROPOSAL_CARD] : [],
     describeError: (e) => failureMessage(e, "mcp.tool"),
     // A prompt that names a tool this app may not use is not offered either.
-    prompts: PROMPTS.filter((p) => (p.build({ ticker: "X" }).match(/\b(?:book|propose)_[a-z_]+\b/g) ?? []).every((n) => defs.some((t) => t.name === n))),
+    prompts: PROMPTS.filter((p) => (p.build({ ticker: "X" }).match(/\b(?:(?:book|propose)_[a-z_]+|compliance_check)\b/g) ?? []).every((n) => defs.some((t) => t.name === n))),
     call: async (name, args) => {
       const t = defs.find((d) => d.name === name);
       if (!t) return { text: `Unknown tool ${name}.`, isError: true };
