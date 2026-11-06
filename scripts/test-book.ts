@@ -6,6 +6,7 @@ import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
+import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
@@ -206,6 +207,14 @@ if ("proposal" in pr) {
   for (let i = 0; i < 14; i++) { const x = proposalFrom({ ticker: `T${String.fromCharCode(65 + i)}`, direction: "long", thesis: "A thesis here." }, "a", now); if ("proposal" in x) many = withProposal(many, { ...x.proposal, id: `pr-${i}-abcd` }); }
   ok("at most ten are kept, newest first; stored junk is dropped", [many.length, many[0].position.ticker, normalizeProposals([...many, { id: "x" }, null, { ...many[0] }]).length], [PROPOSALS_MAX, "TN", PROPOSALS_MAX]);
 }
+
+console.log("calendar");
+const calEv = { ...evaluate({ ...t, id: "abcd", catalysts: [{ id: "c1", label: "Investor day; Q&A, live", date: "2026-11-20" }, { id: "c0", label: "Past", date: "2026-11-01" }] }, co, d, [], now, { date: "2026-11-19", estimated: true }), nextPrint: [{ criterionId: "g", metric: "revenue_growth" as const, op: ">=" as const, need: 1140, yoy: 0.14, lastYoy: 0.21, yearAgo: "Q5", settled: false, line: "At least $1,140M of revenue next quarter keeps it." }] };
+const ics = bookCalendar([calEv], "https://youbank.example", now);
+const vevents = ics.split("BEGIN:VEVENT").length - 1;
+ok("an all-day event for the next earnings and each coming catalyst (not past ones), with CRLF lines", [vevents, ics.includes("DTSTART;VALUE=DATE:20261119\r\nDTEND;VALUE=DATE:20261120"), ics.includes("SUMMARY:SNOW earnings (estimated)"), ics.includes("SUMMARY:SNOW: Investor day\\; Q&A\\, live"), ics.endsWith("END:VCALENDAR\r\n"), ics.split("\r\n").every((l) => Buffer.byteLength(l, "utf8") <= 75)], [2, true, true, true, true, true]);
+ok("the earnings event says what the report must show and links to the position", [ics.replace(/\r\n /g, "").includes("What the report must show:\\nAt least $1\\,140M"), ics.replace(/\r\n /g, "").includes("URL:https://youbank.example/app/book?position=abcd")], [true, true]);
+ok("text escaping and folding (never inside a character)", [icsText("a;b,c\\d\ne"), fold("x".repeat(80)).split("\r\n ").map((l) => l.length), fold("é".repeat(40)).split("\r\n ").every((l) => !l.includes("\uFFFD"))], ["a\\;b\\,c\\\\d\\ne", [75, 5], true]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -630,6 +630,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
         <div className="flex gap-2">
           {!!data?.evaluations.length && <Link href="/report/book" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="FileText" className="h-3.5 w-3.5" />Report</Link>}
           {!!data?.evaluations.length && <a href="/api/book/export" download className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Download" className="h-3.5 w-3.5" />CSV</a>}
+          {!!data?.evaluations.length && <a href="/api/book/calendar" download title="Earnings dates and catalysts, for Outlook, Google or Apple Calendar" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Calendar" className="h-3.5 w-3.5" />Calendar</a>}
           <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); setReviewing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
           <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); setReviewing(null); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
         </div>
