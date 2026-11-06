@@ -1,4 +1,5 @@
 import { DECISIONS } from "@/lib/book/committee";
+import { sizingCheck } from "@/lib/book/sizing";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -97,6 +98,10 @@ export default async function BookReport() {
                 <p className="mt-0.5 text-[10.5px] text-muted">{risk.window ? `Daily closes ${risk.window.from} to ${risk.window.to}` : "Daily closes"}{risk.sources.length ? ` (${risk.sources.join(", ")})` : ""}; benchmark SPY.{risk.excluded.length ? ` Left out: ${risk.excluded.map((x) => `${x.ticker} (${x.reason})`).join(", ")}.` : ""}</p>
               </section>
             )}
+            {(() => {
+              const sz = sizingCheck(book.map((p) => ({ ticker: p.ticker, weight: p.weight, p: p.conviction?.p ?? null })));
+              return sz && sz.notes.length ? <p className="mt-3 text-[11.5px]"><span className="font-semibold">Sizing against conviction:</span> {sz.notes.join(" ")}</p> : null;
+            })()}
             <div className="mt-4 overflow-x-auto print:overflow-visible"><table className="w-full min-w-[520px] border-collapse text-[11.5px] [&_td]:pr-3 [&_th]:pr-3">
               <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1">Position</th><th>Side</th><th className="text-right">Weight</th><th className="text-right">Price</th><th className="text-right">Since entry</th><th className="pl-3">Thesis</th></tr></thead>
               <tbody>{evals.map((e) => (
