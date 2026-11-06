@@ -21,6 +21,7 @@ import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
+import { toothless } from "@/lib/book/quality";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -332,6 +333,10 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
               </table>
             </div>
           )}
+          {(() => {
+            const loose = toothless(ev.checks);
+            return loose.length ? <p className="text-[11.5px] text-muted"><span className="font-semibold text-accent">Unlikely ever to fire:</span> {loose.map((x) => `${x.label} (${x.room} of room)`).join("; ")}. A kill criterion that cannot fail does not test the thesis; {owner ? "its owner could tighten it" : "tighten it so it would catch the thesis going wrong"}.</p> : null;
+          })()}
           {ev.filing && (
             <div className="ctl border border-line bg-bg/60 p-2.5 text-[12px]">
               <div className="flex flex-wrap items-baseline gap-x-2"><span className="font-semibold">New {ev.filing.form}, filed {ev.filing.filed}</span><a href={ev.filing.url} target="_blank" rel="noreferrer" className="text-[11.5px] text-muted hover:text-fg hover:underline">Open the filing</a></div>
