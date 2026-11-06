@@ -33,7 +33,7 @@ function Snippet({ title, code }: { title: string; code: string }) {
       <div className="mb-1 flex items-center justify-between"><span className="text-[11.5px] font-semibold">{title}</span>
         <button type="button" className="text-[11px] text-muted hover:text-fg" onClick={() => { void navigator.clipboard?.writeText(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy"}</button>
       </div>
-      <pre className="ctl overflow-x-auto border border-line bg-bg p-2.5 text-[11px] leading-relaxed"><code>{code}</code></pre>
+      <pre tabIndex={0} aria-label={`${title} set-up`} className="ctl overflow-x-auto border border-line bg-bg p-2.5 text-[11px] leading-relaxed"><code>{code}</code></pre>
     </div>
   );
 }

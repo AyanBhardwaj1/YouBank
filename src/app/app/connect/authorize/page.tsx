@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { currentUser } from "@/lib/auth/user";
 import { originOf } from "@/lib/mcp/http";
-import { parseAuthorize } from "@/lib/mcp/oauth";
+import { isMetadataClientId, parseAuthorize } from "@/lib/mcp/oauth";
 import { getClient } from "@/lib/mcp/oauth-store";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +45,7 @@ export default async function Authorize({ searchParams }: { searchParams: Promis
       <div className="mx-auto mt-10 max-w-md panel p-6 text-[13px]">
         <div className="flex items-center gap-2"><Icon name="Bot" className="h-5 w-5 text-accent" /><h1 className="text-[16px] font-semibold">Connect {client.client_name} to YouBank?</h1></div>
         <p className="mt-2 text-muted">{client.client_name} asks to use YouBank&apos;s research tools as <span className="text-fg">{user.email}</span>. You will be sent back to <span className="num text-fg">{back.host}</span>.</p>
+        <p className="mt-1.5 text-[11.5px] text-muted">The name is what the app says it is. {isMetadataClientId(client.client_id) ? <>It identifies itself from <span className="num text-fg">{new URL(client.client_id).host}</span>. </> : "It registered itself with YouBank. "}Connect only if you started this from the app, and you recognise where you will be sent back.</p>
         <ul className="mt-3 space-y-1.5">
           <li className="flex gap-2"><Icon name="Check" className="mt-0.5 h-4 w-4 shrink-0 text-pos" />Read company fundamentals, filings, comps, insiders, private raises and news, each with its source</li>
           <li className="flex gap-2"><Icon name="Check" className="mt-0.5 h-4 w-4 shrink-0 text-pos" />Read your Book: positions, theses and where each kill criterion stands</li>

@@ -52,8 +52,10 @@ async function isOn(userId: string): Promise<boolean> {
 export async function updateLedgerPrefs(userId: string, change: { on?: boolean; anchorEmail?: boolean; complianceEmail?: string; lastAnchor?: LastAnchor }): Promise<LedgerSettings> {
   let out = normalizeLedgerPrefs(null);
   if (change.complianceEmail && !emailOk(change.complianceEmail.trim())) throw Object.assign(new Error("That compliance address does not look like an email address."), { status: 400 });
+  let wasOn = false;
   await updateExtra(userId, (extra) => {
     const prev = normalizeLedgerPrefs(extra.ledger);
+    wasOn = prev.on;
     const on = change.on ?? prev.on;
     out = {
       ...prev, on, since: on ? (prev.on && prev.since ? prev.since : new Date().toISOString()) : null,
@@ -64,6 +66,11 @@ export async function updateLedgerPrefs(userId: string, change: { on?: boolean; 
     return { ...extra, ledger: out };
   });
   cache.set(userId, { at: Date.now(), on: out.on });
+  // Pauses are part of the record: a reviewer must see when recording was off, not just an intact chain.
+  if (change.on !== undefined && change.on !== wasOn) {
+    await append(userId, cleanContent({ kind: "note", subject: change.on ? "Recording started" : "Recording stopped", output: change.on ? "The person turned the research ledger on. AI answers and AI-app calls are recorded from here." : "The person turned the research ledger off. Nothing is recorded until it is turned on again.", meta: { recording: change.on } }))
+      .catch((e) => { if (!isMissingTable(e)) logError(e, { where: "ledger.note" }); });
+  }
   return out;
 }
 

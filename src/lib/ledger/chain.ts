@@ -36,14 +36,26 @@ export function entryHash(e: Omit<LedgerEntry, "hash">): string {
   return createHash("sha256").update(canonical(body)).digest("hex");
 }
 
-const clip = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : "");
+/**
+ * Text as Postgres keeps it exactly: no NUL (refused by text and jsonb) and no lone UTF-16 surrogate (a cut
+ * emoji, which the driver would store as U+FFFD and so change what was hashed). Cut at `n` code units
+ * without splitting a pair.
+ */
+export function storable(v: string, n = Infinity): string {
+  let t = v.replace(/\u0000/g, "").replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
+  if (t.length > n) { t = t.slice(0, n); if (/[\uD800-\uDBFF]$/.test(t)) t = t.slice(0, -1); }
+  return t;
+}
+const clip = (v: unknown, n: number) => (typeof v === "string" ? storable(v, n) : "");
+/** A JSON value with every string (keys too) made storable. */
+const storableJson = (v: unknown): Record<string, unknown> => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "string" ? storable(x) : x)), (_k, x) => x) as Record<string, unknown>;
 
 /** What an entry stores, cleaned and cut to the limits. */
 export function cleanContent(c: Partial<LedgerContent> & { kind: LedgerKind }): LedgerContent {
   return {
     kind: c.kind, subject: clip(c.subject, LIMITS.subject), model: clip(c.model, LIMITS.model), prompt: clip(c.prompt, LIMITS.prompt), output: clip(c.output, LIMITS.output),
     sources: (c.sources ?? []).filter((s) => s && typeof s.url === "string").slice(0, LIMITS.sources).map((s) => ({ id: clip(s.id, 8), label: clip(s.label, 300), url: clip(s.url, 600) })),
-    meta: c.meta && typeof c.meta === "object" ? JSON.parse(JSON.stringify(c.meta)) as Record<string, unknown> : {},
+    meta: c.meta && typeof c.meta === "object" ? storableJson(Object.fromEntries(Object.entries(c.meta).map(([k, x]) => [storable(k), x]))) : {},
   };
 }
 

@@ -1,6 +1,6 @@
 /** The research ledger's chain (src/lib/ledger/chain.ts): pnpm exec tsx scripts/test-ledger.ts */
 import { createHash } from "node:crypto";
-import { anchorMail, canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
+import { anchorMail, storable, canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -62,6 +62,14 @@ ok("pasted lines come back as anchors, any wording, deduped", parseAnchors(`${li
 const mail = anchorMail(line, 5, "https://youbank.example");
 ok("the anchor email carries the line, and pasting the email back finds it", [mail.subject, parseAnchors(mail.text)], ["YouBank research ledger anchor: entry 5", [{ seq: 5, hash: chain[4].hash }]]);
 ok("the email's HTML is escaped", anchorMail("<b>x</b> entry 1 " + "a".repeat(64), 1, "https://y").html.includes("<b>x</b>"), false);
+
+console.log("storable text");
+const emoji = "😀";
+ok("a cut never splits an emoji", [storable(`ab${emoji}`, 3), storable(`ab${emoji}`, 4)], ["ab", `ab${emoji}`]);
+ok("lone surrogates and NUL are made storable", [storable("a\uD83Db"), storable("a\u0000b"), storable("x\uDE00")], ["a\uFFFDb", "ab", "x\uFFFD"]);
+const long = cleanContent({ kind: "chat", output: "x".repeat(LIMITS.output - 1) + emoji, meta: { "k\u0000": ["v\uD83D"] }, sources: [{ id: "S1", label: "head\u0000line", url: "https://a" }] });
+ok("an answer cut at the limit survives a UTF-8 round trip unchanged", Buffer.from(long.output, "utf8").toString("utf8") === long.output && long.output.length === LIMITS.output - 1, true);
+ok("meta and sources are cleaned too", [JSON.stringify(long.meta), long.sources[0].label], [JSON.stringify({ k: ["v\uFFFD"] }), "headline"]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

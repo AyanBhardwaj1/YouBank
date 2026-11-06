@@ -3,7 +3,7 @@ import { withinRate } from "@/lib/locks";
 import { createKey } from "@/lib/mcp/store";
 import { json, oauthError, originOf, preflight } from "@/lib/mcp/http";
 import { pkceOk, resourceOf } from "@/lib/mcp/oauth";
-import { takeCode } from "@/lib/mcp/oauth-store";
+import { confirmClient, takeCode } from "@/lib/mcp/oauth-store";
 
 export const dynamic = "force-dynamic";
 
@@ -20,13 +20,14 @@ export async function POST(req: Request) {
   if (p("grant_type") !== "authorization_code") return oauthError("unsupported_grant_type", "Only authorization_code is supported.");
   const code = await takeCode(p("code"));
   if (!code) return oauthError("invalid_grant", "The code is unknown, used or expired.");
-  if (p("client_id") && p("client_id") !== code.client_id) return oauthError("invalid_grant", "The code was issued to another client.");
+  if (p("client_id") !== code.client_id) return oauthError("invalid_grant", "client_id is required and must be the client the code was issued to.");
   if (p("redirect_uri") !== code.redirect_uri) return oauthError("invalid_grant", "redirect_uri does not match the authorization request.");
   if (!pkceOk(p("code_verifier"), code.code_challenge)) return oauthError("invalid_grant", "The PKCE code_verifier does not match.");
   const origin = originOf(req.headers, req.url);
   if (p("resource") && p("resource").replace(/\/$/, "") !== resourceOf(origin)) return oauthError("invalid_target", `resource must be ${resourceOf(origin)}`);
   try {
-    const { key } = await createKey(code.userId, `${code.clientName} (connected)`);
+    const { key } = await createKey(code.userId, `${code.clientName} (connected)`, code.client_id);
+    await confirmClient(code.client_id).catch(() => undefined);
     return json({ access_token: key, token_type: "Bearer", scope: "mcp" });
   } catch (e) {
     return oauthError("invalid_request", e instanceof Error && (e as { status?: number }).status === 400 ? e.message : "The token could not be issued. Try again.");

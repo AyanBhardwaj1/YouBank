@@ -12,7 +12,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 export const KEYS_MAX = 10;
 export const KEY_PREFIX = "ybm_";
 
-export type StoredKey = { id: string; name: string; hint: string; hash: string; createdAt: string; lastUsedAt: string | null };
+export type StoredKey = { id: string; name: string; hint: string; hash: string; createdAt: string; lastUsedAt: string | null; /** The OAuth client it was issued to, when an app connected with sign-in. */ client?: string };
 /** What Settings shows: never the hash. */
 export type KeyView = Omit<StoredKey, "hash">;
 
@@ -57,8 +57,8 @@ export function normalizeKeys(raw: unknown): StoredKey[] {
     const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
     if (typeof o.id !== "string" || !/^[a-f0-9]{12}$/.test(o.id) || seen.has(o.id) || typeof o.hash !== "string" || !/^[a-f0-9]{64}$/.test(o.hash)) return [];
     seen.add(o.id);
-    return [{ id: o.id, name: cleanKeyName(o.name), hint: typeof o.hint === "string" ? o.hint.slice(0, 20) : KEY_PREFIX, hash: o.hash, createdAt: typeof o.createdAt === "string" ? o.createdAt : "", lastUsedAt: typeof o.lastUsedAt === "string" ? o.lastUsedAt : null }];
+    return [{ id: o.id, name: cleanKeyName(o.name), hint: typeof o.hint === "string" ? o.hint.slice(0, 20) : KEY_PREFIX, hash: o.hash, createdAt: typeof o.createdAt === "string" ? o.createdAt : "", lastUsedAt: typeof o.lastUsedAt === "string" ? o.lastUsedAt : null, ...(typeof o.client === "string" && o.client.length <= 500 ? { client: o.client } : {}) }];
   }).slice(0, KEYS_MAX);
 }
 
-export const viewOf = (k: StoredKey): KeyView => ({ id: k.id, name: k.name, hint: k.hint, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt });
+export const viewOf = (k: StoredKey): KeyView => ({ id: k.id, name: k.name, hint: k.hint, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, ...(k.client ? { client: k.client } : {}) });

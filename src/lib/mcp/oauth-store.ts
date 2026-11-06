@@ -1,17 +1,20 @@
 /**
  * OAuth clients and authorization codes for the MCP server (src/lib/mcp/oauth.ts), kept in kv_cache:
- * registered clients for a year, metadata-document clients for a day (then fetched again), and codes for
+ * registered clients for a week until one completes a sign-in (then a year), metadata-document clients for
+ * a day (then fetched again), and codes for
  * ten minutes. A code is taken with one DELETE … RETURNING, so it can be used once even when two token
  * requests race.
  */
 import { randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
-import { assertPublicUrl } from "@/lib/net";
+import { safePublicFetch } from "@/lib/net";
 import { CODE_TTL_MS, clientFrom, isMetadataClientId, type AuthorizeRequest, type OAuthClient } from "./oauth";
 
 const kv = schema.kvCache;
 const YEAR = 365 * 86_400_000, DAY = 86_400_000;
+/** A registration nobody completes a sign-in with is dropped after this; one that is used is kept a year. */
+const UNCONFIRMED = 7 * DAY;
 
 async function put(key: string, value: unknown, ttl: number) {
   const v = JSON.stringify(value);
@@ -26,16 +29,23 @@ async function get<T>(key: string): Promise<T | null> {
 export async function registerClient(body: unknown): Promise<{ client: OAuthClient } | { error: string }> {
   const id = `ybc_${randomBytes(16).toString("base64url")}`;
   const r = clientFrom(body, id);
-  if ("client" in r) await put(`oauth:client:${id}`, r.client, YEAR);
+  if ("client" in r) await put(`oauth:client:${id}`, r.client, UNCONFIRMED);
   return r;
+}
+
+/** A registered client that completed a sign-in: kept for a year from now. */
+export async function confirmClient(clientId: string): Promise<void> {
+  if (!/^ybc_/.test(clientId)) return;
+  const c = await get<OAuthClient>(`oauth:client:${clientId}`);
+  if (c) await put(`oauth:client:${clientId}`, c, YEAR);
 }
 
 /** A Client ID Metadata Document: fetched from its own URL (public addresses only), which must name itself. */
 async function fetchMetadataClient(clientId: string): Promise<OAuthClient | null> {
-  await assertPublicUrl(clientId);
-  const res = await fetch(clientId, { redirect: "error", signal: AbortSignal.timeout(5000), headers: { Accept: "application/json" } });
+  // Checked at connect time on every hop (DNS rebinding included), with a small body cap.
+  const res = await safePublicFetch(clientId, { timeoutMs: 5000, maxBytes: 64 * 1024, maxRedirects: 0, headers: { Accept: "application/json" } });
   if (!res.ok) return null;
-  const text = (await res.text()).slice(0, 20_000);
+  const text = await res.text();
   let doc: Record<string, unknown>;
   try { doc = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
   if (doc.client_id !== clientId) return null;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { parseAnchors } from "@/lib/ledger/chain";
-import { chainAnchors, checkAnchors, verifyAll } from "@/lib/ledger/store";
+import { chainAnchors, checkAnchors, verifyAll, type AnchorCheck } from "@/lib/ledger/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,7 +14,10 @@ export const maxDuration = 60;
 async function check(userId: string, text: string) {
   await rateLimit(`ledger-verify:${userId}`, 30, 3_600_000, "The ledger was checked many times this hour. Try again later.");
   const [chain, onChain, saved] = await Promise.all([verifyAll(userId), chainAnchors(userId), checkAnchors(userId, parseAnchors(text))]);
-  return NextResponse.json({ ...chain, anchors: [...saved, ...onChain], at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+  // An anchor cannot vouch for entries the chain itself says were changed: at or past the first bad entry it fails too.
+  const vouch = (a: AnchorCheck): AnchorCheck => (chain.ok || a.state !== "matches" || a.seq === null || a.seq < (chain.firstBad ?? Infinity) ? a
+    : { ...a, state: "differs", detail: `The hash at entry ${a.seq} still matches, but entry ${chain.firstBad} before it was changed after it was written, so this anchor cannot vouch for it.` });
+  return NextResponse.json({ ...chain, anchors: [...saved, ...onChain].map(vouch), at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function GET() {

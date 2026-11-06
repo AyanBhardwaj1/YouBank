@@ -17,10 +17,13 @@ export async function listKeys(userId: string): Promise<KeyView[]> {
 }
 
 /** A new key: the full key is returned once and never stored. */
-export async function createKey(userId: string, name: string): Promise<{ key: string; view: KeyView }> {
-  const { key, stored } = makeKey(userId, name);
+export async function createKey(userId: string, name: string, client?: string): Promise<{ key: string; view: KeyView }> {
+  const made = makeKey(userId, name);
+  const stored = client ? { ...made.stored, client } : made.stored;
+  const key = made.key;
   const saved = await updateExtra(userId, (extra) => {
-    const keys = normalizeKeys(extra.apiKeys);
+    // An app that connects again (a new device, the connector re-added) replaces its own key, not adds one.
+    const keys = normalizeKeys(extra.apiKeys).filter((k) => !client || k.client !== client);
     if (keys.length >= KEYS_MAX) throw status(`You can have ${KEYS_MAX} keys. Revoke one you no longer use to make another.`, 400);
     return { ...extra, apiKeys: [...keys, stored] };
   });

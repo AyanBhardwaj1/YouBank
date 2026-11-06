@@ -20,7 +20,7 @@ type Page = { available: boolean; settings: Settings; entries: LedgerEntry[]; to
 type Anchor = { seq: number | null; hash: string; source: string; state: "matches" | "differs" | "missing"; detail: string };
 type Check = { ok: boolean; checked: number; firstBad: number | null; problem: string; at: string; anchors?: Anchor[] };
 
-const KIND: Record<LedgerKind, string> = { chat: "AI answer", workflow: "Workflow", red_team: "Red team", mcp: "AI app (MCP)", signoff: "Review", note: "Note" };
+const KIND: Record<LedgerKind, string> = { chat: "AI answer", workflow: "Workflow", red_team: "Red team", mcp: "AI app (MCP)", signoff: "Review", note: "Recording" };
 const primary = "ctl bg-accent px-3 py-2 text-[12.5px] font-semibold text-accent-fg disabled:opacity-60";
 const ghost = "ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-60";
 /** An MCP result as stored (the tool's JSON, then its sources) with the JSON indented for reading. */
@@ -48,19 +48,19 @@ function Entry({ e, review, onSigned }: { e: LedgerEntry; review?: Page["reviewe
       </button>
       {open && (
         <div className="space-y-2 pb-3 pl-12 text-[12px]">
-          {e.kind === "signoff" ? (
+          {e.kind === "note" ? <p className="text-muted">{e.output}</p> : e.kind === "signoff" ? (
             <p>{String(e.meta.reviewer ?? "")} marked entry #{String(e.meta.ref)} <b>{String(e.meta.decision)}</b>{e.output ? `: “${e.output}”` : "."}</p>
           ) : (
             <>
               {e.prompt && <div><div className="text-[10.5px] uppercase tracking-wider text-muted">Asked</div><p className="whitespace-pre-wrap">{e.prompt.length > 1500 ? `${e.prompt.slice(0, 1500)}…` : e.prompt}</p></div>}
               <div><div className="text-[10.5px] uppercase tracking-wider text-muted">{e.kind === "mcp" ? "Returned" : "Answered"}{e.model ? ` · ${e.model}` : ""}</div>
-                {e.kind === "mcp" ? <pre className="ctl max-h-64 overflow-auto whitespace-pre-wrap break-words border border-line bg-bg p-2 text-[11px]">{pretty(e.output).slice(0, 6000)}</pre> : <div className="max-h-80 overflow-auto"><Markdown text={e.output} sources={e.sources} /></div>}
+                {e.kind === "mcp" ? <pre tabIndex={0} aria-label="What the tool returned" className="ctl max-h-64 overflow-auto whitespace-pre-wrap break-words border border-line bg-bg p-2 text-[11px]">{pretty(e.output).slice(0, 6000)}</pre> : <div className="max-h-80 overflow-auto"><Markdown text={e.output} sources={e.sources} /></div>}
               </div>
               {e.meta.figures != null && typeof e.meta.figures === "object" && (() => { const f = e.meta.figures as Record<string, number>; return <p className="text-[11px] text-muted">Figure check: {f.matched} of {f.checkable} figures matched a cited source{f.computed ? `, ${f.computed} computed` : ""}{f.noMatch ? `, ${f.noMatch} did not match` : ""}{f.uncited ? `, ${f.uncited} uncited` : ""}.</p>; })()}
             </>
           )}
           <p className="num break-all text-[10.5px] text-faint">hash {e.hash} · follows {e.prev ? e.prev.slice(0, 16) + "…" : "(first entry)"}</p>
-          {e.kind !== "signoff" && (
+          {e.kind !== "signoff" && e.kind !== "note" && (
             <div className="flex flex-wrap items-center gap-1.5">
               <input value={note} onChange={(x) => setNote(x.target.value)} maxLength={2000} placeholder="Review note (optional)" aria-label="Review note" className="ctl min-w-[200px] flex-1 border border-line bg-panel px-2 py-1.5 text-[12px] outline-none focus:border-accent" />
               <button type="button" disabled={busy} onClick={() => sign("approved")} className={ghost}>Approve</button>
