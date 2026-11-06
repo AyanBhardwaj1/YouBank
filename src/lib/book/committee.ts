@@ -59,8 +59,9 @@ export const CHAIR_SYSTEM = [
 ].join("\n");
 
 /** The chair's prompt: the evidence and both briefs, labelled. */
-export function chairPrompt(p: Position, ev: Evaluation | null, bull: string, bear: string): string {
-  return [`Position: ${p.direction} ${p.ticker}${p.weight !== null ? `, ${p.weight}% of NAV` : ""}.`, ...evidenceLines(p, ev), `--- Brief FOR (written alone) ---\n${bull.slice(0, 6000)}`, `--- Brief AGAINST (written alone) ---\n${bear.slice(0, 6000)}`].filter(Boolean).join("\n\n");
+export function chairPrompt(p: Position, ev: Evaluation | null, bull: string, bear: string, baseRate: { p: number; by: string } | null = null): string {
+  return [`Position: ${p.direction} ${p.ticker}${p.weight !== null ? `, ${p.weight}% of NAV` : ""}.`, ...evidenceLines(p, ev),
+    baseRate ? `A base rate to start from: from price volatility alone, there is a ${Math.round(baseRate.p * 100)}% chance the price lines in the kill criteria hold to ${baseRate.by}. It ignores the fundamental criteria; adjust from it, do not just repeat it.` : "", `--- Brief FOR (written alone) ---\n${bull.slice(0, 6000)}`, `--- Brief AGAINST (written alone) ---\n${bear.slice(0, 6000)}`].filter(Boolean).join("\n\n");
 }
 
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");

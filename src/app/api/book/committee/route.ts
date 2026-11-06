@@ -11,6 +11,8 @@ import { evaluateBook, loadBook, noteCommittee, setCommittee } from "@/lib/book/
 import { redTeamPrompt, type Position, type RedTeam } from "@/lib/book/position";
 import { bullPrompt, CHAIR_SYSTEM, ChairSchema, chairPrompt, committeeFrom, poolChairs } from "@/lib/book/committee";
 import { record } from "@/lib/ledger/store";
+import { cachedRisk } from "@/lib/book/risk-store";
+import { priceBaseRate } from "@/lib/book/baserate";
 import type { AiPrefs } from "@/lib/ai/models";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +84,11 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
     }), { admin }).then(({ text, sources }) => (text.trim() ? { at: new Date().toISOString(), text: text.slice(0, 8000), sources: sources.filter((s) => /^https:\/\//.test(s.url)).slice(0, 30) } : null));
   const [bull, bear] = await Promise.all([side(bullPrompt(position, ev ?? null), "bull", "book.committee.bull"), side(redTeamPrompt(position, ev ?? null), "bear", "book.committee.bear")]);
   if (!bull || !bear) throw new SittingError(error || "The committee could not finish its briefs just now. Try again in a minute.");
-  const prompt = chairPrompt(position, ev ?? null, bull.text, bear.text);
+  // A price base rate for the chairs to start from (baserate.ts), when today's risk is already worked out.
+  const by = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+  const vol = (await cachedRisk(await loadBook(userId)).catch(() => null))?.positions.find((x) => x.ticker === position.ticker)?.vol ?? null;
+  const base = priceBaseRate(position, ev?.price ?? null, vol, by, new Date());
+  const prompt = chairPrompt(position, ev ?? null, bull.text, bear.text, base ? { p: base.p, by } : null);
   const left = 285_000 - (Date.now() - t0);
   if (left < 20_000) throw new SittingError("The briefs took too long for the chair to sit. Try again in a minute.");
   // Three chairs sit independently, in parallel, and are pooled (committee.ts poolChairs): an ensemble of

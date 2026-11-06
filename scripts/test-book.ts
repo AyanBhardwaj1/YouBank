@@ -305,6 +305,7 @@ ok("a stored committee round-trips, keeps only https sources, and its forecast i
 ok("a malformed committee is dropped", [normalizeCommittee({ ...cm, decision: "buy" }), normalizeCommittee({ ...cm, bull: null }), normalizeCommittee(null)], [null, null, null]);
 const withCm = normalizePosition({ ...t, id: "cm01", committee: cm })!;
 ok("a position keeps its committee", withCm.committee?.decision, "trim");
+ok("the chair is given a base rate to adjust from, when there is one", [chairPrompt(withCm, null, "B", "R", { p: 0.63, by: "2027-02-04" }).includes("63% chance the price lines"), chairPrompt(withCm, null, "B", "R").includes("base rate")], [true, false]);
 ok("the bull is briefed with the thesis and the criteria; the chair sees both briefs, labelled", [bullPrompt(withCm, null).includes(withCm.thesis), bullPrompt(withCm, null).includes("FOR"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief FOR (written alone) ---\nBULLTEXT"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief AGAINST (written alone) ---\nBEARTEXT")], [true, true, true, true]);
 const both = normalizePosition({ ...withCm, conviction: { p: 80, by: "2027-02-04", at: "2026-11-06" } })!;
 const calCm = calibrationOf([both], { cm01: [{ d: "2026-11-20", v: "broken", s: 40 }] }, [], new Date("2026-12-01T00:00:00Z"));
