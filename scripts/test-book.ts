@@ -2,7 +2,7 @@
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
 import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
-import { byUrgency, checkCriterion, defaultTemplate, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
+import { byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -128,6 +128,12 @@ ok("percentages in points; past the line is negative", [growth.headroom?.shown, 
 ok("a price stop as a share of the stop", checkCriterion(t.criteria[2], co, d).headroom?.shown, "+20.0%");
 ok("an at-most criterion counts room downwards; a zero threshold uses the unit", [headroomOf({ id: "x", metric: "ev_revenue", op: "<=", value: 10 }, 8).shown, headroomOf({ id: "x", metric: "net_debt", op: "<=", value: 0 }, -400).shown], ["+20.0%", "+$400M"]);
 ok("no data, no headroom", checkCriterion({ id: "x", metric: "pe", op: "<=", value: 40 }, co, d).headroom, null);
+
+console.log("drafting from words");
+const drafted = draftToPosition({ ticker: "snow", direction: "long", thesis: "AI workloads re-accelerate consumption", pillars: ["AI data", ""], criteria: [{ metric: "revenue_growth", op: ">=", value: 20, note: "" }, { metric: "net_revenue_retention", op: ">=", value: 120, note: "" }, { metric: "gross_margin", op: ">=", value: 70, note: "suggested: margins must follow" }], catalysts: [{ label: "Q3", date: "next week" }], weight: 99, id: "attacker-id", redTeam: { at: "x", text: "y", sources: [] } });
+ok("a draft is cleaned like a saved position: unknown metrics, bad dates and server fields dropped", [drafted?.ticker, drafted?.criteria.map((c) => c.metric), drafted?.catalysts.length, drafted?.weight, drafted?.id === "attacker-id", !!drafted?.redTeam, drafted?.criteria[1].note], ["SNOW", ["revenue_growth", "gross_margin"], 0, null, false, false, "suggested: margins must follow"]);
+ok("no ticker, no draft", draftToPosition({ ticker: "", thesis: "x" }), null);
+ok("the brief lists every metric with its unit", ["revenue_growth", "ev_revenue", "US$ millions", "given as percent"].every((w) => DRAFT_SYSTEM.includes(w)), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

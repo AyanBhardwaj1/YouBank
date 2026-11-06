@@ -316,3 +316,20 @@ export const SAMPLE_BOOK: Omit<Position, "id" | "createdAt" | "updatedAt">[] = [
   { ticker: "SNOW", direction: "long", weight: 3, entry: null, thesis: "Sample: consumption growth re-accelerates as AI workloads land; margins must follow.", pillars: ["AI data workloads", "Net retention bottoms"], criteria: [{ id: "smpl-snow-1", metric: "revenue_growth", op: ">=", value: 20 }, { id: "smpl-snow-2", metric: "gross_margin", op: ">=", value: 70 }], catalysts: [] },
   { ticker: "INTC", direction: "short", weight: 3, entry: null, thesis: "Sample: foundry capex burns cash while revenue shrinks; the turnaround is priced before it shows.", pillars: ["Share loss in data centre", "Negative free cash flow"], criteria: [{ id: "smpl-intc-1", metric: "revenue_growth", op: "<=", value: 0 }, { id: "smpl-intc-2", metric: "fcf_margin", op: "<=", value: 0 }], catalysts: [] },
 ];
+
+/* ---------------- Drafting a position from plain words ---------------- */
+
+/** What the model is asked for (src/app/api/book/draft): every field is checked again by normalizePosition. */
+export const DRAFT_SYSTEM = [
+  "You turn an investor's own description of a position into a structured position with kill criteria: the numbers that would prove the thesis wrong.",
+  `Kill criteria use only these metrics: ${METRIC_KEYS.map((m) => `${m} (${METRICS[m].label}, ${METRICS[m].unit === "pct" ? "a percentage, given as percent: 20 means 20%" : METRICS[m].unit === "usdmm" ? "US$ millions" : METRICS[m].unit === "usd" ? "US$ per share" : METRICS[m].unit === "x" ? "a multiple" : "points"})`).join("; ")}.`,
+  "Each criterion is a metric, an operator (>= or <=) and a threshold: the line past which the thesis is wrong. For a long, growth and margin criteria are usually >=; for a short, usually <=.",
+  "Use the person's own numbers. Where they state a condition without a number, choose a reasonable threshold and say so in the note (\"suggested: …\"). Never invent facts about the company; do not state current figures.",
+  "The ticker is the US listing of the company they name. The thesis is one line in their words. Pillars are the reasons they give, short. Catalysts only when they name a dated event (YYYY-MM-DD).",
+].join("\n");
+
+/** A model's draft as a position the editor can show: cleaned, unknown metrics dropped, nothing saved. */
+export function draftToPosition(raw: unknown, now = new Date().toISOString()): Position | null {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return normalizePosition({ ...r, id: undefined, weight: null, entry: null, createdAt: undefined, updatedAt: undefined, redTeam: undefined }, now);
+}

@@ -54,6 +54,15 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
+  const [words, setWords] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const draftIt = async () => {
+    setDrafting(true); setErr("");
+    try {
+      const { draft } = await fetchJson<{ draft: Position }>("/api/book/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: words }) });
+      setD((x) => ({ ...draftOf(draft), id: undefined, weight: x.weight, entry: x.entry }));
+    } catch (e) { setErr(errorMessage(e)); } finally { setDrafting(false); }
+  };
   const save = async () => {
     setBusy(true); setErr("");
     try {
@@ -82,6 +91,16 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
           </div>
         )}
       </div>
+      {!d.id && (
+        <div className="ctl border border-line bg-bg/60 p-2.5">
+          <label htmlFor="book-words" className="text-[11.5px] font-semibold">Say it in your own words, and YouBank drafts the kill criteria</label>
+          <textarea id="book-words" value={words} onChange={(e) => setWords(e.target.value)} maxLength={2000} placeholder="Long Snowflake: AI workloads re-accelerate consumption back above 20% growth, and gross margin has to get past 70%. Out if the stock breaks $150." className={`${field} mt-1 min-h-[56px]`} />
+          <div className="mt-1.5 flex items-center gap-2">
+            <button type="button" disabled={drafting || words.trim().length < 12} onClick={draftIt} className="ctl border border-line px-2.5 py-1 text-[12px] hover:border-accent/60 disabled:opacity-50">{drafting ? "Drafting…" : "Draft it"}</button>
+            <span className="text-[11px] text-muted">Fills the form below to check and change; nothing is saved until you save. Thresholds it chose are marked &ldquo;suggested&rdquo;.</span>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <label className="text-[11px] text-muted">Ticker<input className={field} value={d.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase())} placeholder="SNOW" disabled={!!d.id} /></label>
         <label className="text-[11px] text-muted">Side
@@ -106,6 +125,7 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
               <input aria-label="Threshold" className={`${field} w-24`} inputMode="decimal" value={c.value} onChange={(e) => set("criteria", d.criteria.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder={unitHint(c.metric)} />
               <span className="w-6 text-[11px] text-muted">{unitHint(c.metric)}</span>
               <button type="button" aria-label="Remove criterion" className="text-muted hover:text-neg" onClick={() => set("criteria", d.criteria.filter((_, j) => j !== i))}><Icon name="X" className="h-3.5 w-3.5" /></button>
+              {c.note && <span className={`w-full pl-1 text-[10.5px] ${/^suggested/i.test(c.note) ? "text-accent" : "text-muted"}`}>{c.note}</span>}
             </div>
           ))}
           {d.criteria.length < 8 && <button type="button" className="text-[11.5px] text-accent" onClick={() => set("criteria", [...d.criteria, { metric: "gross_margin", op: ">=", value: "", note: "" }])}>+ Add a kill criterion</button>}
