@@ -226,6 +226,41 @@ function PositionCard({ ev, position, onEdit, onChanged }: { ev: Evaluation; pos
   );
 }
 
+/* ---------------- Getting a book in ---------------- */
+
+type ImportRes = { added: Position[]; skipped: string[]; problems: string[] };
+
+function Importer({ onDone, onCancel }: { onDone: (r: ImportRes) => void; onCancel: () => void }) {
+  const [text, setText] = useState("");
+  const [template, setTemplate] = useState("auto");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const go = async () => {
+    setBusy(true); setErr("");
+    try { onDone(await fetchJson<ImportRes>("/api/book/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, template }) })); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(false); }
+  };
+  return (
+    <section className="panel space-y-2.5 p-4" aria-label="Import positions">
+      <h2 className="text-[13px] font-semibold">Paste your positions</h2>
+      <p className="text-[12px] text-muted">Copy rows from a spreadsheet or your OMS: a ticker, long or short, the weight (% of NAV), the entry price and a thesis, in any order. A header row is fine. Tickers already in the book are kept as they are.</p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} aria-label="Positions" spellCheck={false} placeholder={"NVDA\tLong\t6%\t$118\tData-centre demand stays ahead of supply\nINTC\tShort\t3%\t$31\tFoundry capex burns cash"} className={`${field} num min-h-[120px]`} />
+      <label className="flex flex-wrap items-center gap-2 text-[12px] text-muted">Kill criteria to start with
+        <select value={template} onChange={(e) => setTemplate(e.target.value)} className={`${field} w-auto`}>
+          <option value="auto">Suggested: growth for longs, deteriorating for shorts</option>
+          {TEMPLATES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          <option value="none">None: I will write them</option>
+        </select>
+      </label>
+      {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={busy || !text.trim()} onClick={go} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">{busy ? "Importing…" : "Import"}</button>
+        <button type="button" onClick={onCancel} className="ctl px-3 py-1.5 text-[12px] text-muted hover:text-fg">Cancel</button>
+      </div>
+    </section>
+  );
+}
+
 /* ---------------- The page ---------------- */
 
 function Stat({ label, value, tone, hint }: { label: string; value: string; tone?: string; hint?: string }) {
@@ -241,10 +276,18 @@ export function BookClient() {
   const [data, setData] = useState<BookData | null>(null);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [note, setNote] = useState<ImportRes | null>(null);
+  const [sampling, setSampling] = useState(false);
   const load = useCallback(() => {
     fetchJson<BookData>("/api/book").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorMessage(e)));
   }, []);
   useEffect(() => { load(); }, [load]);
+  const sample = async () => {
+    setSampling(true); setErr("");
+    try { setNote(await fetchJson<ImportRes>("/api/book/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sample: true }) })); load(); }
+    catch (e) { setErr(errorMessage(e)); } finally { setSampling(false); }
+  };
   const byId = useMemo(() => new Map((data?.positions ?? []).map((p) => [p.id, p])), [data]);
   const s = data?.summary;
   return (
@@ -254,8 +297,22 @@ export function BookClient() {
           <h1 className="text-[18px] font-semibold">The Book</h1>
           <p className="text-[12.5px] text-muted">Every position with a thesis that can be proved wrong. Each kill criterion is checked against SEC filings and the market on every load, with the figure, its period and a link to the source.</p>
         </div>
-        <button type="button" onClick={() => setEditing(emptyDraft())} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
+          <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
+        </div>
       </header>
+
+      {importing && <Importer onCancel={() => setImporting(false)} onDone={(r) => { setImporting(false); setNote(r); load(); }} />}
+      {note && (
+        <div role="status" className="panel flex flex-wrap items-start gap-2 p-3 text-[12px]">
+          <span className="min-w-0 flex-1">
+            Added {note.added.length} position{note.added.length === 1 ? "" : "s"}{note.added.length ? `: ${note.added.map((p) => p.ticker).join(", ")}` : ""}.
+            {[...note.skipped, ...note.problems].length > 0 && <span className="text-muted"> {[...note.skipped, ...note.problems].join(" · ")}</span>}
+          </span>
+          <button type="button" aria-label="Dismiss" onClick={() => setNote(null)} className="text-muted hover:text-fg"><Icon name="X" className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
 
       {editing && <Editor key={editing.id ?? "new"} initial={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />}
 
@@ -276,12 +333,17 @@ export function BookClient() {
         </section>
       )}
 
-      {data && data.evaluations.length === 0 && !editing && (
+      {data && data.evaluations.length === 0 && !editing && !importing && (
         <section className="panel p-6 text-center">
           <Icon name="Briefcase" className="mx-auto h-6 w-6 text-accent" />
           <h2 className="mt-2 text-[14px] font-semibold">Put your book in, and YouBank watches every thesis</h2>
           <p className="mx-auto mt-1 max-w-xl text-[12.5px] text-muted">Write each position&apos;s thesis with the numbers that would prove it wrong: growth at least 20%, gross margin at least 70%, a price stop. YouBank checks them against the company&apos;s filings and price, flags the ones close to breaking, and can run a red team that argues the other side with sources.</p>
-          <button type="button" onClick={() => setEditing(emptyDraft())} className="ctl mt-3 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg">Add your first position</button>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={() => setEditing(emptyDraft())} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg">Add your first position</button>
+            <button type="button" onClick={() => setImporting(true)} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg">Paste from a spreadsheet</button>
+            <button type="button" disabled={sampling} onClick={sample} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-50">{sampling ? "Loading…" : "Try a sample book"}</button>
+          </div>
+          <p className="mt-2 text-[11px] text-faint">The sample book holds five well-known names with illustrative weights. Close any position to remove it.</p>
         </section>
       )}
 

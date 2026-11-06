@@ -75,3 +75,24 @@ export async function evaluateBook(book: Position[], now = new Date()): Promise<
     return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now);
   }).sort(byUrgency);
 }
+
+/**
+ * Add several positions at once (an import, or the sample book). A ticker already in the book is skipped,
+ * not overwritten; what does not fit under POSITIONS_MAX is reported. Returns what was added and skipped.
+ */
+export async function addPositions(userId: string, raws: unknown[]): Promise<{ added: Position[]; skipped: string[] }> {
+  const now = new Date().toISOString();
+  const added: Position[] = [], skipped: string[] = [];
+  await updateExtra(userId, (extra) => {
+    const list = normalizeBook(extra.book);
+    for (const raw of raws) {
+      const p = normalizePosition({ ...(raw as object), id: undefined }, now);
+      if (!p) continue;
+      if (list.some((x) => x.ticker === p.ticker)) { skipped.push(`${p.ticker} is already in the book`); continue; }
+      if (list.length >= POSITIONS_MAX) { skipped.push(`${p.ticker}: the book holds ${POSITIONS_MAX} positions`); continue; }
+      list.push(p); added.push(p);
+    }
+    return { ...extra, book: list };
+  });
+  return { added, skipped };
+}

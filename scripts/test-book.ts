@@ -1,7 +1,7 @@
 /** The Book (src/lib/book/position.ts): pnpm exec tsx scripts/test-book.ts */
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
-import { byUrgency, checkCriterion, evaluate, fmtMetric, normalizeBook, normalizePosition, POSITIONS_MAX, redTeamPrompt, summarize, TEMPLATES, type Position } from "@/lib/book/position";
+import { byUrgency, checkCriterion, defaultTemplate, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -82,6 +82,16 @@ ok("at-risk weight counts broken and watch", [book.verdicts.broken, book.atRiskW
 ok("P&L contribution weights each position", book.pnlContribution, 1.1);
 ok("an empty book has no P&L", summarize([]).pnlContribution, null);
 ok("every template normalizes", TEMPLATES.map((x) => normalizePosition({ ticker: "ABC", ...x })?.criteria.length), [3, 3, 3, 3]);
+
+console.log("getting a book in");
+const sheet = parseImport("Ticker\tSide\tWeight\tEntry\tThesis\nSNOW\tLong\t4.5%\t$150.00\tAI workloads re-accelerate consumption\ninTC\tshort\t3\t30\tFoundry burns cash\n\tlong\t2\t10\tno ticker here");
+ok("a pasted sheet: header skipped, cells read by what they hold", sheet.rows, [{ ticker: "SNOW", direction: "long", weight: 4.5, entry: 150, thesis: "AI workloads re-accelerate consumption" }, { ticker: "INTC", direction: "short", weight: 3, entry: 30, thesis: "Foundry burns cash" }]);
+ok("a line without a ticker is reported, not guessed", sheet.problems.length, 1);
+ok("column order is free; a negative weight is a short; quoted commas stay", parseImport('"Cheap, and getting cheaper", -2.5, BRK.B').rows, [{ ticker: "BRK.B", direction: "short", weight: 2.5, entry: null, thesis: "Cheap, and getting cheaper" }]);
+ok("semicolons; a bare ticker", parseImport("MSFT;5;410\nAAPL").rows.map((r) => [r.ticker, r.weight, r.entry]), [["MSFT", 5, 410], ["AAPL", null, null]]);
+ok("duplicates are reported; the cap holds", [parseImport("MSFT\nMSFT").problems.length, parseImport(Array.from({ length: 30 }, (_, i) => `T${String.fromCharCode(65 + (i % 26))}${i}`).join("\n")).rows.length], [1, POSITIONS_MAX]);
+ok("templates by side", [defaultTemplate("long").id, defaultTemplate("short").id], ["growth", "short"]);
+ok("the sample book is valid and says it is a sample", SAMPLE_BOOK.map((p) => { const n = normalizePosition({ ...p, id: `sample-${p.ticker.toLowerCase()}` }); return !!n && n.criteria.length === p.criteria.length && n.thesis.startsWith("Sample:"); }), [true, true, true, true, true]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

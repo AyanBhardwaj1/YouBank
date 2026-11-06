@@ -233,3 +233,68 @@ export const TEMPLATES: { id: string; label: string; direction: Direction; thesi
   { id: "value", label: "Value / re-rating", direction: "long", thesis: "Cheap on sales with a clean balance sheet; the multiple re-rates as margins recover.", criteria: [{ metric: "ev_revenue", op: "<=", value: 2 }, { metric: "net_debt", op: "<=", value: 0 }, { metric: "operating_margin", op: ">=", value: 5 }] },
   { id: "short", label: "Deteriorating short", direction: "short", thesis: "Growth is stalling while the valuation still prices in a recovery.", criteria: [{ metric: "revenue_growth", op: "<=", value: 5 }, { metric: "operating_margin", op: "<=", value: 10 }, { metric: "ev_revenue", op: ">=", value: 4 }] },
 ];
+
+/* ---------------- Getting a book in ---------------- */
+
+export type ImportRow = { ticker: string; direction: Direction; weight: number | null; entry: number | null; thesis: string };
+export type ImportResult = { rows: ImportRow[]; problems: string[] };
+
+const HEADER_WORDS = /^(ticker|symbol|name|side|direction|long|short|weight|entry|price|cost|thesis|notes?)$/i;
+
+/**
+ * Positions from text pasted out of a spreadsheet, an OMS export or typed by hand: one per line, cells
+ * split by tabs, commas or semicolons (quoted cells keep their commas). Cells are recognised by what they
+ * hold, so column order is free: a ticker; "long"/"short" (or L/S, or a negative weight for a short); the
+ * first number is the weight in % of NAV ("4.5" or "4.5%"), the second the entry price ("$150"); the
+ * longest text is the thesis. A header row is skipped. Lines that have no ticker are reported, not guessed.
+ */
+export function parseImport(text: string, max = POSITIONS_MAX): ImportResult {
+  const rows: ImportRow[] = [], problems: string[] = [];
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (const [i, line] of lines.entries()) {
+    const sep = line.includes("\t") ? "\t" : line.includes(";") && !line.includes(",") ? ";" : ",";
+    const cells: string[] = [];
+    let cur = "", q = false;
+    for (const ch of line) {
+      if (ch === '"') q = !q;
+      else if (ch === sep && !q) { cells.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    cells.push(cur.trim());
+    if (i === 0 && cells.filter(Boolean).every((c) => HEADER_WORDS.test(c.replace(/[^a-z ]/gi, "").trim().split(" ")[0] ?? ""))) continue;
+    let ticker: string | null = null, direction: Direction | null = null, thesis = "";
+    const nums: number[] = [];
+    for (const c of cells) {
+      if (!c) continue;
+      if (/^(long|buy|l)$/i.test(c)) { direction = "long"; continue; }
+      if (/^(short|sell|s)$/i.test(c)) { direction = "short"; continue; }
+      const n = Number(c.replace(/[$%,\s]/g, ""));
+      if (/^[-+]?\$?[\d,]*\.?\d+%?$/.test(c.replace(/\s/g, "")) && Number.isFinite(n)) { nums.push(n); continue; }
+      if (!ticker && /^\$?[A-Za-z][A-Za-z0-9]{0,9}([.-][A-Za-z0-9]{1,3})?$/.test(c) && c.length <= 11) { const t = tickerOf(c); if (t) { ticker = t; continue; } }
+      if (c.length > thesis.length) thesis = c;
+    }
+    if (!ticker) { problems.push(`Line ${i + 1}: no ticker found in “${line.slice(0, 60)}”.`); continue; }
+    const w = nums[0] ?? null;
+    if (w !== null && w < 0 && !direction) direction = "short";
+    if (rows.some((r) => r.ticker === ticker)) { problems.push(`Line ${i + 1}: ${ticker} appears twice; kept the first.`); continue; }
+    if (rows.length >= max) { problems.push(`Only ${max} positions fit; ${ticker} and later lines were left out.`); break; }
+    rows.push({ ticker, direction: direction ?? "long", weight: w === null ? null : Math.abs(w) || null, entry: nums[1] && nums[1] > 0 ? nums[1] : null, thesis: thesis.slice(0, 280) });
+  }
+  return { rows, problems };
+}
+
+/** The template a new position starts from when it has no criteria of its own: growth for a long, the short template for a short. */
+export const defaultTemplate = (d: Direction) => TEMPLATES.find((t) => t.id === (d === "short" ? "short" : "growth"))!;
+
+/**
+ * A sample book for trying the Book (and for demos): five well-known names with theses and kill criteria
+ * written the way a desk would. Marked as a sample in each thesis so it is never mistaken for advice;
+ * prices and weights are illustrative.
+ */
+export const SAMPLE_BOOK: Omit<Position, "id" | "createdAt" | "updatedAt">[] = [
+  { ticker: "NVDA", direction: "long", weight: 6, entry: null, thesis: "Sample: data-centre demand keeps growth far above 30% while gross margin holds in the 70s.", pillars: ["Hyperscaler capex keeps rising", "Software and networking deepen the moat"], criteria: [{ id: "smpl-nvda-1", metric: "revenue_growth", op: ">=", value: 30 }, { id: "smpl-nvda-2", metric: "gross_margin", op: ">=", value: 70 }], catalysts: [] },
+  { ticker: "CRWD", direction: "long", weight: 4, entry: null, thesis: "Sample: platform consolidation keeps growth above 20% with expanding free cash flow.", pillars: ["Module attach rates rise", "Vendor consolidation favours platforms"], criteria: [{ id: "smpl-crwd-1", metric: "revenue_growth", op: ">=", value: 20 }, { id: "smpl-crwd-2", metric: "fcf_margin", op: ">=", value: 20 }, { id: "smpl-crwd-3", metric: "gross_margin", op: ">=", value: 72 }], catalysts: [] },
+  { ticker: "COST", direction: "long", weight: 5, entry: null, thesis: "Sample: membership economics compound steadily; the premium multiple is earned by consistency.", pillars: ["Renewal rates above 90%", "Traffic-led comps"], criteria: [{ id: "smpl-cost-1", metric: "revenue_growth", op: ">=", value: 5 }, { id: "smpl-cost-2", metric: "operating_margin", op: ">=", value: 3 }], catalysts: [] },
+  { ticker: "SNOW", direction: "long", weight: 3, entry: null, thesis: "Sample: consumption growth re-accelerates as AI workloads land; margins must follow.", pillars: ["AI data workloads", "Net retention bottoms"], criteria: [{ id: "smpl-snow-1", metric: "revenue_growth", op: ">=", value: 20 }, { id: "smpl-snow-2", metric: "gross_margin", op: ">=", value: 70 }], catalysts: [] },
+  { ticker: "INTC", direction: "short", weight: 3, entry: null, thesis: "Sample: foundry capex burns cash while revenue shrinks; the turnaround is priced before it shows.", pillars: ["Share loss in data centre", "Negative free cash flow"], criteria: [{ id: "smpl-intc-1", metric: "revenue_growth", op: "<=", value: 0 }, { id: "smpl-intc-2", metric: "fcf_margin", op: "<=", value: 0 }], catalysts: [] },
+];
