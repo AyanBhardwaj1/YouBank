@@ -1,6 +1,6 @@
 /** The research ledger's chain (src/lib/ledger/chain.ts): pnpm exec tsx scripts/test-ledger.ts */
 import { createHash } from "node:crypto";
-import { canonical, cleanContent, entryHash, exportJsonl, LIMITS, nextEntry, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
+import { canonical, cleanContent, entryHash, exportJsonl, headLine, LIMITS, nextEntry, parseAnchors, signoffContent, verifyChain, type LedgerEntry } from "@/lib/ledger/chain";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -54,6 +54,11 @@ for (const l of lines) {
   prev = l.hash as string;
 }
 ok("the export checks out by its own recipe, without YouBank's code", good, true);
+
+console.log("anchors");
+const line = headLine("ana@fund.com", chain[4]);
+ok("the head line names the entry and its hash", [line.includes("entry 5"), line.includes(chain[4].hash)], [true, true]);
+ok("pasted lines come back as anchors, any wording, deduped", parseAnchors(`${line}\n${line}\nentry #2: ${chain[1].hash.toUpperCase()}\nno hash here entry 3`), [{ seq: 5, hash: chain[4].hash }, { seq: 2, hash: chain[1].hash }]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

@@ -92,7 +92,7 @@ export async function recordNotarization(userId: string, input: { sha256: string
   const chain = isChainKey(input.chain) && isEvmKey(input.chain) ? input.chain : "base";
   const [row] = await requireDb().insert(schema.cryptoNotarizations).values({
     userId, sha256: sha, txHash: input.txHash.toLowerCase(), fromAddress: from.address, chain, subject: (input.subject ?? "").slice(0, 200),
-    kind: input.kind === "studio" ? "studio" : "document", studioDocId: input.studioDocId ?? null, studioEventId: input.studioEventId ?? null,
+    kind: input.kind === "studio" ? "studio" : input.kind === "ledger" ? "ledger" : "document", studioDocId: input.studioDocId ?? null, studioEventId: input.studioEventId ?? null,
   }).onConflictDoNothing().returning();
   if (!row) throw Object.assign(new Error("That transaction is already recorded"), { status: 409 });
   return verifyNotarization(row);

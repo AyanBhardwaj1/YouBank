@@ -38,6 +38,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **Checked on every load, against primary sources.** Each criterion is checked against the company's SEC XBRL filings and the price. YouBank shows the figure, its period and a link to the source. The thesis then reads *intact*, *on watch* (within 3 points of a percentage threshold, or 10% of any other) or *broken*, with the most urgent first. This costs no AI.
 - **The book at a glance.** Gross, net, long and short exposure; how much of NAV sits in a thesis that is broken or on watch; P&L since entry; dated catalysts; and this week's news for each name.
 - **Red team.** One click runs an agent briefed as a short seller (or as a bull, for a short). It makes the strongest sourced case against the thesis, names the weakest pillar, and lists the signals that would prove the thesis wrong. It works alone, by design (see Okawa, above).
+- **Always on.** Every weekday after the US close, YouBank re-checks every book. It tells the person the moment a thesis breaks (urgent, even in quiet hours), comes close to a kill criterion, or holds again, and when a catalyst is a day away. Alerts go to the bell, Home's "Waiting for you" and the person's own push, Slack or email. Each alert opens the position it is about.
+- **In minutes, not an afternoon.** Paste rows from a spreadsheet or an OMS export, in any column order. Each position starts with sensible kill criteria. For a demo, "Try a sample book" loads five well-known names.
 - **Why it is different.** Research tools answer questions and agents investigate. The Book holds the fund to what it said it believed, and flags the moment the numbers say otherwise. Templates (growth, compounder, value, short) take a new user from nothing to a monitored book in minutes. Multi-day agent investigations remain in Edge → Theses.
 
 ### YouBank inside the fund's own AI apps: an MCP server (`/api/mcp`, Settings → Connect AI apps)
@@ -60,6 +62,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **What it records.** When it is on, every AI answer written for the person is appended with the prompt, model, sources and figure-check summary. That covers chat, deep research, workflows, red teams, desktop questions and background agents. Every call their AI apps make over MCP is recorded too.
 - **Tamper-evident.** Each entry's SHA-256 hash covers its content and the hash of the entry before it. Editing, removing or reordering any entry breaks the chain, and "Check the chain" says exactly which entry broke.
 - **Human review.** A reviewer can approve, reject or note any entry. The review is written as its own entry, so the record stays append-only.
+- **Anchored outside YouBank.** The chain's latest hash can be kept where YouBank cannot change it: a compliance file, an email, or a notarization on Base from the person's own wallet. Pasting a saved line back proves that every entry up to it is unchanged. We tested the scenario this exists for: an operator rewrote one entry and recomputed every later hash. The chain alone still verified, and both kinds of anchor caught it.
 - **Checkable without YouBank.** The export (JSON Lines) states the recipe for re-checking the chain without YouBank's code. The test suite proves that the recipe works on its own.
 - **Why it matters.** Funds can now show *what the AI said, from which sources, and who signed off*. That is the evidence Rule 204-2 and current practitioner guidance point towards, and it is what makes AI use defensible to LPs and examiners.
 
@@ -72,8 +75,9 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ## 3. A ten-minute demo
 
-1. **Home.** A markets user sees the Book widget: "1 broken · 1 on watch · 7.5% of NAV at risk".
+1. **Home.** A markets user sees the Book widget: "1 broken · 1 on watch · 7.5% of NAV at risk", and the alert that came in after yesterday's close.
 2. **The Book.**
+   - Paste three rows from a spreadsheet, or press "Try a sample book".
    - Add a position from the *High-growth software* template and watch it check against the filings at once.
    - Open the broken one and show the failed criterion, the figure, its period, and the link to the XBRL facts.
    - Run the red team. While it works, point at the exposure strip.
@@ -83,11 +87,12 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 4. **Research ledger.**
    - Turn it on and show the MCP call from step 3 already recorded.
    - Approve it, then press "Check the chain".
+   - Copy the head line into an email to yourself. Then explain that pasting it back later proves nothing before it changed, even if someone with YouBank's database tried.
    - Export the ledger and explain that their compliance team can re-check it in five lines of code, without trusting us.
 
 ## 4. Honest limits (say these before an investor asks)
 
-- **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage, and anyone with database access could rewrite the whole chain consistently. The mitigation is to export the ledger regularly or anchor its latest hash somewhere external. Anchoring the head hash with Crypto → Notarize is the natural next step; it is not built yet.
+- **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank, so anchoring has to be a habit. Automatic daily anchoring (for example through OpenTimestamps) is a follow-up.
 - **MCP sign-in uses bearer keys, not OAuth.** Clients that only support OAuth discovery need `mcp-remote` or a header-capable configuration. OAuth 2.1 support is a follow-up.
 - **The Book checks LTM fundamentals and price only.** It does not check estimates, intra-quarter KPIs or alternative data yet. Criteria are limited to ten metrics.
 - **Not an order-management system.** Positions are entered by hand. There is no broker sync for the Book, and the Book places no trades.
@@ -99,6 +104,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 |---|---|---|
 | The Book: logic | `src/lib/book/position.ts` | Pure; 32 tests in `scripts/test-book.ts` |
 | The Book: storage and checks | `src/lib/book/store.ts`, `src/app/api/book/**` | Stored in `profiles.extra.book` (max 25 positions); companies read six at a time; GET limited to 240 an hour, red team to 20 an hour |
+| The Book: alerts | `src/lib/book/alerts.ts`, `src/lib/book/watch.ts`, `src/app/api/cron/book` | Pure transition rules (tested); the cron runs weekdays at 21:25 UTC and writes the last verdicts to `profiles.extra.bookState` |
 | The Book: UI | `src/components/book/BookClient.tsx`, `src/app/app/book/`, Home widget `book` | Nav feature `book` (key G then K); on by default for markets and PE roles, and pinned for markets |
 | MCP: protocol | `src/lib/mcp/protocol.ts` | Pure JSON-RPC 2.0; 24 tests in `scripts/test-mcp.ts` |
 | MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | Keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 5); web research is excluded because it spends AI allowance |

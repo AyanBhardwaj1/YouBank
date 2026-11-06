@@ -129,3 +129,39 @@ export async function signOff(userId: string, seq: number, reviewer: string, dec
   if (!ref || ref.kind === "signoff") return null;
   return append(userId, signoffContent(ref, reviewer, decision, note));
 }
+
+/** The newest entry: what to anchor. */
+export async function ledgerHead(userId: string): Promise<Pick<LedgerEntry, "seq" | "hash" | "at"> | null> {
+  const t = schema.researchLedger;
+  const [r] = await requireDb().select({ seq: t.seq, hash: t.hash, at: t.at }).from(t).where(eq(t.userId, userId)).orderBy(desc(t.seq)).limit(1);
+  return r ? { seq: r.seq, hash: r.hash, at: r.at.toISOString() } : null;
+}
+
+export type AnchorCheck = { seq: number | null; hash: string; source: string; state: "matches" | "differs" | "missing"; detail: string };
+
+/** Whether each anchor (a head line kept outside YouBank) still matches the chain. */
+export async function checkAnchors(userId: string, anchors: { seq: number; hash: string; source?: string }[]): Promise<AnchorCheck[]> {
+  const t = schema.researchLedger;
+  return Promise.all(anchors.map(async (a) => {
+    const [r] = await requireDb().select({ hash: t.hash }).from(t).where(and(eq(t.userId, userId), eq(t.seq, a.seq)));
+    const source = a.source ?? "a saved head line";
+    if (!r) return { seq: a.seq, hash: a.hash, source, state: "missing" as const, detail: `Entry ${a.seq} is no longer in the ledger.` };
+    return r.hash === a.hash
+      ? { seq: a.seq, hash: a.hash, source, state: "matches" as const, detail: `Entries 1 to ${a.seq} are exactly as they were when this was saved.` }
+      : { seq: a.seq, hash: a.hash, source, state: "differs" as const, detail: `Entry ${a.seq} has a different hash now: the ledger up to it was changed after this was saved.` };
+  }));
+}
+
+/** Heads notarized on chain (Crypto → Notarize, kind "ledger"), each checked against the chain as it is now. */
+export async function chainAnchors(userId: string): Promise<AnchorCheck[]> {
+  const n = schema.cryptoNotarizations, t = schema.researchLedger;
+  const rows = await requireDb().select({ sha256: n.sha256, status: n.status, txHash: n.txHash, blockNumber: n.blockNumber, confirmedAt: n.confirmedAt })
+    .from(n).where(and(eq(n.userId, userId), eq(n.kind, "ledger"))).orderBy(desc(n.createdAt)).limit(20).catch(() => []);
+  return Promise.all(rows.map(async (a) => {
+    const [r] = await requireDb().select({ seq: t.seq }).from(t).where(and(eq(t.userId, userId), eq(t.hash, a.sha256))).limit(1);
+    const source = `Base transaction ${a.txHash.slice(0, 10)}…${a.status === "confirmed" ? ` (block ${a.blockNumber ?? "?"})` : ` (${a.status})`}`;
+    return r
+      ? { seq: r.seq, hash: a.sha256, source, state: "matches" as const, detail: `Entries 1 to ${r.seq} are exactly as they were when anchored on Base${a.confirmedAt ? ` (${a.confirmedAt.toISOString().slice(0, 16).replace("T", " ")} UTC)` : ""}.` }
+      : { seq: null, hash: a.sha256, source, state: "missing" as const, detail: "No entry has this hash now: the ledger was rewritten after it was anchored." };
+  }));
+}

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { isMissingTable } from "@/lib/errors";
 import { KINDS, type LedgerKind } from "@/lib/ledger/chain";
-import { ledgerSettings, listEntries, setLedger } from "@/lib/ledger/store";
+import { headLine } from "@/lib/ledger/chain";
+import { ledgerHead, ledgerSettings, listEntries, setLedger } from "@/lib/ledger/store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,8 @@ export async function GET(req: Request) {
     const kind = (KINDS as readonly string[]).includes(q.get("kind") ?? "") ? (q.get("kind") as LedgerKind) : undefined;
     const settings = await ledgerSettings(user.id);
     try {
-      const page = await listEntries(user.id, { before, kind, limit: 30 });
-      return NextResponse.json({ available: true, settings, ...page }, { headers: { "Cache-Control": "private, no-store" } });
+      const [page, head] = await Promise.all([listEntries(user.id, { before, kind, limit: 30 }), ledgerHead(user.id)]);
+      return NextResponse.json({ available: true, settings, ...page, head: head ? { ...head, line: headLine(user.email, head) } : null }, { headers: { "Cache-Control": "private, no-store" } });
     } catch (e) {
       if (!isMissingTable(e)) throw e;
       return NextResponse.json({ available: false, settings, entries: [], total: 0, reviewed: {} });

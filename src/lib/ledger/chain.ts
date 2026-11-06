@@ -88,3 +88,25 @@ export function exportHeader(owner: string, at: Date) {
 export function exportJsonl(entries: LedgerEntry[], owner: string, at: Date): string {
   return [JSON.stringify(exportHeader(owner, at)), ...entries.map((e) => JSON.stringify(e))].join("\n") + "\n";
 }
+
+/* ---------------- Anchoring the chain outside YouBank ---------------- */
+
+/**
+ * The chain's head as one line to keep somewhere YouBank cannot change (a compliance file, an email to
+ * oneself, a notarization on chain). Later, pasting the line back proves that every entry up to that one
+ * is exactly as it was then: rewriting any of them would change the head's hash.
+ */
+export function headLine(owner: string, head: Pick<LedgerEntry, "seq" | "hash" | "at">): string {
+  return `YouBank research ledger · ${owner} · entry ${head.seq} · sha256 ${head.hash} · ${head.at}`;
+}
+
+/** Every (entry, hash) pair in pasted text: head lines, or "entry 12 … <64 hex>" written any way. */
+export function parseAnchors(text: string): { seq: number; hash: string }[] {
+  const out: { seq: number; hash: string }[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const hash = /\b([0-9a-f]{64})\b/i.exec(line)?.[1]?.toLowerCase();
+    const seq = Number(/\b(?:entry|#|seq)\s*#?\s*(\d{1,9})\b/i.exec(line)?.[1]);
+    if (hash && Number.isInteger(seq) && seq > 0 && !out.some((a) => a.seq === seq && a.hash === hash)) out.push({ seq, hash });
+  }
+  return out.slice(0, 50);
+}

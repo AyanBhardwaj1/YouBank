@@ -11,10 +11,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Markdown } from "@/components/terminal/Markdown";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { connectEvm, discoverEvmWallets, sendNotary, walletMessage, type EvmWallet } from "@/components/crypto/wallets";
 import type { LedgerEntry, LedgerKind } from "@/lib/ledger/chain";
 
-type Page = { available: boolean; settings: { on: boolean; since: string | null }; entries: LedgerEntry[]; total: number; reviewed: Record<number, { decision: string; reviewer: string; at: string }> };
-type Check = { ok: boolean; checked: number; firstBad: number | null; problem: string; at: string };
+type Head = { seq: number; hash: string; at: string; line: string };
+type Page = { available: boolean; settings: { on: boolean; since: string | null }; entries: LedgerEntry[]; total: number; reviewed: Record<number, { decision: string; reviewer: string; at: string }>; head: Head | null };
+type Anchor = { seq: number | null; hash: string; source: string; state: "matches" | "differs" | "missing"; detail: string };
+type Check = { ok: boolean; checked: number; firstBad: number | null; problem: string; at: string; anchors?: Anchor[] };
 
 const KIND: Record<LedgerKind, string> = { chat: "AI answer", workflow: "Workflow", red_team: "Red team", mcp: "AI app (MCP)", signoff: "Review", note: "Note" };
 const primary = "ctl bg-accent px-3 py-2 text-[12.5px] font-semibold text-accent-fg disabled:opacity-60";
@@ -68,6 +71,66 @@ function Entry({ e, review, onSigned }: { e: LedgerEntry; review?: Page["reviewe
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Anchoring the chain outside YouBank: the head line to keep where YouBank cannot change it, a box to
+ * check saved lines against the chain, and (with a wallet) a notarization of the head on Base. Any of
+ * these proves the entries up to that head were not rewritten afterwards, even by someone with access
+ * to YouBank's database.
+ */
+function Anchors({ head, onCheck }: { head: Head; onCheck: (c: Check) => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [wallets, setWallets] = useState<EvmWallet[] | null>(null);
+  const [done, setDone] = useState("");
+  const [result, setResult] = useState<Check | null>(null);
+  useEffect(() => { void discoverEvmWallets().then(setWallets); }, []);
+  const checkSaved = async () => {
+    setBusy("check"); setErr("");
+    try { const c = await fetchJson<Check>("/api/ledger/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); setResult(c); onCheck(c); }
+    catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
+  };
+  const anchor = async (w: EvmWallet) => {
+    setBusy("anchor"); setErr(""); setDone("");
+    try {
+      const address = await connectEvm(w);
+      const txHash = await sendNotary(w, address, head.hash);
+      await fetchJson("/api/crypto/notary", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sha256: head.hash, txHash, fromAddress: address, subject: `Research ledger, entry ${head.seq}`, kind: "ledger", chain: "base" }) });
+      setDone(`Entry ${head.seq} anchored on Base (transaction ${txHash.slice(0, 10)}…). "Check the chain" now checks it too.`);
+    } catch (e) { setErr(walletMessage(e)); } finally { setBusy(""); }
+  };
+  return (
+    <section className="panel space-y-3 p-4">
+      <div className="flex items-center gap-2"><Icon name="Lock" className="h-4 w-4 text-accent" /><h3 className="text-[13px] font-semibold">Anchor it outside YouBank</h3></div>
+      <p className="text-[12px] text-muted">The chain shows any edit to one entry. To show that nobody rewrote the whole ledger either, keep its latest hash somewhere YouBank cannot reach: your compliance file, an email to yourself, or a notarization on chain. Pasting it back later proves every entry up to it is exactly as it was.</p>
+      <div className="ctl border border-line bg-bg p-2.5">
+        <div className="flex items-center justify-between gap-2"><span className="text-[11px] uppercase tracking-wider text-muted">Latest head · entry {head.seq}</span>
+          <button type="button" className="text-[11.5px] text-accent" onClick={() => { void navigator.clipboard?.writeText(head.line).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy the line"}</button>
+        </div>
+        <code className="num mt-1 block break-all text-[11px]">{head.line}</code>
+      </div>
+      <div className="space-y-1.5">
+        <label className="block text-[12px] text-muted" htmlFor="ledger-anchors">Check lines you saved earlier</label>
+        <textarea id="ledger-anchors" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} placeholder="Paste one or more saved head lines" className="ctl num min-h-[64px] w-full border border-line bg-panel px-2.5 py-2 text-[11.5px] outline-none focus:border-accent" />
+        <button type="button" disabled={!!busy || !text.trim()} onClick={checkSaved} className={ghost}>{busy === "check" ? "Checking…" : "Check saved lines"}</button>
+        {result?.anchors && (
+          <ul role="status" className="space-y-1 text-[12px]">
+            {!result.ok && <li className="text-neg">The chain itself is broken at entry {result.firstBad}: {result.problem}</li>}
+            {result.anchors.map((a, i) => <li key={i} className={`ctl px-2 py-1.5 ${a.state === "matches" ? "bg-pos/10 text-pos" : "bg-neg/10 text-neg"}`}><b>{a.state === "matches" ? "Holds" : "Broken"}</b> ({a.source}{a.seq ? `, entry ${a.seq}` : ""}): {a.detail}</li>)}
+          </ul>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+        <span className="text-muted">Or anchor the head on Base with your wallet (a self-transaction, no funds moved, a fraction of a cent):</span>
+        {wallets === null ? <span className="text-faint">looking for wallets…</span> : wallets.length ? wallets.map((w) => <button key={w.id} type="button" disabled={!!busy} onClick={() => void anchor(w)} className={ghost}>{busy === "anchor" ? "Approve in your wallet…" : `Anchor with ${w.name}`}</button>) : <span className="text-faint">no Ethereum wallet in this browser.</span>}
+      </div>
+      {done && <p role="status" className="text-[12px] text-pos">{done}</p>}
+      {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
+    </section>
   );
 }
 
@@ -128,8 +191,13 @@ export function LedgerSettings() {
             </div>
           </div>
           {check && (
-            <div role="status" className={`ctl p-2.5 text-[12px] ${check.ok ? "bg-pos/10 text-pos" : "bg-neg/10 text-neg"}`}>
+            <div role="status" className={`ctl p-2.5 text-[12px] ${check.ok && (check.anchors ?? []).every((a) => a.state === "matches") ? "bg-pos/10 text-pos" : "bg-neg/10 text-neg"}`}>
               {check.ok ? `Intact: all ${check.checked.toLocaleString()} entries recomputed and every hash matches.` : `Broken at entry ${check.firstBad}: ${check.problem}`} <span className="text-muted">({stamp(check.at)})</span>
+              {!!check.anchors?.length && (
+                <ul className="mt-1.5 space-y-0.5 border-t border-current/20 pt-1.5">
+                  {check.anchors.map((a, i) => <li key={i} className={a.state === "matches" ? "text-pos" : "text-neg"}>{a.state === "matches" ? "Anchor holds" : "Anchor broken"} ({a.source}{a.seq ? `, entry ${a.seq}` : ""}): {a.detail}</li>)}
+                </ul>
+              )}
             </div>
           )}
           {!page && !err && <div className="shimmer h-24 ctl" />}
@@ -138,6 +206,7 @@ export function LedgerSettings() {
           {page && entries.length > 0 && entries[entries.length - 1].seq > 1 && entries.length < page.total && <button type="button" onClick={older} className="text-[12px] text-accent">Older entries</button>}
         </section>
       )}
+      {page?.available !== false && page?.head && <Anchors head={page.head} onCheck={setCheck} />}
       {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
     </div>
   );
