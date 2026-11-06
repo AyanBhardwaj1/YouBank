@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
-import { deletePosition, evaluateBook, loadBook, savePosition } from "@/lib/book/store";
+import { deletePosition, evaluateBook, loadBook, noteHistory, savePosition } from "@/lib/book/store";
 import { summarize } from "@/lib/book/position";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,9 @@ export async function GET() {
     await rateLimit(`book-check:${user.id}`, 240, 3_600_000, "The book was checked many times this hour. Try again in a few minutes.");
     const positions = await loadBook(user.id);
     const evaluations = await evaluateBook(positions);
-    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations) }, { headers: { "Cache-Control": "private, no-store" } });
+    // Today's point in each thesis's history (the daily check writes it too); a failure only costs the point.
+    const history = await noteHistory(user.id, evaluations).catch(() => ({}));
+    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
 

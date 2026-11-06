@@ -9,6 +9,7 @@ import { requireDb, schema } from "@/db";
 import { getCompanyData } from "@/lib/company";
 import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
+import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, type Evaluation, type Position, type PositionNews } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
@@ -95,4 +96,18 @@ export async function addPositions(userId: string, raws: unknown[]): Promise<{ a
     return { ...extra, book: list };
   });
   return { added, skipped };
+}
+
+/** The day's history point for each position, written on the first read of the day that lacks one. */
+export async function noteHistory(userId: string, evals: Evaluation[], now = new Date()): Promise<BookHistory> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  const state = normalizeBookState((row?.extra as Record<string, unknown> | undefined)?.bookState);
+  if (!needsPoint(state.history, evals, now)) return state.history;
+  let history = state.history;
+  await updateExtra(userId, (extra) => {
+    const cur = normalizeBookState(extra.bookState);
+    history = recordHistory(cur.history, evals, now);
+    return { ...extra, bookState: { ...cur, history } };
+  });
+  return history;
 }

@@ -1,7 +1,7 @@
 /** The Book (src/lib/book/position.ts): pnpm exec tsx scripts/test-book.ts */
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
-import { alertsFor, normalizeBookState } from "@/lib/book/alerts";
+import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
 import { byUrgency, checkCriterion, defaultTemplate, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
@@ -107,7 +107,21 @@ ok("recovery alerts; no data keeps the last verdict quietly", [third.alerts.map(
 ok("keys are per position, verdict and day: a re-run dedupes", alertsFor(first.next, [mk("b", "broken")], new Date("2026-11-07T23:00:00Z")).alerts[0].key, second.alerts[0].key);
 const cat = alertsFor(first.next, [mk("c", "intact", { catalysts: [{ id: "q3", label: "Q3 earnings", date: "2026-11-07", inDays: 1 }, { id: "x", label: "Investor day", date: "2026-11-20", inDays: 14 }] })], now);
 ok("a catalyst tomorrow alerts once per date; later ones do not", cat.alerts.map((a) => [a.kind, a.title, a.key]), [["catalyst", "C: Q3 earnings tomorrow", "book:c:catalyst:q3:2026-11-07"]]);
-ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5 }), { verdicts: { a: "broken" }, checkedAt: null });
+ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5, history: { "bad id!": [], c: [] , abcd: [{ d: "2026-11-01", v: "intact", s: 100 }, { d: "x", v: "intact" }] } }), { verdicts: { a: "broken" }, checkedAt: null, history: { abcd: [{ d: "2026-11-01", v: "intact", s: 100 }] } });
+
+console.log("history");
+const day = (iso: string) => new Date(`${iso}T21:30:00Z`);
+let h = recordHistory({}, [mk("a", "intact", { score: 100 }), mk("b", "unknown")], day("2026-11-02"));
+ok("a point a day; no data adds none", [h.a, h.b], [[{ d: "2026-11-02", v: "intact", s: 100 }], []]);
+h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-02"));
+ok("a second check the same day replaces the first", h.a, [{ d: "2026-11-02", v: "watch", s: 83 }]);
+h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-03"));
+h = recordHistory(h, [mk("a", "broken", { score: 67 })], day("2026-11-05"));
+ok("closed positions drop out of the history", Object.keys(h), ["a"]);
+ok("the streak counts from the first day of the current verdict", [streakOf(h.a, day("2026-11-06")), streakOf(h.a.slice(0, 2), day("2026-11-06"))], [{ since: "2026-11-05", verdict: "broken", days: 1 }, { since: "2026-11-02", verdict: "watch", days: 4 }]);
+ok("a read records today's point only when it is missing", [needsPoint(h, [mk("a", "broken")], day("2026-11-05")), needsPoint(h, [mk("a", "broken")], day("2026-11-06")), needsPoint(h, [mk("a", "unknown")], day("2026-11-06"))], [false, true, false]);
+ok("history is capped", recordHistory({ a: Array.from({ length: 200 }, (_, i) => ({ d: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), v: "intact" as const, s: 100 })) }, [mk("a", "intact")], day("2026-11-06")).a.length, 180);
+ok("the daily check carries the history forward", alertsFor({ verdicts: {}, checkedAt: null, history: { a: [{ d: "2026-11-01", v: "intact", s: 100 }] } }, [mk("a", "intact")], day("2026-11-02")).next.history.a.length, 2);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

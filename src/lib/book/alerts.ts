@@ -14,7 +14,7 @@
  */
 import type { Evaluation, Verdict } from "./position";
 
-export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null };
+export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null; history: BookHistory };
 export type BookAlert = { key: string; positionId: string; kind: "broken" | "watch" | "recovered" | "catalyst"; title: string; body: string; url: string; urgent: boolean; reasons: string[] };
 
 export function normalizeBookState(raw: unknown): BookState {
@@ -22,7 +22,7 @@ export function normalizeBookState(raw: unknown): BookState {
   const v = (r.verdicts && typeof r.verdicts === "object" ? r.verdicts : {}) as Record<string, unknown>;
   const verdicts: Record<string, Verdict> = {};
   for (const [k, x] of Object.entries(v)) if (x === "intact" || x === "watch" || x === "broken" || x === "unknown") verdicts[k] = x;
-  return { verdicts, checkedAt: typeof r.checkedAt === "string" ? r.checkedAt : null };
+  return { verdicts, checkedAt: typeof r.checkedAt === "string" ? r.checkedAt : null, history: normalizeHistory(r.history) };
 }
 
 export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { alerts: BookAlert[]; next: BookState } {
@@ -54,5 +54,56 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
         title: `${e.ticker}: ${c.label} ${c.inDays === 0 ? "today" : "tomorrow"}`, body: `${side}. The thesis is ${e.verdict === "intact" ? "intact" : e.verdict === "watch" ? "on watch" : "broken"}: ${e.summary}`, reasons: [`Catalyst on ${c.date}`] });
     }
   }
-  return { alerts, next: { verdicts, checkedAt: now.toISOString() } };
+  return { alerts, next: { verdicts, checkedAt: now.toISOString(), history: recordHistory(state.history, evals, now) } };
+}
+
+/* ---------------- History: one point a day per position ---------------- */
+
+export type HistoryPoint = { d: string; v: Verdict; s: number | null };
+export type BookHistory = Record<string, HistoryPoint[]>;
+export const HISTORY_DAYS = 180;
+
+export function normalizeHistory(raw: unknown): BookHistory {
+  const out: BookHistory = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [id, pts] of Object.entries(raw as Record<string, unknown>).slice(0, 50)) {
+    if (!/^[a-z0-9-]{4,40}$/.test(id) || !Array.isArray(pts)) continue;
+    out[id] = pts.flatMap((p): HistoryPoint[] => {
+      const o = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
+      return typeof o.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.d) && (o.v === "intact" || o.v === "watch" || o.v === "broken")
+        ? [{ d: o.d, v: o.v, s: typeof o.s === "number" ? o.s : null }] : [];
+    }).slice(-HISTORY_DAYS);
+  }
+  return out;
+}
+
+/**
+ * Today's point for every position checked (a day without data adds none; a second check the same day
+ * replaces the first), the last HISTORY_DAYS kept, positions no longer in the book dropped.
+ */
+export function recordHistory(history: BookHistory, evals: Evaluation[], now: Date): BookHistory {
+  const d = now.toISOString().slice(0, 10);
+  const out: BookHistory = {};
+  for (const e of evals) {
+    const pts = (history[e.positionId] ?? []).filter((p) => p.d !== d);
+    if (e.verdict !== "unknown") pts.push({ d, v: e.verdict, s: e.score });
+    out[e.positionId] = pts.sort((a, b) => a.d.localeCompare(b.d)).slice(-HISTORY_DAYS);
+  }
+  return out;
+}
+
+/** Whether today's point is missing for any position checked (so a read should record it). */
+export const needsPoint = (history: BookHistory, evals: Evaluation[], now: Date) => {
+  const d = now.toISOString().slice(0, 10);
+  return evals.some((e) => e.verdict !== "unknown" && !(history[e.positionId] ?? []).some((p) => p.d === d));
+};
+
+/** How long the current verdict has held: the first day of the run it is in, and its length in days. */
+export function streakOf(points: HistoryPoint[], now: Date): { since: string; days: number; verdict: Verdict } | null {
+  if (!points.length) return null;
+  const last = points[points.length - 1];
+  let i = points.length - 1;
+  while (i > 0 && points[i - 1].v === last.v) i--;
+  const since = points[i].d;
+  return { since, verdict: last.v, days: Math.max(0, Math.round((Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${since}T00:00:00Z`)) / 86_400_000)) };
 }

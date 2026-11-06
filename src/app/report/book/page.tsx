@@ -7,6 +7,7 @@ import { currentUser } from "@/lib/auth/user";
 import { summarize, type Evaluation, type Position } from "@/lib/book/position";
 import { evaluateBook, loadBook } from "@/lib/book/store";
 import { headLine } from "@/lib/ledger/chain";
+import { normalizeBookState, streakOf } from "@/lib/book/alerts";
 import { ledgerHead } from "@/lib/ledger/store";
 
 export const dynamic = "force-dynamic";
@@ -36,12 +37,13 @@ export default async function BookReport() {
   const now = new Date();
   const [book, profile, head] = await Promise.all([
     loadBook(user.id),
-    db.select({ firmName: schema.profiles.firmName, name: schema.profiles.name }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).then((r) => r[0]),
+    db.select({ firmName: schema.profiles.firmName, name: schema.profiles.name, extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).then((r) => r[0]),
     ledgerHead(user.id).catch(() => null),
   ]);
   const evals = await evaluateBook(book, now);
   const s = summarize(evals);
   const byId = new Map<string, Position>(book.map((p) => [p.id, p]));
+  const history = normalizeBookState((profile?.extra as Record<string, unknown> | undefined)?.bookState).history;
   const who = profile?.firmName || profile?.name || user.name || user.email;
   const date = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" });
   return (
@@ -84,7 +86,7 @@ export default async function BookReport() {
                   <div className="flex flex-wrap items-baseline gap-x-3">
                     <h2 className="text-[15px] font-semibold">{e.ticker} <span className="font-normal text-muted">{e.name}</span></h2>
                     <span className="text-muted">{e.direction === "long" ? "Long" : "Short"}{e.weight !== null ? `, ${nav(e.weight)} of NAV` : ""}{p?.entry ? `, entry $${p.entry}` : ""}</span>
-                    <span className={`ml-auto font-semibold ${TONE[e.verdict]}`}>{VERDICT[e.verdict]}{e.score !== null ? ` · ${e.score}/100` : ""}</span>
+                    <span className={`ml-auto font-semibold ${TONE[e.verdict]}`}>{VERDICT[e.verdict]}{e.score !== null ? ` · ${e.score}/100` : ""}{(() => { const st = streakOf(history[e.positionId] ?? [], now); return st && st.verdict === e.verdict && st.days > 0 ? ` · since ${st.since}` : ""; })()}</span>
                   </div>
                   <p className="mt-1 text-[13px]">{p?.thesis}</p>
                   {!!p?.pillars.length && <ul className="mt-1 list-disc pl-5 text-muted">{p.pillars.map((x) => <li key={x}>{x}</li>)}</ul>}

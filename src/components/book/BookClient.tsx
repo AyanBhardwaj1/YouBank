@@ -13,9 +13,11 @@ import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
-type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary };
+type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory };
 
 const VERDICT: Record<Verdict, { label: string; cls: string }> = {
   intact: { label: "Intact", cls: "bg-pos/15 text-pos" },
@@ -133,7 +135,7 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
 
 /* ---------------- A position ---------------- */
 
-function PositionCard({ ev, position, focused, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; focused?: boolean; onEdit: () => void; onChanged: () => void }) {
+function PositionCard({ ev, position, history = [], focused, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; focused?: boolean; onEdit: () => void; onChanged: () => void }) {
   const [open, setOpen] = useState(ev.verdict === "broken" || !!focused);
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, [focused]);
@@ -168,6 +170,18 @@ function PositionCard({ ev, position, focused, onEdit, onChanged }: { ev: Evalua
           <div>
             <div className="text-[11px] text-muted">{ev.name}</div>
             <p className="mt-0.5 text-[13px]">{position?.thesis}</p>
+            {(() => {
+              const st = streakOf(history, new Date());
+              const scores = history.map((h) => h.s).filter((x): x is number => x !== null);
+              if (!st) return null;
+              const word = st.verdict === "intact" ? "Intact" : st.verdict === "watch" ? "On watch" : "Broken";
+              return (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11.5px] text-muted">
+                  <span>{st.days === 0 ? `${word} since today` : `${word} for ${st.days} day${st.days === 1 ? "" : "s"} (since ${st.since})`} · {history.length} daily check{history.length === 1 ? "" : "s"}</span>
+                  {scores.length > 1 && <Sparkline values={scores} width={96} height={18} stroke={st.verdict === "broken" ? "var(--neg)" : st.verdict === "watch" ? "var(--accent)" : "var(--pos)"} />}
+                </div>
+              );
+            })()}
             {!!position?.pillars.length && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">{position.pillars.map((p) => <li key={p}>{p}</li>)}</ul>}
           </div>
           {ev.checks.length > 0 && (
@@ -355,7 +369,7 @@ export function BookClient({ focus }: { focus?: string }) {
         <ul className="space-y-2">
           {data.evaluations.map((ev) => {
             const p = byId.get(ev.positionId);
-            return <PositionCard key={ev.positionId} ev={ev} position={p} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
+            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
         </ul>
       )}

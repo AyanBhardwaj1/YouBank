@@ -56,7 +56,7 @@ async function main() {
   console.log("prompts");
   const withPrompts: McpServer = { ...server, prompts: [{ name: "red_team", title: "Red team", description: "d", arguments: [{ name: "ticker", description: "t", required: true }], build: (a) => `against ${a.ticker}` }] };
   const init2 = await dispatch({ jsonrpc: "2.0", id: 20, method: "initialize", params: {} }, withPrompts) as { result: { capabilities: Record<string, unknown> } };
-  ok("prompts are announced only when there are some", [Object.keys(init2.result.capabilities), Object.keys(init.result.capabilities)], [["tools", "prompts"], ["tools"]]);
+  ok("prompts are announced only when there are some", [Object.keys(init2.result.capabilities), Object.keys(init.result.capabilities as object)], [["tools", "prompts"], ["tools"]]);
   const pl = await dispatch({ jsonrpc: "2.0", id: 21, method: "prompts/list" }, withPrompts) as { result: { prompts: Record<string, unknown>[] } };
   ok("prompts/list has no code in it", pl.result.prompts, [{ name: "red_team", title: "Red team", description: "d", arguments: [{ name: "ticker", description: "t", required: true }] }]);
   const pg = await dispatch({ jsonrpc: "2.0", id: 22, method: "prompts/get", params: { name: "red_team", arguments: { ticker: " snow " } } }, withPrompts) as { result: { messages: { role: string; content: { text: string } }[] } };
