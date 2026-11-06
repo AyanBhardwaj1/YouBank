@@ -17,7 +17,8 @@
 import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
-import { addProposal, evaluateBook, loadBook, newsFor, noteProposal } from "@/lib/book/store";
+import { addProposal, evaluateBook, loadBook, loadJournal, newsFor, noteProposal } from "@/lib/book/store";
+import { scorecard, scorecardLine } from "@/lib/book/journal";
 import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
@@ -88,11 +89,13 @@ function bookTool(userId: string) {
       const only = ticker ? tickerOf(ticker) : null;
       const positions = only ? book.filter((p) => p.ticker === only) : book;
       if (!positions.length) return JSON.stringify({ note: only ? `${only} is not in the book.` : "The book is empty. Positions are added in YouBank → Book.", link: siteLink("/app/book") });
-      const [evals, risk] = await Promise.all([evaluateBook(positions), only ? Promise.resolve(null) : cachedRisk(book).catch(() => null)]);
+      const [evals, risk, closed] = await Promise.all([evaluateBook(positions), only ? Promise.resolve(null) : cachedRisk(book).catch(() => null), only ? Promise.resolve([]) : loadJournal(userId).catch(() => [])]);
       return JSON.stringify({
         summary: summarize(evals), link: siteLink("/app/book"),
         // The risk headline when it is already worked out today (book_risk has the detail and works it out).
         ...(risk ? { risk: riskLine(risk) } : {}),
+        // The track record over closed positions: hit rate, payoff, and how fast broken theses were exited.
+        ...(closed.length ? { track_record: scorecardLine(scorecard(closed)) } : {}),
         positions: evals.map((e) => ({
           ticker: e.ticker, name: e.name, direction: e.direction, weight_pct_nav: e.weight, verdict: e.verdict, score: e.score, price: e.price, pnl_since_entry: e.pnl, summary: e.summary,
           thesis: positions.find((p) => p.id === e.positionId)?.thesis,

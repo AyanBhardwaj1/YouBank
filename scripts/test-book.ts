@@ -6,6 +6,7 @@ import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
+import { closedFrom, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
@@ -118,9 +119,9 @@ ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "
 console.log("history");
 const day = (iso: string) => new Date(`${iso}T21:30:00Z`);
 let h = recordHistory({}, [mk("a", "intact", { score: 100 }), mk("b", "unknown")], day("2026-11-02"));
-ok("a point a day; no data adds none", [h.a, h.b], [[{ d: "2026-11-02", v: "intact", s: 100 }], []]);
+ok("a point a day; no data adds none", [h.a, h.b], [[{ d: "2026-11-02", v: "intact", s: 100, p: 180 }], []]);
 h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-02"));
-ok("a second check the same day replaces the first", h.a, [{ d: "2026-11-02", v: "watch", s: 83 }]);
+ok("a second check the same day replaces the first", h.a, [{ d: "2026-11-02", v: "watch", s: 83, p: 180 }]);
 h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-03"));
 h = recordHistory(h, [mk("a", "broken", { score: 67 })], day("2026-11-05"));
 ok("closed positions drop out of the history", Object.keys(h), ["a"]);
@@ -229,6 +230,22 @@ const uidOf = (x: string) => /UID:(book-earnings-[^\r]+)/.exec(x)?.[1];
 const seqOf = (x: string) => Number(/SEQUENCE:(\d+)/.exec(x)?.[1]);
 ok("one earnings event per ticker; a moved date keeps the UID with a higher SEQUENCE; a lone CR is escaped", [twice.split("SUMMARY:SNOW earnings").length - 1, uidOf(moved) === uidOf(ics), seqOf(moved) > seqOf(ics), icsText("a\rb")], [1, true, true, "a\\nb"]);
 ok("text escaping and folding (never inside a character)", [icsText("a;b,c\\d\ne"), fold("x".repeat(80)).split("\r\n ").map((l) => l.length), fold("é".repeat(40)).split("\r\n ").every((l) => !l.includes("\uFFFD"))], ["a\\;b\\,c\\\\d\\ne", [75, 5], true]);
+
+console.log("track record");
+const pos = { ...t, id: "trk1", ticker: "SNOW", direction: "long" as const, entry: 150, createdAt: "2026-06-01T00:00:00.000Z" };
+const hist = [{ d: "2026-10-01", v: "intact" as const, s: 100, p: 170 }, { d: "2026-10-10", v: "broken" as const, s: 50, p: 160 }, { d: "2026-10-11", v: "broken" as const, s: 50, p: 155 }];
+const c1 = closedFrom(pos, "broken", hist, 140, "thesis_broke", "  margins  ", new Date("2026-10-13T15:00:00Z"));
+ok("a close keeps the exit, the reason, the verdict and the first day the thesis broke with its price", [c1.exit, c1.reason, c1.note, c1.verdictAtClose, c1.brokeOn, c1.priceAtBreak, c1.openedAt.slice(0, 10)], [140, "thesis_broke", "margins", "broken", "2026-10-10", 160, "2026-06-01"]);
+ok("return in the position's favour", [Math.round(closedReturn(c1)! * 1000) / 1000, Math.round(closedReturn({ entry: 100, exit: 80, direction: "short" })! * 1000) / 1000, closedReturn({ entry: null, exit: 80, direction: "long" })], [-0.067, 0.2, null]);
+const mk2 = (id: string, entry: number, exit: number, reason: ClosedPosition["reason"], brokeOn: string | null = null, priceAtBreak: number | null = null, closedAt = "2026-10-20T00:00:00.000Z", direction: "long" | "short" = "long"): ClosedPosition => ({ ...c1, id, entry, exit, reason, brokeOn, priceAtBreak, closedAt, direction });
+const book2 = [mk2("a1", 100, 130, "target"), mk2("a2", 100, 90, "thesis_broke", "2026-10-17", 95), mk2("a3", 100, 80, "thesis_broke", "2026-09-01", 98), mk2("a4", 100, 110, "other")];
+const sc = scorecard(book2);
+ok("hit rate, average, payoff, by reason", [sc.closed, sc.hitRate, sc.avgReturn, sc.avgWin, sc.avgLoss, sc.payoff, sc.byReason.map((r) => [r.reason, r.n, r.avgReturn])], [4, 0.5, 0.025, 0.2, -0.15, 1.3333, [["thesis_broke", 2, -0.15], ["target", 1, 0.3], ["other", 1, 0.1]]]);
+ok("discipline: broken theses, exits within five days, median days to exit", [sc.broke, sc.exitedOnBreak, sc.medianDaysToExit], [2, 1, 26]);
+ok("the counterfactual: out on the break against the exit taken", sc.counterfactual, { n: 2, onBreak: -0.035, taken: -0.15 });
+ok("one line for a person", scorecardLine(sc), "4 closed; 50% winners; average +2.5%; payoff 1.33x; 1 of 2 broken theses exited within 5 days (median 26 days).");
+ok("an empty record says so", [scorecard([]).hitRate, scorecardLine(scorecard([]))], [null, "No closed positions yet."]);
+ok("stored records are cleaned: junk dropped, duplicates once, unknown reason is other", normalizeJournal([c1, c1, { id: "x" }, { ...c1, id: "trk2", reason: "vibes", exit: -5 }]).map((x) => [x.id, x.reason, x.exit]), [["trk1", "thesis_broke", 140], ["trk2", "other", null]]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

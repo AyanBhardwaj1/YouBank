@@ -11,12 +11,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
-import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
+import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -172,11 +172,17 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
     try { await fetchJson("/api/book/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
     catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
   };
-  const close = async () => {
-    if (!(await confirmDialog({ title: `Close ${ev.ticker}?`, body: "It leaves the book with its kill criteria and red team. Nothing is traded.", confirmLabel: "Close position", tone: "danger" }))) return;
+  // Closing records the position in the track record: exit (the price now unless given), reason and a note.
+  const [closing, setClosing] = useState(false);
+  const [exitPx, setExitPx] = useState(ev.price !== null ? String(ev.price) : "");
+  const [reason, setReason] = useState<CloseReason>(ev.verdict === "broken" ? "thesis_broke" : "target");
+  const [note, setNote] = useState("");
+  const close = async (e: React.FormEvent) => {
+    e.preventDefault();
     setBusy("del"); setErr("");
-    try { await fetchJson(`/api/book?id=${encodeURIComponent(ev.positionId)}`, { method: "DELETE" }); onChanged?.(); }
-    catch (e) { setErr(errorMessage(e)); setBusy(""); }
+    const exit = Number(exitPx);
+    try { await fetchJson("/api/book/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId, exit: exitPx.trim() && Number.isFinite(exit) && exit > 0 ? exit : undefined, reason, note }) }); onChanged?.(); }
+    catch (x) { setErr(errorMessage(x)); setBusy(""); }
   };
   return (
     <li ref={ref} className={`panel scroll-mt-20 ${focused ? "ring-1 ring-accent/60" : ""}`}>
@@ -278,8 +284,22 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             {!owner && onEdit && <button type="button" onClick={onEdit} className="text-accent">Edit</button>}
             <Link href={`/app/terminal?ticker=${encodeURIComponent(ev.ticker)}`} className="text-muted hover:text-fg">Open in Terminal</Link>
             <Link href={`/app/edge?view=theses`} className="text-muted hover:text-fg">Investigate with an agent (Edge theses)</Link>
-            {!owner && <button type="button" disabled={!!busy} onClick={close} className="ml-auto text-muted hover:text-neg">Close position</button>}
+            {!owner && <button type="button" disabled={!!busy} aria-expanded={closing} onClick={() => setClosing((c) => !c)} className="ml-auto text-muted hover:text-neg">Close position</button>}
           </div>
+          {closing && !owner && (
+            <form onSubmit={close} aria-label={`Close ${ev.ticker}`} className="ctl space-y-2 border border-line p-2.5">
+              <p className="text-[12px]">Close {ev.ticker} into the track record. Nothing is traded; the exit, the reason and how its thesis stood are kept for the scorecard.</p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <label className="flex items-center gap-1.5 text-[11.5px] text-muted">Exit price ($)<input value={exitPx} onChange={(x) => setExitPx(x.target.value)} inputMode="decimal" className={`${fieldBox} w-24`} placeholder="price" /></label>
+                <label className="flex items-center gap-1.5 text-[11.5px] text-muted">Why<select value={reason} onChange={(x) => setReason(x.target.value as CloseReason)} className={`${fieldBox} w-auto`}>{(Object.keys(CLOSE_REASONS) as CloseReason[]).map((k) => <option key={k} value={k}>{CLOSE_REASONS[k]}</option>)}</select></label>
+                <input aria-label="Note" value={note} onChange={(x) => setNote(x.target.value)} maxLength={280} placeholder="A line for the record (optional)" className={`${fieldBox} min-w-[12rem] flex-1`} />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" disabled={!!busy} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg disabled:opacity-60">{busy === "del" ? "Closing…" : "Close and record"}</button>
+                <button type="button" onClick={() => setClosing(false)} className="ctl border border-line px-3 py-1 text-[12px] text-muted hover:text-fg">Cancel</button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </li>
@@ -534,6 +554,69 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
   );
 }
 
+/* ---------------- The track record ---------------- */
+
+type JournalData = { closed: ClosedPosition[]; scorecard: Scorecard };
+const pctS = (x: number | null, d = 1) => (x === null ? "n/a" : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(d)}%`);
+
+/** Closed positions and the scorecard over them: hit rate, payoff, and how fast a broken thesis was exited. */
+function TrackRecord({ sig }: { sig: string }) {
+  const [open, setOpen] = useState(false);
+  const [res, setRes] = useState<{ sig: string; d?: JournalData; err?: string } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    fetchJson<JournalData>("/api/book/journal").then((d) => { if (live) setRes({ sig, d }); }).catch((e) => { if (live) setRes({ sig, err: errorMessage(e) }); });
+    return () => { live = false; };
+  }, [open, sig]);
+  const d = res?.sig === sig ? res.d ?? null : null;
+  const err = res?.sig === sig ? res.err ?? "" : "";
+  const s = d?.scorecard;
+  return (
+    <section aria-label="Track record" className="panel p-4">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 text-left">
+        <Icon name="ClipboardList" className="h-4 w-4 text-accent" />
+        <span className="text-[13px] font-semibold">Track record</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">Closed positions, hit rate, payoff, and how fast a broken thesis was exited</span>
+        <Icon name={open ? "ChevronUp" : "ChevronDown"} className="h-4 w-4 text-muted" />
+      </button>
+      {open && err && <p role="alert" className="mt-3 text-[12px] text-neg">{err}</p>}
+      {open && !d && !err && <div className="shimmer mt-3 h-24 ctl" />}
+      {open && d && s && (
+        <div className="mt-3 space-y-3">
+          {!s.closed ? <p className="text-[12px] text-muted">Nothing closed yet. &ldquo;Close position&rdquo; on any card records it here with its exit, the reason and how its thesis stood, so the record builds itself.</p> : (<>
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              <Stat label="Closed" value={String(s.closed)} />
+              <Stat label="Winners" value={s.hitRate === null ? "n/a" : `${Math.round(s.hitRate * 100)}%`} hint="Share of closed positions with a gain in their favour (entry and exit known)" />
+              <Stat label="Average" value={pctS(s.avgReturn)} tone={s.avgReturn !== null && s.avgReturn < 0 ? "text-neg" : ""} />
+              <Stat label="Payoff" value={s.payoff === null ? "n/a" : `${s.payoff.toFixed(2)}x`} hint="Average win over average loss" />
+              <Stat label="Exited on the break" value={s.broke ? `${s.exitedOnBreak} of ${s.broke}` : "n/a"} hint="Theses that broke while held and were closed within five days of breaking" />
+              <Stat label="Median days to exit" value={s.medianDaysToExit === null ? "n/a" : String(s.medianDaysToExit)} hint="From the first day a thesis read broken to the close" />
+            </div>
+            {s.counterfactual && (
+              <p className="text-[12px]">Had the {s.counterfactual.n} broken thesis{s.counterfactual.n === 1 ? "" : "es"} been closed on the day {s.counterfactual.n === 1 ? "it" : "they"} broke: <span className="font-semibold">{pctS(s.counterfactual.onBreak)}</span> on average, against <span className="font-semibold">{pctS(s.counterfactual.taken)}</span> taken. <span className="text-muted">{s.counterfactual.onBreak > s.counterfactual.taken ? "The kill criteria would have helped." : "Holding past the break paid this time."}</span></p>
+            )}
+            {s.byReason.length > 0 && <p className="text-[12px] text-muted">By reason: {s.byReason.map((r) => `${r.label} ${r.n}${r.avgReturn !== null ? ` (${pctS(r.avgReturn)})` : ""}`).join(" · ")}</p>}
+            <ul className="text-[12px]">
+              {d.closed.slice(0, 30).map((c) => {
+                const r = closedReturn(c);
+                return (
+                  <li key={c.id} className="grid grid-cols-[4rem_1fr_auto] gap-x-3 border-t border-line py-1.5">
+                    <span className="font-semibold">{c.ticker}</span>
+                    <span className="min-w-0 text-muted"><span className="text-fg">{c.direction} · {CLOSE_REASONS[c.reason]}</span> · {c.openedAt.slice(0, 10)} to {c.closedAt.slice(0, 10)}{c.brokeOn ? ` · broke ${c.brokeOn}` : ""}{c.note ? ` · ${c.note}` : ""}</span>
+                    <span className={`num text-right font-semibold ${r === null ? "text-muted" : r < 0 ? "text-neg" : "text-pos"}`}>{pctS(r)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="text-[11px] text-muted">{scorecardLine(s)} Returns are price moves in the position&apos;s favour from entry to exit, unweighted; nothing here is audited performance.</p>
+          </>)}
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ---------------- The team's books (read-only) ---------------- */
 
 type TeamList = { teams: { id: number; name: string; members: number }[]; sharing: number[] };
@@ -705,6 +788,8 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
       )}
 
       {s && s.gross > 0 && data && <RiskPanel initiallyOpen={riskOpen} sig={data.positions.map((p) => `${p.ticker}:${p.direction}:${p.weight ?? ""}`).sort().join(",")} />}
+
+      {data && <TrackRecord sig={data.positions.map((p) => p.id).sort().join(",")} />}
 
       {s && s.byIndustry.length > 1 && s.gross > 0 && (
         <section aria-label="Exposure by industry" className="panel p-4">

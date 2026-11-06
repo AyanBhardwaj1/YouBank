@@ -1,0 +1,116 @@
+/**
+ * The Book's track record: every closed position kept with its exit, why it was closed and what its thesis
+ * was doing, so a fund can show process, not just P&L. "We exit within N days of a thesis breaking", "our
+ * kill criteria would have saved X points", the hit rate and the payoff ratio by reason for closing.
+ *
+ * A position closes with an exit price (the price then, unless the person gives one), a reason and a note.
+ * The thesis's history gives the first day it broke and, from Nov 2026 on, the price that day. That is
+ * enough to compare the exit taken with "out on the break". Nothing is traded. Pure (safe on the client);
+ * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
+ */
+import type { HistoryPoint } from "./alerts";
+import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
+
+export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
+export type CloseReason = keyof typeof CLOSE_REASONS;
+export const JOURNAL_MAX = 300;
+
+export type ClosedPosition = {
+  id: string; ticker: string; direction: Direction; weight: number | null;
+  entry: number | null; exit: number | null;
+  openedAt: string; closedAt: string;
+  reason: CloseReason; note: string;
+  thesis: string; criteria: Criterion[];
+  /** The verdict when it was closed, and the first day its thesis read broken (with that day's price, when kept). */
+  verdictAtClose: Verdict; brokeOn: string | null; priceAtBreak: number | null;
+};
+
+const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v < 1e7 ? v : null);
+const day = (iso: string) => iso.slice(0, 10);
+const days = (a: string, b: string) => Math.round((Date.parse(`${day(b)}T00:00:00Z`) - Date.parse(`${day(a)}T00:00:00Z`)) / 86_400_000);
+const isReason = (v: unknown): v is CloseReason => typeof v === "string" && v in CLOSE_REASONS;
+
+/** A closed record from the position, its latest verdict and its history. */
+export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[], exit: number | null, reason: CloseReason, note: string, now = new Date()): ClosedPosition {
+  const brokeAt = history.find((h) => h.v === "broken") ?? null;
+  return {
+    id: p.id, ticker: p.ticker, direction: p.direction, weight: p.weight, entry: p.entry, exit: num(exit),
+    openedAt: p.createdAt, closedAt: now.toISOString(), reason, note: clip(note, 280),
+    thesis: p.thesis, criteria: p.criteria,
+    verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
+  };
+}
+
+export function normalizeJournal(raw: unknown): ClosedPosition[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: ClosedPosition[] = [];
+  for (const x of raw) {
+    const r = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    // The position's own fields are cleaned as a position (ticker, thesis, criteria); the rest here.
+    const p = normalizePosition({ ...r, catalysts: [], pillars: [] });
+    if (!p || seen.has(p.id) || typeof r.closedAt !== "string") continue;
+    seen.add(p.id);
+    const v = r.verdictAtClose;
+    out.push({
+      id: p.id, ticker: p.ticker, direction: p.direction, weight: p.weight, entry: p.entry, exit: num(r.exit),
+      openedAt: typeof r.openedAt === "string" ? r.openedAt : p.createdAt, closedAt: r.closedAt,
+      reason: isReason(r.reason) ? r.reason : "other", note: clip(r.note, 280), thesis: p.thesis, criteria: p.criteria,
+      verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
+      brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
+    });
+  }
+  return out.slice(0, JOURNAL_MAX);
+}
+
+/** Return on a closed position in its favour (a short gains when the price falls), as a fraction. */
+export const closedReturn = (c: Pick<ClosedPosition, "entry" | "exit" | "direction">) =>
+  c.entry && c.exit ? (c.exit / c.entry - 1) * (c.direction === "short" ? -1 : 1) : null;
+
+export type Scorecard = {
+  closed: number; withReturn: number;
+  hitRate: number | null; avgReturn: number | null; avgWin: number | null; avgLoss: number | null; payoff: number | null;
+  byReason: { reason: CloseReason; label: string; n: number; avgReturn: number | null }[];
+  /** Theses that broke while held; how many were closed within five days of breaking; median days from break to exit. */
+  broke: number; exitedOnBreak: number; medianDaysToExit: number | null;
+  /** Where the price on the break day is known: the average return had each been closed then, against the return taken. */
+  counterfactual: { n: number; onBreak: number; taken: number } | null;
+};
+
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const r4 = (x: number | null) => (x === null ? null : Math.round(x * 10_000) / 10_000);
+
+export function scorecard(list: ClosedPosition[]): Scorecard {
+  const rets = list.map((c) => ({ c, r: closedReturn(c) })).filter((x): x is { c: ClosedPosition; r: number } => x.r !== null);
+  const wins = rets.filter((x) => x.r > 0).map((x) => x.r), losses = rets.filter((x) => x.r < 0).map((x) => x.r);
+  const avgWin = mean(wins), avgLoss = mean(losses);
+  const byReason = (Object.keys(CLOSE_REASONS) as CloseReason[]).map((reason) => {
+    const xs = rets.filter((x) => x.c.reason === reason).map((x) => x.r);
+    return { reason, label: CLOSE_REASONS[reason], n: list.filter((c) => c.reason === reason).length, avgReturn: r4(mean(xs)) };
+  }).filter((x) => x.n > 0);
+  const broke = list.filter((c) => c.brokeOn);
+  const lags = broke.map((c) => days(c.brokeOn!, c.closedAt)).filter((d) => d >= 0);
+  const cf = rets.filter((x) => x.c.brokeOn && x.c.priceAtBreak && x.c.entry).map((x) => ({ taken: x.r, onBreak: (x.c.priceAtBreak! / x.c.entry! - 1) * (x.c.direction === "short" ? -1 : 1) }));
+  return {
+    closed: list.length, withReturn: rets.length,
+    hitRate: rets.length ? r4(wins.length / rets.length) : null, avgReturn: r4(mean(rets.map((x) => x.r))),
+    avgWin: r4(avgWin), avgLoss: r4(avgLoss), payoff: avgWin !== null && avgLoss ? r4(avgWin / Math.abs(avgLoss)) : null,
+    byReason,
+    broke: broke.length, exitedOnBreak: lags.filter((d) => d <= 5).length, medianDaysToExit: median(lags),
+    counterfactual: cf.length ? { n: cf.length, onBreak: r4(mean(cf.map((x) => x.onBreak)))!, taken: r4(mean(cf.map((x) => x.taken)))! } : null,
+  };
+}
+
+/** One line for a person (or an LP letter): the record so far. */
+export function scorecardLine(s: Scorecard): string {
+  if (!s.closed) return "No closed positions yet.";
+  const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+  const parts = [`${s.closed} closed`];
+  if (s.hitRate !== null) parts.push(`${Math.round(s.hitRate * 100)}% winners`);
+  if (s.avgReturn !== null) parts.push(`average ${pct(s.avgReturn)}`);
+  if (s.payoff !== null) parts.push(`payoff ${s.payoff.toFixed(2)}x`);
+  if (s.broke) parts.push(`${s.exitedOnBreak} of ${s.broke} broken theses exited within 5 days${s.medianDaysToExit !== null ? ` (median ${s.medianDaysToExit} days)` : ""}`);
+  return `${parts.join("; ")}.`;
+}

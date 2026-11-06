@@ -83,7 +83,8 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
 
 /* ---------------- History: one point a day per position ---------------- */
 
-export type HistoryPoint = { d: string; v: Verdict; s: number | null };
+/** One day of a thesis: verdict, score and (from Nov 2026) the price that day, for the track record's "exit on the break" counterfactual. */
+export type HistoryPoint = { d: string; v: Verdict; s: number | null; p?: number | null };
 export type BookHistory = Record<string, HistoryPoint[]>;
 export const HISTORY_DAYS = 180;
 
@@ -95,7 +96,7 @@ export function normalizeHistory(raw: unknown): BookHistory {
     out[id] = pts.flatMap((p): HistoryPoint[] => {
       const o = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
       return typeof o.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.d) && (o.v === "intact" || o.v === "watch" || o.v === "broken")
-        ? [{ d: o.d, v: o.v, s: typeof o.s === "number" ? o.s : null }] : [];
+        ? [{ d: o.d, v: o.v, s: typeof o.s === "number" ? o.s : null, ...(typeof o.p === "number" && o.p > 0 ? { p: o.p } : {}) }] : [];
     }).slice(-HISTORY_DAYS);
   }
   return out;
@@ -110,7 +111,7 @@ export function recordHistory(history: BookHistory, evals: Evaluation[], now: Da
   const out: BookHistory = {};
   for (const e of evals) {
     const pts = (history[e.positionId] ?? []).filter((p) => p.d !== d);
-    if (e.verdict !== "unknown") pts.push({ d, v: e.verdict, s: e.score });
+    if (e.verdict !== "unknown") pts.push({ d, v: e.verdict, s: e.score, ...(e.price !== null && e.price > 0 ? { p: e.price } : {}) });
     out[e.positionId] = pts.sort((a, b) => a.d.localeCompare(b.d)).slice(-HISTORY_DAYS);
   }
   return out;

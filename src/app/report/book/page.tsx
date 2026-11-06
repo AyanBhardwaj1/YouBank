@@ -12,6 +12,8 @@ import { filingLine } from "@/lib/book/filings";
 import { governanceRows, ledgerHead } from "@/lib/ledger/store";
 import { governance, periodOf } from "@/lib/ledger/governance";
 import { riskOf } from "@/lib/book/risk-store";
+import { loadJournal } from "@/lib/book/store";
+import { scorecard, scorecardLine } from "@/lib/book/journal";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book report", robots: { index: false } };
@@ -47,7 +49,8 @@ export default async function BookReport() {
     governanceRows(user.id, period.from, period.to).then((d) => ({ ...governance(d.rows, period.from, period.to, d.later), truncated: d.truncated })).catch(() => null),
   ]);
   // Risk is best effort: without prices (a feed down) the report still prints, without that section.
-  const [evals, risk] = await Promise.all([evaluateBook(book, now), riskOf(book, now).catch(() => null)]);
+  const [evals, risk, closed] = await Promise.all([evaluateBook(book, now), riskOf(book, now).catch(() => null), loadJournal(user.id).catch(() => [])]);
+  const record = scorecard(closed);
   const s = summarize(evals);
   const byId = new Map<string, Position>(book.map((p) => [p.id, p]));
   const history = normalizeBookState((profile?.extra as Record<string, unknown> | undefined)?.bookState).history;
@@ -77,6 +80,12 @@ export default async function BookReport() {
 
             {s.byIndustry.filter((x) => x.gross > 0).length > 1 && (
               <p className="mt-2 text-[11.5px] text-muted">By industry (% of NAV): {s.byIndustry.filter((x) => x.gross > 0).map((x) => `${x.industry} ${x.long ? `+${nav(x.long)}` : ""}${x.short ? ` −${nav(x.short)}` : ""} (net ${nav(x.net)})`).join(" · ")}.</p>
+            )}
+            {record.closed > 0 && (
+              <section className="mt-4 break-inside-avoid-page" aria-label="Track record">
+                <h2 className="text-[10px] uppercase tracking-wider text-muted">Track record (closed positions, unweighted, not audited performance)</h2>
+                <p className="mt-0.5">{scorecardLine(record)}{record.counterfactual ? ` Closed on the day their thesis broke, the ${record.counterfactual.n} broken position${record.counterfactual.n === 1 ? "" : "s"} would have returned ${(record.counterfactual.onBreak * 100).toFixed(1)}% on average, against ${(record.counterfactual.taken * 100).toFixed(1)}% taken.` : ""}</p>
+              </section>
             )}
             {risk && risk.betaNet !== null && (
               <section className="mt-4 break-inside-avoid-page" aria-label="Risk">

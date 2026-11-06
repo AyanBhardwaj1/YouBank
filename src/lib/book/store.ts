@@ -18,6 +18,7 @@ import { updateExtra } from "@/lib/prefs/extra";
 import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
+import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
@@ -47,6 +48,40 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
 
 export async function deletePosition(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, book: normalizeBook(extra.book).filter((t) => t.id !== id) }));
+}
+
+/* ---------------- The track record: closed positions ---------------- */
+
+export async function loadJournal(userId: string): Promise<ClosedPosition[]> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  return normalizeJournal((row?.extra as Record<string, unknown> | undefined)?.bookClosed);
+}
+
+/**
+ * Close a position into the track record: it leaves the book and is kept, newest first, with its exit (the
+ * price given, else the price now), the reason, its verdict and the first day its thesis broke. One write,
+ * under the profile's row lock. Null when the position is not in the book.
+ */
+export async function closePosition(userId: string, id: string, opts: { exit: number | null; reason: CloseReason; note: string }, now = new Date()): Promise<ClosedPosition | null> {
+  const book = await loadBook(userId);
+  const p = book.find((x) => x.id === id);
+  if (!p) return null;
+  const [ev] = await evaluateBook([p], now).catch(() => [] as Evaluation[]);
+  let closed: ClosedPosition | null = null;
+  await updateExtra(userId, (extra) => {
+    const list = normalizeBook(extra.book);
+    const at = list.findIndex((x) => x.id === id);
+    if (at < 0) return extra;
+    const state = normalizeBookState(extra.bookState);
+    closed = closedFrom(list[at], ev?.verdict ?? "unknown", state.history[id] ?? [], opts.exit ?? ev?.price ?? null, opts.reason, opts.note, now);
+    return { ...extra, book: list.filter((x) => x.id !== id), bookClosed: [closed, ...normalizeJournal(extra.bookClosed).filter((x) => x.id !== id)].slice(0, JOURNAL_MAX) };
+  });
+  return closed;
+}
+
+/** Remove a record from the track record (one closed by mistake). */
+export async function deleteClosed(userId: string, id: string): Promise<void> {
+  await updateExtra(userId, (extra) => ({ ...extra, bookClosed: normalizeJournal(extra.bookClosed).filter((x) => x.id !== id) }));
 }
 
 /* ---------------- Proposals from the person's AI apps ---------------- */

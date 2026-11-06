@@ -110,6 +110,17 @@ async function main() {
   const good = await fetch(`${BASE}/api/oauth/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", code: await code2(), redirect_uri: redirect, code_verifier: v2 }), headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basic(creg.body.client_secret) } }).then((r) => r.json());
   check("the right secret with HTTP Basic gets a key", /^ybm_/.test(good.access_token ?? ""), good);
 
+  console.log("the track record");
+  const j0 = await j("/api/book/journal");
+  const victim = (await j("/api/book")).body.positions.find((x: { ticker: string }) => x.ticker === "MSFT");
+  if (victim) {
+    const cl = await j("/api/book/journal", { method: "POST", body: JSON.stringify({ id: victim.id, exit: 500, reason: "target", note: "e2e" }) });
+    const j1 = await j("/api/book/journal");
+    check("closing records the position with its exit and reason, and it leaves the book", cl.status === 200 && cl.body.closed?.exit === 500 && j1.body.closed.length === j0.body.closed.length + 1 && !(await j("/api/book")).body.positions.some((x: { id: string }) => x.id === victim.id), cl.body);
+    check("the scorecard counts it", typeof j1.body.scorecard?.closed === "number" && j1.body.scorecard.closed >= 1, j1.body.scorecard);
+    await j(`/api/book/journal?id=${victim.id}`, { method: "DELETE" });
+  }
+
   console.log("risk, the what-if and the calendar");
   const risk = await j("/api/book/risk");
   check("the book's risk answers with five stress replays (figures need prices; without them it says what is left out)", risk.status === 200 && Array.isArray(risk.body.scenarios) && risk.body.scenarios.length === 5 && Array.isArray(risk.body.excluded), risk.body?.excluded);
