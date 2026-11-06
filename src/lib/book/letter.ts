@@ -95,24 +95,49 @@ const METRIC_WORDS: Record<FilingFact["metric"], string> = {
 const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Figures written about a held company, checked against the filing: in a clause naming the company (ticker
- * or name) and a metric, the percent nearest the metric must match YouBank's figure within half a point.
+ * Figures written about a held company, checked against the filing. In each clause: the companies named (a
+ * ticker as written, case-sensitive, or the company's distinctive first word as a capitalised name), and each
+ * metric phrase with the percent that belongs to it (the one after it, up to the next metric or company, the
+ * "to" figure in "from X to Y", signed by "down" or "negative"). The percent is checked against the company
+ * named nearest the metric, within half a point. A clause about a quarter or another period is skipped: the
+ * filing figures are LTM. Ranges ("66-68%") are skipped.
  */
 export function checkFigures(text: string, facts: FilingFact[]): { excerpt: string; fact: FilingFact; said: number }[] {
   const out: { excerpt: string; fact: FilingFact; said: number }[] = [];
+  const firms = [...new Map(facts.map((f) => [f.ticker, f])).values()].map((f) => {
+    const first = (f.name.split(/\s+/)[0] ?? "").replace(/[^\p{L}\p{N}&'-]/gu, "");
+    const named = first.length >= 4 && /^\p{Lu}/u.test(first) && !/^(the|first|general|american|united|international|national|global|western|eastern|southern|northern|target|advanced|applied|digital|first|best)$/i.test(first);
+    return { ticker: f.ticker, re: new RegExp(`(?<![A-Za-z$])\\$?${esc(f.ticker)}(?![A-Za-z])${named ? `|\\b${esc(first)}\\b` : ""}`, "g") };
+  });
+  const METRICS = Object.entries(METRIC_WORDS).map(([metric, kw]) => ({ metric: metric as FilingFact["metric"], re: new RegExp(kw, "gi") }));
+  const OTHER_PERIOD = /\b(q[1-4]|quarter(?:ly)?|month(?:ly)?|half[- ]year|h[12]|first half|second half|week(?:ly)?|year[- ]to[- ]date|ytd)\b/i;
   for (const s of sentences(text)) {
-    for (const cl of s.split(/[;:]\s*|,\s+(?=(?:and|while|but)\b)/)) {
-      for (const f of facts) {
-        // The ticker, or the company's first word when it is distinctive ("Snowflake", not "The" or "First").
-        const first = f.name.split(/\s+/)[0] ?? "";
-        const named = first.length >= 4 && !/^(the|first|general|american|united|international|national|global|western|eastern|southern|northern)$/i.test(first);
-        const who = new RegExp(`\\b(?:${esc(f.ticker)}${named ? `|${esc(first)}` : ""})\\b`, "i");
-        if (!who.test(cl)) continue;
-        const kw = METRIC_WORDS[f.metric];
-        const m = new RegExp(`(?:${kw})[^.%]{0,40}?(-?\\d+(?:\\.\\d+)?)\\s?%`, "i").exec(cl) ?? new RegExp(`(-?\\d+(?:\\.\\d+)?)\\s?%\\s+(?:\\w+\\s+){0,2}(?:${kw})`, "i").exec(cl);
-        if (!m) continue;
-        const said = Number(m[1]);
-        if (Number.isFinite(said) && Math.abs(said - f.value) > 0.5 && !out.some((o) => o.excerpt === s && o.fact === f)) out.push({ excerpt: s, fact: f, said });
+    for (const cl of s.split(/;\s*|,\s+(?=(?:and|while|but|whereas)\b)/)) {
+      if (OTHER_PERIOD.test(cl)) continue;
+      const mentions = firms.flatMap((f) => [...cl.matchAll(f.re)].map((m) => ({ ticker: f.ticker, at: m.index ?? 0 })));
+      if (!mentions.length) continue;
+      const hits = METRICS.flatMap((x) => [...cl.matchAll(x.re)].map((m) => ({ metric: x.metric, start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }))).sort((a, b) => a.start - b.start);
+      for (const [k, h] of hits.entries()) {
+        const nextMention = mentions.filter((m) => m.at > h.end).map((m) => m.at);
+        const stop = Math.min(hits[k + 1]?.start ?? cl.length, ...nextMention, h.end + 60);
+        const win = cl.slice(h.end, stop).replace(/−/g, "-");
+        // A range is not one figure; "from X to Y" means Y.
+        if (/\d\s?[-–]\s?\d+(?:\.\d+)?\s?%/.test(win)) continue;
+        const m = /\bto\s+(-?\d+(?:\.\d+)?)\s?%/.exec(win) ?? /(-?\d+(?:\.\d+)?)\s?%/.exec(win);
+        let said: number;
+        if (m) {
+          said = Number(m[1]);
+          if (said > 0 && /\b(down|negative|minus|declin\w*|fell|fall\w*|shrank|shrink\w*|contract\w*)\b/i.test(win.slice(0, m.index))) said = -said;
+        } else {
+          // "30% revenue growth": the percent just before the phrase.
+          const before = /(-?\d+(?:\.\d+)?)\s?%\s+(?:\w+\s+){0,2}$/.exec(cl.slice(Math.max(0, h.start - 30), h.start).replace(/−/g, "-"));
+          if (!before) continue;
+          said = Number(before[1]);
+        }
+        // The company named nearest the metric (one named before it wins a tie).
+        const who = [...mentions].sort((a, b) => Math.abs(a.at - h.start) - Math.abs(b.at - h.start) || a.at - b.at)[0];
+        const f = facts.find((x) => x.ticker === who.ticker && x.metric === h.metric);
+        if (f && Number.isFinite(said) && Math.abs(said - f.value) > 0.5 && !out.some((o) => o.excerpt === s && o.fact === f)) out.push({ excerpt: s, fact: f, said });
       }
     }
   }

@@ -775,7 +775,7 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
   return (
     <div className="space-y-3">
       <section className="panel flex flex-wrap items-center gap-3 p-3 text-[12.5px]">
-        <span className="min-w-0 basis-full text-muted sm:basis-0 sm:flex-1">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""}</span>
+        <span className="min-w-0 basis-full text-muted sm:basis-0 sm:flex-1">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""} Sharing shows your positions, theses and kill criteria, your forecasts, and your red team and AI committee write-ups.</span>
         <label className="flex items-center gap-2"><input type="checkbox" checked={sharing} disabled={busy} onChange={() => void toggle()} />Share my book with {team.name}</label>
       </section>
       {err && <div role="alert" className="panel p-3 text-[12px] text-neg">{err}</div>}

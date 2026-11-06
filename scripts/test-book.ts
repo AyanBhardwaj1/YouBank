@@ -422,12 +422,12 @@ console.log("Figures checked against the filing");
 {
   const facts = [{ ticker: "SNOW", name: "Snowflake Inc.", metric: "gross margin" as const, value: 66.8, shown: "66.8%", source: "SEC XBRL company facts, LTM to 2026-07-31" }, { ticker: "TTD", name: "The Trade Desk", metric: "revenue growth" as const, value: 18.2, shown: "18.2%", source: "SEC XBRL" }];
   const got = (x: string) => checkFigures(x, facts).map((r) => [r.fact.ticker, r.said]);
-  ok("a figure about a holding that does not match its filing is caught, by ticker or name; a matching or rounded one is not", [got("Snowflake's gross margin reached 72% this quarter."), got("SNOW gross margin was 66.8%, and we added."), got("SNOW's gross margin is about 67%."), got("Gross margins of 40% at SNOW would be a problem.")], [[["SNOW", 72]], [], [], [["SNOW", 40]]]);
+  ok("a figure about a holding that does not match its filing is caught, by ticker or name; a matching or rounded one is not", [got("Snowflake's gross margin reached 72%."), got("SNOW gross margin was 66.8%, and we added."), got("SNOW's gross margin is about 67%."), got("Gross margins of 40% at SNOW would be a problem.")], [[["SNOW", 72]], [], [], [["SNOW", 40]]]);
   ok("a common first word is not a company name; the ticker still works", [got("The gross margin across the book was 55%."), got("TTD revenue growth was 25%.")], [[], [["TTD", 25]]]);
   const evF = evaluate(t, co, d, [], now);
   const draftF = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [evF], summary: summarize([evF]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null });
   ok("the draft's own figures match the filing", lintLetter(draftF, { ledgerOn: false, facts: factsFrom([evF]) }).filter((f) => f.rule === "Figure does not match the filing").length, 0);
-  ok("the compliance pass names the filing's figure and source", lintLetter("Snowflake's gross margin reached 72% this quarter.", { ledgerOn: false, facts }).find((f) => f.rule === "Figure does not match the filing")?.why.startsWith("SNOW's gross margin is 66.8% (SEC XBRL company facts, LTM to 2026-07-31), not 72%."), true);
+  ok("the compliance pass names the filing's figure and source", lintLetter("Snowflake's gross margin reached 72%.", { ledgerOn: false, facts }).find((f) => f.rule === "Figure does not match the filing")?.why.startsWith("SNOW's gross margin is 66.8% (SEC XBRL company facts, LTM to 2026-07-31), not 72%."), true);
 }
 
 console.log("The Friday brief");
@@ -445,6 +445,18 @@ console.log("Returns by the committee's call");
   ok("closes are grouped by the committee's last call; ones it never sat on are left out", sc2.byCommittee, [{ decision: "hold", n: 1, avgReturn: 0.3 }, { decision: "exit", n: 2, avgReturn: -0.15 }]);
   const cl = closedFrom(normalizePosition({ ...t, id: "kc01", committee: committeeFrom({ decision: "trim", probability: 50, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")) })!, "intact", [], 90, "other", "", now);
   ok("a close keeps the committee's last call through storage", normalizeJournal([JSON.parse(JSON.stringify(cl))])[0]?.aiDecision, "trim");
+}
+
+console.log("Figure check: the third review's cases");
+{
+  const F = (ticker: string, name: string, metric: "revenue growth" | "gross margin" | "operating margin" | "free cash flow margin", value: number) => ({ ticker, name, metric, value, shown: `${value}%`, source: "SEC XBRL" });
+  const facts = [F("SNOW", "Snowflake Inc.", "revenue growth", 30), F("SNOW", "Snowflake Inc.", "gross margin", 67), F("A", "Agilent Technologies", "revenue growth", 4), F("NOW", "ServiceNow, Inc.", "revenue growth", 21), F("TGT", "Target Corp", "gross margin", 28), F("INTC", "Intel Corp", "revenue growth", -5), F("INTC", "Intel Corp", "gross margin", 40), F("CRM", "Salesforce, Inc.", "operating margin", 20), F("DDOG", "Datadog, Inc.", "revenue growth", 26)];
+  const got = (x: string) => checkFigures(x, facts).map((r) => [r.fact.ticker, r.fact.metric, r.said]);
+  ok("English words are not tickers or names: 'a', 'now', 'target'", [got("Snowflake revenue grew a strong 30%."), got("Revenue growth at Snowflake is now 30%."), got("Our target gross margin for INTC is 40%.")], [[], [], []]);
+  ok("negatives: the minus sign, 'down', and a range are read right", [got("Intel revenue growth was −5.0%."), got("Intel revenue growth was down 5%."), got("Snowflake gross margin of 66-68% held.")], [[], [], []]);
+  ok("a quarter's figure is not compared with LTM", got("In Q3, Snowflake revenue grew 28% year over year."), []);
+  ok("each percent belongs to its own metric and company; 'from X to Y' means Y", [got("SNOW gross margin held up while revenue grew 30%."), got("SNOW revenue growth of 30% outpaced DDOG revenue growth of 26%."), got("Snowflake revenue growth decelerated from 40% to 30%.")], [[], [], []]);
+  ok("a name with a comma still matches, and a wrong figure is still caught", got("Salesforce operating margin was 33%."), [["CRM", "operating margin", 33]]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -205,11 +205,17 @@ function complianceTool(userId: string) {
       const g = rows ? governance(rows.rows, period.from, period.to, rows.later) : null;
       const ledgerOn = !!settings?.on;
       const findings = lintLetter(text, { ledgerOn, record: g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null, facts });
+      // A check that could not run is said, never read as "nothing flagged".
+      const skipped = [
+        ...(ledgerOn && !g ? ["The research ledger could not be read just now, so claims about AI supervision were not checked."] : []),
+        ...(book.length && !facts.length ? ["The holdings' filings could not be read just now, so figures about them were not checked."] : []),
+      ];
       const src = facts.length ? ctx.addSource("SEC XBRL company facts for the held companies, as YouBank's Book reads them", siteLink("/app/book")) : null;
       return JSON.stringify({
-        verdict: findings.some((f) => f.severity === "high") ? "fix before sending" : findings.some((f) => f.severity === "medium") ? "review" : "nothing flagged",
+        verdict: findings.some((f) => f.severity === "high") ? "fix before sending" : findings.some((f) => f.severity === "medium") || skipped.length ? "review" : "nothing flagged",
+        ...(skipped.length ? { not_checked: skipped } : {}),
         findings: findings.map((f) => ({ severity: f.severity, rule: f.rule, sentence: f.excerpt, why: f.why })),
-        checked_against: { research_ledger: ledgerOn ? "on (last 30 days)" : "off", holdings_with_figures: [...new Set(facts.map((f) => f.ticker))], source: src },
+        checked_against: { research_ledger: !ledgerOn ? "off" : g ? "on (last 30 days)" : "unreadable", holdings_with_figures: [...new Set(facts.map((f) => f.ticker))], source: src },
         note: "A first read, not legal advice: the firm's compliance officer signs off.",
       });
     },
