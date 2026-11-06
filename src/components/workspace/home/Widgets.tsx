@@ -295,7 +295,7 @@ export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
 /* ---------------- The Book: which theses hold (src/lib/book) ---------------- */
 
 type BookEval = { positionId: string; ticker: string; verdict: "intact" | "watch" | "broken" | "unknown"; summary: string; earnings?: { date: string; inDays: number; estimated: boolean } | null };
-type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[] };
+type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[]; positions?: { ticker: string; conviction?: { p: number; by: string; source: string } }[] };
 const VERDICT_TONE: Record<BookEval["verdict"], string> = { broken: "bg-neg/15 text-neg", watch: "bg-accent-soft text-accent", unknown: "bg-elevated text-muted", intact: "bg-pos/15 text-pos" };
 export function BookWidget({ roomy }: Props) {
   const [b, setB] = useState<BookRes | null | "error">(null);
@@ -319,6 +319,13 @@ export function BookWidget({ roomy }: Props) {
           {(() => {
             const soon = b.evaluations.filter((e) => e.earnings && e.earnings.inDays >= 0 && e.earnings.inDays <= 7).sort((x, y) => x.earnings!.inDays - y.earnings!.inDays);
             return soon.length ? <div className={`mb-1.5 ${t}`}><span className="text-muted">Reporting this week: </span>{soon.slice(0, 4).map((e) => `${e.ticker} ${e.earnings!.inDays === 0 ? "today" : e.earnings!.inDays === 1 ? "tomorrow" : `in ${e.earnings!.inDays}d`}`).join(" · ")}</div> : null;
+          })()}
+          {(() => {
+            // Forecast coverage and the next one to be scored (sample forecasts are illustrative, not counted).
+            const today = new Date().toISOString().slice(0, 10);
+            const fs = (b.positions ?? []).filter((p) => p.conviction && p.conviction.source !== "Sample");
+            const next = fs.filter((p) => p.conviction!.by >= today).sort((x, y) => x.conviction!.by.localeCompare(y.conviction!.by))[0];
+            return (b.positions?.length ?? 0) > 0 ? <div className={`mb-1.5 ${t} text-muted`}>Forecasts on {fs.length} of {b.positions!.length}{next ? ` · next scored: ${next.ticker} on ${next.conviction!.by}` : ""} · <Link href="/report/week" className="hover:text-fg hover:underline">the week →</Link></div> : null;
           })()}
           <ul className="space-y-1">
             {b.evaluations.slice(0, 5).map((e) => (
