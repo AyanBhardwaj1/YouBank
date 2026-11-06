@@ -65,7 +65,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ### YouBank inside the fund's own AI apps: an MCP server (`/api/mcp`, Settings → Connect AI apps)
 
-- **What it offers.** Nineteen tools over the Model Context Protocol, eighteen of them read-only, (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
+- **What it offers.** Twenty tools over the Model Context Protocol, nineteen of them read-only, (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
   - SEC XBRL fundamentals and comps;
   - filing search and reading, EDGAR full text and recent filings;
   - XBRL time series and insider transactions;
@@ -75,8 +75,9 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - the person's **Book**, with every thesis checked;
   - `check_thesis`: any kill criteria checked against filings and the price on demand, without saving.
   - `book_risk`: the book's beta, VaR, stacked bets and stress replays;
+  - `book_track_record`: the scorecard, process against outcome, and calibration by who forecast;
   - `propose_position`: the one tool that writes, and all it writes is a proposal for the person to review (MCP marks it not read-only and not destructive).
-- **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing*, *Earnings prep* and *Pre-trade check* (kill criteria, the risk what-if, the latest filing and insiders, then go or no-go, and a proposal if you say go) appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
+- **Ready-made prompts.** *Review my book*, *Argue against a position*, *Investment committee*, *What changed in the latest filing*, *Earnings prep* and *Pre-trade check* (kill criteria, the risk what-if, the latest filing and insiders, then go or no-go, and a proposal if you say go) appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
 - **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration, for public and confidential clients. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
 - **Guardrails per app.** Each connected app can be paused at once (every call refused), kept from the Book, or kept from proposing positions, in Settings → Connect AI apps. Tools an app may not use are neither listed nor callable, and every change is written to the research ledger. That is the "limit what an agent can do, and watch it" control FINRA's 2026 oversight report asks of firms using AI agents.
@@ -108,7 +109,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - Quant covers factors, risk, backtest integrity checks, sizing and costs.
 - Also in the product: 13F fund copies, algorithmic paper trading behind step-up 2FA, the Newsroom, Studio models and decks, the CRM, and the desktop and Office apps.
 
-## 3. A ten-minute demo
+## 3. A twelve-minute demo
 
 1. **Home.** A markets user sees the Book widget: "1 broken · 1 on watch · 7.5% of NAV at risk", and the alert that came in after yesterday's close.
 2. **The Book.**
@@ -121,11 +122,17 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Under "Before a trade", try a long in a name that rhymes with one already held (AMD next to NVDA). Watch beta and VaR rise, and YouBank say it is more of the same bet.
    - On a name reporting soon, point at "What the next report must show": the revenue number to watch on the call.
    - Run the red team. While it works, point at the exposure strip.
-3. **Connect AI apps.**
+   - Give the broken position a forecast ("70% that no kill criterion fails before February"), then press "Convene the committee". It takes two or three minutes, so start it early. A bull and a bear write alone, and the chair says trim, with the dissent and three signals to watch. Point out that its forecast will be scored against the PM's.
+   - Open "Track record": process against outcome (a lucky win counts as luck), and calibration by who forecast. If the biggest position carries the lowest conviction, the note under the exposure strip already says so.
+3. **Writing for LPs.**
+   - From "Share & export", open "LP letter". Type "We guarantee strong returns" into the draft and watch the compliance pass flag it.
+   - Open "AI due-diligence answers": nine LP questions answered from the ledger, with the firm-only facts left in brackets.
+4. **Connect AI apps.**
    - In Claude, add a custom connector with the server URL, approve it on YouBank's consent page, and watch the new key appear in Settings. Or make a key and paste the Claude Code line.
    - In Claude, pick the *Review my book* prompt, or ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
-   - Ask Claude to research a short idea and "propose it to my book". Refresh the Book: the proposal is there, marked "from Claude", with its reasoning. Press "Review and add", change the weight, and save.
-4. **Research ledger.**
+   - Ask Claude to research a short idea and "propose it to my book". In Claude, the proposal shows as a card, with its kill criteria checked now and "Review in YouBank". Refresh the Book: the proposal is there, marked "from Claude", with its reasoning. Press "Review and add", change the weight, and save.
+   - Pick the *Investment committee* prompt in Claude to run the same committee with Claude's own model, or ask "How good is my process?" (`book_track_record`).
+5. **Research ledger.**
    - Turn it on and show the MCP call from step 3 already recorded.
    - Approve it, then press "Check the chain".
    - Copy the head line into an email to yourself. Then explain that pasting it back later proves nothing before it changed, even if someone with YouBank's database tried.
@@ -139,6 +146,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **The Book checks LTM fundamentals, price and insider selling.** It does not check estimates, intra-quarter KPIs or alternative data yet. Insider selling (Form 4 open-market sales less purchases over 90 days) is shown only when every filing in the window was read; otherwise it reads as no data. It is worked out after each close and when such a position is saved, and 10b5-1 plan sales are not told apart.
 - **Risk is historical.** VaR, beta and the stress replays use daily closes with today's weights. They are not a factor model and not a forecast, and they leave out names with under six months of prices. "What the next report must show" covers revenue criteria only; margins need more than revenue to project.
 - **Not an order-management system.** Positions are entered by hand. There is no broker sync for the Book, and the Book places no trades.
+- **The committee is one model in three roles.** The bull and the bear write independently, but on the same model with the same data, so their disagreement is narrower than two analysts'. Its forecasts are scored so the fund can see whether it helps. The proposal card in Claude and ChatGPT follows the MCP Apps spec and passes a simulated host, but has not been seen in either app yet.
+- **The compliance pass is rules, not counsel.** It catches the common Marketing Rule and AI-washing problems in a letter or DDQ, deterministically. It is a first read before the CCO, not a substitute for one.
 - **Research figures.** The 95% adoption figure is from AIMA's 2025 generative-AI research, not the 2026 emerging-manager survey. An often-repeated "17% credit AI with performance" figure could not be traced to a primary source and is not used here.
 
 ## 5. Technical notes
