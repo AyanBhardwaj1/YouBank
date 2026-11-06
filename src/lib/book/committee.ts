@@ -9,7 +9,6 @@
  * track record sets the person's calibration beside the AI's. Pure: prompts, the chair's schema, and the
  * cleaning of a stored committee. The run is in src/app/api/book/committee; tested in scripts/test-book.ts.
  */
-import { z } from "zod";
 import { AI_COMMITTEE, normalizeConviction, type Conviction } from "./forecast";
 import { METRICS, type Evaluation, type Position, type RedTeam } from "./position";
 
@@ -43,20 +42,9 @@ export function bullPrompt(p: Position, ev: Evaluation | null): string {
   ].filter(Boolean).join("\n\n");
 }
 
-export const ChairSchema = z.object({
-  decision: z.enum(["add", "hold", "trim", "exit"]),
-  probability: z.number().describe("1-99: the chance that no kill criterion fails in the next 90 days"),
-  rationale: z.string().describe("Why, in at most 4 sentences, citing which brief's evidence carried it"),
-  dissent: z.string().describe("The strongest point from the side that lost, in one or two sentences"),
-  watch: z.array(z.string()).describe("Up to 3 checkable signals to watch, most important first"),
-});
+/** The chair's answer (validated by ChairSchema in ./committee-chair.ts, kept out of the browser bundle). */
+export type ChairAnswer = { decision: Decision; probability: number; rationale: string; dissent: string; watch: string[] };
 
-export const CHAIR_SYSTEM = [
-  "You chair a small hedge fund's investment committee. You get the position's thesis, its kill criteria with where each stands, and two briefs written independently: one for the position, one against.",
-  "Decide add, hold, trim or exit on the evidence in front of you, not on which brief is longer or more confident. A failed kill criterion weighs heavily toward trim or exit unless the bull shows it is temporary with evidence.",
-  "Give your probability (1-99) that no kill criterion fails in the next 90 days. Be calibrated: 50 means a coin flip; do not cluster at 70-80 by habit.",
-  "Record the strongest point of the side that lost as the dissent. Never invent facts beyond the briefs and the criteria.",
-].join("\n");
 
 /** The chair's prompt: the evidence and both briefs, labelled. */
 export function chairPrompt(p: Position, ev: Evaluation | null, bull: string, bear: string, baseRate: { p: number; by: string } | null = null): string {
@@ -75,7 +63,7 @@ const brief = (v: unknown): RedTeam | null => {
   return { at: r.at, text: r.text.slice(0, 8000), sources };
 };
 
-type Chair = z.infer<typeof ChairSchema>;
+type Chair = ChairAnswer;
 const pctOf = (x: number) => Math.min(99, Math.max(1, Math.round(x > 0 && x < 1 ? x * 100 : x)));
 const CAUTION: Decision[] = ["exit", "trim", "hold", "add"];
 const logit = (p: number) => Math.log(p / (1 - p));
@@ -109,7 +97,7 @@ export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decisio
 }
 
 /** A committee from the chair's answer and the two briefs, as of `now`: its forecast runs 90 days. */
-export function committeeFrom(chair: z.infer<typeof ChairSchema>, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[]): Committee {
+export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[]): Committee {
   const today = now.toISOString().slice(0, 10);
   const by = new Date(now.getTime() + 90 * 86_400_000).toISOString().slice(0, 10);
   return {
