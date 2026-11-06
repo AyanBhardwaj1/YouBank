@@ -189,7 +189,7 @@ function trackRecordTool(userId: string) {
 function weekTool(userId: string) {
   return def({
     name: "book_week",
-    description: "The last seven days of the signed-in person's Book in YouBank: theses that changed verdict (from what, to what, and the day), forecasts that resolved (held or missed), the AI investment committee's sittings, positions closed, earnings and catalysts in the next two weeks, and proposals waiting for review, with a one-line headline. For a Monday-morning review.",
+    description: "The last seven days of the signed-in person's Book in YouBank: theses that changed verdict (from what, to what, and the day), forecasts that resolved (held or missed), the AI investment committee's sittings, positions closed, earnings and catalysts in the next two weeks, proposals waiting for review, the person's own decision-journal notes from the week, and positions changed this week with no note on why, with a one-line headline. For a Monday-morning review.",
     schema: z.object({}),
     run: async (_args, ctx) => {
       const now = new Date();

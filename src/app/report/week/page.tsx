@@ -69,6 +69,14 @@ export default async function WeekPage() {
           <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>: {n.text}</li>)}</ul>
         </>)}
 
+        {w.unexplained.length > 0 && (<>
+          <H>Changes without a reason</H>
+          <p className="mt-0.5 text-muted">YouBank recorded what changed; a line on why makes the journal worth reading in the next letter or DDQ.</p>
+          <ul className="mt-0.5 space-y-0.5">{w.unexplained.map((u) => (
+            <li key={u.positionId}><Link href={`/app/book?position=${encodeURIComponent(u.positionId)}`} className="font-semibold hover:underline">{u.ticker}</Link>: {u.changes.slice(0, 2).join(" ")}{u.changes.length > 2 ? ` And ${u.changes.length - 2} more.` : ""}</li>
+          ))}</ul>
+        </>)}
+
         {w.proposals.length > 0 && (<>
           <H>Waiting for your review</H>
           <p className="mt-0.5">{w.proposals.map((p) => `${p.ticker} from ${p.from}`).join(" · ")}. <Link href="/app/book" className="text-accent hover:underline">Review them</Link>.</p>

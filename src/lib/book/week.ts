@@ -23,6 +23,8 @@ export type WeekBrief = {
   proposals: { ticker: string; from: string }[];
   /** The PM's own decision-journal notes from the week (not YouBank's automatic entries). */
   notes: { ticker: string; on: string; text: string }[];
+  /** Positions held before the week that YouBank recorded a change on this week with no note from the PM: the journal has the what, not the why. */
+  unexplained: { positionId: string; ticker: string; changes: string[] }[];
   headline: string;
 };
 
@@ -87,6 +89,13 @@ export function weekBrief(i: WeekInput): WeekBrief {
     .flatMap((x) => x.log.filter((e) => !e.auto && inWeek(e.at.slice(0, 10))).map((e) => ({ ticker: x.ticker, on: e.at.slice(0, 10), text: e.text })))
     .sort((a, b) => b.on.localeCompare(a.on));
 
+  const unexplained = i.book
+    .map((p) => ({ p, week: (p.log ?? []).filter((e) => inWeek(e.at.slice(0, 10))) }))
+    // Only positions held before the week: a book imported or opened this week is not a list of changes.
+    .filter(({ p, week }) => (p.log ?? []).some((e) => e.at.slice(0, 10) <= from) && week.some((e) => e.auto) && !week.some((e) => !e.auto))
+    .map(({ p, week }) => ({ positionId: p.id, ticker: p.ticker, changes: week.filter((e) => e.auto).map((e) => e.text) }))
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+
   const parts: string[] = [];
   const roundTrip = changes.filter((c) => c.to === c.from && c.path.includes("broken"));
   const moved = changes.filter((c) => c.to !== c.from);
@@ -101,7 +110,7 @@ export function weekBrief(i: WeekInput): WeekBrief {
   if (coming.length) parts.push(`${plural(coming.length, "date")} in the next two weeks`);
   if (proposals.length) parts.push(`${plural(proposals.length, "proposal")} waiting for review`);
   const headline = parts.length ? `This week: ${parts.join("; ")}.` : "A quiet week: no thesis changed verdict.";
-  return { from, to, changes, resolved, committees, closed, coming, proposals, notes, headline };
+  return { from, to, changes, resolved, committees, closed, coming, proposals, notes, unexplained, headline };
 }
 
 export const verdictWord = (v: Verdict) => WORD[v];

@@ -372,6 +372,11 @@ console.log("The week in the book");
   ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
   const pJ = normalizePosition({ ...t, catalysts: [], id: "wkj1", ticker: "JRN", log: [{ at: "2026-11-05T10:00:00Z", text: "Sized down ahead of the print" }, { at: "2026-11-05T10:00:00Z", text: "Weight 4% → 2% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old note" }] })!;
   ok("the week lists the PM's own notes from the week, not YouBank's entries or older notes", weekBrief({ now: wNow, book: [pJ], evals: [], history: {}, closed: [], proposals: [] }).notes, [{ ticker: "JRN", on: "2026-11-05", text: "Sized down ahead of the print" }]);
+  const pU = normalizePosition({ ...t, catalysts: [], id: "wku1", ticker: "UNX", log: [{ at: "2026-11-06T10:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old reason" }] })!;
+  const wU = weekBrief({ now: wNow, book: [pJ, pU], evals: [], history: {}, closed: [], proposals: [] });
+  const pNew = normalizePosition({ ...t, catalysts: [], id: "wkn1", ticker: "NEW", log: [{ at: "2026-11-06T10:00:00Z", text: "Opened at 2% of NAV.", auto: true }] })!;
+  ok("a position opened this week is not a change without a reason", weekBrief({ now: wNow, book: [pNew], evals: [], history: {}, closed: [], proposals: [] }).unexplained, []);
+  ok("the week lists positions changed this week with no note on why, not ones the PM explained", wU.unexplained, [{ positionId: "wku1", ticker: "UNX", changes: ["Weight 3% → 5% of NAV."] }]);
   ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict.");
 }
 
