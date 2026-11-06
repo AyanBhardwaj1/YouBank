@@ -138,6 +138,7 @@ export default async function BookReport() {
                       ))}</tbody>
                     </table></div>
                   )}
+                  {!!p?.log?.length && <p className="mt-1.5"><span className="text-muted">Decision journal:</span> {p.log.slice(-3).map((x) => `${x.at.slice(0, 10)} ${x.text}`).join(" · ")}</p>}
                   {toothless(e.checks).length > 0 && <p className="mt-1.5"><span className="text-muted">Unlikely ever to fire:</span> {toothless(e.checks).map((x) => `${x.label} (${x.room} of room)`).join("; ")}.</p>}
                   {e.filing && <p className="mt-1.5"><span className="text-muted">New {e.filing.form} ({e.filing.filed}):</span> {filingLine(e.filing)}</p>}
                   {!!e.nextPrint?.length && <p className="mt-1.5"><span className="text-muted">Next report must show:</span> {e.nextPrint.map((b) => b.line).join(" ")}</p>}
