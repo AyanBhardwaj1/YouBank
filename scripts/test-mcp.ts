@@ -68,7 +68,9 @@ async function main() {
   const names = new Set(real.tools.map((t) => t.name));
   const named = PROMPTS.flatMap((p) => (p.build({ ticker: "SNOW", form: "10-Q" }).match(/\b[a-z]+_[a-z_]+\b/g) ?? []).filter((w) => /^(get|book|ticker|filing|search|read|edgar|form)_/.test(w)));
   ok("every tool a prompt names is one the server offers", named.filter((n) => !names.has(n)), []);
-  ok("the server offers four prompts, each asking for citations", PROMPTS.map((p) => [p.name, p.build({ ticker: "snow" }).includes("source id")]), [["book_review", true], ["red_team", true], ["what_changed", true], ["earnings_prep", true]]);
+  ok("the server offers five prompts, each asking for citations", PROMPTS.map((p) => [p.name, p.build({ ticker: "snow" }).includes("source id")]), [["book_review", true], ["red_team", true], ["what_changed", true], ["earnings_prep", true], ["pre_trade_check", true]]);
+  const ptc = PROMPTS.find((p) => p.name === "pre_trade_check")!;
+  ok("the pre-trade check carries the side and weight into book_risk's what_if, defaulting to long at 2%", [ptc.build({ ticker: "$amd", direction: "short", weight: "3" }).includes("what_if { ticker: AMD, direction: short, weight_pct_nav: 3 }"), ptc.build({ ticker: "amd", weight: "nonsense" }).includes("long AMD at 2% of NAV")], [true, true]);
   ok("a ticker argument is cleaned", PROMPTS[1].build({ ticker: "$snow" }).includes("position in SNOW."), true);
   const listed = await dispatch({ jsonrpc: "2.0", id: 30, method: "tools/list" }, real) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean; destructiveHint?: boolean } }[] } };
   const ann = Object.fromEntries(listed.result.tools.map((t) => [t.name, t.annotations]));

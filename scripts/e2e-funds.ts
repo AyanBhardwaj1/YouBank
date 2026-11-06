@@ -62,7 +62,7 @@ async function main() {
   const names = (tools.body.result?.tools ?? []).map((t: { name: string }) => t.name);
   check("tools include the Book, its risk and check_thesis", names.includes("book_status") && names.includes("book_risk") && names.includes("check_thesis"), names);
   const prompts = await rpc(K, "prompts/list");
-  check("four prompts", (prompts.body.result?.prompts ?? []).length === 4, prompts.body);
+  check("five prompts", (prompts.body.result?.prompts ?? []).length === 5, prompts.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });
   check("check_thesis answers with a verdict and sources", !!ct.body.result && ["intact", "watch", "broken", "unknown"].includes(ct.body.result.structuredContent?.result?.verdict), ct.body);
   const listedTools = (tools.body.result?.tools ?? []) as { name: string; annotations?: { readOnlyHint?: boolean } }[];

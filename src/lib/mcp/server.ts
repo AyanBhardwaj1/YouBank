@@ -10,7 +10,7 @@
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
  * for a ticker, the person's Book with each thesis checked, the Book's risk (beta, VaR, correlated bets,
  * stress replays), any kill criteria checked on demand (check_thesis), and a position proposed for the person
- * to review (propose_position); plus four ready-made prompts. Web research is left out: it spends the
+ * to review (propose_position); plus five ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */
@@ -216,6 +216,21 @@ export const PROMPTS: McpPrompt[] = [
       "End with the five questions I should want answered on the call.",
       CITE,
     ].join("\n"),
+  },
+  {
+    name: "pre_trade_check", title: "Pre-trade check", description: "Before adding a position: where its kill criteria stand, what it does to the book's risk, what the latest filing and insiders say, and a go or no-go.",
+    arguments: [{ name: "ticker", description: "e.g. AMD", required: true }, { name: "direction", description: "long (default) or short" }, { name: "weight", description: "% of NAV, e.g. 3 (default 2)" }],
+    build: ({ ticker, direction, weight }) => {
+      const t = tick(ticker), side = direction === "short" ? "short" : "long", w = Number(weight) > 0 && Number(weight) <= 100 ? Number(weight) : 2;
+      return [
+        `Pre-trade check: ${side} ${t} at ${w}% of NAV.`,
+        `1. get_company_financials for ${t}. Propose three kill criteria that would prove a ${side} thesis wrong, and run check_thesis with them: where each stands and its headroom.`,
+        `2. book_risk with what_if { ticker: ${t}, direction: ${side}, weight_pct_nav: ${w} }: beta-adjusted net, VaR and the worst replay before and after, and which holdings ${t} moves with (more of the same bet, or a hedge).`,
+        `3. filing_changes for ${t} (latest 10-Q, section risk) and get_insider_transactions: anything new or any insider selling that argues against it.`,
+        "4. End with go, size down, or no-go, in one line, and the single number to watch. If I say go, call propose_position with the thesis, the kill criteria and your reasoning, so it waits in my Book for review.",
+        CITE,
+      ].join("\n");
+    },
   },
 ];
 
