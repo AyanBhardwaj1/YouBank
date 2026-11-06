@@ -109,7 +109,6 @@ export async function closePosition(userId: string, id: string, opts: { exit: nu
   return closed;
 }
 
-/** Remove a record from the track record (one closed by mistake). */
 /** A note in a position's decision journal, dated now. Null when the position is not in the book. */
 export async function addNote(userId: string, id: string, text: string): Promise<Position | null> {
   let saved: Position | null = null;
@@ -126,6 +125,7 @@ export async function addNote(userId: string, id: string, text: string): Promise
   return saved;
 }
 
+/** Remove a record from the track record (one closed by mistake), unless it holds forecasts on the record. */
 export async function deleteClosed(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => {
     const list = normalizeJournal(extra.bookClosed);
@@ -267,7 +267,8 @@ export async function addPositions(userId: string, raws: unknown[]): Promise<{ a
       if (!p) continue;
       if (list.some((x) => x.ticker === p.ticker)) { skipped.push(`${p.ticker} is already in the book`); continue; }
       if (list.length >= POSITIONS_MAX) { skipped.push(`${p.ticker}: the book holds ${POSITIONS_MAX} positions`); continue; }
-      const opened = { ...p, log: withEntries(p.log, changesOf(null, p), now) };
+      // A new position's journal starts here: anything posted with it is not kept.
+      const opened = { ...p, log: withEntries([], changesOf(null, p), now) };
       list.push(opened); added.push(opened);
     }
     return { ...extra, book: list };

@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     const { id, text } = ((await req.json().catch(() => ({}))) ?? {}) as { id?: unknown; text?: unknown };
     if (typeof id !== "string" || typeof text !== "string" || !text.trim()) return NextResponse.json({ error: "Write the note first." }, { status: 400 });
-    await rateLimit(`book-note:${user.id}`, 120, 3_600_000, "Many notes this hour. Try again later.");
+    await rateLimit(`book-note:${user.id}`, 30, 86_400_000, "That is many notes for one day. Try again tomorrow.");
     const p = await addNote(user.id, id, text);
     if (!p) return NextResponse.json({ error: "That position was not found." }, { status: 404 });
     return NextResponse.json({ log: p.log ?? [] });
