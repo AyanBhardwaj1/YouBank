@@ -1,9 +1,9 @@
 /**
  * End-to-end check of the features for funds, through the HTTP API of a running server: the Book (sample
  * book, import, checks with headroom), the MCP server (keys, initialize, tools, prompts, check_thesis),
- * MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay refused, a confidential
- * client's secret) and the
- * research ledger (recording an MCP call, the chain check, the export).
+ * proposals from AI apps, MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay
+ * refused, a confidential client's secret) and the research ledger (recording an MCP call, the chain check, the
+ * export, the governance report).
  *
  * Run against a local server signed in as a development user whose profile exists (finish onboarding once,
  * or seed auth_users and profiles), with company data reachable or cached. Never against production:
@@ -65,6 +65,14 @@ async function main() {
   check("four prompts", (prompts.body.result?.prompts ?? []).length === 4, prompts.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });
   check("check_thesis answers with a verdict and sources", !!ct.body.result && ["intact", "watch", "broken", "unknown"].includes(ct.body.result.structuredContent?.result?.verdict), ct.body);
+  const listedTools = (tools.body.result?.tools ?? []) as { name: string; annotations?: { readOnlyHint?: boolean } }[];
+  check("only propose_position is marked as writing", listedTools.filter((t) => t.annotations?.readOnlyHint === false).map((t) => t.name).join() === "propose_position", listedTools.map((t) => [t.name, t.annotations?.readOnlyHint]));
+  const prop = await rpc(K, "tools/call", { name: "propose_position", arguments: { ticker: "MSFT", direction: "long", thesis: "e2e: Azure growth holds above 30%.", kill_criteria: [{ metric: "revenue_growth", op: ">=", value: 10 }], rationale: "e2e" } });
+  const propId = prop.body.result?.structuredContent?.result?.id as string | undefined;
+  const afterProp = await j("/api/book");
+  check("a proposal waits in the Book and adds nothing", !!propId && afterProp.body.proposals?.some((x: { id: string }) => x.id === propId) && !afterProp.body.positions.some((x: { thesis: string }) => x.thesis.startsWith("e2e: Azure")), prop.body);
+  const dis = await j(`/api/book/proposals?id=${propId}`, { method: "DELETE" });
+  check("dismissing it clears it", dis.status === 200 && !(await j("/api/book")).body.proposals?.some((x: { id: string }) => x.id === propId));
 
   console.log("MCP sign-in (OAuth)");
   const prm = await j("/.well-known/oauth-protected-resource/api/mcp");
@@ -116,6 +124,8 @@ async function main() {
     check("the chain verifies", v.body.ok === true, v.body);
     const exp = await fetch(`${BASE}/api/ledger/export`).then((r) => r.text());
     check("the export has a header and the entries", exp.trim().split("\n").length >= 2 && exp.startsWith("{\"youbank_research_ledger\":1"));
+    const gov = await fetch(`${BASE}/report/ledger`).then(async (r) => ({ status: r.status, text: await r.text() }));
+    check("the governance report renders with the chain's state", gov.status === 200 && gov.text.includes("AI governance report") && /The chain (checks|does not check)/.test(gov.text));
   }
 
   const keys = await j("/api/settings/mcp-keys");
