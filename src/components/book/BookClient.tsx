@@ -117,7 +117,7 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
       <label className="block text-[11px] text-muted">Thesis, in one line<input className={field} value={d.thesis} maxLength={280} onChange={(e) => set("thesis", e.target.value)} placeholder="Consumption growth re-accelerates as AI workloads land." /></label>
       <label className="block text-[11px] text-muted">Pillars: why it works, one per line<textarea className={`${field} min-h-[64px]`} value={d.pillars} onChange={(e) => set("pillars", e.target.value)} placeholder={"AI data workloads move to the platform\nNet retention bottoms this year"} /></label>
       <div>
-        <div className="mb-1 flex items-baseline justify-between"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Kill criteria</h3><span className="text-[10.5px] text-faint">Checked against SEC filings and the price on every load</span></div>
+        <div className="mb-1 flex items-baseline justify-between"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Kill criteria</h3><span className="text-[10.5px] text-muted">Checked against SEC filings and the price on every load</span></div>
         <div className="space-y-1.5">
           {d.criteria.map((c, i) => (
             <div key={i} className="flex flex-wrap items-center gap-1.5">
@@ -240,7 +240,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             <div className="ctl border border-line p-2.5">
               <h3 className="mb-1 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted"><Icon name="Target" className="h-3.5 w-3.5" />What the next report must show{ev.earnings ? ` · ${ev.earnings.date}${ev.earnings.estimated ? " (est.)" : ""}` : ""}</h3>
               <ul className="space-y-0.5">{ev.nextPrint.map((b) => <li key={b.criterionId} className={b.settled ? "text-muted" : ""}>{b.line}</li>)}</ul>
-              <p className="mt-1 text-[11px] text-faint">From the last eight quarters&apos; revenue on SEC XBRL: the quarter that enters the twelve months against the one that leaves.</p>
+              <p className="mt-1 text-[11px] text-muted">From the last eight quarters&apos; revenue on SEC XBRL: the quarter that enters the twelve months against the one that leaves.</p>
             </div>
           )}
           {(ev.catalysts.length > 0 || ev.news.length > 0 || !!ev.earnings) && (
@@ -266,7 +266,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             <div className="mb-1 flex items-center gap-2">
               <Icon name="Shield" className="h-3.5 w-3.5 text-accent" />
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Red team</h3>
-              {position?.redTeam && <span className="text-[10.5px] text-faint">{new Date(position.redTeam.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+              {position?.redTeam && <span className="text-[10.5px] text-muted">{new Date(position.redTeam.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
               {!owner && <button type="button" disabled={!!busy} onClick={redTeam} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "red" ? "Arguing the other side… (about a minute)" : position?.redTeam ? "Run again" : "Argue the other side"}</button>}
             </div>
             {position?.redTeam
@@ -359,7 +359,7 @@ function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[
               <span className="text-[13px] font-semibold">{x.position.ticker}</span>
               <span className={`ctl px-1.5 py-0.5 text-[10.5px] font-semibold uppercase ${x.position.direction === "long" ? "bg-pos/15 text-pos" : "bg-neg/15 text-neg"}`}>{x.position.direction}</span>
               {x.position.weight !== null && <span className="num text-[11.5px] text-muted">{navPct(x.position.weight)} of NAV</span>}
-              <span className="ml-auto text-[11px] text-faint">from {x.from} · {ago(x.at)}</span>
+              <span className="ml-auto text-[11px] text-muted">from {x.from} · {ago(x.at)}</span>
             </div>
             <p className="mt-1 text-[12.5px]">{x.position.thesis}</p>
             {x.rationale && <p className="mt-0.5 text-[11.5px] text-muted">Why: {x.rationale}</p>}
@@ -393,7 +393,7 @@ function WhatIfResult({ w }: { w: WhatIf & { missingPrices?: string[] } }) {
   };
   return (
     <div className="space-y-2 text-[12px]">
-      <table className="w-full"><thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-faint"><th className="py-1 font-medium">Adding {w.add.direction} {w.add.ticker} at {navPct(w.add.weight)}</th><th className="py-1 text-right font-medium">Now</th><th className="py-1 text-right font-medium">After</th><th className="py-1 text-right font-medium">Change</th></tr></thead>
+      <table className="w-full"><thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Adding {w.add.direction} {w.add.ticker} at {navPct(w.add.weight)}</th><th className="py-1 text-right font-medium">Now</th><th className="py-1 text-right font-medium">After</th><th className="py-1 text-right font-medium">Change</th></tr></thead>
         <tbody>
           {row("Beta-adjusted net", w.before.betaNet, w.after.betaNet, 1, Math.abs)}
           {row("1-day VaR (95%)", w.before.var95, w.after.var95)}
@@ -476,19 +476,19 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
           <div>
             <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Today&apos;s book through past sell-offs</h3>
             <ul className="text-[12px]">
-              <li className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-faint" aria-hidden><span>Episode</span><span className="text-right">Book</span><span className="text-right">S&amp;P 500</span></li>
+              <li className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-2 pb-1 text-[10.5px] uppercase tracking-wider text-muted" aria-hidden><span>Episode</span><span className="text-right">Book</span><span className="text-right">S&amp;P 500</span></li>
               {r.scenarios.map((x) => (
                 <li key={x.id} className="grid grid-cols-[1fr_4.5rem_4.5rem] gap-x-2 border-t border-line py-1.5">
-                  <span className="min-w-0"><span className="font-medium">{x.label}</span> <span className="whitespace-nowrap text-[11px] text-faint">{x.from} to {x.to}</span></span>
+                  <span className="min-w-0"><span className="font-medium">{x.label}</span> <span className="whitespace-nowrap text-[11px] text-muted">{x.from} to {x.to}</span></span>
                   <span className={`num text-right font-semibold ${x.pnl === null ? "text-muted" : x.pnl < 0 ? "text-neg" : "text-pos"}`}>{x.pnl === null ? "n/a" : signed(x.pnl)}</span>
                   <span className="num text-right text-muted">{x.market === null ? "n/a" : signed(x.market, 1)}</span>
                   {(x.worst.length > 0 || x.missing.length > 0) && (
-                    <span className="col-span-3 text-[11.5px] text-muted">{x.worst.length ? `Hit hardest: ${x.worst.map((w) => `${w.ticker} ${signed(w.pnl)}`).join(", ")}` : ""}{x.missing.length ? <span className="text-faint">{x.worst.length ? " · " : ""}not trading then: {x.missing.join(", ")}</span> : null}</span>
+                    <span className="col-span-3 text-[11.5px] text-muted">{x.worst.length ? `Hit hardest: ${x.worst.map((w) => `${w.ticker} ${signed(w.pnl)}`).join(", ")}` : ""}{x.missing.length ? <span className="text-muted">{x.worst.length ? " · " : ""}not trading then: {x.missing.join(", ")}</span> : null}</span>
                   )}
                 </li>
               ))}
             </ul>
-            <p className="mt-1 text-[11px] text-faint">Each name&apos;s own price move over the episode times today&apos;s weight; % of NAV. Names that were not trading then are left out, not counted as flat.</p>
+            <p className="mt-1 text-[11px] text-muted">Each name&apos;s own price move over the episode times today&apos;s weight; % of NAV. Names that were not trading then are left out, not counted as flat.</p>
           </div>
           {r.pairs.length > 0 && (
             <div>
@@ -519,11 +519,11 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
                   );
                 })}
               </ul>
-              <p className="mt-1 text-[11px] text-faint">Each name&apos;s share of the book&apos;s variance; a negative share is a position that lowers the book&apos;s risk.</p>
+              <p className="mt-1 text-[11px] text-muted">Each name&apos;s share of the book&apos;s variance; a negative share is a position that lowers the book&apos;s risk.</p>
             </div>
           )}
           <TryAdding />
-          <p className="text-[11px] text-faint">
+          <p className="text-[11px] text-muted">
             {r.window ? `Daily closes ${r.window.from} to ${r.window.to} (${r.window.days} days)` : "Daily closes"}{r.sources.length ? `, from ${r.sources.join(", ")}` : ""}.
             {r.excluded.length > 0 && ` Left out: ${r.excluded.map((e) => `${e.ticker} (${e.reason})`).join(", ")}.`}
             {" "}Historical figures with today&apos;s weights; not a forecast.
@@ -700,7 +700,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
               const max = Math.max(...s.byIndustry.map((y) => Math.max(y.long, y.short)), 0.01);
               return (
                 <li key={x.industry} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3">
-                  <span className="truncate" title={x.industry}>{x.industry} <span className="text-faint">· {x.positions}</span></span>
+                  <span className="truncate" title={x.industry}>{x.industry} <span className="text-muted">· {x.positions}</span></span>
                   <span className="grid grid-cols-2 gap-px" aria-hidden>
                     <span className="flex justify-end"><span className="h-2.5 rounded-l-sm bg-neg/70" style={{ width: `${(x.short / max) * 100}%` }} /></span>
                     <span className="flex"><span className="h-2.5 rounded-r-sm bg-pos/70" style={{ width: `${(x.long / max) * 100}%` }} /></span>
@@ -723,7 +723,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
             <button type="button" onClick={() => setImporting(true)} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg">Paste from a spreadsheet</button>
             <button type="button" disabled={sampling} onClick={sample} className="ctl border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-50">{sampling ? "Loading…" : "Try a sample book"}</button>
           </div>
-          <p className="mt-2 text-[11px] text-faint">The sample book holds five well-known names with illustrative weights. Close any position to remove it.</p>
+          <p className="mt-2 text-[11px] text-muted">The sample book holds five well-known names with illustrative weights. Close any position to remove it.</p>
         </section>
       )}
 
@@ -747,7 +747,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           Alert me after each US close when a thesis breaks, comes close to a kill criterion or holds again, and the day before earnings (bell, plus your channels in Settings → News and alerts)
         </label>
       )}
-      <p className="text-[11px] text-faint">Nothing here places trades. Filings refresh every six hours, prices on every load. Percentages are entered as percent (20 means 20%).</p>
+      <p className="text-[11px] text-muted">Nothing here places trades. Filings refresh every six hours, prices on every load. Percentages are entered as percent (20 means 20%).</p>
     </div>
     </div>
   );
