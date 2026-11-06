@@ -29,6 +29,12 @@ export type Governance = {
   proposals: number; errors: number;
   /** Recording turned off and on within the period. */
   pauses: { at: string; on: boolean }[];
+  /**
+   * The figure check over AI answers (each number matched against the source it cites): answers checked,
+   * figures that could be checked, how many matched or were computed from cited figures, how many did not
+   * match, and figures stated with no source. verifiedShare is matched+computed over checkable.
+   */
+  figures: { answers: number; checkable: number; verified: number; noMatch: number; uncited: number; verifiedShare: number | null };
   activeDays: number;
 };
 
@@ -73,6 +79,13 @@ export function governance(rows: GovRow[], from: string, to: string, laterSignof
     if (decision === "rejected") rejected.push({ seq: s.seq, ref: Number.isInteger(ref) ? ref : null, subject: s.subject.replace(/^Review of entry \d+:?\s*/, ""), reviewer: String(s.meta.reviewer ?? ""), note: (s.note ?? "").slice(0, 300), at: s.at });
   }
   const pauses = inPeriod.filter((r) => r.kind === "note" && typeof r.meta.recording === "boolean").map((r) => ({ at: r.at, on: r.meta.recording as boolean }));
+  const fig = { answers: 0, checkable: 0, verified: 0, noMatch: 0, uncited: 0 };
+  for (const r of ai) {
+    const f = r.meta.figures as Record<string, unknown> | undefined;
+    if (!f || typeof f !== "object") continue;
+    const n = (k: string) => (typeof f[k] === "number" && Number.isFinite(f[k] as number) ? (f[k] as number) : 0);
+    fig.answers++; fig.checkable += n("checkable"); fig.verified += n("matched") + n("computed"); fig.noMatch += n("noMatch"); fig.uncited += n("uncited");
+  }
   const share = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
   return {
     from, to, entries: inPeriod.length, ai: ai.length,
@@ -83,6 +96,7 @@ export function governance(rows: GovRow[], from: string, to: string, laterSignof
     unsourced, sourcedShare: share(ai.length - unsourced, ai.length),
     reviews, reviewedShare: share(reviewedSeqs.size, ai.length), rejected: rejected.slice(0, 50),
     proposals, errors, pauses, activeDays: days.size,
+    figures: { ...fig, verifiedShare: share(fig.verified, fig.checkable) },
   };
 }
 

@@ -61,8 +61,8 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
           </section>
 
           {data.truncated && <p className="mt-3 font-semibold text-accent">This period has more entries than one report reads (20,000): the figures below cover its first 20,000. Use a shorter period or the export for the rest.</p>}
-          <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5 print:grid-cols-5" aria-label="Summary">
-            {[["AI outputs", String(g.ai)], ["With sources", pct(g.sourcedShare)], ["Reviewed by a person", pct(g.reviewedShare)], ["Rejected", String(g.reviews.rejected)], ["Days with activity", String(g.activeDays)]].map(([k, v]) => (
+          <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-6 print:grid-cols-6" aria-label="Summary">
+            {[["AI outputs", String(g.ai)], ["With sources", pct(g.sourcedShare)], ["Figures verified", pct(g.figures.verifiedShare)], ["Reviewed by a person", pct(g.reviewedShare)], ["Rejected", String(g.reviews.rejected)], ["Days with activity", String(g.activeDays)]].map(([k, v]) => (
               <div key={k}><div className="text-[10px] uppercase tracking-wider text-muted">{k}</div><div className="num text-[15px] font-semibold">{v}</div></div>
             ))}
           </section>
@@ -90,6 +90,13 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
               {!g.byTool.length && <p className="text-muted">None.</p>}
             </section>
           </div>
+
+          <section className="mt-5" aria-label="Figure check">
+            <h2 className="text-[10px] uppercase tracking-wider text-muted">Figure check (every number in an AI answer against the source it cites)</h2>
+            {g.figures.answers ? (
+              <p className="mt-0.5">{g.figures.verified} of {g.figures.checkable} checkable figures in {g.figures.answers} AI answer{g.figures.answers === 1 ? "" : "s"} matched their cited source or were computed from cited figures ({pct(g.figures.verifiedShare)}); {g.figures.noMatch} did not match; {g.figures.uncited} were stated without a source. <span className="text-muted">Answers from AI apps over MCP are checked in those apps, not here.</span></p>
+            ) : <p className="mt-0.5 text-muted">No AI answer in this period carried figures to check.</p>}
+          </section>
 
           <section className="mt-5" aria-label="Reviews">
             <h2 className="text-[10px] uppercase tracking-wider text-muted">Human review</h2>

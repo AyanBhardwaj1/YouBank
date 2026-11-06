@@ -77,7 +77,7 @@ const gr = (seq: number, at: string, kind: GovRow["kind"], extra: Partial<GovRow
 const rowsG: GovRow[] = [
   gr(1, "2026-10-31T10:00:00.000Z", "chat", { model: "m1", sources: 2 }), // before the period
   gr(2, "2026-11-01T09:00:00.000Z", "note", { meta: { recording: true } }),
-  gr(3, "2026-11-02T10:00:00.000Z", "chat", { model: "m1", sources: 3 }),
+  gr(3, "2026-11-02T10:00:00.000Z", "chat", { model: "m1", sources: 3, meta: { figures: { checkable: 10, matched: 7, computed: 1, noMatch: 2, uncited: 3 } } }),
   gr(4, "2026-11-02T11:00:00.000Z", "mcp", { subject: "book_status via Claude (connected)", meta: { tool: "book_status" }, sources: 4 }),
   gr(5, "2026-11-03T11:00:00.000Z", "mcp", { subject: "propose_position via Claude (connected)", meta: { tool: "propose_position" }, sources: 1 }),
   gr(6, "2026-11-03T12:00:00.000Z", "mcp", { subject: "calc via Cursor", meta: { tool: "calc", isError: true } }),
@@ -94,6 +94,7 @@ ok("sources, proposals, errors, active days", [G.unsourced, G.sourcedShare, G.pr
 ok("reviews: in-period sign-offs count, and a later one for an entry in the period; a later one for an older entry does not", [G.reviews, G.reviewedShare], [{ approved: 2, rejected: 1, noted: 1 }, 60]);
 ok("rejections are listed with the reviewer and the reason", G.rejected, [{ seq: 9, ref: 7, subject: "red team SNOW", reviewer: "cco@fund", note: "Cites a stale 10-Q.", at: "2026-11-04T09:05:00.000Z" }]);
 ok("recording turned on and off in the period is shown", G.pauses, [{ at: "2026-11-01T09:00:00.000Z", on: true }, { at: "2026-11-05T10:00:00.000Z", on: false }]);
+ok("the figure check adds up over AI answers: matched or computed of checkable", G.figures, { answers: 1, checkable: 10, verified: 8, noMatch: 2, uncited: 3, verifiedShare: 80 });
 ok("an empty period has no shares, not zero", [governance([], "a", "b").sourcedShare, governance([], "a", "b").reviewedShare], [null, null]);
 const pm = periodOf("2026-02", new Date("2026-11-06T12:00:00Z")), p30 = periodOf(undefined, new Date("2026-11-06T12:00:00Z")), bad = periodOf("2026-13", new Date("2026-11-06T12:00:00Z"));
 ok("a month runs to the first of the next; anything else is the last 30 days", [pm.from, pm.to, pm.label, p30.from, p30.label, bad.label], ["2026-02-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z", "February 2026", "2026-10-07T12:00:00.000Z", "The last 30 days", "The last 30 days"]);
