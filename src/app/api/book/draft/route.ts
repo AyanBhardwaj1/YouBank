@@ -17,6 +17,8 @@ const Draft = z.object({
   pillars: z.array(z.string()).max(6),
   criteria: z.array(z.object({ metric: z.enum(METRIC_KEYS as [string, ...string[]]), op: z.enum([">=", "<="]), value: z.number(), note: z.string() })).max(8),
   catalysts: z.array(z.object({ label: z.string(), date: z.string() })).max(8),
+  /** The price they say they paid (or shorted at), for a stop-loss; null when they give none. */
+  entry: z.number().nullable(),
 });
 
 /**

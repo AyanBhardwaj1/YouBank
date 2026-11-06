@@ -179,13 +179,17 @@ export function headroomOf(c: Criterion, actual: number): { value: number; shown
 
 const targetOf = (c: Criterion) => `${c.op === ">=" ? "at least" : "at most"} ${fmtMetric(c.metric, isPct(c.metric) ? c.value / 100 : c.value)}`;
 
+/** Return since entry in the position's favour (a short gains when the price falls), as a fraction. */
+export const returnSinceEntry = (price: number | null, entry: number | null, direction: Direction): number | null =>
+  price !== null && entry ? (price / entry - 1) * (direction === "short" ? -1 : 1) : null;
+
 /** What a criterion may need from its position: the entry price and side, for a stop-loss (return_since_entry). */
 export type PositionCtx = { entry: number | null; direction: Direction };
 
 export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, insider: InsiderFact | null = null, pos: PositionCtx | null = null): CheckResult {
   const m = METRICS[c.metric];
   const last = company.price?.last ?? null;
-  const sinceEntry = pos?.entry && last !== null ? (last / pos.entry - 1) * (pos.direction === "short" ? -1 : 1) : null;
+  const sinceEntry = pos ? returnSinceEntry(last, pos.entry, pos.direction) : null;
   const actual = c.metric === "insider_selling" ? (insider?.complete ? insider.value : null) : c.metric === "return_since_entry" ? sinceEntry : m.read(company, d);
   const threshold = isPct(c.metric) ? c.value / 100 : c.value;
   const target = targetOf(c);
@@ -221,7 +225,7 @@ export function evaluate(p: Position, company: CompanyData | null, d: Derived | 
   const earnings = next?.date && /^\d{4}-\d{2}-\d{2}/.test(next.date) && daysTo(next.date) >= -1 && daysTo(next.date) <= 120 ? { date: next.date.slice(0, 10), estimated: next.estimated, inDays: daysTo(next.date) } : null;
   const soon = catalysts.find((c) => c.inDays >= 0 && c.inDays <= 14) ?? (earnings && earnings.inDays >= 0 && earnings.inDays <= 14 ? { label: "earnings", inDays: earnings.inDays } : undefined);
   const price = company?.price?.last ?? null;
-  const pnl = price !== null && p.entry ? (price / p.entry - 1) * (p.direction === "short" ? -1 : 1) : null;
+  const pnl = returnSinceEntry(price, p.entry, p.direction);
   const summary = !company ? `${p.ticker}: the company's filings could not be read just now.`
     : failed.length ? `Kill criterion hit: ${failed[0].label} is ${failed[0].shown}, needed ${failed[0].target}.`
     : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
@@ -369,6 +373,7 @@ export const DRAFT_SYSTEM = [
   `Kill criteria use only these metrics: ${METRIC_KEYS.map((m) => `${m} (${METRICS[m].label}, ${METRICS[m].unit === "pct" ? "a percentage, given as percent: 20 means 20%" : METRICS[m].unit === "usdmm" ? "US$ millions" : METRICS[m].unit === "usd" ? "US$ per share" : METRICS[m].unit === "x" ? "a multiple" : "points"})`).join("; ")}.`,
   "Each criterion is a metric, an operator (>= or <=) and a threshold: the line past which the thesis is wrong. For a long, growth and margin criteria are usually >=; for a short, usually <=.",
   "A stop-loss from where they bought (\"out if it falls 15%\") is return_since_entry >= -15 (it is measured in the position's favour, so the same for a short); an absolute level (\"out below $150\") is price.",
+  "entry is the price they say they paid (or shorted at), as a number; null when they do not say. Never look one up or guess it.",
   "Use the person's own numbers. Where they state a condition without a number, choose a reasonable threshold and say so in the note (\"suggested: …\"). Never invent facts about the company; do not state current figures.",
   "The ticker is the US listing of the company they name. The thesis is one line in their words. Pillars are the reasons they give, short. Catalysts only when they name a dated event (YYYY-MM-DD).",
 ].join("\n");
@@ -376,7 +381,9 @@ export const DRAFT_SYSTEM = [
 /** A model's draft as a position the editor can show: cleaned, unknown metrics dropped, nothing saved. */
 export function draftToPosition(raw: unknown, now = new Date().toISOString()): Position | null {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return normalizePosition({ ...r, id: undefined, weight: null, entry: null, createdAt: undefined, updatedAt: undefined, redTeam: undefined }, now);
+  // The entry only when they stated one (a stop-loss needs it); the weight is theirs to set in the editor.
+  const entry = typeof r.entry === "number" && r.entry > 0 ? r.entry : null;
+  return normalizePosition({ ...r, id: undefined, weight: null, entry, createdAt: undefined, updatedAt: undefined, redTeam: undefined }, now);
 }
 
 /* ---------------- Export ---------------- */

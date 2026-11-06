@@ -214,6 +214,7 @@ const sLong = checkCriterion(stop, co, d, null, { entry: 150, direction: "long" 
 ok("measured in the position's favour from the entry: a long up 20% holds, a short at the same prices is down 20% and fails", [sLong.state, sLong.shown, sShort.state, sShort.shown, sShort.evidence?.source.includes("against the entry of $150")], ["pass", "20.0%", "fail", "-20.0%", true]);
 ok("no entry price: no figure, and why", [sNone.state, sNone.note], ["unknown", "Needs the position's entry price."]);
 ok("evaluate passes the position's entry and side", evaluate({ ...t, entry: 150, criteria: [stop] }, co, d, [], now).checks[0].state, "pass");
+ok("a draft keeps an entry price the person stated, and never a weight", [draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [stop], catalysts: [], entry: 150 })?.entry, draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [], catalysts: [], entry: null, weight: 9 })?.entry, draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [], catalysts: [], entry: 150, weight: 9 })?.weight], [150, null, null]);
 ok("the drafting prompt says how to write a stop-loss", DRAFT_SYSTEM.includes("return_since_entry >= -15"), true);
 
 console.log("calendar");

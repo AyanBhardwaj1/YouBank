@@ -24,11 +24,22 @@ export async function cachedRisk(book: Position[], now = new Date()): Promise<So
   try { return hit ? (JSON.parse(hit) as SourcedRisk) : null; } catch { return null; }
 }
 
+// One computation per book in flight on this instance: the warm-up and the panel opening at once share it.
+const inflight = new Map<string, Promise<SourcedRisk>>();
+
 export async function riskOf(book: Position[], now = new Date()): Promise<SourcedRisk> {
-  const input = inputOf(book);
   const key = riskKey(book, now);
-  const hit = await cacheGet(key).catch(() => null);
-  if (hit) { try { return JSON.parse(hit) as SourcedRisk; } catch { /* recompute */ } }
+  const hit = await cachedRisk(book, now);
+  if (hit) return hit;
+  const running = inflight.get(key);
+  if (running) return running;
+  const p = computeRisk(book, key, now).finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
+async function computeRisk(book: Position[], key: string, now: Date): Promise<SourcedRisk> {
+  const input = inputOf(book);
   const tickers = [...new Set(input.filter((p) => p.weight).map((p) => p.ticker))];
   const c = await dailyCloses([...tickers, BENCHMARK], HISTORY_FROM, { max: 40, deadline: Date.now() + 20_000 });
   const out: SourcedRisk = { ...bookRisk(input, c.prices, now), sources: [...new Set(c.providers)].map((p) => `${p} daily closes`), missingPrices: c.missing };

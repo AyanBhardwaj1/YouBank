@@ -81,7 +81,7 @@ const checkThesisTool = def({
 function bookTool(userId: string) {
   return def({
     name: "book_status",
-    description: "The signed-in person's Book in YouBank: each position (long or short, weight, entry) with its thesis checked against SEC filings and the price. Says which theses are broken, on watch or intact, the figure behind every kill criterion with its period and source, exposure (gross, net, at risk) and P&L since entry. Optionally for one ticker.",
+    description: "The signed-in person's Book in YouBank: each position (long or short, weight, entry) with its thesis checked against SEC filings and the price. Says which theses are broken, on watch or intact, the figure behind every kill criterion with its period and source, exposure (gross, net, at risk) and P&L since entry, and a one-line risk headline when today's risk is already worked out (book_risk always has it). Optionally for one ticker.",
     schema: z.object({ ticker: z.string().max(12).optional() }),
     run: async ({ ticker }, ctx) => {
       const book = await loadBook(userId);
