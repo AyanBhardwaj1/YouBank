@@ -204,6 +204,9 @@ function DecisionJournal({ log, id, readOnly, onChanged }: { log: LogEntry[]; id
   const [all, setAll] = useState(false);
   if (readOnly && !log.length) return null;
   const shown = all ? [...log].reverse() : [...log].reverse().slice(0, 4);
+  // The newest entry is YouBank's record of a change, and the PM has not said why since: ask for it.
+  const newest = log.reduce<LogEntry | undefined>((a, x) => (!a || x.at >= a.at ? x : a), undefined);
+  const unexplained = newest?.auto && !log.some((x) => !x.auto && x.at >= newest.at) ? newest : undefined;
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -222,7 +225,7 @@ function DecisionJournal({ log, id, readOnly, onChanged }: { log: LogEntry[]; id
       {log.length > 4 && <button type="button" onClick={() => setAll((v) => !v)} className="mt-0.5 text-[11px] text-muted hover:text-fg">{all ? "Show fewer" : `Show all ${log.length}`}</button>}
       {!readOnly && (
         <form onSubmit={add} className="mt-1.5 flex gap-1.5">
-          <input aria-label="Note for the decision journal" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Why: e.g. added after the call, margins guided up" className="ctl min-w-0 flex-1 border border-line bg-bg px-2 py-1 text-[12px] focus:border-accent/60 focus:outline-none" />
+          <input aria-label="Note for the decision journal" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder={unexplained ? `Why the ${unexplained.at.slice(0, 10)} change? It has no reason yet` : "Why: e.g. added after the call, margins guided up"} className="ctl min-w-0 flex-1 border border-line bg-bg px-2 py-1 text-[12px] focus:border-accent/60 focus:outline-none" />
           <button type="submit" disabled={busy || !text.trim()} className="ctl border border-line px-2 py-1 text-[11.5px] text-muted hover:text-fg disabled:opacity-50">{busy ? "Saving…" : "Add note"}</button>
         </form>
       )}
