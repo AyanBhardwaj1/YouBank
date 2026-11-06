@@ -3,6 +3,7 @@ import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { bookAlertsOn, deletePosition, evaluateBook, loadBook, loadProposals, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
 import { cachedInsiderFact } from "@/lib/book/insiders-store";
+import { riskOf } from "@/lib/book/risk-store";
 import { inBackground } from "@/lib/cache";
 import type { Position } from "@/lib/book/position";
 import { summarize } from "@/lib/book/position";
@@ -17,6 +18,8 @@ export async function GET() {
     const positions = await loadBook(user.id);
     const evaluations = await evaluateBook(positions);
     // Today's point in each thesis's history (the daily check writes it too); a failure only costs the point.
+    // Warm the risk panel after the answer: prices are fetched once per book and day, so opening it is instant.
+    if (positions.some((p) => p.weight)) inBackground(riskOf(positions).catch(() => undefined));
     const [history, alerts, proposals] = await Promise.all([noteHistory(user.id, evaluations).catch(() => ({})), bookAlertsOn(user.id).catch(() => true), loadProposals(user.id).catch(() => [])]);
     return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts, proposals }, { headers: { "Cache-Control": "private, no-store" } });
   });
