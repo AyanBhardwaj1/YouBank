@@ -9,7 +9,7 @@ import { chainAnchors, checkAnchors, governanceRows, ledgerHead, ledgerSettings,
 export const dynamic = "force-dynamic";
 export const metadata = { title: "AI governance report", robots: { index: false } };
 
-const KIND: Record<string, string> = { chat: "AI answers", workflow: "Workflows and tools", red_team: "Red teams", mcp: "AI-app calls (MCP)", signoff: "Reviews", note: "Recording notes" };
+const KIND: Record<string, string> = { chat: "AI answers", workflow: "Workflows and tools", red_team: "Red teams and committees", mcp: "AI-app calls (MCP)", signoff: "Reviews", note: "Recording notes" };
 const pct = (x: number | null) => (x === null ? "n/a" : `${x.toFixed(x % 1 ? 1 : 0)}%`);
 const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
 

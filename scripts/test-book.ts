@@ -283,6 +283,11 @@ ok("the draft passes its own compliance pass", lintLetter(letter, { ledgerOn: tr
 const lint = lintLetter("We guarantee strong results. Our fund is the best in its class. We returned 32% for investors. Gross return was 18%. A backtest shows we would have gained 40% since 2015. Our AI-powered process finds alpha.", { ledgerOn: false });
 ok("the compliance pass flags promises, superlatives, performance without a period, gross without net, hypotheticals and unbacked AI claims", lint.map((f) => [f.rule, f.severity]), [["Promissory or guaranteeing language", "high"], ["Unsupported superlative", "medium"], ["Performance without a time period", "medium"], ["Performance without a time period", "medium"], ["Gross performance without net", "high"], ["Hypothetical performance", "medium"], ["AI claim without a record", "high"]]);
 ok("text after a horizontal rule is still checked; the draft's own disclaimer is not", [lintLetter("Fine.\n---\nP.S. We guarantee it.", { ledgerOn: true }).length, lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").length], [1, 0]);
+{
+  const both2 = calibration([{ ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }, { ticker: "A", p: 0.6, by: "x", source: "AI committee", outcome: 1, resolvedOn: "x" }]);
+  const l2 = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: both2, risk: null, ai: null });
+  ok("the letter sets the PM's calibration beside the AI committee's, and still passes its own check", [l2.includes("its Brier score is 0.160 on 1 resolved forecast, against 0.040 on 1 for our own"), lintLetter(l2, { ledgerOn: false }).filter((f) => f.severity !== "info").length], [true, 0]);
+}
 ok("a 1% conviction is 1%, not 100%", normalizeConviction({ p: 1, by: "2027-02-01", at: "2026-11-01" })?.p, 0.01);
 ok("a period makes performance acceptable; an AI claim with the ledger on is a note, not a fault", [lintLetter("We returned 12% in 2026, net of fees.", { ledgerOn: false }).length, lintLetter("Machine learning helps us screen.", { ledgerOn: true }).map((f) => f.severity)], [0, ["info"]]);
 

@@ -10,7 +10,7 @@
  * latest 10-K or 10-Q, private raises (Form D) and startups, a calculator, this week's Newsroom stories
  * for a ticker, the person's Book with each thesis checked, the Book's risk (beta, VaR, correlated bets,
  * stress replays), any kill criteria checked on demand (check_thesis), and a position proposed for the person
- * to review (propose_position); plus five ready-made prompts. Web research is left out: it spends the
+ * to review (propose_position); plus six ready-made prompts. Web research is left out: it spends the
  * person's AI allowance, which belongs to the app. The answers to every call are written to the
  * person's research ledger when it is on (src/lib/ledger).
  */
@@ -209,6 +209,19 @@ export const PROMPTS: McpPrompt[] = [
       `2. Use get_company_financials, get_xbrl_series (revenue and margins over time), filing_changes and get_insider_transactions for ${tick(ticker)}.`,
       "3. Give the three strongest counter-arguments with evidence, the weakest pillar and why, and what would have to happen in the next two quarters to prove the thesis wrong, as checkable signals.",
       "Work alone: do not soften the case to agree with me. Under 450 words.",
+      CITE,
+    ].join("\n"),
+  },
+  {
+    name: "investment_committee", title: "Convene an investment committee", description: "A bull brief and a bear brief written separately, then a chair's call (add, hold, trim or exit) with a 90-day probability and the dissent.",
+    arguments: [{ name: "ticker", description: "The position's ticker, e.g. SNOW", required: true }],
+    build: ({ ticker }) => [
+      `Run an investment committee on my position in ${tick(ticker)}.`,
+      `1. Call book_status with ticker ${tick(ticker)} for the thesis, pillars and kill criteria with where each stands, and check_thesis if it is not in my book.`,
+      `2. The bull: using get_company_financials, get_xbrl_series, filing_changes and ticker_news for ${tick(ticker)}, write the strongest evidence-based case FOR the position (three arguments, the strongest pillar, two quarters of checkable signals). If you can run separate agents, write this brief in one that does not see the bear's.`,
+      "3. The bear: separately, the strongest case AGAINST (three counter-arguments, the weakest pillar, the signals that would prove the thesis wrong). Do not revise the bull's brief after reading it.",
+      "4. The chair: decide add, hold, trim or exit on the evidence in the two briefs and the kill criteria, not on which brief is longer. A failed kill criterion weighs toward trim or exit unless the bull shows with evidence that it is temporary. Give a calibrated probability (1-99) that no kill criterion fails in the next 90 days, the strongest point of the side that lost, and up to three signals to watch.",
+      "This is advice for me to weigh; do not change my book. Under 700 words in all.",
       CITE,
     ].join("\n"),
   },
