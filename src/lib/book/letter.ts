@@ -73,7 +73,10 @@ export type LetterFinding = { rule: string; severity: "high" | "medium" | "info"
 const sentences = (t: string) => t.replace(/\r/g, "").split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
 const PERIOD = /\b(since|year|years|quarter|quarterly|month|ytd|annuali[sz]ed|q[1-4]|20\d\d|19\d\d|inception|1-year|5-year|10-year|trailing)\b/i;
 
-export function lintLetter(text: string, ctx: { ledgerOn: boolean }): LetterFinding[] {
+/** What the record says, for checking a claim about AI against it: shares in percent, over the period. */
+export type AiRecord = { reviewedShare: number | null; verifiedShare: number | null; outputs: number };
+
+export function lintLetter(text: string, ctx: { ledgerOn: boolean; record?: AiRecord | null }): LetterFinding[] {
   const out: LetterFinding[] = [];
   const add = (rule: string, severity: LetterFinding["severity"], excerpt: string, why: string) => {
     if (!out.some((f) => f.rule === rule && f.excerpt === excerpt)) out.push({ rule, severity, excerpt: excerpt.slice(0, 200), why });
@@ -88,6 +91,22 @@ export function lintLetter(text: string, ctx: { ledgerOn: boolean }): LetterFind
     if (perf && !PERIOD.test(s)) add("Performance without a time period", "medium", s, "Performance should state the period it covers (and fund performance the 1, 5 and 10-year periods).");
     if (/\bgross\b/i.test(s) && /\b(return|performance)\b/i.test(s) && !/\bnet\b/i.test(body)) add("Gross performance without net", "high", s, "Gross performance must be shown with net performance, with equal prominence.");
     if (/\b(hypothetical|back-?test(?:ed|ing)?|would have (?:returned|made|gained|earned)|simulated|model portfolio)\b/i.test(s)) add("Hypothetical performance", "medium", s, "Hypothetical or back-tested results need policies, the right audience and full disclosure of their assumptions.");
+    // A claim about how AI is supervised, checked against the record (the SEC's exam staff compare the two).
+    const rec = ctx.record;
+    // Clause by clause, so "91% of figures matched, and 12% were reviewed" pairs each figure with its claim.
+    if (rec && ctx.ledgerOn && /\b(ai|model|machine|automated|algorithm)/i.test(s)) for (const cl of s.split(/[,;:(]\s*|\s+and\s+(?=\d)/)) {
+      const all = /\b(?:all|every|each)\s+(?:(?:of\s+)?(?:our|the|its|their)\s+)?(?:ai|model|machine|automated|output|answer|figure|number|research)/i.test(cl) || /\b100\s?%/.test(cl);
+      const said = Number(/(\d{1,3}(?:\.\d+)?)\s?%/.exec(cl)?.[1] ?? NaN);
+      const check = (word: RegExp, share: number | null, what: string) => {
+        // Only a claim of "all" or of a number is checkable; a passing mention is not a claim.
+        if (!word.test(cl) || (!all && !Number.isFinite(said))) return;
+        if (share === null) { add("AI claim the record cannot show", "high", s, `The research ledger has no record of ${what} for this period, so this cannot be backed.`); return; }
+        if (all && share < 100) add("AI claim contradicts the record", "high", s, `The ledger shows ${share}% of ${what}, not all. Say what the record shows.`);
+        else if (Number.isFinite(said) && Math.abs(said - share) > 2) add("AI claim contradicts the record", "high", s, `The ledger shows ${share}% of ${what} for this period, not ${said}%.`);
+      };
+      check(/\b(reviewed|review|approved|signed off|human[- ]in[- ]the[- ]loop|overseen)\b/i, rec.reviewedShare, "AI outputs reviewed by a person");
+      check(/\b(verified|checked against|matched (?:their|its) sources?|accurate)\b/i, rec.verifiedShare, "AI figures verified against their source");
+    }
     if (/\b(ai[- ](?:driven|powered|based|first)|artificial intelligence|machine learning|our (?:proprietary )?algorithm|deep learning|neural)\b/i.test(s)) {
       if (!ctx.ledgerOn) add("AI claim without a record", "high", s, "\"AI-washing\" is an SEC enforcement priority: claims about AI must be true and supportable. Turn on the research ledger to keep a record of how AI is used.");
       else add("AI claim: keep the record on file", "info", s, "The research ledger supports this: keep this period's governance report with the letter's file.");

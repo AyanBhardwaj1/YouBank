@@ -60,7 +60,7 @@ export default async function DdqPage({ searchParams }: { searchParams: Promise<
           <p className="text-muted">Nine questions LPs and consultants ask about AI, each answered from the research ledger, your AI-app permissions and the track record. Bracketed text is what only the firm can say. Nothing here is sent anywhere.</p>
           {!ledgerOn && <p className="mt-1 font-semibold text-accent">The research ledger is off, so most answers have nothing to stand on. <Link href="/app/settings?tab=ledger" className="underline">Turn it on</Link> and they fill in from the next AI output.</p>}
         </header>
-        <LetterEditor draft={draft} ledgerOn={ledgerOn} storageKey={`yb-ddq-${user.id}-${period.label}`} label="Due-diligence answers" />
+        <LetterEditor draft={draft} ledgerOn={ledgerOn} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-ddq-${user.id}-${period.label}`} label="Due-diligence answers" />
       </div>
     </main>
   );

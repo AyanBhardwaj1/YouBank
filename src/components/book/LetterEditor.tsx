@@ -7,11 +7,11 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { lintLetter } from "@/lib/book/letter";
+import { lintLetter, type AiRecord } from "@/lib/book/letter";
 
 const TONE = { high: "border-neg/50 bg-neg/10 text-neg", medium: "border-accent/50 bg-accent-soft text-accent", info: "border-line text-muted" } as const;
 
-export function LetterEditor({ draft, ledgerOn, storageKey, label = "Letter" }: { draft: string; ledgerOn: boolean; storageKey: string; /** The text box's name for screen readers. */ label?: string }) {
+export function LetterEditor({ draft, ledgerOn, record = null, storageKey, label = "Letter" }: { draft: string; ledgerOn: boolean; /** What the ledger shows, so claims about AI are checked against it. */ record?: AiRecord | null; storageKey: string; /** The text box's name for screen readers. */ label?: string }) {
   const [text, setText] = useState(draft);
   const [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -19,7 +19,7 @@ export function LetterEditor({ draft, ledgerOn, storageKey, label = "Letter" }: 
     try { const saved = localStorage.getItem(storageKey); if (saved && saved !== draft) setTimeout(() => setText(saved), 0); } catch { /* storage unavailable */ }
   }, [storageKey, draft]);
   useEffect(() => { try { localStorage.setItem(storageKey, text); } catch { /* storage unavailable */ } }, [storageKey, text]);
-  const findings = useMemo(() => lintLetter(text, { ledgerOn }), [text, ledgerOn]);
+  const findings = useMemo(() => lintLetter(text, { ledgerOn, record }), [text, ledgerOn, record]);
   const serious = findings.filter((f) => f.severity !== "info").length;
   const copy = async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ } };
   return (

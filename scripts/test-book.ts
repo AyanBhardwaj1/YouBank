@@ -386,5 +386,15 @@ console.log("Calibration correction");
   ok("the calibration says what a source's stated chance has meant", [cal20.bySource[0].meant?.said, (cal20.bySource[0].meant?.means ?? 1) < 0.9], [0.9, true]);
 }
 
+console.log("AI claims against the record");
+{
+  const rec = { reviewedShare: 12, verifiedShare: 91, outputs: 42 };
+  const own = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: { outputs: 42, reviewedShare: 12, verifiedShare: 91, ledgerOn: true } });
+  ok("the letter's own AI paragraph matches the record, clause by clause", lintLetter(own, { ledgerOn: true, record: rec }).filter((f) => f.severity !== "info").map((f) => f.excerpt), []);
+  const bad = lintLetter("Every AI output is reviewed by a person. Our AI tools' figures were 99% verified against their sources. A person approved 12% of AI outputs.", { ledgerOn: true, record: rec });
+  ok("claims the ledger contradicts are flagged high; a true one is not", bad.filter((f) => f.rule === "AI claim contradicts the record").map((f) => f.why), ["The ledger shows 12% of AI outputs reviewed by a person, not all. Say what the record shows.", "The ledger shows 91% of AI figures verified against their source for this period, not 99%."]);
+  ok("a review claim with no review record is flagged", lintLetter("All AI output is reviewed.", { ledgerOn: true, record: { reviewedShare: null, verifiedShare: null, outputs: 0 } }).map((f) => f.rule).includes("AI claim the record cannot show"), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

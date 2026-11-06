@@ -53,7 +53,7 @@ export default async function LetterPage() {
           <h1 className="mt-1 text-[22px] font-semibold">A draft from your book, to rewrite in your own voice</h1>
           <p className="text-muted">Written from the Book, the track record, calibration, risk and the research ledger as of {now.toISOString().slice(0, 10)}. Bracketed lines are yours to fill in.</p>
         </header>
-        <LetterEditor draft={draft} ledgerOn={ledgerOn} storageKey={`yb-letter-${user.id}-${period}`} />
+        <LetterEditor draft={draft} ledgerOn={ledgerOn} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-letter-${user.id}-${period}`} />
       </div>
     </main>
   );

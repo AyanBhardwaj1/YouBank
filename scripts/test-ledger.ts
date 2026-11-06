@@ -126,7 +126,7 @@ console.log("DDQ answers");
   const off = draftDdq({ ...base, ledger: { ...base.ledger, on: false }, apps: [] });
   ok("with the ledger off, record-based answers say so instead of inventing", [by("review").includes("[The research ledger is off") === false, off.find((x) => x.id === "review")?.a.startsWith("[The research ledger is off"), off.find((x) => x.id === "access")?.a], [true, true, "No outside AI application is connected."]);
   const md = ddqMarkdown(items, "Northwind", "November 2026", base.now);
-  ok("the Markdown passes the letter's compliance pass (only notes, no faults)", lintLetter(md, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
+  ok("the Markdown passes the letter's compliance pass (only notes, no faults)", lintLetter(md, { ledgerOn: true, record: { reviewedShare: gd.reviewedShare, verifiedShare: gd.figures.verifiedShare, outputs: gd.ai } }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
   ok("an anchor that does not match is flagged for the firm, not stated as fact", draftDdq({ ...base, ledger: { ...base.ledger, anchors: 2, anchorsMatch: 1 } }).find((x) => x.id === "records")?.a.includes("[1 of the 2 copies"), true);
   ok("two keys with one name are named once", draftDdq({ ...base, apps: [base.apps[0], base.apps[0]] }).find((x) => x.id === "use")?.a.includes("Claude (2 keys) may propose"), true);
   ok("a broken chain is not papered over", draftDdq({ ...base, ledger: { ...base.ledger, chainOk: false } }).find((x) => x.id === "records")?.a.includes("did not check"), true);
