@@ -135,7 +135,7 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
 
 /* ---------------- A position ---------------- */
 
-function PositionCard({ ev, position, history = [], focused, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; focused?: boolean; onEdit: () => void; onChanged: () => void }) {
+function PositionCard({ ev, position, history = [], focused, owner, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; history?: HistoryPoint[]; focused?: boolean; /** Set in the team view: whose position it is, and the card is read-only. */ owner?: string; onEdit?: () => void; onChanged?: () => void }) {
   const [open, setOpen] = useState(ev.verdict === "broken" || !!focused);
   const ref = useRef<HTMLLIElement>(null);
   useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, [focused]);
@@ -144,19 +144,20 @@ function PositionCard({ ev, position, history = [], focused, onEdit, onChanged }
   const v = VERDICT[ev.verdict];
   const redTeam = async () => {
     setBusy("red"); setErr("");
-    try { await fetchJson("/api/book/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged(); }
+    try { await fetchJson("/api/book/redteam", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: ev.positionId }) }); onChanged?.(); }
     catch (e) { setErr(errorMessage(e)); } finally { setBusy(""); }
   };
   const close = async () => {
     if (!(await confirmDialog({ title: `Close ${ev.ticker}?`, body: "It leaves the book with its kill criteria and red team. Nothing is traded.", confirmLabel: "Close position", tone: "danger" }))) return;
     setBusy("del"); setErr("");
-    try { await fetchJson(`/api/book?id=${encodeURIComponent(ev.positionId)}`, { method: "DELETE" }); onChanged(); }
+    try { await fetchJson(`/api/book?id=${encodeURIComponent(ev.positionId)}`, { method: "DELETE" }); onChanged?.(); }
     catch (e) { setErr(errorMessage(e)); setBusy(""); }
   };
   return (
     <li ref={ref} className={`panel scroll-mt-20 ${focused ? "ring-1 ring-accent/60" : ""}`}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left">
         <span className="num w-16 text-[13px] font-semibold">{ev.ticker}</span>
+        {owner && <span className="ctl bg-elevated px-1.5 py-0.5 text-[10.5px] text-muted">{owner}</span>}
         <span className={`ctl px-1.5 py-0.5 text-[10.5px] font-semibold uppercase ${ev.direction === "long" ? "bg-pos/10 text-pos" : "bg-neg/10 text-neg"}`}>{ev.direction}</span>
         <span className={`ctl px-1.5 py-0.5 text-[10.5px] font-semibold ${v.cls}`}>{v.label}</span>
         <span className="order-last w-full text-[12px] text-muted sm:order-none sm:w-auto sm:min-w-0 sm:flex-1 sm:truncate">{ev.summary}</span>
@@ -224,18 +225,18 @@ function PositionCard({ ev, position, history = [], focused, onEdit, onChanged }
               <Icon name="Shield" className="h-3.5 w-3.5 text-accent" />
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Red team</h3>
               {position?.redTeam && <span className="text-[10.5px] text-faint">{new Date(position.redTeam.at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
-              <button type="button" disabled={!!busy} onClick={redTeam} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "red" ? "Arguing the other side… (about a minute)" : position?.redTeam ? "Run again" : "Argue the other side"}</button>
+              {!owner && <button type="button" disabled={!!busy} onClick={redTeam} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "red" ? "Arguing the other side… (about a minute)" : position?.redTeam ? "Run again" : "Argue the other side"}</button>}
             </div>
             {position?.redTeam
               ? <div className="prose-sm text-[12px] leading-relaxed"><Markdown text={position.redTeam.text} sources={position.redTeam.sources} /></div>
-              : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
+              : owner ? <p className="text-[11.5px] text-muted">No red team has been run on this position yet.</p> : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
           </div>
           {err && <p role="alert" className="text-neg">{err}</p>}
           <div className="flex flex-wrap gap-3 text-[11.5px]">
-            <button type="button" onClick={onEdit} className="text-accent">Edit</button>
+            {!owner && onEdit && <button type="button" onClick={onEdit} className="text-accent">Edit</button>}
             <Link href={`/app/terminal?ticker=${encodeURIComponent(ev.ticker)}`} className="text-muted hover:text-fg">Open in Terminal</Link>
             <Link href={`/app/edge?view=theses`} className="text-muted hover:text-fg">Investigate with an agent (Edge theses)</Link>
-            <button type="button" disabled={!!busy} onClick={close} className="ml-auto text-muted hover:text-neg">Close position</button>
+            {!owner && <button type="button" disabled={!!busy} onClick={close} className="ml-auto text-muted hover:text-neg">Close position</button>}
           </div>
         </div>
       )}
@@ -278,6 +279,50 @@ function Importer({ onDone, onCancel }: { onDone: (r: ImportRes) => void; onCanc
   );
 }
 
+/* ---------------- The team's books (read-only) ---------------- */
+
+type TeamList = { teams: { id: number; name: string; members: number }[]; sharing: number[] };
+type TeamData = { members: { userId: string; name: string; positions: number; summary: BookSummary }[]; evaluations: (Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"] })[]; conflicts: { ticker: string; long: string[]; short: string[] }[]; memberCount: number };
+
+function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string }; sharing: boolean; onShare: (on: boolean) => Promise<void> }) {
+  const [d, setD] = useState<TeamData | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { fetchJson<TeamData>(`/api/book/team?team=${team.id}`).then((x) => { setD(x); setErr(""); }).catch((e) => setErr(errorMessage(e))); }, [team.id]);
+  useEffect(() => { load(); }, [load]);
+  const toggle = async () => { setBusy(true); try { await onShare(!sharing); load(); } finally { setBusy(false); } };
+  return (
+    <div className="space-y-3">
+      <section className="panel flex flex-wrap items-center gap-3 p-3 text-[12.5px]">
+        <span className="min-w-0 flex-1 text-muted">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""}</span>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={sharing} disabled={busy} onChange={() => void toggle()} />Share my book with {team.name}</label>
+      </section>
+      {err && <div role="alert" className="panel p-3 text-[12px] text-neg">{err}</div>}
+      {!d && !err && <div className="shimmer h-32 ctl" />}
+      {d && d.conflicts.length > 0 && (
+        <section role="status" className="panel border-accent/50 p-3 text-[12.5px]">
+          <div className="font-semibold">Opposite sides of the same name</div>
+          <ul className="mt-1 space-y-0.5 text-muted">{d.conflicts.map((c) => <li key={c.ticker}><span className="num font-semibold text-fg">{c.ticker}</span>: long {c.long.join(", ")} · short {c.short.join(", ")}</li>)}</ul>
+        </section>
+      )}
+      {d && d.members.length > 0 && (
+        <section className="panel overflow-x-auto p-3">
+          <table className="w-full text-[12px]">
+            <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Member</th><th className="font-medium">Positions</th><th className="font-medium">Gross</th><th className="font-medium">Net</th><th className="font-medium">At risk</th><th className="font-medium">Broken / watch</th></tr></thead>
+            <tbody>{d.members.map((m) => (
+              <tr key={m.userId} className="border-t border-line/60"><td className="py-1">{m.name}</td><td className="num">{m.positions}</td><td className="num">{navPct(m.summary.gross)}</td><td className="num">{navPct(m.summary.net)}</td><td className={`num ${m.summary.atRiskWeight > 0 ? "text-neg" : ""}`}>{navPct(m.summary.atRiskWeight)}</td><td className="num">{m.summary.verdicts.broken} / {m.summary.verdicts.watch}</td></tr>
+            ))}</tbody>
+          </table>
+        </section>
+      )}
+      {d && d.members.length === 0 && <p className="panel p-4 text-[12.5px] text-muted">Nobody on {team.name} shares a book yet. Share yours with the switch above; each member chooses for themselves.</p>}
+      {d && d.evaluations.length > 0 && (
+        <ul className="space-y-2">{d.evaluations.map((e) => <PositionCard key={`${e.owner}:${e.positionId}`} ev={e} owner={e.ownerName} position={{ id: e.positionId, ticker: e.ticker, direction: e.direction, weight: e.weight, entry: null, thesis: e.thesis, pillars: [], criteria: [], catalysts: [], createdAt: "", updatedAt: "", ...(e.redTeam ? { redTeam: e.redTeam } : {}) }} />)}</ul>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- The page ---------------- */
 
 function Stat({ label, value, tone, hint }: { label: string; value: string; tone?: string; hint?: string }) {
@@ -296,6 +341,13 @@ export function BookClient({ focus }: { focus?: string }) {
   const [importing, setImporting] = useState(false);
   const [note, setNote] = useState<ImportRes | null>(null);
   const [sampling, setSampling] = useState(false);
+  const [teams, setTeams] = useState<TeamList | null>(null);
+  const [view, setView] = useState<number | "mine">("mine");
+  useEffect(() => { fetchJson<TeamList>("/api/book/team").then(setTeams).catch(() => setTeams(null)); }, []);
+  const share = async (teamId: number, on: boolean) => {
+    const r = await fetchJson<{ sharing: number[] }>("/api/book/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: teamId, share: on }) });
+    setTeams((t) => (t ? { ...t, sharing: r.sharing } : t));
+  };
   const load = useCallback(() => {
     fetchJson<BookData>("/api/book").then((d) => { setData(d); setErr(""); }).catch((e) => setErr(errorMessage(e)));
   }, []);
@@ -321,6 +373,16 @@ export function BookClient({ focus }: { focus?: string }) {
           <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
         </div>
       </header>
+
+      {!!teams?.teams.length && (
+        <div role="tablist" aria-label="Whose book" className="flex flex-wrap gap-1">
+          {[{ id: "mine" as const, label: "My book" }, ...teams.teams.map((t) => ({ id: t.id, label: `${t.name} (team)` }))].map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={view === t.id} onClick={() => setView(t.id)} className={`ctl px-3 py-1.5 text-[12px] ${view === t.id ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{t.label}</button>
+          ))}
+        </div>
+      )}
+      {view !== "mine" && teams && (() => { const t = teams.teams.find((x) => x.id === view); return t ? <TeamBook key={t.id} team={t} sharing={teams.sharing.includes(t.id)} onShare={(on) => share(t.id, on)} /> : null; })()}
+      {view === "mine" && (<>
 
       {importing && <Importer onCancel={() => setImporting(false)} onDone={(r) => { setImporting(false); setNote(r); load(); }} />}
       {note && (
@@ -374,6 +436,7 @@ export function BookClient({ focus }: { focus?: string }) {
           })}
         </ul>
       )}
+      </>)}
       <p className="text-[11px] text-faint">Nothing here places trades. Filings refresh every six hours, prices on every load. Percentages are entered as percent (20 means 20%).</p>
     </div>
     </div>

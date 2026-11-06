@@ -10,7 +10,7 @@ import { getCompanyData } from "@/lib/company";
 import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
-import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, type Evaluation, type Position, type PositionNews } from "./position";
+import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type Position, type PositionNews } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
@@ -110,4 +110,60 @@ export async function noteHistory(userId: string, evals: Evaluation[], now = new
     return { ...extra, bookState: { ...cur, history } };
   });
   return history;
+}
+
+/* ---------------- Sharing with a team (read-only) ---------------- */
+
+/** The teams a person shares their book with (profiles.extra.bookShare), cleaned. */
+export const sharesOf = (extra: Record<string, unknown> | null | undefined): number[] => {
+  const raw = (extra?.bookShare as { teams?: unknown } | undefined)?.teams;
+  return Array.isArray(raw) ? [...new Set(raw.filter((x): x is number => Number.isInteger(x) && x > 0))].slice(0, 20) : [];
+};
+
+/** Share the book with a team, or stop. Membership is checked by the caller. */
+export async function setBookShare(userId: string, teamId: number, on: boolean): Promise<number[]> {
+  let teams: number[] = [];
+  await updateExtra(userId, (extra) => {
+    const cur = sharesOf(extra);
+    teams = on ? [...new Set([...cur, teamId])] : cur.filter((t) => t !== teamId);
+    return { ...extra, bookShare: { teams } };
+  });
+  return teams;
+}
+
+export type TeamBookMember = { userId: string; name: string; email: string; positions: number; summary: ReturnType<typeof summarize> };
+export type TeamEvaluation = Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"] };
+export type Conflict = { ticker: string; long: string[]; short: string[] };
+
+/**
+ * A team's books, as its members chose to share them: every position checked (companies are shared
+ * through the cache, so a name held by three people is read once), each with its owner; per-member
+ * exposure; and names held long by one member and short by another.
+ */
+export async function teamBook(teamId: number, members: { userId: string; name: string; email: string }[], now = new Date()) {
+  if (!members.length) return { members: [] as TeamBookMember[], evaluations: [] as TeamEvaluation[], conflicts: [] as Conflict[] };
+  const rows = await requireDb().select({ userId: schema.profiles.userId, extra: schema.profiles.extra }).from(schema.profiles)
+    .where(sql`${schema.profiles.userId} in (${sql.join(members.map((m) => sql`${m.userId}`), sql`, `)})`);
+  const out: TeamBookMember[] = [];
+  const evaluations: TeamEvaluation[] = [];
+  for (const r of rows) {
+    const extra = (r.extra ?? {}) as Record<string, unknown>;
+    if (!sharesOf(extra).includes(teamId)) continue;
+    const m = members.find((x) => x.userId === r.userId)!;
+    const book = normalizeBook(extra.book);
+    const evals = await evaluateBook(book, now);
+    out.push({ userId: m.userId, name: m.name || m.email, email: m.email, positions: book.length, summary: summarize(evals) });
+    for (const e of evals) {
+      const p = book.find((x) => x.id === e.positionId);
+      evaluations.push({ ...e, owner: m.userId, ownerName: m.name || m.email, thesis: p?.thesis ?? "", ...(p?.redTeam ? { redTeam: p.redTeam } : {}) });
+    }
+  }
+  const byTicker = new Map<string, { long: string[]; short: string[] }>();
+  for (const e of evaluations) {
+    const t = byTicker.get(e.ticker) ?? { long: [], short: [] };
+    t[e.direction].push(e.ownerName);
+    byTicker.set(e.ticker, t);
+  }
+  const conflicts = [...byTicker.entries()].filter(([, v]) => v.long.length && v.short.length).map(([ticker, v]) => ({ ticker, ...v }));
+  return { members: out, evaluations: evaluations.sort(byUrgency), conflicts };
 }
