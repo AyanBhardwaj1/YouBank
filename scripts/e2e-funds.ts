@@ -1,7 +1,7 @@
 /**
  * End-to-end check of the features for funds, through the HTTP API of a running server: the Book (sample
  * book, import, checks with headroom), the MCP server (keys, initialize, tools, prompts, check_thesis),
- * proposals from AI apps, MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay
+ * proposals from AI apps, risk, the pre-trade what-if, the calendar and team risk, MCP sign-in with OAuth (discovery, registration, consent, PKCE token exchange, replay
  * refused, a confidential client's secret) and the research ledger (recording an MCP call, the chain check, the
  * export, the governance report).
  *
@@ -109,6 +109,21 @@ async function main() {
   check("a wrong client secret is refused", bad.status === 401);
   const good = await fetch(`${BASE}/api/oauth/token`, { method: "POST", body: new URLSearchParams({ grant_type: "authorization_code", code: await code2(), redirect_uri: redirect, code_verifier: v2 }), headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: basic(creg.body.client_secret) } }).then((r) => r.json());
   check("the right secret with HTTP Basic gets a key", /^ybm_/.test(good.access_token ?? ""), good);
+
+  console.log("risk, the what-if and the calendar");
+  const risk = await j("/api/book/risk");
+  check("the book's risk answers with five stress replays (figures need prices; without them it says what is left out)", risk.status === 200 && Array.isArray(risk.body.scenarios) && risk.body.scenarios.length === 5 && Array.isArray(risk.body.excluded), risk.body?.excluded);
+  const wi = await j("/api/book/risk?add=MSFT&side=long&weight=3");
+  check("a pre-trade what-if answers with before and after, or why it cannot", wi.status === 200 && !!wi.body.before && !!wi.body.after && (typeof wi.body.note === "string"), wi.body);
+  check("a what-if without a valid weight is refused", (await j("/api/book/risk?add=MSFT&weight=0")).status === 400);
+  const cal = await fetch(`${BASE}/api/book/calendar`, { headers: ORIGIN });
+  const ics = await cal.text();
+  check("the calendar is an iCalendar file", cal.status === 200 && (cal.headers.get("content-type") ?? "").startsWith("text/calendar") && ics.startsWith("BEGIN:VCALENDAR\r\n") && ics.trimEnd().endsWith("END:VCALENDAR"), ics.slice(0, 120));
+  const teams = await j("/api/book/team");
+  if (teams.body?.teams?.length) {
+    const tr = await j(`/api/book/team?team=${teams.body.teams[0].id}&risk=1`);
+    check("a team's per-member risk answers", tr.status === 200 && typeof tr.body.risk === "object", tr.body);
+  }
 
   console.log("the research ledger");
   const on = await j("/api/ledger", { method: "POST", body: JSON.stringify({ on: true }) });
