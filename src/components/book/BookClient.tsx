@@ -543,7 +543,12 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
   const [d, setD] = useState<TeamData | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = useCallback(() => { fetchJson<TeamData>(`/api/book/team?team=${team.id}`).then((x) => { setD(x); setErr(""); }).catch((e) => setErr(errorMessage(e))); }, [team.id]);
+  const [risk, setRisk] = useState<Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }> | null>(null);
+  const load = useCallback(() => {
+    fetchJson<TeamData>(`/api/book/team?team=${team.id}`).then((x) => { setD(x); setErr(""); }).catch((e) => setErr(errorMessage(e)));
+    // Each member's own risk follows (prices can take a moment the first time today); the table shows meanwhile.
+    fetchJson<{ risk: NonNullable<typeof risk> }>(`/api/book/team?team=${team.id}&risk=1`).then((x) => setRisk(x.risk)).catch(() => setRisk({}));
+  }, [team.id]);
   useEffect(() => { load(); }, [load]);
   const toggle = async () => { setBusy(true); try { await onShare(!sharing); load(); } finally { setBusy(false); } };
   return (
@@ -563,9 +568,9 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
       {d && d.members.length > 0 && (
         <section className="panel overflow-x-auto p-3">
           <table className="w-full text-[12px]">
-            <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Member</th><th className="font-medium">Positions</th><th className="font-medium">Gross</th><th className="font-medium">Net</th><th className="font-medium">At risk</th><th className="font-medium">Broken / watch</th></tr></thead>
+            <thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-muted"><th className="py-1 font-medium">Member</th><th className="font-medium">Positions</th><th className="font-medium">Gross</th><th className="font-medium">Net</th><th className="font-medium">At risk</th><th className="font-medium">Broken / watch</th><th className="font-medium" title="Each member's own book: beta-adjusted net, % of their NAV">Beta-adj. net</th><th className="font-medium" title="Each member's own book: historical one-day 95% VaR, % of their NAV">1-day VaR</th><th className="font-medium">Worst replay</th></tr></thead>
             <tbody>{d.members.map((m) => (
-              <tr key={m.userId} className="border-t border-line/60"><td className="py-1">{m.name}</td><td className="num">{m.positions}</td><td className="num">{navPct(m.summary.gross)}</td><td className="num">{navPct(m.summary.net)}</td><td className={`num ${m.summary.atRiskWeight > 0 ? "text-neg" : ""}`}>{navPct(m.summary.atRiskWeight)}</td><td className="num">{m.summary.verdicts.broken} / {m.summary.verdicts.watch}</td></tr>
+              <tr key={m.userId} className="border-t border-line/60"><td className="py-1">{m.name}</td><td className="num">{m.positions}</td><td className="num">{navPct(m.summary.gross)}</td><td className="num">{navPct(m.summary.net)}</td><td className={`num ${m.summary.atRiskWeight > 0 ? "text-neg" : ""}`}>{navPct(m.summary.atRiskWeight)}</td><td className="num">{m.summary.verdicts.broken} / {m.summary.verdicts.watch}</td>{(() => { const r = risk?.[m.userId]; return risk === null ? <td colSpan={3} className="text-muted">working out…</td> : <><td className="num">{r?.betaNet != null ? signed(r.betaNet, 1) : "n/a"}</td><td className="num">{r?.var95 != null ? `${r.var95.toFixed(2)}%` : "n/a"}</td><td className="whitespace-nowrap">{r?.worst ? <span title={r.worst.label}><span className={`num ${r.worst.pnl < 0 ? "text-neg" : "text-pos"}`}>{signed(r.worst.pnl)}</span> <span className="text-muted">{r.worst.label}</span></span> : "n/a"}</td></>; })()}</tr>
             ))}</tbody>
           </table>
         </section>

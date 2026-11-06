@@ -223,6 +223,30 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
   return { members: out, evaluations: evaluations.sort(byUrgency), conflicts };
 }
 
+/**
+ * Each sharing member's own risk headline (beta-adjusted net, one-day VaR, worst replay), side by side. Not
+ * added up: each member's weights are a share of their own book, so a sum would mean nothing. Cached per
+ * book and day like the Book's own risk panel.
+ */
+export async function teamRisk(teamId: number, members: { userId: string }[], now = new Date()): Promise<Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }>> {
+  if (!members.length) return {};
+  const { riskOf } = await import("./risk-store");
+  const rows = await requireDb().select({ userId: schema.profiles.userId, extra: schema.profiles.extra }).from(schema.profiles)
+    .where(sql`${schema.profiles.userId} in (${sql.join(members.map((m) => sql`${m.userId}`), sql`, `)})`);
+  const out: Record<string, { betaNet: number | null; var95: number | null; worst: { label: string; pnl: number } | null }> = {};
+  for (const r of rows) {
+    const extra = (r.extra ?? {}) as Record<string, unknown>;
+    if (!sharesOf(extra).includes(teamId)) continue;
+    const book = normalizeBook(extra.book);
+    if (!book.some((p) => p.weight)) continue;
+    const risk = await riskOf(book, now).catch(() => null);
+    if (!risk) continue;
+    const w = risk.scenarios.filter((x) => x.pnl !== null).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))[0];
+    out[r.userId] = { betaNet: risk.betaNet, var95: risk.var95, worst: w ? { label: w.label, pnl: w.pnl as number } : null };
+  }
+  return out;
+}
+
 /** Whether the daily check sends alerts (profiles.extra.bookAlerts; on unless turned off). */
 export async function bookAlertsOn(userId: string): Promise<boolean> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));

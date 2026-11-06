@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { listMembers, myTeams, requireTeam } from "@/lib/teams/db";
-import { setBookShare, sharesOf, teamBook } from "@/lib/book/store";
+import { setBookShare, sharesOf, teamBook, teamRisk } from "@/lib/book/store";
 import { requireDb, schema } from "@/db";
 import { eq } from "drizzle-orm";
 
@@ -12,7 +12,7 @@ export const maxDuration = 120;
 /**
  * GET (no team): the person's teams and which they share their book with. GET ?team=ID: that team's
  * shared books, read-only, for anyone on the team (src/lib/book/store.ts teamBook). Only books their
- * owners chose to share appear.
+ * owners chose to share appear. GET ?team=ID&risk=1: each sharing member's own risk headline.
  */
 export async function GET(req: Request) {
   return guarded(async (user) => {
@@ -24,6 +24,8 @@ export async function GET(req: Request) {
     await requireTeam(id, user.id, "view");
     await rateLimit(`book-team:${user.id}`, 120, 3_600_000, "The team book was checked many times this hour. Try again in a few minutes.");
     const members = await listMembers(id);
+    // ?risk=1: each sharing member's own risk headline, asked for after the book so the table shows at once.
+    if (new URL(req.url).searchParams.get("risk") === "1") return NextResponse.json({ risk: await teamRisk(id, members) }, { headers: { "Cache-Control": "private, no-store" } });
     return NextResponse.json({ ...(await teamBook(id, members.map((m) => ({ userId: m.userId, name: m.name, email: m.email })))), memberCount: members.length }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
