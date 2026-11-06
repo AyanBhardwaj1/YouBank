@@ -15,7 +15,7 @@ import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
-import type { SourcedRisk } from "@/lib/book/risk";
+import type { SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
@@ -328,6 +328,24 @@ const ago = (iso: string) => {
   return m < 60 ? `${m || 1} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
+/** What a proposal would do to the book's risk, on request (weight as proposed, else 2% of NAV). */
+function ProposalImpact({ p }: { p: Proposal }) {
+  const [res, setRes] = useState<WhatIf | null>(null), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const weight = p.position.weight ?? 2;
+  const run = async () => {
+    setBusy(true); setErr("");
+    try { setRes(await fetchJson<WhatIf>(`/api/book/risk?add=${encodeURIComponent(p.position.ticker)}&side=${p.position.direction}&weight=${weight}`)); }
+    catch (x) { setErr(errorMessage(x)); } finally { setBusy(false); }
+  };
+  if (res) return <div className="mt-2 ctl border border-line p-2"><WhatIfResult w={res} /></div>;
+  return (
+    <p className="mt-1 text-[11.5px]">
+      <button type="button" onClick={run} disabled={busy} className="text-accent hover:underline disabled:opacity-60">{busy ? "Working out the risk…" : `What would it do to the book's risk${p.position.weight === null ? " (at 2% of NAV)" : ""}?`}</button>
+      {err && <span role="alert" className="ml-2 text-neg">{err}</span>}
+    </p>
+  );
+}
+
 /** Positions an AI app proposed over MCP: nothing is in the book until the person reviews one and saves it. */
 function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[]; held: Set<string>; focus?: string; onReview: (p: Proposal) => void; onDismiss: (p: Proposal) => void }) {
   return (
@@ -347,6 +365,7 @@ function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[
             {x.rationale && <p className="mt-0.5 text-[11.5px] text-muted">Why: {x.rationale}</p>}
             {x.position.criteria.length > 0 && <p className="mt-1 text-[11.5px] text-muted">Kill criteria: {x.position.criteria.map((c) => `${METRICS[c.metric].label} ${c.op === ">=" ? "at least" : "at most"} ${c.value}${isPct(c.metric) ? "%" : ""}`).join("; ")}</p>}
             {held.has(x.position.ticker) && <p className="mt-1 text-[11.5px] text-accent">{x.position.ticker} is already in your book; adding this keeps both.</p>}
+            <ProposalImpact p={x} />
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={() => onReview(x)} className="ctl bg-accent px-3 py-1 text-[12px] font-semibold text-accent-fg">Review and add</button>
               <button type="button" onClick={() => onDismiss(x)} className="ctl border border-line px-3 py-1 text-[12px] text-muted hover:text-fg">Dismiss</button>
@@ -361,6 +380,54 @@ function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[
 /* ---------------- Risk and stress tests ---------------- */
 
 const signed = (x: number, digits = 2) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(digits)}%`;
+
+/** Before a trade: the book's risk now and with the position added, and what the new name moves with. */
+function WhatIfResult({ w }: { w: WhatIf }) {
+  if (w.note) return <p className="text-[12px] text-muted">{w.note}</p>;
+  const row = (label: string, a: number | null, b: number | null, digits = 2, worseUp = true) => {
+    const delta = a !== null && b !== null ? b - a : null;
+    const tone = delta === null || Math.abs(delta) < 10 ** -digits ? "text-muted" : (delta > 0) === worseUp ? "text-neg" : "text-pos";
+    return <tr key={label} className="border-t border-line"><td className="py-1 pr-3">{label}</td><td className="num py-1 pr-3 text-right text-muted">{a === null ? "n/a" : `${a.toFixed(digits)}%`}</td><td className="num py-1 pr-3 text-right font-semibold">{b === null ? "n/a" : `${b.toFixed(digits)}%`}</td><td className={`num py-1 text-right ${tone}`}>{delta === null ? "" : signed(delta, digits)}</td></tr>;
+  };
+  return (
+    <div className="space-y-2 text-[12px]">
+      <table className="w-full"><thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-faint"><th className="py-1 font-medium">Adding {w.add.direction} {w.add.ticker} at {navPct(w.add.weight)}</th><th className="py-1 text-right font-medium">Now</th><th className="py-1 text-right font-medium">After</th><th className="py-1 text-right font-medium">Change</th></tr></thead>
+        <tbody>
+          {row("Beta-adjusted net", w.before.betaNet, w.after.betaNet, 1, Math.abs(w.after.betaNet ?? 0) > Math.abs(w.before.betaNet ?? 0))}
+          {row("1-day VaR (95%)", w.before.var95, w.after.var95)}
+          {row("Expected shortfall", w.before.es95, w.after.es95)}
+          {w.after.worst && <tr className="border-t border-line"><td className="py-1 pr-3">Worst replay</td><td className="num py-1 pr-3 text-right text-muted">{w.before.worst ? `${signed(w.before.worst.pnl)}` : "n/a"}</td><td className="num py-1 pr-3 text-right font-semibold">{signed(w.after.worst.pnl)}</td><td className="py-1 text-right text-[11px] text-faint">{w.after.worst.label}</td></tr>}
+        </tbody>
+      </table>
+      <p className="text-muted">{w.add.ticker}: beta {w.beta?.toFixed(2) ?? "n/a"}, volatility {w.vol?.toFixed(0) ?? "n/a"}% a year. {w.movesWith.length ? <>Moves with {w.movesWith.map((m, i) => <span key={m.ticker}>{i ? ", " : ""}<span className="font-semibold text-fg">{m.ticker}</span> ({m.rho.toFixed(2)}, <span className={m.kind === "stacked" ? "text-accent" : "text-pos"}>{m.kind === "stacked" ? "more of the same bet" : "a hedge"}</span>)</span>)}.</> : "It does not move closely with anything held."}</p>
+    </div>
+  );
+}
+
+function TryAdding() {
+  const [t, setT] = useState(""), [side, setSide] = useState<"long" | "short">("long"), [w, setW] = useState("3");
+  const [res, setRes] = useState<WhatIf | null>(null), [busy, setBusy] = useState(false), [err, setErr] = useState("");
+  const run = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr(""); setRes(null);
+    try { setRes(await fetchJson<WhatIf>(`/api/book/risk?add=${encodeURIComponent(t.trim())}&side=${side}&weight=${encodeURIComponent(w)}`)); }
+    catch (x) { setErr(errorMessage(x)); } finally { setBusy(false); }
+  };
+  return (
+    <div>
+      <h3 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Before a trade: what would adding a name do?</h3>
+      <form onSubmit={run} className="flex flex-wrap items-center gap-1.5">
+        <input aria-label="Ticker" value={t} onChange={(e) => setT(e.target.value)} placeholder="Ticker" className={`${fieldBox} w-24 uppercase`} required maxLength={12} />
+        <select aria-label="Side" value={side} onChange={(e) => setSide(e.target.value as "long" | "short")} className={`${fieldBox} w-auto`}><option value="long">Long</option><option value="short">Short</option></select>
+        <input aria-label="Weight, % of NAV" value={w} onChange={(e) => setW(e.target.value)} inputMode="decimal" className={`${fieldBox} w-16`} required />
+        <span className="text-[11px] text-muted">% of NAV</span>
+        <button type="submit" disabled={busy || !t.trim()} className="ctl border border-line px-3 py-1.5 text-[12px] hover:border-accent/50 disabled:opacity-60">{busy ? "Checking…" : "Check"}</button>
+      </form>
+      {err && <p role="alert" className="mt-2 text-[12px] text-neg">{err}</p>}
+      {res && <div className="mt-2"><WhatIfResult w={res} /></div>}
+    </div>
+  );
+}
 
 /** The book's risk from a year of daily closes, and today's book replayed through real sell-offs. Fetched when opened. */
 function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?: boolean }) {
@@ -452,6 +519,7 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
               <p className="mt-1 text-[11px] text-faint">Each name&apos;s share of the book&apos;s variance; a negative share is a position that lowers the book&apos;s risk.</p>
             </div>
           )}
+          <TryAdding />
           <p className="text-[11px] text-faint">
             {r.window ? `Daily closes ${r.window.from} to ${r.window.to} (${r.window.days} days)` : "Daily closes"}{r.sources.length ? `, from ${r.sources.join(", ")}` : ""}.
             {r.excluded.length > 0 && ` Left out: ${r.excluded.map((e) => `${e.ticker} (${e.reason})`).join(", ")}.`}

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { dailyCloses } from "@/lib/copytrade/prices";
 import type { Position } from "./position";
-import { BENCHMARK, bookRisk, HISTORY_FROM, type SourcedRisk } from "./risk";
+import { BENCHMARK, bookRisk, HISTORY_FROM, whatIf, type RiskInput, type SourcedRisk, type WhatIf } from "./risk";
 
 const TTL_MS = 6 * 3_600_000;
 export type { SourcedRisk };
@@ -31,4 +31,12 @@ export async function riskOf(book: Position[], now = new Date()): Promise<Source
   const complete = out.betaNet !== null && !c.missing.length;
   await cacheSet(key, JSON.stringify(out), complete ? TTL_MS : 10 * 60_000).catch(() => undefined);
   return out;
+}
+
+/** Before a trade: the book's risk with one more position. Prices as above (each answer cached); not kept itself. */
+export async function riskWhatIf(book: Position[], add: RiskInput & { weight: number }, now = new Date()): Promise<WhatIf & { sources: string[] }> {
+  const input = inputOf(book);
+  const tickers = [...new Set([...input.filter((p) => p.weight).map((p) => p.ticker), add.ticker])];
+  const c = await dailyCloses([...tickers, BENCHMARK], HISTORY_FROM, { max: 41, deadline: Date.now() + 20_000 });
+  return { ...whatIf(input, add, c.prices, now), sources: [...new Set(c.providers)].map((p) => `${p} daily closes`) };
 }

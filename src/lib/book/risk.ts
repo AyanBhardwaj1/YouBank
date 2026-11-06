@@ -199,6 +199,59 @@ export function bookRisk(bookIn: RiskInput[], prices: Record<string, Close[]>, n
   };
 }
 
+/* ---------------- Before a trade: what adding a name does to the book ---------------- */
+
+export type RiskHeadline = { betaNet: number | null; vol: number | null; var95: number | null; es95: number | null; worst: { label: string; pnl: number } | null };
+export type WhatIf = {
+  add: RiskInput & { weight: number };
+  before: RiskHeadline; after: RiskHeadline;
+  /** The new name's beta and volatility, and the holdings it moves with (|correlation| ≥ 0.5), strongest first. */
+  beta: number | null; vol: number | null;
+  movesWith: { ticker: string; direction: "long" | "short"; rho: number; kind: "stacked" | "hedge" }[];
+  /** Why there is no answer (the name has too little price history), when there is none. */
+  note: string;
+};
+
+const headline = (r: BookRisk): RiskHeadline => {
+  const w = r.scenarios.filter((x) => x.pnl !== null).sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))[0];
+  return { betaNet: r.betaNet, vol: r.vol, var95: r.var95, es95: r.es95, worst: w ? { label: w.label, pnl: w.pnl as number } : null };
+};
+
+/** The book's risk now and with one more position, and which holdings the new name moves with. */
+export function whatIf(book: RiskInput[], add: RiskInput & { weight: number }, prices: Record<string, Close[]>, now = new Date()): WhatIf {
+  const before = bookRisk(book, prices, now);
+  const after = bookRisk([...book, add], prices, now);
+  const bench = prices[BENCHMARK] ?? [];
+  const calendar = bench.slice(-(RISK_DAYS + 1)).map((c) => c.date);
+  const mine = prices[add.ticker] ? returnsOn(calendar, prices[add.ticker]) : [];
+  const n = mine.filter((x) => x !== null).length;
+  const base = { add, before: headline(before), after: headline(after) };
+  if (calendar.length < MIN_RETURNS + 1 || n < MIN_RETURNS) {
+    return { ...base, beta: null, vol: null, movesWith: [], note: !prices[add.ticker]?.length ? `No prices for ${add.ticker}.` : `${add.ticker} has ${n} trading days of prices in the last year; at least ${MIN_RETURNS} are needed.` };
+  }
+  const m = returnsOn(calendar, bench);
+  const c = covar(mine, m);
+  const movesWith: WhatIf["movesWith"] = [];
+  for (const p of netByTicker(book).lines) {
+    if (p.ticker === add.ticker || !prices[p.ticker]) continue;
+    const k = covar(mine, returnsOn(calendar, prices[p.ticker]));
+    if (k.n < MIN_RETURNS || k.vx <= 0 || k.vy <= 0) continue;
+    const rho = k.cov / Math.sqrt(k.vx * k.vy);
+    if (Math.abs(rho) < 0.5) continue;
+    movesWith.push({ ticker: p.ticker, direction: p.direction, rho: r2(rho), kind: (rho > 0) === (p.direction === add.direction) ? "stacked" : "hedge" });
+  }
+  movesWith.sort((a, b) => Math.abs(b.rho) - Math.abs(a.rho));
+  return { ...base, beta: c.vx > 0 && c.vy > 0 ? r2(c.cov / c.vy) : null, vol: c.vx > 0 ? r2(Math.sqrt(c.vx * 252) * 100) : null, movesWith: movesWith.slice(0, 5), note: "" };
+}
+
+/** One line for a person: what the trade changes. */
+export function whatIfLine(w: WhatIf): string {
+  if (w.note) return w.note;
+  const d = (a: number | null, b: number | null, unit = "%") => (a === null || b === null ? "n/a" : `${a}${unit} → ${b}${unit}`);
+  const first = w.movesWith[0];
+  return `Adding ${w.add.direction} ${w.add.ticker} at ${w.add.weight}% of NAV: beta-adjusted net ${d(w.before.betaNet, w.after.betaNet)}, one-day VaR ${d(w.before.var95, w.after.var95)}.${first ? ` It moves with ${first.ticker} (correlation ${first.rho.toFixed(2)}): ${first.kind === "stacked" ? "more of the same bet" : "a hedge against it"}.` : " It does not move closely with anything held."}`;
+}
+
 /** One line for a person: the headline numbers. */
 export function riskLine(r: BookRisk): string {
   if (r.betaNet === null) return "Not enough price history to measure the book's risk.";

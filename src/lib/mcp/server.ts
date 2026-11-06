@@ -21,8 +21,8 @@ import { addProposal, evaluateBook, loadBook, newsFor } from "@/lib/book/store";
 import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
-import { riskLine } from "@/lib/book/risk";
-import { riskOf } from "@/lib/book/risk-store";
+import { riskLine, whatIfLine } from "@/lib/book/risk";
+import { riskOf, riskWhatIf } from "@/lib/book/risk-store";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
@@ -111,10 +111,17 @@ function bookTool(userId: string) {
 function riskTool(userId: string) {
   return def({
     name: "book_risk",
-    description: "The risk of the signed-in person's Book, from a year of daily closes: beta-adjusted net exposure to the S&P 500 (SPY), annualised volatility, one-day 95% value at risk and expected shortfall (historical, today's weights), each name's beta, volatility and share of the book's risk, pairs of names that move together (a stacked bet, or a hedge), P&L for market moves of -20% to +10%, and today's book replayed through the COVID crash, the 2022 rate shock, SVB, the 2024 yen carry unwind and the April 2025 tariff shock. All figures are % of NAV.",
-    schema: z.object({}),
-    run: async (_args, ctx) => {
+    description: "The risk of the signed-in person's Book, from a year of daily closes: beta-adjusted net exposure to the S&P 500 (SPY), annualised volatility, one-day 95% value at risk and expected shortfall (historical, today's weights), each name's beta, volatility and share of the book's risk, pairs of names that move together (a stacked bet, or a hedge), P&L for market moves of -20% to +10%, and today's book replayed through the COVID crash, the 2022 rate shock, SVB, the 2024 yen carry unwind and the April 2025 tariff shock. With what_if, before a trade: the same figures with one more position, and which holdings it moves with (more of the same bet, or a hedge). All figures are % of NAV.",
+    schema: z.object({ what_if: z.object({ ticker: z.string().min(1).max(12), direction: z.enum(["long", "short"]), weight_pct_nav: z.number().gt(0).max(100) }).optional().describe("Before a trade: the book's risk with this position added, and which holdings it moves with.") }),
+    run: async ({ what_if }, ctx) => {
       const book = await loadBook(userId);
+      if (what_if) {
+        const t = tickerOf(what_if.ticker);
+        if (!t) return JSON.stringify({ error: `Not a ticker: ${what_if.ticker}` });
+        const w = await riskWhatIf(book, { ticker: t, direction: what_if.direction, weight: what_if.weight_pct_nav });
+        const src = ctx.addSource(`Daily closes for the held names, ${t} and SPY (${w.sources.join(", ") || "market data"})`, siteLink("/app/book?view=risk"));
+        return JSON.stringify({ headline: whatIfLine(w), source: src, units: "% of NAV", ...w, sources: undefined });
+      }
       if (!book.length) return JSON.stringify({ note: "The book is empty. Positions are added in YouBank → Book.", link: siteLink("/app/book") });
       const r = await riskOf(book);
       const src = ctx.addSource(`Daily closes for the held names and SPY (${r.sources.join(", ") || "market data"}), ${r.window ? `${r.window.from} to ${r.window.to}` : "no window"}`, siteLink("/app/book?view=risk"));
@@ -127,7 +134,7 @@ function riskTool(userId: string) {
 function proposeTool(userId: string, from: string) {
   return def({
     name: "propose_position",
-    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M).",
+    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used; call book_risk with what_if first to say what it would do to the book's risk. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M).",
     schema: z.object({
       ticker: z.string().min(1).max(12),
       direction: z.enum(["long", "short"]),

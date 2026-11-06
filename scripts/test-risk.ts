@@ -1,5 +1,5 @@
 /** The Book's risk (src/lib/book/risk.ts): pnpm exec tsx scripts/test-risk.ts */
-import { bookRisk, closeOn, netByTicker, replay, returnsOn, riskLine, type Close } from "@/lib/book/risk";
+import { bookRisk, closeOn, netByTicker, replay, returnsOn, riskLine, whatIf, whatIfLine, type Close } from "@/lib/book/risk";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -74,6 +74,16 @@ const dup = bookRisk([{ ticker: "HI", direction: "long", weight: 3 }, { ticker: 
 ok("no name is paired with itself and each shows once", [dup.positions.map((p) => p.ticker).sort(), dup.pairs.every((p) => p.a !== p.b), dup.positions.find((p) => p.ticker === "HI")?.weight], [["HI", "TWIN"], true, 5]);
 const halted = { ...prices, HALT: prices.HI.slice(0, 105) };
 ok("a name that stopped trading mid-episode is left out of the replay, not priced at a stale close", replay([{ ticker: "HALT", direction: "long", weight: 5 }], halted, ep).missing, ["HALT"]);
+
+console.log("before a trade");
+const base = [{ ticker: "HI", direction: "long" as const, weight: 5 }, { ticker: "LOW", direction: "short" as const, weight: 3 }];
+const wi = whatIf(base, { ticker: "TWIN", direction: "long", weight: 4 }, prices);
+near("adding a beta-1.5 long at 4% raises beta-net by about 6 points", wi.after.betaNet! - wi.before.betaNet!, 6, 0.4);
+ok("the new name's beta, and the holding it doubles up on, named as more of the same bet", [Math.abs((wi.beta ?? 0) - 1.5) < 0.1, wi.movesWith[0]?.ticker, wi.movesWith[0]?.kind], [true, "HI", "stacked"]);
+const hedgeWi = whatIf(base, { ticker: "TWIN", direction: "short", weight: 4 }, prices);
+ok("shorting it instead is a hedge against HI and lowers beta-net", [hedgeWi.movesWith[0]?.kind, hedgeWi.after.betaNet! < hedgeWi.before.betaNet!], ["hedge", true]);
+ok("a name without enough history: no answer, and why", [whatIf(base, { ticker: "NEW", direction: "long", weight: 2 }, prices).note, whatIf(base, { ticker: "NOPE", direction: "long", weight: 2 }, prices).note], ["NEW has 39 trading days of prices in the last year; at least 120 are needed.", "No prices for NOPE."]);
+ok("one line for a person", /^Adding long TWIN at 4% of NAV: beta-adjusted net [\d.]+% → [\d.]+%, one-day VaR [\d.]+% → [\d.]+%\. It moves with HI \(correlation 0\.\d+\): more of the same bet\.$/.test(whatIfLine(wi)), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
