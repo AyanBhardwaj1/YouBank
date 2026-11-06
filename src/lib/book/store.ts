@@ -287,7 +287,7 @@ export async function setBookShare(userId: string, teamId: number, on: boolean):
 }
 
 export type TeamBookMember = { userId: string; name: string; email: string; positions: number; summary: ReturnType<typeof summarize> };
-export type TeamEvaluation = Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"] };
+export type TeamEvaluation = Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"]; committee?: Position["committee"]; conviction?: Position["conviction"] };
 export type Conflict = { ticker: string; long: string[]; short: string[] };
 
 /**
@@ -310,7 +310,7 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
     out.push({ userId: m.userId, name: m.name || m.email, email: m.email, positions: book.length, summary: summarize(evals) });
     for (const e of evals) {
       const p = book.find((x) => x.id === e.positionId);
-      evaluations.push({ ...e, owner: m.userId, ownerName: m.name || m.email, thesis: p?.thesis ?? "", ...(p?.redTeam ? { redTeam: p.redTeam } : {}) });
+      evaluations.push({ ...e, owner: m.userId, ownerName: m.name || m.email, thesis: p?.thesis ?? "", ...(p?.redTeam ? { redTeam: p.redTeam } : {}), ...(p?.committee ? { committee: p.committee } : {}), ...(p?.conviction ? { conviction: p.conviction } : {}) });
     }
   }
   const byTicker = new Map<string, { long: string[]; short: string[] }>();

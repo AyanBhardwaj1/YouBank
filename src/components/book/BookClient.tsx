@@ -183,7 +183,7 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
 
 const DECISION_CLS: Record<Decision, string> = { add: "bg-pos/10 text-pos", hold: "bg-elevated text-fg", trim: "bg-accent-soft text-accent", exit: "bg-neg/10 text-neg" };
 
-function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefined; busy: string; onRun: () => void; direction: "long" | "short" }) {
+function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefined; busy: string; /** Absent in the team view: read-only. */ onRun?: () => void; direction: "long" | "short" }) {
   const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return (
     <div className="rounded-md border border-line p-2.5" aria-label="AI investment committee">
@@ -191,7 +191,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
         <Icon name="Users" className="h-3.5 w-3.5 text-accent" />
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">AI investment committee</h3>
         {c && <span className="text-[10.5px] text-muted">{when(c.at)}</span>}
-        <button type="button" disabled={!!busy} onClick={onRun} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "committee" ? "The committee is sitting… (two to three minutes; you can leave this page)" : c ? "Convene again" : "Convene the committee"}</button>
+        {onRun && <button type="button" disabled={!!busy} onClick={onRun} className="ml-auto ctl border border-line px-2 py-0.5 text-[11px] text-muted hover:text-fg disabled:opacity-50">{busy === "committee" ? "The committee is sitting… (two to three minutes; you can leave this page)" : c ? "Convene again" : "Convene the committee"}</button>}
       </div>
       {c ? (
         <div className="space-y-1.5 text-[12px]">
@@ -365,7 +365,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
               ? <div className="prose-sm text-[12px] leading-relaxed"><Markdown text={position.redTeam.text} sources={position.redTeam.sources} /></div>
               : owner ? <p className="text-[11.5px] text-muted">No red team has been run on this position yet.</p> : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
           </div>
-          {!owner && <CommitteePanel c={position?.committee} busy={busy} onRun={convene} direction={ev.direction} />}
+          {!owner ? <CommitteePanel c={position?.committee} busy={busy} onRun={convene} direction={ev.direction} /> : position?.committee ? <CommitteePanel c={position.committee} busy="" direction={ev.direction} /> : null}
           {err && <p role="alert" className="text-neg">{err}</p>}
           <div className="flex flex-wrap gap-3 text-[11.5px]">
             {!owner && onEdit && <button type="button" onClick={onEdit} className="text-accent">Edit</button>}
@@ -749,7 +749,7 @@ function TrackRecord({ sig }: { sig: string }) {
 /* ---------------- The team's books (read-only) ---------------- */
 
 type TeamList = { teams: { id: number; name: string; members: number }[]; sharing: number[] };
-type TeamData = { members: { userId: string; name: string; positions: number; summary: BookSummary }[]; evaluations: (Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"] })[]; conflicts: { ticker: string; long: string[]; short: string[] }[]; memberCount: number };
+type TeamData = { members: { userId: string; name: string; positions: number; summary: BookSummary }[]; evaluations: (Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"]; committee?: Position["committee"]; conviction?: Position["conviction"] })[]; conflicts: { ticker: string; long: string[]; short: string[] }[]; memberCount: number };
 
 function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string }; sharing: boolean; onShare: (on: boolean) => Promise<void> }) {
   const [d, setD] = useState<TeamData | null>(null);
@@ -798,7 +798,7 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
       )}
       {d && d.members.length === 0 && <p className="panel p-4 text-[12.5px] text-muted">Nobody on {team.name} shares a book yet. Share yours with the switch above; each member chooses for themselves.</p>}
       {d && d.evaluations.length > 0 && (
-        <ul className="space-y-2">{d.evaluations.map((e) => <PositionCard key={`${e.owner}:${e.positionId}`} ev={e} owner={e.ownerName} position={{ id: e.positionId, ticker: e.ticker, direction: e.direction, weight: e.weight, entry: null, thesis: e.thesis, pillars: [], criteria: [], catalysts: [], createdAt: "", updatedAt: "", ...(e.redTeam ? { redTeam: e.redTeam } : {}) }} />)}</ul>
+        <ul className="space-y-2">{d.evaluations.map((e) => <PositionCard key={`${e.owner}:${e.positionId}`} ev={e} owner={e.ownerName} position={{ id: e.positionId, ticker: e.ticker, direction: e.direction, weight: e.weight, entry: null, thesis: e.thesis, pillars: [], criteria: [], catalysts: [], createdAt: "", updatedAt: "", ...(e.redTeam ? { redTeam: e.redTeam } : {}), ...(e.committee ? { committee: e.committee } : {}), ...(e.conviction ? { conviction: e.conviction } : {}) }} />)}</ul>
       )}
     </div>
   );
