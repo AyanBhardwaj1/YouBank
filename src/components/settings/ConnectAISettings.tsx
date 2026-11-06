@@ -99,15 +99,20 @@ export function ConnectAISettings() {
         )}
         <div className="flex gap-2">
           <input className={input} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="What is it for? e.g. Claude on my laptop" aria-label="Key name" />
-          <button type="button" disabled={busy || (keys?.length ?? 0) >= 5} onClick={create} className={`${primary} shrink-0`}>{busy ? "Making…" : "Make a key"}</button>
+          <button type="button" disabled={busy || (keys?.length ?? 0) >= 10} onClick={create} className={`${primary} shrink-0`}>{busy ? "Making…" : "Make a key"}</button>
         </div>
         {err && <p role="alert" className="text-[12px] text-neg">{err}</p>}
-        <p className="text-[11px] text-faint">Up to five keys. Each works only for this MCP server, as you, and can be revoked here at any time. Calls are limited to 600 an hour.</p>
+        <p className="text-[11px] text-faint">Up to ten keys, including those apps receive when you connect them with sign-in. Each works only for this MCP server, as you, and can be revoked here at any time. Calls are limited to 600 an hour.</p>
       </section>
 
       <section className="panel space-y-3 p-4">
         <h3 className="text-[13px] font-semibold">Set up your app</h3>
         <p className="text-[12px] text-muted">The server address is <code className="num">{url}</code> (Streamable HTTP). Send the key as a bearer token.</p>
+        <div className="ctl border border-accent/40 bg-accent-soft/40 p-3 text-[12px]">
+          <div className="font-semibold">Apps that take just a URL (Claude and ChatGPT custom connectors)</div>
+          <p className="mt-1 text-muted">Add a custom connector with the address below and no key. The app sends you to YouBank to approve it, then receives its own key, listed above.</p>
+          <code className="num mt-1.5 block break-all">{url}</code>
+        </div>
         <Snippet title="Claude Code" code={`claude mcp add --transport http youbank ${url} \\\n  --header "Authorization: Bearer ${key}"`} />
         <Snippet title="Claude Desktop, Cursor, Windsurf and other apps that take an mcpServers file" code={JSON.stringify({ mcpServers: { youbank: { url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2)} />
         <Snippet title="Apps that only run local servers (through mcp-remote)" code={JSON.stringify({ mcpServers: { youbank: { command: "npx", args: ["-y", "mcp-remote", url, "--header", `Authorization:Bearer ${key}`] } } }, null, 2)} />

@@ -2,6 +2,8 @@
 import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf } from "@/lib/mcp/keys";
 import { dispatch, LATEST_PROTOCOL, withSources, type McpServer } from "@/lib/mcp/protocol";
 import { mcpServer, PROMPTS } from "@/lib/mcp/server";
+import { authServerMetadata, clientFrom, isMetadataClientId, parseAuthorize, pkceOk, redirectOk, redirectWith, resourceMetadata } from "@/lib/mcp/oauth";
+import { createHash } from "node:crypto";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -20,7 +22,7 @@ async function main() {
   ok("another secret does not", matchKey([stored], "x".repeat(43)), null);
   ok("junk is not a key", [parseKey(""), parseKey("Bearer ybd_abc"), parseKey("ybm_abc"), parseKey(`ybm_${"a".repeat(10)}.short`)], [null, null, null, null]);
   ok("a tampered account part is refused", parseKey(key.replace(/^ybm_./, "ybm_~")), null);
-  ok("stored keys: well-formed, one per id, at most KEYS_MAX", normalizeKeys([...Array.from({ length: 8 }, () => makeKey("u", "k").stored), stored, stored, { id: "zz", hash: "x" }]).length, KEYS_MAX);
+  ok("stored keys: well-formed, one per id, at most KEYS_MAX", normalizeKeys([...Array.from({ length: 12 }, () => makeKey("u", "k").stored), stored, stored, { id: "zz", hash: "x" }]).length, KEYS_MAX);
   ok("Settings never sees the hash", Object.keys(viewOf(stored)).includes("hash"), false);
 
   console.log("the protocol");
@@ -68,6 +70,22 @@ async function main() {
   ok("every tool a prompt names is one the server offers", named.filter((n) => !names.has(n)), []);
   ok("the server offers four prompts, each asking for citations", PROMPTS.map((p) => [p.name, p.build({ ticker: "snow" }).includes("source id")]), [["book_review", true], ["red_team", true], ["what_changed", true], ["earnings_prep", true]]);
   ok("a ticker argument is cleaned", PROMPTS[1].build({ ticker: "$snow" }).includes("position in SNOW."), true);
+
+  console.log("oauth");
+  const O = "https://youbank.example";
+  ok("resource metadata points at this server as its authorization server", [resourceMetadata(O).resource, resourceMetadata(O).authorization_servers], ["https://youbank.example/api/mcp", [O]]);
+  const as = authServerMetadata(O);
+  ok("authorization server: code flow, S256 only, public clients, registration and metadata documents", [as.response_types_supported, as.code_challenge_methods_supported, as.token_endpoint_auth_methods_supported, !!as.registration_endpoint, as.client_id_metadata_document_supported], [["code"], ["S256"], ["none"], true, true]);
+  ok("redirects: https, or http on localhost; nothing else", [redirectOk("https://claude.ai/api/mcp/auth_callback"), redirectOk("http://localhost:6274/cb"), redirectOk("http://127.0.0.1:9/x"), redirectOk("http://evil.example/cb"), redirectOk("javascript:alert(1)"), redirectOk("https://a.example/cb#frag")], [true, true, true, false, false, false]);
+  ok("a client needs valid redirect URIs and no secret", [("client" in clientFrom({ redirect_uris: ["https://claude.ai/cb"], client_name: "Claude" }, "ybc_x")), ("error" in clientFrom({ redirect_uris: [] }, "x")), ("error" in clientFrom({ redirect_uris: ["https://a/cb"], token_endpoint_auth_method: "client_secret_basic" }, "x"))], [true, true, true]);
+  ok("metadata-document client ids are https URLs with a path", [isMetadataClientId("https://claude.ai/oauth/client.json"), isMetadataClientId("https://claude.ai"), isMetadataClientId("ybc_abc")], [true, false, false]);
+  const verifier = "a".repeat(20) + "B".repeat(23);
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  const q = { response_type: "code", client_id: "ybc_x", redirect_uri: "https://claude.ai/cb", code_challenge: challenge, code_challenge_method: "S256", state: "s1", resource: `${O}/api/mcp` };
+  ok("a good authorization request parses", "req" in parseAuthorize(q, O), true);
+  ok("PKCE must be S256; the resource must be this server", [("error" in parseAuthorize({ ...q, code_challenge_method: "plain" }, O)), ("error" in parseAuthorize({ ...q, resource: "https://other.example/api/mcp" }, O)), ("error" in parseAuthorize({ ...q, response_type: "token" }, O))], [true, true, true]);
+  ok("PKCE: the verifier must hash to the challenge", [pkceOk(verifier, challenge), pkceOk(verifier + "x", challenge), pkceOk("short", challenge)], [true, false, false]);
+  ok("the redirect carries the code, state and issuer, keeping its own query", redirectWith("https://a.example/cb?x=1", { code: "c", state: "s", iss: O }), "https://a.example/cb?x=1&code=c&state=s&iss=https%3A%2F%2Fyoubank.example");
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) process.exit(1);

@@ -7,6 +7,7 @@ import { withinRate } from "@/lib/locks";
 import { dispatch, ERR, type RpcResponse } from "@/lib/mcp/protocol";
 import { mcpServer } from "@/lib/mcp/server";
 import { authenticate } from "@/lib/mcp/store";
+import { CORS, originOf, preflight } from "@/lib/mcp/http";
 import { record } from "@/lib/ledger/store";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export const maxDuration = 120;
  * server never opens a stream of its own. Limits: 600 calls an hour per person; repeated bad keys from
  * one address are slowed down.
  */
-const json = (body: RpcResponse, status = 200, headers: Record<string, string> = {}) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
+const json = (body: RpcResponse, status = 200, headers: Record<string, string> = {}) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store", ...CORS, "Access-Control-Expose-Headers": "WWW-Authenticate", ...headers } });
 const rpcError = (code: number, message: string, status: number, headers: Record<string, string> = {}) => json({ jsonrpc: "2.0", id: null, error: { code, message } }, status, headers);
 
 export async function POST(req: Request) {
@@ -28,7 +29,9 @@ export async function POST(req: Request) {
   const who = await authenticate(req.headers.get("authorization")).catch(() => null);
   if (!who) {
     if (!(await withinRate(`mcp-bad-key:${ip}`, 30, 600_000).catch(() => true))) await new Promise((r) => setTimeout(r, 1500));
-    return rpcError(ERR.invalidRequest, "Missing or invalid YouBank key. Make one in YouBank → Settings → Connect AI apps and send it as Authorization: Bearer <key>.", 401, { "WWW-Authenticate": 'Bearer realm="YouBank MCP"' });
+    // RFC 9728: say where to sign in, so an app that only has this URL can connect with OAuth.
+    const meta = `${originOf(req.headers, req.url)}/.well-known/oauth-protected-resource/api/mcp`;
+    return rpcError(ERR.invalidRequest, "Sign in to YouBank to connect, or send a key from Settings → Connect AI apps as Authorization: Bearer <key>.", 401, { "WWW-Authenticate": `Bearer realm="YouBank MCP", resource_metadata="${meta}"`, ...CORS });
   }
   if (!(await withinRate(`mcp:${who.userId}`, 600, 3_600_000))) return rpcError(ERR.internal, "This key has made many calls this hour. Try again later.", 429, { "Retry-After": "600" });
   let msg: unknown;
@@ -58,3 +61,5 @@ export function DELETE() {
   // Stateless: there is no session to end.
   return new Response(null, { status: 405, headers: { Allow: "POST" } });
 }
+
+export const OPTIONS = preflight;

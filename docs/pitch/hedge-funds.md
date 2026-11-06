@@ -54,7 +54,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - the person's **Book**, with every thesis checked.
 - **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing* and *Earnings prep* appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
-- **Keys.** Per-person keys, shown once and stored only as a SHA-256 hash. Each key is named for the app it serves and can be revoked. Calls are limited to 600 an hour.
+- **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
+- **Keys.** Per-person keys (up to ten, including connected apps') are shown once and stored only as a SHA-256 hash. Each key is named for the app it serves and can be revoked. Calls are limited to 600 an hour.
 - **Set-up.** Ready-made set-up for Claude Code, mcpServers-file apps (Claude Desktop, Cursor, Windsurf), mcp-remote, and plain HTTP.
 - **Tested.** Verified with the official MCP TypeScript SDK client (v1.32.2), which negotiated protocol 2025-11-25.
 
@@ -83,7 +84,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Open the broken one and show the failed criterion, the figure, its period, and the link to the XBRL facts.
    - Run the red team. While it works, point at the exposure strip.
 3. **Connect AI apps.**
-   - Make a key and paste the Claude Code line.
+   - In Claude, add a custom connector with the server URL, approve it on YouBank's consent page, and watch the new key appear in Settings. Or make a key and paste the Claude Code line.
    - In Claude, pick the *Review my book* prompt, or ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
 4. **Research ledger.**
    - Turn it on and show the MCP call from step 3 already recorded.
@@ -94,7 +95,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 ## 4. Honest limits (say these before an investor asks)
 
 - **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank. Daily anchors by email make that automatic: they are sent from the person's own connected mailbox, optionally copied to a compliance address. A public timestamp service (such as OpenTimestamps) is a follow-up.
-- **MCP sign-in uses bearer keys, not OAuth.** Clients that only support OAuth discovery need `mcp-remote` or a header-capable configuration. OAuth 2.1 support is a follow-up.
+- **MCP sign-in is tested with the official MCP SDK, not yet with each vendor.** The OAuth flow (discovery, registration, PKCE, consent, token) passes end to end with the official MCP TypeScript SDK client. It has not yet been tried against Claude.ai's and ChatGPT's live connector UIs, so try it once on the deployed preview before the pitch. Tokens do not expire; they are revoked in Settings.
 - **The Book checks LTM fundamentals and price only.** It does not check estimates, intra-quarter KPIs or alternative data yet. Criteria are limited to ten metrics.
 - **Not an order-management system.** Positions are entered by hand. There is no broker sync for the Book, and the Book places no trades.
 - **Research figures.** The 95% adoption figure is from AIMA's 2025 generative-AI research, not the 2026 emerging-manager survey. An often-repeated "17% credit AI with performance" figure could not be traced to a primary source and is not used here.
@@ -108,6 +109,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 | The Book: alerts | `src/lib/book/alerts.ts`, `src/lib/book/watch.ts`, `src/app/api/cron/book` | Pure transition rules (tested); the cron runs weekdays at 21:25 UTC and writes the last verdicts to `profiles.extra.bookState` |
 | The Book: UI | `src/components/book/BookClient.tsx`, `src/app/app/book/`, Home widget `book` | Nav feature `book` (key G then K); on by default for markets and PE roles, and pinned for markets |
 | MCP: protocol | `src/lib/mcp/protocol.ts` | Pure JSON-RPC 2.0; 24 tests in `scripts/test-mcp.ts` |
+| MCP: OAuth | `src/lib/mcp/oauth.ts`, `src/lib/mcp/oauth-store.ts`, `src/app/.well-known/**`, `src/app/api/oauth/**`, `src/app/app/connect/authorize` | Pure checks are tested; clients and single-use codes are kept in `kv_cache`; the token is an MCP key |
 | MCP: tools and keys | `src/lib/mcp/server.ts`, `src/lib/mcp/keys.ts`, `src/lib/mcp/store.ts`, `src/app/api/mcp`, `src/app/api/settings/mcp-keys` | Keys read `ybm_<account>.<secret>` and are kept in `profiles.extra.apiKeys` (max 5); web research is excluded because it spends AI allowance |
 | Ledger: chain | `src/lib/ledger/chain.ts` | Pure; 19 tests in `scripts/test-ledger.ts`, including an independent re-check of an export |
 | Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/app/api/ledger/**`, `src/components/settings/LedgerSettings.tsx` | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; off until the person turns it on |

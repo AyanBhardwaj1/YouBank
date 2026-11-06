@@ -9,7 +9,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-export const KEYS_MAX = 5;
+export const KEYS_MAX = 10;
 export const KEY_PREFIX = "ybm_";
 
 export type StoredKey = { id: string; name: string; hint: string; hash: string; createdAt: string; lastUsedAt: string | null };
