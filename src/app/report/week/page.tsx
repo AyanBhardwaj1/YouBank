@@ -1,4 +1,4 @@
-import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
+import { actedText, brokenNow } from "@/lib/book/discipline";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PrintButton } from "@/components/book/PrintButton";
@@ -70,7 +70,15 @@ export default async function WeekPage() {
           <ul className="mt-0.5 space-y-0.5">{w.notes.map((n, k) => <li key={k}><span className="font-semibold">{n.ticker}</span> <span className="num text-muted">{n.on}</span>{n.with ? <span className="text-muted"> ({n.with})</span> : null}: {n.text}</li>)}</ul>
         </>)}
 
-        {(() => { const line = brokenNowLine(brokenNow(book, history, now)); return line ? (<><H>Broken theses</H><p className="mt-0.5">{line}</p></>) : null; })()}
+        {(() => {
+          const xs = brokenNow(book, history, now);
+          return xs.length ? (<>
+            <H>Broken theses</H>
+            <ul className="mt-0.5 space-y-0.5">{xs.map((b) => (
+              <li key={b.positionId}><Link href={`/app/book?position=${encodeURIComponent(b.positionId)}`} className="font-semibold hover:underline">{b.ticker}</Link>: broken since {b.since}; {b.actedAfter === null ? <span className="font-semibold text-neg">nothing done since{b.days ? ` (${b.days} day${b.days === 1 ? "" : "s"})` : ""}</span> : actedText(b)}.</li>
+            ))}</ul>
+          </>) : null;
+        })()}
 
         {w.unexplained.length > 0 && (<>
           <H>Changes without a reason</H>
