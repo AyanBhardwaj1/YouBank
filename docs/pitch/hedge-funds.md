@@ -60,7 +60,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
   - `check_thesis`: any kill criteria checked against filings and the price on demand, without saving.
 - **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing* and *Earnings prep* appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
-- **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
+- **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration, for public and confidential clients. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
 - **Keys.** Per-person keys (up to ten, including connected apps') are shown once and stored only as a SHA-256 hash. Each key is named for the app it serves and can be revoked. Calls are limited to 600 an hour.
 - **Set-up.** Ready-made set-up for Claude Code, mcpServers-file apps (Claude Desktop, Cursor, Windsurf), mcp-remote, and plain HTTP.
 - **Tested.** Verified with the official MCP TypeScript SDK client (v1.32.2), which negotiated protocol 2025-11-25.
@@ -87,7 +87,9 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 2. **The Book.**
    - Paste three rows from a spreadsheet, or press "Try a sample book".
    - Add a position from the *High-growth software* template and watch it check against the filings at once.
-   - Open the broken one and show the failed criterion, the figure, its period, and the link to the XBRL facts.
+   - Open the broken one and show the failed criterion, the figure, its period, the headroom (how far past the line), and the link to the XBRL facts.
+   - Point at "By industry" (the book's real sector bet) and at any "New 10-Q" card: what changed in the risk factors, read the evening it was filed.
+   - Write a position in plain words ("Long Costco: comps hold above 5%, insiders not selling more than $20M") and press "Draft it".
    - Run the red team. While it works, point at the exposure strip.
 3. **Connect AI apps.**
    - In Claude, add a custom connector with the server URL, approve it on YouBank's consent page, and watch the new key appear in Settings. Or make a key and paste the Claude Code line.
