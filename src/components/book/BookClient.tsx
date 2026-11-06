@@ -573,6 +573,22 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
   );
 }
 
+/** The Book's exports in one menu: the IC / LP report, the LP letter, CSV and the calendar. */
+function ExportMenu() {
+  const item = "flex items-center gap-2 ctl px-2.5 py-1.5 text-[12px] hover:bg-elevated";
+  return (
+    <details className="group relative">
+      <summary className="ctl flex cursor-pointer list-none items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg [&::-webkit-details-marker]:hidden"><Icon name="Share2" className="h-3.5 w-3.5" />Share &amp; export<Icon name="ChevronDown" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary>
+      <div className="panel absolute left-0 z-20 mt-1 w-64 max-w-[calc(100vw-2rem)] p-1 shadow-lg sm:left-auto sm:right-0">
+        <Link href="/report/book" className={item}><Icon name="FileText" className="h-3.5 w-3.5 text-muted" /><span><span className="block">IC / LP report</span><span className="block text-[11px] text-muted">Printable, with risk and the track record</span></span></Link>
+        <Link href="/report/letter" className={item}><Icon name="Newspaper" className="h-3.5 w-3.5 text-muted" /><span><span className="block">LP letter</span><span className="block text-[11px] text-muted">A draft, with a compliance pass</span></span></Link>
+        <a href="/api/book/export" download className={item}><Icon name="Download" className="h-3.5 w-3.5 text-muted" /><span><span className="block">CSV</span><span className="block text-[11px] text-muted">One row per kill criterion</span></span></a>
+        <a href="/api/book/calendar" download className={item}><Icon name="Calendar" className="h-3.5 w-3.5 text-muted" /><span><span className="block">Calendar (.ics)</span><span className="block text-[11px] text-muted">Earnings dates and catalysts</span></span></a>
+      </div>
+    </details>
+  );
+}
+
 /* ---------------- The track record ---------------- */
 
 type JournalData = { closed: ClosedPosition[]; scorecard: Scorecard; calibration?: Calibration };
@@ -752,10 +768,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           <p className="text-[12.5px] text-muted">Every position with a thesis that can be proved wrong. Each kill criterion is checked against SEC filings and the market on every load, with the figure, its period and a link to the source.</p>
         </div>
         <div className="flex gap-2">
-          {!!data?.evaluations.length && <Link href="/report/book" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="FileText" className="h-3.5 w-3.5" />Report</Link>}
-          {!!data?.evaluations.length && <Link href="/report/letter" title="A draft LP letter from the book, with a compliance pass" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Newspaper" className="h-3.5 w-3.5" />LP letter</Link>}
-          {!!data?.evaluations.length && <a href="/api/book/export" download className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Download" className="h-3.5 w-3.5" />CSV</a>}
-          {!!data?.evaluations.length && <a href="/api/book/calendar" download title="Earnings dates and catalysts, for Outlook, Google or Apple Calendar" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Calendar" className="h-3.5 w-3.5" />Calendar</a>}
+          {!!data?.evaluations.length && <ExportMenu />}
           <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); setReviewing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
           <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); setReviewing(null); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
         </div>
