@@ -139,6 +139,9 @@ function proposeTool(userId: string, from: string) {
       rationale: z.string().max(600).optional(),
     }),
     run: async (args, ctx) => {
+      // The one tool that writes: 30 proposals an hour per person, so a looping agent cannot crowd the book's saves.
+      const { withinRate } = await import("@/lib/locks");
+      if (!(await withinRate(`mcp-propose:${userId}`, 30, 3_600_000).catch(() => true))) return JSON.stringify({ error: "Many positions were proposed this hour. Ask the person to review the ones waiting in their Book." });
       const r = proposalFrom(args as Record<string, unknown>, from);
       if ("error" in r) return JSON.stringify({ error: r.error });
       const [e] = await evaluateBook([r.proposal.position]).catch(() => []);

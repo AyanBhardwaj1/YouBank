@@ -5,8 +5,8 @@
  * against Q3 FY2026; last quarter grew +24.1%)" turns a criterion into the number to watch on the print.
  *
  * Said only when the data supports it: eight consecutive quarters whose last four add up to the company's
- * LTM revenue (within 2%). Otherwise nothing, never a guess. Pure (safe on the client); tested in
- * scripts/test-book.ts.
+ * LTM revenue and first four to its year-before LTM (each within 2%). Otherwise nothing, never a guess.
+ * Pure (safe on the client); tested in scripts/test-book.ts.
  */
 import type { CompanyData } from "@/lib/types";
 
@@ -42,6 +42,10 @@ export function nextPrint(criteria: Crit[], company: Pick<CompanyData, "quarters
   }
   const ltm = sum(last8.slice(4));
   if (company.ltm?.revenue && Math.abs(ltm / company.ltm.revenue - 1) > 0.02) return [];
+  // The growth check divides by the reported year-before LTM: the quarters must agree with it too (a restatement
+  // or a recast acquisition would otherwise give a line the live check contradicts).
+  const prior = sum(last8.slice(0, 4)), reportedPrior = company.ltm?.priorRevenue;
+  if (reportedPrior && Math.abs(prior / reportedPrior - 1) > 0.02) return [];
   const stays = sum(last8.slice(5)); // the three quarters that stay in the twelve months
   const priorAfter = sum(last8.slice(1, 5)); // the year-before twelve months once the new quarter is in
   const yearAgo = last8[4];

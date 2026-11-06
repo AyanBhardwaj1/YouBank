@@ -26,6 +26,9 @@ export async function riskOf(book: Position[], now = new Date()): Promise<Source
   const tickers = [...new Set(input.filter((p) => p.weight).map((p) => p.ticker))];
   const c = await dailyCloses([...tickers, BENCHMARK], HISTORY_FROM, { max: 40, deadline: Date.now() + 20_000 });
   const out: SourcedRisk = { ...bookRisk(input, c.prices, now), sources: [...new Set(c.providers)].map((p) => `${p} daily closes`), missingPrices: c.missing };
-  await cacheSet(key, JSON.stringify(out), TTL_MS).catch(() => undefined);
+  // A partial answer (a feed down, the deadline hit, the benchmark missing) is kept ten minutes, not six hours,
+  // so a passing outage does not stick to the page, the report and MCP for the rest of the day.
+  const complete = out.betaNet !== null && !c.missing.length;
+  await cacheSet(key, JSON.stringify(out), complete ? TTL_MS : 10 * 60_000).catch(() => undefined);
   return out;
 }

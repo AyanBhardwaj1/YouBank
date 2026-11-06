@@ -428,7 +428,7 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
                   <li key={`${x.a}-${x.b}`} className="flex flex-wrap gap-x-2">
                     <span className="font-semibold">{x.a} + {x.b}</span>
                     <span className="num text-muted">correlation {x.rho.toFixed(2)}</span>
-                    <span className={x.kind === "stacked" ? "text-accent" : "text-pos"}>{x.kind === "stacked" ? `one bet in two tickets: ${navPct(x.weight)} of NAV` : `a hedge: the short offsets the long (${navPct(x.weight)} gross)`}</span>
+                    <span className={x.kind === "stacked" ? "text-accent" : "text-pos"}>{x.kind === "stacked" ? `one bet in two tickets: ${navPct(x.weight)} of NAV` : x.rho > 0 ? `a hedge: the short offsets the long (${navPct(x.weight)} gross)` : `a hedge: they move opposite ways (${navPct(x.weight)} gross)`}</span>
                   </li>
                 ))}
               </ul>
@@ -594,7 +594,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
       {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
-        if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => undefined);
+        if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));
         load();
       }} />}
 

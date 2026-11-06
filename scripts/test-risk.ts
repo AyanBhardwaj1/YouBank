@@ -1,5 +1,5 @@
 /** The Book's risk (src/lib/book/risk.ts): pnpm exec tsx scripts/test-risk.ts */
-import { bookRisk, closeOn, replay, returnsOn, riskLine, type Close } from "@/lib/book/risk";
+import { bookRisk, closeOn, netByTicker, replay, returnsOn, riskLine, type Close } from "@/lib/book/risk";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -67,6 +67,13 @@ ok("a name that had not listed by then is left out, not counted flat", [rep.miss
 ok("an episode before any prices: no figure", replay(book, prices, { id: "y", label: "Old", from: "2020-02-19", to: "2020-03-23" }).pnl, null);
 ok("the worst names are the losers, worst first", rep.worst.every((w, i, a) => w.pnl < 0 && (i === 0 || a[i - 1].pnl <= w.pnl)), true);
 ok("one line for a person", /^Beta-adjusted net \+\d+(\.\d+)?% of NAV; one-day 95% VaR [\d.]+% of NAV/.test(riskLine(r)), true);
+
+console.log("the same name twice");
+ok("two lines in one name add up; a long against a short nets; a flat name has no risk", netByTicker([{ ticker: "A", direction: "long", weight: 3 }, { ticker: "A", direction: "long", weight: 2 }, { ticker: "B", direction: "long", weight: 4 }, { ticker: "B", direction: "short", weight: 1 }, { ticker: "C", direction: "long", weight: 2 }, { ticker: "C", direction: "short", weight: 2 }]), { lines: [{ ticker: "A", direction: "long", weight: 5 }, { ticker: "B", direction: "long", weight: 3 }], flat: ["C"] });
+const dup = bookRisk([{ ticker: "HI", direction: "long", weight: 3 }, { ticker: "HI", direction: "long", weight: 2 }, { ticker: "TWIN", direction: "long", weight: 4 }], prices);
+ok("no name is paired with itself and each shows once", [dup.positions.map((p) => p.ticker).sort(), dup.pairs.every((p) => p.a !== p.b), dup.positions.find((p) => p.ticker === "HI")?.weight], [["HI", "TWIN"], true, 5]);
+const halted = { ...prices, HALT: prices.HI.slice(0, 105) };
+ok("a name that stopped trading mid-episode is left out of the replay, not priced at a stale close", replay([{ ticker: "HALT", direction: "long", weight: 5 }], halted, ep).missing, ["HALT"]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

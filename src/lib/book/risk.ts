@@ -103,8 +103,10 @@ export function replay(book: RiskInput[], prices: Record<string, Close[]>, s: { 
     if (!p.weight) continue;
     const xs = prices[p.ticker] ?? [];
     const a = closeOn(xs, s.from), b = closeOn(xs, s.to);
-    // The name must have traded at the start of the episode (a close within a week of it), or it is left out.
-    if (!a || !b || a.close <= 0 || Date.parse(s.from) - Date.parse(a.date) > 7 * 86_400_000) { missing.push(p.ticker); continue; }
+    // The name must have traded at the start and at the end of the episode (a close within a week of each),
+    // or it is left out: a halt or delisting mid-episode would otherwise be priced at a stale close.
+    const week = 7 * 86_400_000;
+    if (!a || !b || a.close <= 0 || Date.parse(s.from) - Date.parse(a.date) > week || Date.parse(s.to) - Date.parse(b.date) > week) { missing.push(p.ticker); continue; }
     parts.push({ ticker: p.ticker, pnl: sign(p.direction) * p.weight * (b.close / a.close - 1) });
     covered += p.weight;
   }
@@ -119,17 +121,31 @@ export function replay(book: RiskInput[], prices: Record<string, Close[]>, s: { 
   };
 }
 
+/**
+ * One line per ticker: two positions in the same name (an added proposal beside the original) add up, and a
+ * long against a short in it nets. A name that nets to nothing has no risk to show.
+ */
+export function netByTicker(book: RiskInput[]): { lines: RiskInput[]; flat: string[] } {
+  const net = new Map<string, number>();
+  for (const p of book) if (p.weight && p.weight > 0) net.set(p.ticker, (net.get(p.ticker) ?? 0) + sign(p.direction) * p.weight);
+  const lines: RiskInput[] = [], flat: string[] = [];
+  for (const [ticker, w] of net) {
+    if (Math.abs(w) < 1e-9) flat.push(ticker);
+    else lines.push({ ticker, direction: w > 0 ? "long" : "short", weight: Math.round(Math.abs(w) * 1e6) / 1e6 });
+  }
+  return { lines, flat };
+}
+
 /** The book's risk from daily closes (each list oldest first; the benchmark under BENCHMARK). */
-export function bookRisk(book: RiskInput[], prices: Record<string, Close[]>, now = new Date()): BookRisk {
+export function bookRisk(bookIn: RiskInput[], prices: Record<string, Close[]>, now = new Date()): BookRisk {
   const excluded: { ticker: string; reason: string }[] = [];
+  for (const p of bookIn) if (!(p.weight && p.weight > 0)) excluded.push({ ticker: p.ticker, reason: "no weight" });
+  const { lines: book, flat } = netByTicker(bookIn);
+  for (const t of flat) excluded.push({ ticker: t, reason: "long and short net to zero" });
   const bench = prices[BENCHMARK] ?? [];
   const calendar = bench.slice(-(RISK_DAYS + 1)).map((c) => c.date);
   const empty: BookRisk = { asOf: now.toISOString(), benchmark: BENCHMARK, window: null, betaNet: null, vol: null, var95: null, es95: null, positions: [], pairs: [], shocks: [], scenarios: [], excluded };
-  const sized = book.filter((p) => {
-    if (p.weight && p.weight > 0) return true;
-    excluded.push({ ticker: p.ticker, reason: "no weight" });
-    return false;
-  });
+  const sized = book;
   const scenarios = SCENARIOS.map((s) => replay(sized, prices, s));
   if (calendar.length < MIN_RETURNS + 1) return { ...empty, scenarios, excluded: [...excluded, ...(bench.length ? [] : [{ ticker: BENCHMARK, reason: "no benchmark prices" }])] };
 
