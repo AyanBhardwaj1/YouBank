@@ -96,6 +96,11 @@ export type Scorecard = {
   broke: number; exitedOnBreak: number; medianDaysToExit: number | null;
   /** Where the price on the break day is known: the average return had each been closed then, against the return taken. */
   counterfactual: { n: number; onBreak: number; taken: number } | null;
+  /**
+   * Process against outcome, so a lucky win is not read as skill: the process was sound when the position
+   * was not held more than five days past a broken thesis. Tickers in each box, newest first.
+   */
+  process: { earned: string[]; unlucky: string[]; lucky: string[]; deserved: string[] } | null;
 };
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -120,6 +125,15 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
     byReason,
     broke: broke.length, exitedOnBreak: lags.filter((d) => d <= 5).length, medianDaysToExit: median(lags),
     counterfactual: cf.length ? { n: cf.length, onBreak: r4(mean(cf.map((x) => x.onBreak)))!, taken: r4(mean(cf.map((x) => x.taken)))! } : null,
+    process: rets.length ? (() => {
+      const box = { earned: [] as string[], unlucky: [] as string[], lucky: [] as string[], deserved: [] as string[] };
+      for (const { c, r } of rets) {
+        if (r === 0) continue;
+        const sound = !c.brokeOn || days(c.brokeOn, c.closedAt) <= 5;
+        box[sound ? (r > 0 ? "earned" : "unlucky") : (r > 0 ? "lucky" : "deserved")].push(c.ticker);
+      }
+      return box;
+    })() : null,
   };
 }
 

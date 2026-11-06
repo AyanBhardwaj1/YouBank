@@ -19,6 +19,7 @@ import type { Proposal } from "@/lib/book/proposals";
 import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
 import { calibrationLine, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
+import { sizingCheck } from "@/lib/book/sizing";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -680,6 +681,21 @@ function TrackRecord({ sig }: { sig: string }) {
             {s.counterfactual && (
               <p className="text-[12px]">Had the {s.counterfactual.n} broken thesis{s.counterfactual.n === 1 ? "" : "es"} been closed on the day {s.counterfactual.n === 1 ? "it" : "they"} broke: <span className="font-semibold">{pctS(s.counterfactual.onBreak)}</span> on average, against <span className="font-semibold">{pctS(s.counterfactual.taken)}</span> taken. <span className="text-muted">{s.counterfactual.onBreak > s.counterfactual.taken ? "The kill criteria would have helped." : "Holding past the break paid this time."}</span></p>
             )}
+            {s.process && (s.process.earned.length + s.process.unlucky.length + s.process.lucky.length + s.process.deserved.length) > 0 && (
+              <div aria-label="Process against outcome" className="text-[12px]">
+                <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Process against outcome</div>
+                <div className="grid max-w-xl grid-cols-[auto_1fr_1fr] gap-px overflow-hidden rounded-md border border-line bg-line text-[11.5px]">
+                  <span className="bg-panel p-1.5" /><span className="bg-panel p-1.5 font-semibold text-pos">Won</span><span className="bg-panel p-1.5 font-semibold text-neg">Lost</span>
+                  <span className="bg-panel p-1.5 text-muted" title="Not held more than five days past a broken thesis">Sound process</span>
+                  <span className="bg-panel p-1.5"><b>{s.process.earned.length}</b> earned{s.process.earned.length ? `: ${s.process.earned.slice(0, 5).join(", ")}` : ""}</span>
+                  <span className="bg-panel p-1.5"><b>{s.process.unlucky.length}</b> bad luck{s.process.unlucky.length ? `: ${s.process.unlucky.slice(0, 5).join(", ")}` : ""}</span>
+                  <span className="bg-panel p-1.5 text-muted" title="Held more than five days after its thesis broke">Held past the break</span>
+                  <span className="bg-panel p-1.5"><b>{s.process.lucky.length}</b> lucky{s.process.lucky.length ? `: ${s.process.lucky.slice(0, 5).join(", ")}` : ""}</span>
+                  <span className="bg-panel p-1.5"><b>{s.process.deserved.length}</b> deserved{s.process.deserved.length ? `: ${s.process.deserved.slice(0, 5).join(", ")}` : ""}</span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted">Judge the decisions, not just the results: a win taken after ignoring a broken thesis is luck to not repeat.</p>
+              </div>
+            )}
             {s.byReason.length > 0 && <p className="text-[12px] text-muted">By reason: {s.byReason.map((r) => `${r.label} ${r.n}${r.avgReturn !== null ? ` (${pctS(r.avgReturn)})` : ""}`).join(" · ")}</p>}
             <ul className="text-[12px]">
               {d.closed.slice(0, 30).map((c) => {
@@ -798,6 +814,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
   };
   const byId = useMemo(() => new Map((data?.positions ?? []).map((p) => [p.id, p])), [data]);
   const s = data?.summary;
+  const sizing = useMemo(() => (data ? sizingCheck(data.positions.map((p) => ({ ticker: p.ticker, weight: p.weight, p: p.conviction?.p ?? null }))) : null), [data]);
   // A filter whose last position left (edited, deleted or recovered) shows everything again rather than an empty list.
   const only = pick && s?.verdicts[pick] ? pick : null;
   return (
@@ -866,6 +883,13 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
                 className={`ctl px-2 py-1 text-[11px] font-semibold ${VERDICT[k].cls} ${only && only !== k ? "opacity-40" : ""} ${only === k ? "ring-1 ring-current" : ""}`}>{s.verdicts[k]} {VERDICT[k].label.toLowerCase()}</button>
             ))}
           </div>
+        </section>
+      )}
+
+      {sizing && sizing.notes.length > 0 && (
+        <section aria-label="Sizing against conviction" className="panel flex items-start gap-2 p-3 text-[12px]">
+          <Icon name="Scale" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
+          <div><span className="font-semibold">Sizing against conviction.</span> {sizing.notes.join(" ")}</div>
         </section>
       )}
 

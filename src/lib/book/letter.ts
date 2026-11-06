@@ -50,6 +50,11 @@ export function draftLetter(i: LetterInput): string {
   }
   lines.push(``, `## Our process, measured`);
   lines.push(i.record.closed ? `Track record since we began keeping it: ${scorecardLine(i.record)} These are unweighted price moves on individual positions, before fees and costs, not fund performance.` : `We began keeping a track record of every closed position this quarter; it will appear here as positions close.`);
+  const pr = i.record.process;
+  if (pr) {
+    const sound = pr.earned.length + pr.unlucky.length, all = sound + pr.lucky.length + pr.deserved.length;
+    if (all) lines.push(`We judge decisions as well as results: ${sound} of ${all} closed positions followed our process (none held more than five days past a broken thesis)${pr.lucky.length ? `, and ${pr.lucky.length} gain${pr.lucky.length === 1 ? "" : "s"} came after holding past a break, which we count as luck rather than skill` : ""}.`);
+  }
   if (i.calibration && (i.calibration.n || i.calibration.open)) lines.push(`Calibration of our conviction: ${calibrationLine(i.calibration)}`);
   const aiCal = i.calibration?.bySource.find((x) => x.source === "AI committee"), pmCal = i.calibration?.bySource.find((x) => x.source === "You");
   if (aiCal && pmCal) lines.push(`We also score the AI committee that reviews our positions, the same way: its Brier score is ${aiCal.brier.toFixed(3)} on ${aiCal.n} resolved forecast${aiCal.n === 1 ? "" : "s"}, against ${pmCal.brier.toFixed(3)} on ${pmCal.n} for our own (lower is better). [What we take from the comparison.]`);

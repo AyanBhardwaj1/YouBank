@@ -9,6 +9,7 @@ import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { calibration, calibrationLine, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, resolveForecast, supersede } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
+import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -321,6 +322,21 @@ const pfCal = calibrationOf([pf], { pf01: [{ d: "2026-11-05", v: "intact", s: 10
 ok("a withdrawn 90% still counts as a miss when the thesis broke after it; the new 40% is still open", [pf.pastForecasts?.length, pfCal.n, pfCal.open, pfCal.brier], [1, 1, 1, 0.81]);
 const pfClosed = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(pf, "broken", [{ d: "2026-11-08", v: "broken", s: 40 }], 50, "thesis_broke", "", new Date("2026-11-20T00:00:00Z"))))])[0];
 ok("a close keeps the earlier forecasts and their breaks", pfClosed?.pastForecasts, [{ f: f1, brokeOn: "2026-11-08" }]);
+
+console.log("Sizing against conviction; process against outcome");
+ok("rank correlation: perfect, reversed, ties averaged, no spread", [spearman([1, 2, 3], [10, 20, 30]), spearman([1, 2, 3], [30, 20, 10]), spearman([1, 1, 2, 3], [1, 2, 3, 4]), spearman([1, 1, 1], [1, 2, 3])], [1, -1, 0.95, null]);
+const sz = sizingCheck([{ ticker: "AAA", weight: 6, p: 0.45 }, { ticker: "BBB", weight: 3, p: 0.8 }, { ticker: "CCC", weight: 2, p: 0.7 }, { ticker: "DDD", weight: 4, p: null }]);
+ok("the largest position on the lowest conviction is named once; sizing against conviction is flagged", [sz?.n, sz?.notes.length, sz?.notes[0], sz?.notes[1]?.startsWith("Across 3 positions")], [3, 2, "Your largest position, AAA at 6% of NAV, carries your lowest conviction (45%).", true]);
+ok("a book sized with its conviction has nothing to say; too few forecasts says nothing", [sizingCheck([{ ticker: "A", weight: 6, p: 0.9 }, { ticker: "B", weight: 3, p: 0.7 }, { ticker: "C", weight: 1, p: 0.6 }])?.notes, sizingCheck([{ ticker: "A", weight: 6, p: 0.9 }])], [[], null]);
+ok("a coin-flip-or-worse thesis sized above the median is noted", sizingCheck([{ ticker: "A", weight: 5, p: 0.4 }, { ticker: "B", weight: 5, p: 0.9 }, { ticker: "C", weight: 1, p: 0.95 }])?.notes.some((n) => n.startsWith("A is 5% of NAV at 40% conviction")), true);
+const proc = scorecard([
+  { ...c1, id: "q1", ticker: "WIN1", entry: 100, exit: 120, brokeOn: null },
+  { ...c1, id: "q2", ticker: "LOSS1", entry: 100, exit: 90, brokeOn: "2026-10-10", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q3", ticker: "LUCK", entry: 100, exit: 115, brokeOn: "2026-09-01", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q4", ticker: "SAT", entry: 100, exit: 70, brokeOn: "2026-09-01", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q5", ticker: "NOEXIT", entry: 100, exit: null },
+].map((x) => ({ ...x, direction: "long" as const })));
+ok("process against outcome: a prompt exit or an intact thesis is sound; holding past a break is not", proc.process, { earned: ["WIN1"], unlucky: ["LOSS1"], lucky: ["LUCK"], deserved: ["SAT"] });
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
