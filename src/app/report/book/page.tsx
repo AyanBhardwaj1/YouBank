@@ -1,5 +1,6 @@
 import { DECISIONS } from "@/lib/book/committee";
 import { sizingCheck } from "@/lib/book/sizing";
+import { toothless } from "@/lib/book/quality";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -137,6 +138,7 @@ export default async function BookReport() {
                       ))}</tbody>
                     </table></div>
                   )}
+                  {toothless(e.checks).length > 0 && <p className="mt-1.5"><span className="text-muted">Unlikely ever to fire:</span> {toothless(e.checks).map((x) => `${x.label} (${x.room} of room)`).join("; ")}.</p>}
                   {e.filing && <p className="mt-1.5"><span className="text-muted">New {e.filing.form} ({e.filing.filed}):</span> {filingLine(e.filing)}</p>}
                   {!!e.nextPrint?.length && <p className="mt-1.5"><span className="text-muted">Next report must show:</span> {e.nextPrint.map((b) => b.line).join(" ")}</p>}
                   {(e.catalysts.length > 0 || e.earnings) && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {[...(e.earnings ? [`Earnings${e.earnings.estimated ? " (estimated)" : ""} (${e.earnings.date})`] : []), ...e.catalysts.map((c) => `${c.label} (${c.date})`)].join("; ")}</p>}
