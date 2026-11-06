@@ -35,6 +35,8 @@ export const METRICS = {
   ev_revenue: { label: "EV / LTM revenue", unit: "x", read: (_c: CompanyData, d: Derived) => d.evRevLtm },
   pe: { label: "P/E (LTM)", unit: "x", read: (_c: CompanyData, d: Derived) => d.peLtm },
   price: { label: "Share price", unit: "usd", read: (c: CompanyData) => c.price?.last ?? null },
+  /** From the position's entry price and the price now, in its favour (a short gains when the price falls): a stop-loss. */
+  return_since_entry: { label: "Return since entry", unit: "pct", read: (): number | null => null },
   /** From Form 4 filings, not the company record: checkCriterion reads it from the insider fact it is given. */
   insider_selling: { label: "Insider net selling, 90 days ($M)", unit: "usdmm", read: (): number | null => null },
 } as const;
@@ -177,17 +179,22 @@ export function headroomOf(c: Criterion, actual: number): { value: number; shown
 
 const targetOf = (c: Criterion) => `${c.op === ">=" ? "at least" : "at most"} ${fmtMetric(c.metric, isPct(c.metric) ? c.value / 100 : c.value)}`;
 
-export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, insider: InsiderFact | null = null): CheckResult {
+/** What a criterion may need from its position: the entry price and side, for a stop-loss (return_since_entry). */
+export type PositionCtx = { entry: number | null; direction: Direction };
+
+export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, insider: InsiderFact | null = null, pos: PositionCtx | null = null): CheckResult {
   const m = METRICS[c.metric];
-  const actual = c.metric === "insider_selling" ? (insider?.complete ? insider.value : null) : m.read(company, d);
+  const last = company.price?.last ?? null;
+  const sinceEntry = pos?.entry && last !== null ? (last / pos.entry - 1) * (pos.direction === "short" ? -1 : 1) : null;
+  const actual = c.metric === "insider_selling" ? (insider?.complete ? insider.value : null) : c.metric === "return_since_entry" ? sinceEntry : m.read(company, d);
   const threshold = isPct(c.metric) ? c.value / 100 : c.value;
   const target = targetOf(c);
   const evidence = actual === null ? null : c.metric === "insider_selling" && insider
     ? { period: `${insider.since} to ${insider.asOf.slice(0, 10)}`, source: `SEC Form 4 filings (${insider.filings} filed, ${insider.trades} open-market trade${insider.trades === 1 ? "" : "s"})`, url: insider.url }
-    : c.metric === "price"
-    ? (company.price ? { period: `as of ${company.price.asOf.slice(0, 16).replace("T", " ")} UTC`, source: `${company.price.source ?? "price feed"}${company.price.stale ? " (stale)" : ""}`, url: `https://www.nasdaq.com/market-activity/stocks/${company.ticker.toLowerCase()}` } : null)
+    : c.metric === "price" || c.metric === "return_since_entry"
+    ? (company.price ? { period: `as of ${company.price.asOf.slice(0, 16).replace("T", " ")} UTC`, source: `${company.price.source ?? "price feed"}${company.price.stale ? " (stale)" : ""}${c.metric === "return_since_entry" && pos?.entry ? `, against the entry of $${pos.entry}` : ""}`, url: `https://www.nasdaq.com/market-activity/stocks/${company.ticker.toLowerCase()}` } : null)
     : { period: `LTM to ${company.ltm.periodEnd || "latest filing"}`, source: "SEC XBRL company facts", url: company.sources.factsUrl };
-  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null, headroom: null, ...(c.metric === "insider_selling" ? { note: insider ? `No complete figure: ${insider.note}.` : "Worked out from Form 4 filings after each US close." } : {}) };
+  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null, headroom: null, ...(c.metric === "insider_selling" ? { note: insider ? `No complete figure: ${insider.note}.` : "Worked out from Form 4 filings after each US close." } : c.metric === "return_since_entry" && !pos?.entry ? { note: "Needs the position's entry price." } : {}) };
   const pass = c.op === ">=" ? actual >= threshold : actual <= threshold;
   const state: CheckState = !pass ? "fail" : nearness(c.metric, actual, threshold) ? "near" : "pass";
   return { criterion: c, label: m.label, state, actual, shown: fmtMetric(c.metric, actual), target, evidence, headroom: headroomOf(c, actual) };
@@ -201,7 +208,7 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, i
 export type NextEarnings = { date: string | null; estimated: boolean } | null;
 
 export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null, insider: InsiderFact | null = null, filing: FilingFact | null = null): Evaluation {
-  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d, insider)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
+  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d, insider, { entry: p.entry, direction: p.direction })) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
   const known = checks.filter((c) => c.state !== "unknown");
   const failed = known.filter((c) => c.state === "fail");
   const near = known.filter((c) => c.state === "near");
@@ -361,6 +368,7 @@ export const DRAFT_SYSTEM = [
   "You turn an investor's own description of a position into a structured position with kill criteria: the numbers that would prove the thesis wrong.",
   `Kill criteria use only these metrics: ${METRIC_KEYS.map((m) => `${m} (${METRICS[m].label}, ${METRICS[m].unit === "pct" ? "a percentage, given as percent: 20 means 20%" : METRICS[m].unit === "usdmm" ? "US$ millions" : METRICS[m].unit === "usd" ? "US$ per share" : METRICS[m].unit === "x" ? "a multiple" : "points"})`).join("; ")}.`,
   "Each criterion is a metric, an operator (>= or <=) and a threshold: the line past which the thesis is wrong. For a long, growth and margin criteria are usually >=; for a short, usually <=.",
+  "A stop-loss from where they bought (\"out if it falls 15%\") is return_since_entry >= -15 (it is measured in the position's favour, so the same for a short); an absolute level (\"out below $150\") is price.",
   "Use the person's own numbers. Where they state a condition without a number, choose a reasonable threshold and say so in the note (\"suggested: …\"). Never invent facts about the company; do not state current figures.",
   "The ticker is the US listing of the company they name. The thesis is one line in their words. Pillars are the reasons they give, short. Catalysts only when they name a dated event (YYYY-MM-DD).",
 ].join("\n");

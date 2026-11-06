@@ -34,7 +34,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ### The Book: theses that can be proved wrong, checked automatically (`/app/book`)
 
-- **What it is.** A fund enters its positions: ticker, long or short, weight as % of NAV, and entry price. Each position has a one-line thesis, its pillars, and **kill criteria**: the numbers that would prove the thesis wrong. Examples: revenue growth at least 20%, gross margin at least 70%, a price stop.
+- **What it is.** A fund enters its positions: ticker, long or short, weight as % of NAV, and entry price. Each position has a one-line thesis, its pillars, and **kill criteria**: the numbers that would prove the thesis wrong. Examples: revenue growth at least 20%, gross margin at least 70%, a price level, or a stop-loss from entry ("out if it falls 15% from where we bought", measured in the position's favour, so it works for shorts).
 - **Checked on every load, against primary sources.** Each criterion is checked against the company's SEC XBRL filings and the price. YouBank shows the figure, its period and a link to the source. The thesis then reads *intact*, *on watch* (within 3 points of a percentage threshold, or 10% of any other) or *broken*, with the most urgent first. This costs no AI.
 - **The book at a glance.** Gross, net, long and short exposure; how much of NAV sits in a thesis that is broken or on watch; P&L since entry; the headroom to every kill criterion ("+4.7 pts", "−3.2 pts"); how long each verdict has held; the next earnings date and other dated catalysts; and this week's news for each name.
 - **Concentration.** Exposure by industry (long, short and net), so it is visible when a book is one sector bet.

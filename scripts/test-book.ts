@@ -208,6 +208,14 @@ if ("proposal" in pr) {
   ok("at most ten are kept, newest first; stored junk is dropped", [many.length, many[0].position.ticker, normalizeProposals([...many, { id: "x" }, null, { ...many[0] }]).length], [PROPOSALS_MAX, "TN", PROPOSALS_MAX]);
 }
 
+console.log("stop-loss from entry");
+const stop = { id: "s1", metric: "return_since_entry" as const, op: ">=" as const, value: -15 };
+const sLong = checkCriterion(stop, co, d, null, { entry: 150, direction: "long" }), sShort = checkCriterion(stop, co, d, null, { entry: 150, direction: "short" }), sNone = checkCriterion(stop, co, d, null, { entry: null, direction: "long" });
+ok("measured in the position's favour from the entry: a long up 20% holds, a short at the same prices is down 20% and fails", [sLong.state, sLong.shown, sShort.state, sShort.shown, sShort.evidence?.source.includes("against the entry of $150")], ["pass", "20.0%", "fail", "-20.0%", true]);
+ok("no entry price: no figure, and why", [sNone.state, sNone.note], ["unknown", "Needs the position's entry price."]);
+ok("evaluate passes the position's entry and side", evaluate({ ...t, entry: 150, criteria: [stop] }, co, d, [], now).checks[0].state, "pass");
+ok("the drafting prompt says how to write a stop-loss", DRAFT_SYSTEM.includes("return_since_entry >= -15"), true);
+
 console.log("calendar");
 const calEv = { ...evaluate({ ...t, id: "abcd", catalysts: [{ id: "c1", label: "Investor day; Q&A, live", date: "2026-11-20" }, { id: "c0", label: "Past", date: "2026-11-01" }] }, co, d, [], now, { date: "2026-11-19", estimated: true }), nextPrint: [{ criterionId: "g", metric: "revenue_growth" as const, op: ">=" as const, need: 1140, yoy: 0.14, lastYoy: 0.21, yearAgo: "Q5", settled: false, line: "At least $1,140M of revenue next quarter keeps it." }] };
 const ics = bookCalendar([calEv], "https://youbank.example", now);
