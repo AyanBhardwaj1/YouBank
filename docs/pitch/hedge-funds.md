@@ -118,6 +118,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 | Ledger: chain | `src/lib/ledger/chain.ts` | Pure; 27 tests in `scripts/test-ledger.ts`, including an independent re-check of an export, anchors and storable text |
 | Ledger: storage and UI | `src/lib/ledger/store.ts`, `src/lib/ledger/anchor.ts`, `src/app/api/ledger/**`, `src/app/api/cron/ledger`, `src/components/settings/LedgerSettings.tsx` | Table `research_ledger`, migration `drizzle/0033_research_ledger.sql`; recording is hooked into `runChat` and the MCP route; appends serialised per person; off until the person turns it on; daily email anchors at 23:35 UTC |
 
+**End to end:** `scripts/e2e-funds.ts` runs 24 checks over the Book, MCP, OAuth sign-in and the ledger against a local server (`pnpm exec tsx scripts/e2e-funds.ts --base http://localhost:3100`; see the script's header for set-up).
+
 **Before deploying,** apply the migration to the production database:
 
 ```
