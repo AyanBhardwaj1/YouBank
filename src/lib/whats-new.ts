@@ -2,11 +2,14 @@
  * What changed, for the "New in YouBank" card (src/components/workspace/WhatsNew.tsx). Newest first.
  * Bump RELEASE when adding entries: the card shows once per release per browser.
  */
-export const RELEASE = "2026-11-06b";
+export const RELEASE = "2026-11-06c";
 
 export type NewThing = { title: string; body: string; href?: string; action?: "palette" | "arrange" | "shortcuts"; cta: string };
 
 export const WHATS_NEW: NewThing[] = [
+  { title: "An AI investment committee", body: "On any position: a bull and a bear write sourced briefs alone, then a chair recommends add, hold, trim or exit, with the dissent and a forecast scored beside yours.", href: "/app/book", cta: "Open the Book" },
+  { title: "Track record and calibration", body: "Close a position with a reason and it joins your track record. Give a thesis a forecast and YouBank scores how well calibrated you are.", href: "/app/book", cta: "Open the Book" },
+  { title: "LP letter and DDQ answers", body: "A draft LP letter from your book, and the AI questions LPs ask answered from your record, each with a compliance check as you edit.", href: "/report/letter", cta: "Draft the letter" },
   { title: "Risk and stress tests", body: "Your book's beta, one-day VaR, the names that are really one bet, and what today's book would have lost in COVID, 2022 and April 2025. Check a trade before you make it.", href: "/app/book?view=risk", cta: "See the risk" },
   { title: "Your AI apps can propose", body: "Claude or ChatGPT can propose a position with its thesis and kill criteria. It waits in your Book until you review it; nothing is added without you.", href: "/app/book", cta: "Open the Book" },
   { title: "AI governance report", body: "A month of the research ledger on one page for compliance or a DDQ: what the AI produced, what was reviewed and rejected, and whether the chain still checks.", href: "/report/ledger", cta: "Open it" },
