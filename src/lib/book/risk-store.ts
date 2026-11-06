@@ -18,6 +18,12 @@ const inputOf = (book: Position[]) => book.map((p) => ({ ticker: p.ticker, direc
 export const riskKey = (book: Position[], now: Date) =>
   `book-risk:v1:${createHash("sha256").update(JSON.stringify([now.toISOString().slice(0, 10), [...inputOf(book)].sort((a, b) => a.ticker.localeCompare(b.ticker) || a.direction.localeCompare(b.direction))])).digest("base64url").slice(0, 32)}`;
 
+/** Today's risk for this book if it was already worked out (by the page, the report or MCP); never fetches. */
+export async function cachedRisk(book: Position[], now = new Date()): Promise<SourcedRisk | null> {
+  const hit = await cacheGet(riskKey(book, now)).catch(() => null);
+  try { return hit ? (JSON.parse(hit) as SourcedRisk) : null; } catch { return null; }
+}
+
 export async function riskOf(book: Position[], now = new Date()): Promise<SourcedRisk> {
   const input = inputOf(book);
   const key = riskKey(book, now);

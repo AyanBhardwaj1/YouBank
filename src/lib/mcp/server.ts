@@ -22,7 +22,7 @@ import { proposalFrom } from "@/lib/book/proposals";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { filingLine } from "@/lib/book/filings";
 import { riskLine, whatIfLine } from "@/lib/book/risk";
-import { riskOf, riskWhatIf } from "@/lib/book/risk-store";
+import { cachedRisk, riskOf, riskWhatIf } from "@/lib/book/risk-store";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
@@ -88,9 +88,11 @@ function bookTool(userId: string) {
       const only = ticker ? tickerOf(ticker) : null;
       const positions = only ? book.filter((p) => p.ticker === only) : book;
       if (!positions.length) return JSON.stringify({ note: only ? `${only} is not in the book.` : "The book is empty. Positions are added in YouBank → Book.", link: siteLink("/app/book") });
-      const evals = await evaluateBook(positions);
+      const [evals, risk] = await Promise.all([evaluateBook(positions), only ? Promise.resolve(null) : cachedRisk(book).catch(() => null)]);
       return JSON.stringify({
         summary: summarize(evals), link: siteLink("/app/book"),
+        // The risk headline when it is already worked out today (book_risk has the detail and works it out).
+        ...(risk ? { risk: riskLine(risk) } : {}),
         positions: evals.map((e) => ({
           ticker: e.ticker, name: e.name, direction: e.direction, weight_pct_nav: e.weight, verdict: e.verdict, score: e.score, price: e.price, pnl_since_entry: e.pnl, summary: e.summary,
           thesis: positions.find((p) => p.id === e.positionId)?.thesis,
