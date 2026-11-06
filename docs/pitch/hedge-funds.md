@@ -146,6 +146,17 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Export the ledger and explain that their compliance team can re-check it in five lines of code, without trusting us.
    - Open "Governance report": the page a CCO attaches to a DDQ answer about AI use.
 
+### Before the pitch (a checklist)
+
+None of these can be done from the build sandbox; each takes minutes on the preview.
+
+1. **An AI key on the preview**, then run once on a demo position: "Draft it", the red team and "Convene the committee". The committee takes two to three minutes and runs in the background, so start it before the meeting and show the finished sitting.
+2. **Warm the demo account that morning**: open the Book so filings, prices and today's risk are cached (risk feeds the base rates and the sizing note). Load the sample book if the account is new.
+3. **Connect Claude.ai (or ChatGPT) to the preview** with the server URL: approve it on the consent page, then try *Review my book*, a `propose_position` (check the proposal card renders), and *Draft LP commentary* (check it calls `compliance_check`).
+4. **Give two or three positions a forecast and a decision-journal note**, so calibration, the base rate and the journal have something to show.
+5. **Turn the research ledger on** for the demo account and approve one entry, so the governance report and the DDQ answers have a record.
+6. **Do not merge or deploy this PR for the pitch**: demo it on the preview.
+
 ## 4. Honest limits (say these before an investor asks)
 
 - **Tamper-evident, not WORM.** The ledger shows that something changed. It is not SEC 17a-4 WORM storage. A consistent rewrite of the whole chain is caught only from the last anchor kept outside YouBank. Daily anchors by email make that automatic: they are sent from the person's own connected mailbox, optionally copied to a compliance address. A public timestamp service (such as OpenTimestamps) is a follow-up.
