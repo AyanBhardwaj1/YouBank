@@ -260,6 +260,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
             <div className="text-[11px] text-muted">{ev.name}</div>
             <p className="mt-0.5 text-[13px]">{position?.thesis}</p>
             {position?.conviction && <p className="mt-0.5 text-[11.5px] text-muted">Conviction: <span className="font-semibold text-fg">{Math.round(position.conviction.p * 100)}%</span> that no kill criterion fails before {position.conviction.by}, set {position.conviction.at}{position.conviction.source !== "You" ? ` (${position.conviction.source})` : ""}</p>}
+            {position && !position.conviction && !owner && onEdit && <p className="mt-0.5 text-[11.5px] text-muted">No forecast yet. <button type="button" onClick={onEdit} className="text-accent hover:underline">Add a forecast</button> (how sure you are its kill criteria hold, and until when) and YouBank scores it.</p>}
             {!!position?.pastForecasts?.length && <p className="mt-0.5 text-[11px] text-muted" title={position.pastForecasts.map((f) => `${Math.round(f.p * 100)}% to ${f.by}, set ${f.at} (${f.source})`).join("\n")}>{position.pastForecasts.length} earlier forecast{position.pastForecasts.length === 1 ? " was" : "s were"} changed and {position.pastForecasts.length === 1 ? "is" : "are"} still scored at {position.pastForecasts.length === 1 ? "its" : "their"} own date{position.pastForecasts.length === 1 ? "" : "s"}.</p>}
             {(() => {
               const st = streakOf(history, new Date());
