@@ -17,7 +17,7 @@ import { filingLine } from "./filings";
 
 /** muted: keys of alerts that came up while the person's Book alerts were off, so they are not sent once alerts are back on. */
 export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null; history: BookHistory; muted: string[] };
-export type BookAlert = { key: string; positionId: string; kind: "broken" | "watch" | "recovered" | "catalyst"; title: string; body: string; url: string; urgent: boolean; reasons: string[] };
+export type BookAlert = { key: string; positionId: string; kind: "broken" | "watch" | "recovered" | "catalyst" | "week"; title: string; body: string; url: string; urgent: boolean; reasons: string[] };
 
 export function normalizeBookState(raw: unknown): BookState {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;

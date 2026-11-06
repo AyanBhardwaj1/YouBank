@@ -5,7 +5,7 @@
  * reason to look each week even when no alert fired. Pure; tested in scripts/test-book.ts; the page is
  * src/app/report/week.
  */
-import type { BookHistory } from "./alerts";
+import type { BookAlert, BookHistory } from "./alerts";
 import { closedReturn, CLOSE_REASONS, forecastItems, type ClosedPosition } from "./journal";
 import type { Evaluation, Position, Verdict } from "./position";
 import type { Proposal } from "./proposals";
@@ -90,3 +90,16 @@ export function weekBrief(i: WeekInput): WeekBrief {
 }
 
 export const verdictWord = (v: Verdict) => WORD[v];
+
+/**
+ * After Friday's close: the week's headline in the bell, linking to the page, so there is a weekly reason to
+ * look even when no alert fired. Once per week per person (the key), and only when the book is not empty.
+ */
+export function weekAlert(i: WeekInput, origin: string): BookAlert | null {
+  if (i.now.getUTCDay() !== 5 || !i.book.length) return null;
+  const w = weekBrief(i);
+  return {
+    key: `book:week:${w.to}`, positionId: "", kind: "week", urgent: false, url: `${origin}/report/week`,
+    title: "The week in your book", body: w.headline, reasons: [`${w.from} to ${w.to}`],
+  };
+}

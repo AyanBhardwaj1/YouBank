@@ -14,18 +14,23 @@ import { readerFor } from "@/lib/news/reader";
 import { updateExtra } from "@/lib/prefs/extra";
 import { alertsFor, gateAlerts, normalizeBookState, type BookAlert } from "./alerts";
 import { forecastAlerts } from "./journal";
-import { evaluateBook, loadBook, warmFilings, warmInsiders } from "./store";
+import { evaluateBook, loadBook, loadJournal, loadProposals, warmFilings, warmInsiders } from "./store";
+import { weekAlert } from "./week";
 
 /** Check one person's book and send what changed. Returns the alerts sent (not those already sent before). */
 export async function watchBook(userId: string, now = new Date()): Promise<BookAlert[]> {
   const book = await loadBook(userId);
   if (!book.length) return [];
   const evals = await evaluateBook(book, now);
+  // On Fridays the week's headline goes out too (week.ts weekAlert): it needs the closes and proposals.
+  const friday = now.getUTCDay() === 5;
+  const [closed, proposals] = friday ? await Promise.all([loadJournal(userId).catch(() => []), loadProposals(userId).catch(() => [])]) : [[], []];
   let sent: BookAlert[] = [];
   await updateExtra(userId, (extra) => {
     const { alerts: verdictAlerts, next } = alertsFor(normalizeBookState(extra.bookState), evals, now);
     // Forecasts that resolved today (read from the history just recorded), so the PM learns their calibration as it happens.
-    const alerts = [...verdictAlerts, ...forecastAlerts(book, next.history, now, appOrigin())];
+    const week = friday ? weekAlert({ now, book, evals, history: next.history, closed, proposals }, appOrigin()) : null;
+    const alerts = [...verdictAlerts, ...forecastAlerts(book, next.history, now, appOrigin()), ...(week ? [week] : [])];
     // Alerts off (the Book's switch): the verdicts and history still move on, and what came up is remembered
     // as muted, so turning alerts back on does not replay old changes.
     const g = gateAlerts(alerts, next.muted, extra.bookAlerts === false);

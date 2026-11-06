@@ -10,7 +10,7 @@ import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJourn
 import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
 import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
-import { weekBrief } from "@/lib/book/week";
+import { weekAlert, weekBrief } from "@/lib/book/week";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -428,6 +428,14 @@ console.log("Figures checked against the filing");
   const draftF = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [evF], summary: summarize([evF]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null });
   ok("the draft's own figures match the filing", lintLetter(draftF, { ledgerOn: false, facts: factsFrom([evF]) }).filter((f) => f.rule === "Figure does not match the filing").length, 0);
   ok("the compliance pass names the filing's figure and source", lintLetter("Snowflake's gross margin reached 72% this quarter.", { ledgerOn: false, facts }).find((f) => f.rule === "Figure does not match the filing")?.why.startsWith("SNOW's gross margin is 66.8% (SEC XBRL company facts, LTM to 2026-07-31), not 72%."), true);
+}
+
+console.log("The Friday brief");
+{
+  const pF = normalizePosition({ ...t, catalysts: [], id: "wkf1", ticker: "FRI" })!;
+  const fri = new Date("2026-11-13T21:30:00Z"), thu = new Date("2026-11-12T21:30:00Z");
+  const a = weekAlert({ now: fri, book: [pF], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example");
+  ok("after Friday's close the week's headline goes to the bell once (keyed by the week), linking to the page; not on other days or for an empty book", [a?.key, a?.url, a?.body, weekAlert({ now: thu, book: [pF], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example"), weekAlert({ now: fri, book: [], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example")], ["book:week:2026-11-13", "https://x.example/report/week", "A quiet week: no thesis changed verdict.", null, null]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
