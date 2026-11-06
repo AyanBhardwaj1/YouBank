@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
 import { bookAlertsOn, deletePosition, evaluateBook, loadBook, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
-import { cachedInsiderFact } from "@/lib/book/insiders";
+import { cachedInsiderFact } from "@/lib/book/insiders-store";
 import { inBackground } from "@/lib/cache";
 import type { Position } from "@/lib/book/position";
 import { summarize } from "@/lib/book/position";

@@ -13,6 +13,7 @@
  * already broken. Pure; tested in scripts/test-book.ts.
  */
 import type { Evaluation, Verdict } from "./position";
+import { filingLine } from "./filings";
 
 export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null; history: BookHistory };
 export type BookAlert = { key: string; positionId: string; kind: "broken" | "watch" | "recovered" | "catalyst"; title: string; body: string; url: string; urgent: boolean; reasons: string[] };
@@ -47,6 +48,10 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
     } else if (e.verdict === "intact" && (was === "broken" || was === "watch")) {
       alerts.push({ key: `book:${e.positionId}:recovered:${day}`, positionId: e.positionId, kind: "recovered", urgent: false, url,
         title: `${side}: thesis holds again`, body: e.summary, reasons: [`Was ${was === "broken" ? "broken" : "on watch"}`] });
+    }
+    if (e.filing) {
+      alerts.push({ key: `book:${e.positionId}:filing:${e.filing.form}:${e.filing.filed}`, positionId: e.positionId, kind: "catalyst", urgent: false, url,
+        title: `${e.ticker} filed its ${e.filing.form}`, body: `${filingLine(e.filing)} ${side}: ${e.summary}`, reasons: [`${e.filing.form} filed ${e.filing.filed}`] });
     }
     if (e.earnings && (e.earnings.inDays === 0 || e.earnings.inDays === 1)) {
       alerts.push({ key: `book:${e.positionId}:earnings:${e.earnings.date}`, positionId: e.positionId, kind: "catalyst", urgent: false, url,

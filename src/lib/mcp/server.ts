@@ -16,6 +16,7 @@ import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/a
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { evaluateBook, loadBook, newsFor } from "@/lib/book/store";
 import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
+import { filingLine } from "@/lib/book/filings";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
@@ -86,6 +87,7 @@ function bookTool(userId: string) {
           kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),
           next_earnings: e.earnings ? { date: e.earnings.date, estimated: e.earnings.estimated, in_days: e.earnings.inDays } : null,
+          new_filing: e.filing ? { form: e.filing.form, filed: e.filing.filed, risk_factors: e.filing.counts, note: filingLine(e.filing), source: ctx.addSource(`${e.ticker} ${e.filing.form} filed ${e.filing.filed}`, e.filing.url) } : null,
         })),
       });
     },

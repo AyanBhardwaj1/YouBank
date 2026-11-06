@@ -3,6 +3,7 @@ import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
 import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
 import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders";
+import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
@@ -163,6 +164,15 @@ console.log("concentration");
 const ind = summarize([{ ...ev, industry: "Software", weight: 4 }, { ...ev, positionId: "b", industry: "Software", direction: "short", weight: 1 }, { ...ev, positionId: "c", industry: "Semiconductors", weight: 2 }, { ...ev, positionId: "d", industry: "", weight: null }]).byIndustry;
 ok("exposure by industry: long, short, net, largest first", ind, [{ industry: "Software", positions: 2, long: 4, short: 1, gross: 5, net: 3 }, { industry: "Semiconductors", positions: 1, long: 2, short: 0, gross: 2, net: 2 }, { industry: "Unclassified", positions: 1, long: 0, short: 0, gross: 0, net: 0 }]);
 ok("a company's industry comes with its evaluation", ev.industry, "Unclassified");
+
+console.log("new filings");
+const filing: FilingFact = { form: "10-Q", filed: "2026-11-03", url: "https://www.sec.gov/f", counts: { added: 3, removed: 1, changed: 2, unchanged: 40 }, summary: ["New risk: AI capacity costs."], prior: "2026-08-04", asOf: "2026-11-05T21:30:00Z" };
+ok("the newest 10-K or 10-Q is found", latestPeriodic({ filings: [{ form: "8-K", filed: "2026-11-04", period: "", title: "", url: "a" }, { form: "10-Q", filed: "2026-11-03", period: "", title: "", url: "b" }] }), { form: "10-Q", filed: "2026-11-03", url: "b" });
+ok("one line on what moved", [filingLine(filing), filingLine({ ...filing, counts: { added: 0, removed: 0, changed: 0, unchanged: 9 } })], ["Risk factors: 3 added, 1 removed, 2 reworded paragraphs against the 10-Q filed 2026-08-04.", "Risk factors unchanged from the 10-Q filed 2026-08-04."]);
+ok("fresh for two weeks", [isFresh(filing, now), isFresh({ ...filing, filed: "2026-10-01" }, now), isFresh(null, now)], [true, false, false]);
+const withF = evaluate(t, co, d, [], now, null, null, filing);
+ok("a fresh filing rides on the evaluation; a stale one does not", [withF.filing?.form, evaluate(t, co, d, [], now, null, null, { ...filing, filed: "2026-09-01" }).filing], ["10-Q", null]);
+ok("one alert per filing", alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts.map((a) => [a.title, a.key]), [["C filed its 10-Q", "book:c:filing:10-Q:2026-11-03"]]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

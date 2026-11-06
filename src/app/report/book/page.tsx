@@ -8,6 +8,7 @@ import { summarize, type Evaluation, type Position } from "@/lib/book/position";
 import { evaluateBook, loadBook } from "@/lib/book/store";
 import { headLine } from "@/lib/ledger/chain";
 import { normalizeBookState, streakOf } from "@/lib/book/alerts";
+import { filingLine } from "@/lib/book/filings";
 import { ledgerHead } from "@/lib/ledger/store";
 
 export const dynamic = "force-dynamic";
@@ -106,6 +107,7 @@ export default async function BookReport() {
                       ))}</tbody>
                     </table></div>
                   )}
+                  {e.filing && <p className="mt-1.5"><span className="text-muted">New {e.filing.form} ({e.filing.filed}):</span> {filingLine(e.filing)}</p>}
                   {(e.catalysts.length > 0 || e.earnings) && <p className="mt-1.5"><span className="text-muted">Catalysts:</span> {[...(e.earnings ? [`Earnings${e.earnings.estimated ? " (estimated)" : ""} (${e.earnings.date})`] : []), ...e.catalysts.map((c) => `${c.label} (${c.date})`)].join("; ")}</p>}
                   {p?.redTeam && (
                     <div className="mt-2 border-l-2 border-line pl-3">

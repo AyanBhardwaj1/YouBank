@@ -15,6 +15,7 @@
 import type { CompanyData } from "@/lib/types";
 import type { Derived } from "@/lib/metrics";
 import type { InsiderFact } from "./insiders";
+import { isFresh, type FilingFact } from "./filings";
 
 export type Direction = "long" | "short";
 export type Op = ">=" | "<=";
@@ -128,6 +129,8 @@ export type Evaluation = {
   checks: CheckResult[]; catalysts: (Catalyst & { inDays: number })[]; news: PositionNews[];
   /** The company's next earnings date from the exchange's calendar (estimated until the company confirms it). */
   earnings: { date: string; estimated: boolean; inDays: number } | null;
+  /** A 10-Q or 10-K filed in the last two weeks, with what changed in its risk factors. */
+  filing: FilingFact | null;
   /** One plain sentence for the list and Home. */
   summary: string; checkedAt: string;
 };
@@ -190,7 +193,7 @@ export function checkCriterion(c: Criterion, company: CompanyData, d: Derived, i
  */
 export type NextEarnings = { date: string | null; estimated: boolean } | null;
 
-export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null, insider: InsiderFact | null = null): Evaluation {
+export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date, next: NextEarnings = null, insider: InsiderFact | null = null, filing: FilingFact | null = null): Evaluation {
   const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d, insider)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null, headroom: null }));
   const known = checks.filter((c) => c.state !== "unknown");
   const failed = known.filter((c) => c.state === "fail");
@@ -210,7 +213,7 @@ export function evaluate(p: Position, company: CompanyData | null, d: Derived | 
     : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
     : !known.length ? (p.criteria.length ? "No criterion can be checked from the data yet." : "Add a kill criterion so YouBank can tell you when this thesis breaks.")
     : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} day${soon.inDays === 1 ? "" : "s"}`}` : ""}.`;
-  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, industry: (company?.industry || company?.sicLabel || "").trim() || "Unclassified", verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, summary, checkedAt: now.toISOString() };
+  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, industry: (company?.industry || company?.sicLabel || "").trim() || "Unclassified", verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, filing: isFresh(filing, now) ? filing : null, summary, checkedAt: now.toISOString() };
 }
 
 /** Most urgent first: broken, then watch, then unknown, then intact; lower score first within each. */

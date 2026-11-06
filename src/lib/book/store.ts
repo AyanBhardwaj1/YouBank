@@ -8,7 +8,8 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { getCompanyData } from "@/lib/company";
 import { nasdaqEarningsDate, nasdaqEnabled } from "@/lib/market/nasdaq";
-import { cachedInsiderFact, fetchInsiderFact } from "./insiders";
+import { cachedInsiderFact, fetchInsiderFact } from "./insiders-store";
+import { cachedFilingFact, noteNewFiling } from "./filings-store";
 import { derive } from "@/lib/metrics";
 import { updateExtra } from "@/lib/prefs/extra";
 import { logError } from "@/lib/errors";
@@ -84,10 +85,11 @@ export async function evaluateBook(book: Position[], now = new Date()): Promise<
   // Insider selling is read from its cache only (worked out in the daily check, or when such a position is saved).
   const insiderTickers = [...new Set(book.filter((p) => p.criteria.some((c) => c.metric === "insider_selling")).map((p) => p.ticker))];
   const insiders = new Map(await Promise.all(insiderTickers.map(async (t) => [t, await cachedInsiderFact(t)] as const)));
+  const filings = new Map(await Promise.all(tickers.map(async (t) => [t, await cachedFilingFact(t)] as const)));
   const news = await newsFor(tickers);
   return book.map((t) => {
     const c = companies.get(t.ticker) ?? null;
-    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now, earnings.get(t.ticker) ?? null, insiders.get(t.ticker) ?? null);
+    return evaluate(t, c, c ? derive(c) : null, news.get(t.ticker) ?? [], now, earnings.get(t.ticker) ?? null, insiders.get(t.ticker) ?? null, filings.get(t.ticker) ?? null);
   }).sort(byUrgency);
 }
 
@@ -203,4 +205,16 @@ export async function warmInsiders(tickers: string[], deadline: number): Promise
     await fetchInsiderFact(t, c.cik).then(() => { done++; }, (e) => logError(e, { where: "book-insiders" }));
   }
   return done;
+}
+
+/** Look for new 10-Qs and 10-Ks among these tickers, within the time given (src/lib/book/filings.ts). */
+export async function warmFilings(tickers: string[], deadline: number): Promise<number> {
+  let fresh = 0;
+  for (const t of tickers) {
+    if (Date.now() > deadline) break;
+    const c = await getCompanyData(t).catch(() => null);
+    if (!c) continue;
+    await noteNewFiling(t, c).then((f) => { if (f) fresh++; }, (e) => logError(e, { where: "book-filings" }));
+  }
+  return fresh;
 }

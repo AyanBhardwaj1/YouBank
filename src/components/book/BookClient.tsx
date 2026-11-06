@@ -14,6 +14,7 @@ import { Markdown } from "@/components/terminal/Markdown";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
+import { filingLine } from "@/lib/book/filings";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -222,6 +223,13 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {ev.filing && (
+            <div className="ctl border border-line bg-bg/60 p-2.5 text-[12px]">
+              <div className="flex flex-wrap items-baseline gap-x-2"><span className="font-semibold">New {ev.filing.form}, filed {ev.filing.filed}</span><a href={ev.filing.url} target="_blank" rel="noreferrer" className="text-[11.5px] text-muted hover:text-fg hover:underline">Open the filing</a></div>
+              <p className="mt-0.5 text-muted">{filingLine(ev.filing)}</p>
+              {ev.filing.summary.map((x, i) => <p key={i} className="mt-0.5 text-[11.5px] text-muted">{x}</p>)}
             </div>
           )}
           {(ev.catalysts.length > 0 || ev.news.length > 0 || !!ev.earnings) && (
