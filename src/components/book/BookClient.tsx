@@ -393,6 +393,7 @@ export function BookClient({ focus }: { focus?: string }) {
         </div>
         <div className="flex gap-2">
           {!!data?.evaluations.length && <Link href="/report/book" className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="FileText" className="h-3.5 w-3.5" />Report</Link>}
+          {!!data?.evaluations.length && <a href="/api/book/export" download className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Download" className="h-3.5 w-3.5" />CSV</a>}
           <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
           <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
         </div>

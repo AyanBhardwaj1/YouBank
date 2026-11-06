@@ -339,3 +339,22 @@ export function draftToPosition(raw: unknown, now = new Date().toISOString()): P
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return normalizePosition({ ...r, id: undefined, weight: null, entry: null, createdAt: undefined, updatedAt: undefined, redTeam: undefined }, now);
 }
+
+/* ---------------- Export ---------------- */
+
+/** The unit headroomOf measures in, for a spreadsheet column: points, % of the threshold, or the metric's own. */
+export const headroomUnit = (c: Criterion) => (isPct(c.metric) || METRICS[c.metric].unit === "pts" ? "pts" : c.value === 0 ? (METRICS[c.metric].unit === "usdmm" ? "$M" : METRICS[c.metric].unit === "usd" ? "$" : "x") : "% of threshold");
+
+/** The book as CSV rows: one per kill criterion (a position without criteria gets one row), most urgent first. */
+export function bookRows(evals: Evaluation[], positions: Position[]): unknown[][] {
+  const header = ["ticker", "name", "side", "weight_pct_nav", "entry", "price", "pnl_since_entry_pct", "verdict", "score", "thesis", "criterion", "now", "needs", "headroom", "headroom_unit", "state", "source", "period", "source_url", "next_earnings"];
+  const rows: unknown[][] = [header];
+  for (const e of evals) {
+    const p = positions.find((x) => x.id === e.positionId);
+    const base = [e.ticker, e.name, e.direction, e.weight ?? "", p?.entry ?? "", e.price ?? "", e.pnl === null ? "" : Math.round(e.pnl * 1000) / 10, e.verdict, e.score ?? "", p?.thesis ?? ""];
+    const tail = [e.earnings?.date ?? ""];
+    if (!e.checks.length) rows.push([...base, "", "", "", "", "", "", "", "", "", ...tail]);
+    for (const c of e.checks) rows.push([...base, c.label, c.shown, c.target, c.headroom ? Math.round(c.headroom.value * 10) / 10 : "", c.headroom ? headroomUnit(c.criterion) : "", c.state, c.evidence?.source ?? "", c.evidence?.period ?? "", c.evidence?.url ?? "", ...tail]);
+  }
+  return rows;
+}

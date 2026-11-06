@@ -2,7 +2,7 @@
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
 import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
-import { byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
+import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -141,6 +141,10 @@ ok("the next earnings date shows with days to go, and counts as a near catalyst"
 ok("far, past or missing dates are left out", [evaluate(t, co, d, [], now, { date: "2027-06-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: "2026-10-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: null, estimated: false }).earnings], [null, null, null]);
 const eAlert = alertsFor(first.next, [{ ...mk("c", "intact"), earnings: { date: "2026-11-07", estimated: true, inDays: 1 } }], now).alerts;
 ok("earnings tomorrow alerts once per date", eAlert.map((a) => [a.title, a.key]), [["C reports tomorrow (estimated)", "book:c:earnings:2026-11-07"]]);
+
+console.log("export");
+const rows = bookRows([ev, evaluate({ ...t, id: "nocrit", criteria: [] }, co, d, [], now)], [t]);
+ok("a header, a row per criterion, and one for a position without criteria; headroom as a number with its unit", [rows.length, rows[0][0], rows[1][10], rows[1][13], rows[1][14], rows[2][13], rows[3][14], rows[4][10]], [5, "ticker", "Revenue growth (LTM, y/y)", 4.7, "pts", -3.2, "% of threshold", ""]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
