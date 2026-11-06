@@ -48,7 +48,7 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
 }
 
 /** Everyone with a book, within the time given. */
-export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number; insiders: number; filings: number }> {
+export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number; insiders: number; filings: number; risk: number }> {
   const rows = await requireDb().select({ userId: schema.profiles.userId }).from(schema.profiles)
     .where(sql`jsonb_typeof(${schema.profiles.extra}->'book') = 'array' and jsonb_array_length(${schema.profiles.extra}->'book') > 0`)
     // Least recently checked first: a run that hits its deadline leaves the rest for the next one, and nobody
@@ -69,5 +69,17 @@ export async function watchAllBooks(deadline: number): Promise<{ people: number;
     try { alerts += (await watchBook(userId)).length; checked++; }
     catch (e) { failed++; logError(e, { where: "book-watch" }); }
   }
-  return { people: rows.length, checked, alerts, failed, unfinished: rows.length - checked - failed, insiders, filings };
+  // With the time left once every book is checked: today's risk for each book with weights, so the risk panel,
+  // the report and MCP's book_status have it ready (prices are shared across books through the market cache).
+  let risk = 0;
+  if (checked === rows.length) {
+    const { riskOf } = await import("./risk-store");
+    for (const { userId } of rows) {
+      if (Date.now() > deadline) break;
+      const book = await loadBook(userId).catch(() => []);
+      if (!book.some((p) => p.weight)) continue;
+      await riskOf(book).then(() => { risk++; }, (e) => logError(e, { where: "book-risk-warm" }));
+    }
+  }
+  return { people: rows.length, checked, alerts, failed, unfinished: rows.length - checked - failed, insiders, filings, risk };
 }
