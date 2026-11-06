@@ -292,6 +292,41 @@ export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
   );
 }
 
+/* ---------------- The Book: which theses hold (src/lib/book) ---------------- */
+
+type BookEval = { positionId: string; ticker: string; verdict: "intact" | "watch" | "broken" | "unknown"; summary: string };
+type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> } };
+const VERDICT_TONE: Record<BookEval["verdict"], string> = { broken: "bg-neg/15 text-neg", watch: "bg-accent-soft text-accent", unknown: "bg-elevated text-muted", intact: "bg-pos/15 text-pos" };
+export function BookWidget({ roomy }: Props) {
+  const [b, setB] = useState<BookRes | null | "error">(null);
+  useEffect(() => { fetch("/api/book").then((r) => (r.ok ? r.json() : Promise.reject(r))).then(setB).catch(() => setB("error")); }, []);
+  const t = roomy ? "text-[13px]" : "text-[11.5px]";
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy} right={<Link href="/app/book" className="text-[11px] text-muted hover:text-fg">book →</Link>}>The Book</H>
+      {b === null && <div className="shimmer h-16 ctl" />}
+      {b === "error" && <div className={`${t} text-muted`}>The book could not be checked just now.</div>}
+      {b && b !== "error" && b.evaluations.length === 0 && <div className={`${t} text-muted`}>No positions yet. <Link href="/app/book" className="text-accent">Add one</Link> with the numbers that would prove its thesis wrong, and YouBank checks them against filings and the market.</div>}
+      {b && b !== "error" && b.evaluations.length > 0 && (
+        <>
+          <div className={`mb-1.5 ${t} text-muted`}>{b.summary.verdicts.broken ? <span className="text-neg">{b.summary.verdicts.broken} broken</span> : "None broken"}{b.summary.verdicts.watch ? ` · ${b.summary.verdicts.watch} on watch` : ""}{b.summary.atRiskWeight ? ` · ${b.summary.atRiskWeight}% of NAV at risk` : ""}</div>
+          <ul className="space-y-1">
+            {b.evaluations.slice(0, 5).map((e) => (
+              <li key={e.positionId}>
+                <Link href="/app/book" className={`flex items-baseline gap-2 ctl px-1.5 py-1 hover:bg-elevated ${t}`}>
+                  <span className="num w-12 shrink-0 font-semibold">{e.ticker}</span>
+                  <span className={`ctl shrink-0 px-1 text-[10px] font-semibold uppercase ${VERDICT_TONE[e.verdict]}`}>{e.verdict === "unknown" ? "no data" : e.verdict}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{e.summary}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 /** One widget by id. */
 export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: boolean; facts: HomeFacts; brief?: BriefSeed }) {
   switch (id) {
@@ -310,5 +345,6 @@ export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: bool
     case "notes": return <NotesWidget roomy={roomy} />;
     case "private": return <PrivateWidget roomy={roomy} facts={facts} />;
     case "saved": return <SavedWidget roomy={roomy} facts={facts} />;
+    case "book": return <BookWidget roomy={roomy} />;
   }
 }

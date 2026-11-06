@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { kindOf, record } from "@/lib/ledger/store";
 import OpenAI from "openai";
 import { z } from "zod";
 import { resolveAi, type AiConfig, type AiOverride, type Effort } from "./config";
@@ -119,6 +120,15 @@ export async function runChat(opts: RunOptions): Promise<{ text: string; sources
   // Prose answers only: a workflow's JSON is checked where it is rendered, not here.
   const figures = text && !opts.json ? checkFigures(text, records, sources) : undefined;
   if (figures?.figures.length) opts.emit({ type: "figures", report: figures });
+  // The research ledger, when the person keeps one (src/lib/ledger): what was asked, answered and cited.
+  if (text) {
+    const feature = opts.feature ?? "chat";
+    const ask = [...opts.messages].reverse().find((m) => m.role === "user")?.content ?? "";
+    await record(userId, {
+      kind: kindOf(feature), subject: opts.context.subject || opts.context.ticker || feature, model: `${cfg.provider}/${cfg.model}`, prompt: ask, output: text, sources,
+      meta: { feature, effort: cfg.effort, tools: records.map((r) => r.tool), ...(figures ? { figures: { checkable: figures.checkable, matched: figures.matched, computed: figures.computed, noMatch: figures.noMatch, uncited: figures.uncited } } : {}) },
+    });
+  }
   opts.emit({ type: "done", provider: cfg.provider, model: cfg.model, effort: cfg.effort, text });
   return { text, sources, records, figures };
 }

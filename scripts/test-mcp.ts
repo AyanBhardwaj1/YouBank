@@ -1,0 +1,58 @@
+/** YouBank's MCP server: keys (src/lib/mcp/keys.ts) and the protocol (src/lib/mcp/protocol.ts). pnpm exec tsx scripts/test-mcp.ts */
+import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf } from "@/lib/mcp/keys";
+import { dispatch, LATEST_PROTOCOL, withSources, type McpServer } from "@/lib/mcp/protocol";
+
+let pass = 0, fail = 0;
+const ok = (label: string, got: unknown, want: unknown) => {
+  const g = JSON.stringify(got), w = JSON.stringify(want);
+  if (g === w) { pass++; console.log(`  ok   ${label}`); }
+  else { fail++; console.log(`  FAIL ${label}\n       got  ${g}\n       want ${w}`); }
+};
+
+async function main() {
+  console.log("keys");
+  const { key, stored } = makeKey("user_AbC-123:x", "  Claude\non my laptop  ", "2026-11-06T00:00:00Z");
+  ok("a key starts ybm_ and names its account", [key.startsWith("ybm_"), parseKey(`Bearer ${key}`)?.userId], [true, "user_AbC-123:x"]);
+  ok("only the hash is stored, and the name is cleaned", [JSON.stringify(stored).includes(key.split(".")[1]), stored.hash.length, stored.name], [false, 64, "Claude on my laptop"]);
+  ok("the hint shows the last four characters only", stored.hint, `ybm_…${key.slice(-4)}`);
+  ok("the secret matches its stored key", matchKey([stored], parseKey(key)!.secret)?.id, stored.id);
+  ok("another secret does not", matchKey([stored], "x".repeat(43)), null);
+  ok("junk is not a key", [parseKey(""), parseKey("Bearer ybd_abc"), parseKey("ybm_abc"), parseKey(`ybm_${"a".repeat(10)}.short`)], [null, null, null, null]);
+  ok("a tampered account part is refused", parseKey(key.replace(/^ybm_./, "ybm_~")), null);
+  ok("stored keys: well-formed, one per id, at most KEYS_MAX", normalizeKeys([...Array.from({ length: 8 }, () => makeKey("u", "k").stored), stored, stored, { id: "zz", hash: "x" }]).length, KEYS_MAX);
+  ok("Settings never sees the hash", Object.keys(viewOf(stored)).includes("hash"), false);
+
+  console.log("the protocol");
+  const calls: string[] = [];
+  const server: McpServer = {
+    name: "youbank", title: "YouBank research", version: "1.0.0", instructions: "Cite sources.",
+    tools: [{ name: "get_company_financials", title: "Fundamentals", description: "d", inputSchema: { type: "object" } }, { name: "boom", title: "Boom", description: "d", inputSchema: { type: "object" } }],
+    call: async (name, args) => { calls.push(`${name}:${JSON.stringify(args)}`); if (name === "boom") throw new Error("It broke."); return withSources(JSON.stringify({ revenue: 4520.5, source: "S1" }), [{ id: "S1", label: "SNOW XBRL", url: "https://data.sec.gov/x" }]); },
+  };
+  const init = await dispatch({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } } }, server) as { result: { protocolVersion: string; capabilities: unknown; serverInfo: { name: string } } };
+  ok("initialize echoes a version we support", [init.result.protocolVersion, init.result.serverInfo.name, init.result.capabilities], ["2025-06-18", "youbank", { tools: { listChanged: false } }]);
+  const initNew = await dispatch({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2099-01-01" } }, server) as { result: { protocolVersion: string } };
+  ok("an unknown version gets our newest", initNew.result.protocolVersion, LATEST_PROTOCOL);
+  ok("a notification gets no reply", await dispatch({ jsonrpc: "2.0", method: "notifications/initialized" }, server), null);
+  ok("ping", await dispatch({ jsonrpc: "2.0", id: "p", method: "ping" }, server), { jsonrpc: "2.0", id: "p", result: {} });
+  const list = await dispatch({ jsonrpc: "2.0", id: 3, method: "tools/list" }, server) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean } }[] } };
+  ok("tools/list: every tool, marked read-only", list.result.tools.map((t) => [t.name, t.annotations.readOnlyHint]), [["get_company_financials", true], ["boom", true]]);
+  const call = await dispatch({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "get_company_financials", arguments: { ticker: "SNOW" } } }, server) as { result: { content: { type: string; text: string }[]; structuredContent: { result: unknown; sources: unknown[] }; isError: boolean } };
+  ok("tools/call: text with its sources, and structured content", [call.result.isError, call.result.content[0].text.includes("[S1] SNOW XBRL: https://data.sec.gov/x"), call.result.structuredContent.result], [false, true, { revenue: 4520.5, source: "S1" }]);
+  ok("the arguments reach the tool", calls[0], 'get_company_financials:{"ticker":"SNOW"}');
+  const boom = await dispatch({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "boom" } }, server) as { result: { isError: boolean; content: { text: string }[] } };
+  ok("a tool that throws is a result with isError, with no raw error text by default", [boom.result.isError, boom.result.content[0].text], [true, "The tool failed. Try again."]);
+  const screened = await dispatch({ jsonrpc: "2.0", id: 11, method: "tools/call", params: { name: "boom" } }, { ...server, describeError: () => "Screened." }) as { result: { content: { text: string }[] } };
+  ok("the server's screen decides what a failure says", screened.result.content[0].text, "Screened.");
+  ok("a tool's own error JSON is isError too", withSources(JSON.stringify({ error: "Unknown ticker" }), []).isError, true);
+  const unknown = await dispatch({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "rm_rf" } }, server) as { error: { code: number } };
+  ok("an unknown tool is invalid params", unknown.error.code, -32602);
+  ok("an unknown method", ((await dispatch({ jsonrpc: "2.0", id: 7, method: "resources/list" }, server)) as { error: { code: number } }).error.code, -32601);
+  ok("not JSON-RPC 2.0", ((await dispatch({ id: 8, method: "ping" }, server)) as { error: { code: number } }).error.code, -32600);
+  ok("a batch is refused (removed from the protocol in 2025-06-18)", ((await dispatch([{ jsonrpc: "2.0", id: 9, method: "ping" }], server)) as { error: { code: number } }).error.code, -32600);
+  ok("a response from the client is accepted quietly", await dispatch({ jsonrpc: "2.0", id: 10, result: {} }, server), null);
+
+  console.log(`\n${pass} passed, ${fail} failed`);
+  if (fail) process.exit(1);
+}
+void main();

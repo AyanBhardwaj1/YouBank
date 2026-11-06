@@ -22,6 +22,8 @@ const EdgeUpgrades = lazyPanel(() => import("@/components/edge/Upgrades").then((
 const DataSourcesSettings = lazyPanel(() => import("@/components/settings/DataSourcesSettings").then((m) => m.DataSourcesSettings), TabLoading);
 const SecuritySettings = lazyPanel(() => import("@/components/settings/SecuritySettings").then((m) => m.SecuritySettings), TabLoading);
 const DeskSettings = lazyPanel(() => import("@/components/settings/DeskSettings").then((m) => m.DeskSettings), TabLoading);
+const ConnectAISettings = lazyPanel(() => import("@/components/settings/ConnectAISettings").then((m) => m.ConnectAISettings), TabLoading);
+const LedgerSettings = lazyPanel(() => import("@/components/settings/LedgerSettings").then((m) => m.LedgerSettings), TabLoading);
 const LookSettings = lazyPanel(() => import("@/components/settings/LookSettings").then((m) => m.LookSettings), TabLoading);
 
 const TABS = [
@@ -33,6 +35,8 @@ const TABS = [
   { id: "plan", label: "Plan", icon: "CreditCard" },
   { id: "sources", label: "Data sources", icon: "Server" },
   { id: "security", label: "Security", icon: "Shield" },
+  { id: "connect", label: "Connect AI apps", icon: "Bot" },
+  { id: "ledger", label: "Research ledger", icon: "ScrollText" },
   { id: "data", label: "Data and privacy", icon: "Database" },
   { id: "labs", label: "Labs", icon: "FlaskConical" },
   { id: "desktop", label: "Desktop app", icon: "Download" },
@@ -40,7 +44,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 export function SettingsClient({ email, prefs, initialTab }: { email: string; prefs: AiPrefs; initialTab?: string }) {
-  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings, SecuritySettings, DeskSettings, LookSettings]);
+  useIdlePreload([NewsSettings, CalendarSettings, PlanSettings, DesktopSettings, EdgeUpgrades, DataSourcesSettings, SecuritySettings, DeskSettings, LookSettings, ConnectAISettings, LedgerSettings]);
   const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initialTab) ? (initialTab as Tab) : "style");
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
@@ -84,6 +88,8 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
         {tab === "desktop" && <DesktopSettings />}
         {tab === "sources" && <DataSourcesSettings />}
         {tab === "security" && <SecuritySettings />}
+        {tab === "connect" && <ConnectAISettings />}
+        {tab === "ledger" && <LedgerSettings />}
 
         {tab === "ai" && (
           <section className="mt-5 rise">

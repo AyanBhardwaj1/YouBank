@@ -1,0 +1,235 @@
+/**
+ * The Book: a fund's positions, each with its thesis written so it can be proved wrong, and the check that
+ * says, from filed numbers and the market, whether it still holds.
+ *
+ * A position is a ticker, long or short, an optional weight (% of NAV) and entry price, a one-line thesis,
+ * its pillars (why), kill criteria (falsifiable checks: "revenue growth at least 20%", "gross margin at
+ * least 70%", "price at least $150" as a stop) and dated catalysts. The evaluation reads the company's SEC
+ * XBRL record and price (src/lib/company.ts) and says, for every criterion, the actual value, its period and
+ * source, and whether it passes, is close to failing, or has failed; the thesis is intact, on watch, or
+ * broken. The book adds exposure (gross, net, long, short) and P&L since entry.
+ *
+ * Agent-run, multi-day investigations of a thesis live in Edge (view=theses); this is the fund's own book,
+ * checked on every read at no AI cost. Pure, tested in scripts/test-book.ts.
+ */
+import type { CompanyData } from "@/lib/types";
+import type { Derived } from "@/lib/metrics";
+
+export type Direction = "long" | "short";
+export type Op = ">=" | "<=";
+
+/** What a kill criterion can watch, with how to read it from a company and how to show it. */
+export const METRICS = {
+  revenue_growth: { label: "Revenue growth (LTM, y/y)", unit: "pct", read: (_c: CompanyData, d: Derived) => d.revenueGrowth },
+  gross_margin: { label: "Gross margin (LTM)", unit: "pct", read: (_c: CompanyData, d: Derived) => d.grossMargin },
+  operating_margin: { label: "Operating margin (LTM)", unit: "pct", read: (_c: CompanyData, d: Derived) => d.opMargin },
+  fcf_margin: { label: "Free cash flow margin (LTM)", unit: "pct", read: (_c: CompanyData, d: Derived) => d.fcfMargin },
+  rule_of_40: { label: "Rule of 40", unit: "pts", read: (_c: CompanyData, d: Derived) => d.ruleOf40 },
+  revenue: { label: "Revenue (LTM, $M)", unit: "usdmm", read: (c: CompanyData) => c.ltm.revenue },
+  net_debt: { label: "Net debt ($M)", unit: "usdmm", read: (_c: CompanyData, d: Derived) => d.netDebt },
+  ev_revenue: { label: "EV / LTM revenue", unit: "x", read: (_c: CompanyData, d: Derived) => d.evRevLtm },
+  pe: { label: "P/E (LTM)", unit: "x", read: (_c: CompanyData, d: Derived) => d.peLtm },
+  price: { label: "Share price", unit: "usd", read: (c: CompanyData) => c.price?.last ?? null },
+} as const;
+export type MetricKey = keyof typeof METRICS;
+export const METRIC_KEYS = Object.keys(METRICS) as MetricKey[];
+const isMetric = (v: unknown): v is MetricKey => typeof v === "string" && v in METRICS;
+
+/** Percentages are entered and shown as percent (20 means 20%); the data holds fractions. */
+export const isPct = (m: MetricKey) => METRICS[m].unit === "pct";
+
+export type Criterion = { id: string; metric: MetricKey; op: Op; value: number; note?: string };
+export type Catalyst = { id: string; label: string; date: string };
+export type RedTeam = { at: string; text: string; sources: { id: string; label: string; url: string }[] };
+export type Position = {
+  id: string; ticker: string; direction: Direction;
+  /** % of NAV, positive; the direction gives its sign in exposure. */
+  weight: number | null;
+  /** Price paid (or shorted at), for P&L since entry. */
+  entry: number | null;
+  thesis: string; pillars: string[];
+  criteria: Criterion[]; catalysts: Catalyst[]; createdAt: string; updatedAt: string; redTeam?: RedTeam;
+};
+
+export const POSITIONS_MAX = 25;
+const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
+const idOk = (v: unknown) => typeof v === "string" && /^[a-z0-9-]{4,40}$/.test(v);
+export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+export const tickerOf = (v: unknown) => { const t = clip(v, 12).toUpperCase().replace(/^\$/, ""); return /^[A-Z][A-Z0-9]{0,9}([.-][A-Z0-9]{1,3})?$/.test(t) ? t : null; };
+const dateOf = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v)) ? v : null);
+const numOf = (v: unknown, max: number) => { const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN; return Number.isFinite(n) && n > 0 && n <= max ? n : null; };
+
+/** One position as stored, cleaned; null when it has no valid ticker or thesis. */
+export function normalizePosition(raw: unknown, now = new Date().toISOString()): Position | null {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const ticker = tickerOf(r.ticker);
+  const thesis = clip(r.thesis, 280);
+  if (!ticker || !thesis) return null;
+  const criteria = (Array.isArray(r.criteria) ? r.criteria : []).flatMap((x): Criterion[] => {
+    const c = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const value = typeof c.value === "number" ? c.value : Number(c.value);
+    if (!isMetric(c.metric) || (c.op !== ">=" && c.op !== "<=") || !Number.isFinite(value) || (typeof c.value === "string" && !c.value.trim())) return [];
+    return [{ id: idOk(c.id) ? (c.id as string) : newId(), metric: c.metric, op: c.op, value, ...(clip(c.note, 140) ? { note: clip(c.note, 140) } : {}) }];
+  }).slice(0, 8);
+  const catalysts = (Array.isArray(r.catalysts) ? r.catalysts : []).flatMap((x): Catalyst[] => {
+    const c = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const label = clip(c.label, 120), date = dateOf(c.date);
+    return label && date ? [{ id: idOk(c.id) ? (c.id as string) : newId(), label, date }] : [];
+  }).slice(0, 8);
+  const rt = r.redTeam && typeof r.redTeam === "object" ? (r.redTeam as Record<string, unknown>) : null;
+  const redTeam: RedTeam | undefined = rt && typeof rt.text === "string" && typeof rt.at === "string"
+    ? { at: rt.at, text: rt.text.slice(0, 8000), sources: (Array.isArray(rt.sources) ? rt.sources : []).flatMap((s) => {
+      const o = (s && typeof s === "object" ? s : {}) as Record<string, unknown>;
+      return typeof o.id === "string" && typeof o.label === "string" && typeof o.url === "string" && /^https:\/\//.test(o.url) ? [{ id: o.id.slice(0, 8), label: o.label.slice(0, 200), url: o.url.slice(0, 500) }] : [];
+    }).slice(0, 30) }
+    : undefined;
+  return {
+    id: idOk(r.id) ? (r.id as string) : newId(), ticker, direction: r.direction === "short" ? "short" : "long",
+    weight: numOf(r.weight, 100), entry: numOf(r.entry, 1_000_000),
+    thesis, pillars: (Array.isArray(r.pillars) ? r.pillars : []).map((p) => clip(p, 200)).filter(Boolean).slice(0, 6),
+    criteria, catalysts,
+    createdAt: typeof r.createdAt === "string" ? r.createdAt : now, updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : now,
+    ...(redTeam ? { redTeam } : {}),
+  };
+}
+
+/** Stored positions, cleaned: valid ones, one per id, at most POSITIONS_MAX. */
+export function normalizeBook(raw: unknown): Position[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  return raw.map((t) => normalizePosition(t)).filter((t): t is Position => !!t && !seen.has(t.id) && !!seen.add(t.id)).slice(0, POSITIONS_MAX);
+}
+
+/* ---------------- Checking a position's thesis ---------------- */
+
+export type CheckState = "pass" | "near" | "fail" | "unknown";
+export type CheckResult = {
+  criterion: Criterion; label: string; state: CheckState;
+  actual: number | null; shown: string; target: string;
+  /** Where the number comes from: period and a link a person can open. */
+  evidence: { period: string; source: string; url: string } | null;
+};
+export type Verdict = "intact" | "watch" | "broken" | "unknown";
+export type PositionNews = { id: number; headline: string; at: string };
+export type Evaluation = {
+  positionId: string; ticker: string; name: string; direction: Direction; weight: number | null;
+  verdict: Verdict; score: number | null; price: number | null;
+  /** Return since entry in the position's favour (a short gains when the price falls), as a fraction. */
+  pnl: number | null;
+  checks: CheckResult[]; catalysts: (Catalyst & { inDays: number })[]; news: PositionNews[];
+  /** One plain sentence for the list and Home. */
+  summary: string; checkedAt: string;
+};
+
+/** A value as a person reads it, in the criterion's unit. */
+export function fmtMetric(m: MetricKey, v: number | null): string {
+  if (v === null || !Number.isFinite(v)) return "n/a";
+  const u = METRICS[m].unit;
+  if (u === "pct") return `${(v * 100).toFixed(1)}%`;
+  if (u === "pts") return v.toFixed(1);
+  if (u === "x") return `${v.toFixed(1)}x`;
+  if (u === "usd") return `$${v.toFixed(2)}`;
+  return `$${Math.round(v).toLocaleString("en-US")}M`;
+}
+
+/** How close is "near": within 10% of the threshold (3 percentage points for percentages). */
+function nearness(m: MetricKey, actual: number, threshold: number): boolean {
+  const gap = Math.abs(actual - threshold);
+  return isPct(m) ? gap <= 0.03 : gap <= Math.abs(threshold) * 0.1;
+}
+
+const targetOf = (c: Criterion) => `${c.op === ">=" ? "at least" : "at most"} ${fmtMetric(c.metric, isPct(c.metric) ? c.value / 100 : c.value)}`;
+
+export function checkCriterion(c: Criterion, company: CompanyData, d: Derived): CheckResult {
+  const m = METRICS[c.metric];
+  const actual = m.read(company, d);
+  const threshold = isPct(c.metric) ? c.value / 100 : c.value;
+  const target = targetOf(c);
+  const evidence = actual === null ? null : c.metric === "price"
+    ? (company.price ? { period: `as of ${company.price.asOf.slice(0, 16).replace("T", " ")} UTC`, source: `${company.price.source ?? "price feed"}${company.price.stale ? " (stale)" : ""}`, url: `https://www.nasdaq.com/market-activity/stocks/${company.ticker.toLowerCase()}` } : null)
+    : { period: `LTM to ${company.ltm.periodEnd || "latest filing"}`, source: "SEC XBRL company facts", url: company.sources.factsUrl };
+  if (actual === null || !Number.isFinite(actual)) return { criterion: c, label: m.label, state: "unknown", actual: null, shown: "n/a", target, evidence: null };
+  const pass = c.op === ">=" ? actual >= threshold : actual <= threshold;
+  const state: CheckState = !pass ? "fail" : nearness(c.metric, actual, threshold) ? "near" : "pass";
+  return { criterion: c, label: m.label, state, actual, shown: fmtMetric(c.metric, actual), target, evidence };
+}
+
+/**
+ * The verdict: broken when any kill criterion has failed, on watch when one is close or nothing can be
+ * checked yet, intact otherwise. The score is the share of checkable criteria passing with room (a close
+ * one counts half).
+ */
+export function evaluate(p: Position, company: CompanyData | null, d: Derived | null, news: PositionNews[], now: Date): Evaluation {
+  const checks = company && d ? p.criteria.map((c) => checkCriterion(c, company, d)) : p.criteria.map((c): CheckResult => ({ criterion: c, label: METRICS[c.metric].label, state: "unknown", actual: null, shown: "n/a", target: targetOf(c), evidence: null }));
+  const known = checks.filter((c) => c.state !== "unknown");
+  const failed = known.filter((c) => c.state === "fail");
+  const near = known.filter((c) => c.state === "near");
+  const verdict: Verdict = !company ? "unknown" : failed.length ? "broken" : near.length || !known.length ? "watch" : "intact";
+  const score = known.length ? Math.round((known.reduce((s, c) => s + (c.state === "pass" ? 1 : c.state === "near" ? 0.5 : 0), 0) / known.length) * 100) : null;
+  const day = 86_400_000;
+  const catalysts = p.catalysts.map((c) => ({ ...c, inDays: Math.round((Date.parse(`${c.date}T00:00:00Z`) - Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) / day) }))
+    .filter((c) => c.inDays >= -7).sort((a, b) => a.inDays - b.inDays);
+  const soon = catalysts.find((c) => c.inDays >= 0 && c.inDays <= 14);
+  const price = company?.price?.last ?? null;
+  const pnl = price !== null && p.entry ? (price / p.entry - 1) * (p.direction === "short" ? -1 : 1) : null;
+  const summary = !company ? `${p.ticker}: the company's filings could not be read just now.`
+    : failed.length ? `Kill criterion hit: ${failed[0].label} is ${failed[0].shown}, needed ${failed[0].target}.`
+    : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
+    : !known.length ? (p.criteria.length ? "No criterion can be checked from the data yet." : "Add a kill criterion so YouBank can tell you when this thesis breaks.")
+    : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} days`}` : ""}.`;
+  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), summary, checkedAt: now.toISOString() };
+}
+
+/** Most urgent first: broken, then watch, then unknown, then intact; lower score first within each. */
+export function byUrgency(a: Evaluation, b: Evaluation): number {
+  const rank: Record<Verdict, number> = { broken: 0, watch: 1, unknown: 2, intact: 3 };
+  return rank[a.verdict] - rank[b.verdict] || (a.score ?? 101) - (b.score ?? 101) || a.ticker.localeCompare(b.ticker);
+}
+
+export type BookSummary = {
+  positions: number; long: number; short: number; gross: number; net: number;
+  verdicts: Record<Verdict, number>;
+  /** Weight in positions whose thesis is broken or on watch, % of NAV. */
+  atRiskWeight: number;
+  /** Weighted P&L since entry, in % of NAV, over positions with a weight and an entry. */
+  pnlContribution: number | null;
+};
+
+/** The book at a glance: exposure from weights (shorts net against longs) and how much of it is at risk. */
+export function summarize(evals: Evaluation[]): BookSummary {
+  const verdicts: Record<Verdict, number> = { intact: 0, watch: 0, broken: 0, unknown: 0 };
+  let long = 0, short = 0, atRisk = 0, contrib = 0, priced = 0;
+  for (const e of evals) {
+    verdicts[e.verdict]++;
+    const w = e.weight ?? 0;
+    if (e.direction === "long") long += w; else short += w;
+    if (e.verdict === "broken" || e.verdict === "watch") atRisk += w;
+    if (e.weight && e.pnl !== null) { contrib += e.weight * e.pnl; priced++; }
+  }
+  const r = (x: number) => Math.round(x * 100) / 100;
+  return { positions: evals.length, long: r(long), short: r(short), gross: r(long + short), net: r(long - short), verdicts, atRiskWeight: r(atRisk), pnlContribution: priced ? r(contrib) : null };
+}
+
+/** The red team's brief: argue the other side of this position's thesis, with sources, and name what would prove it wrong. */
+export function redTeamPrompt(p: Position, ev: Evaluation | null): string {
+  const lines = [
+    `Act as a sceptical, well-informed ${p.direction === "long" ? "short seller" : "long-only bull"} reviewing a ${p.direction} position in ${p.ticker}.`,
+    `The thesis: "${p.thesis}"`,
+    p.pillars.length ? `Its pillars:\n${p.pillars.map((x, i) => `${i + 1}. ${x}`).join("\n")}` : "",
+    p.criteria.length ? `Its kill criteria:\n${p.criteria.map((c) => `- ${METRICS[c.metric].label} ${targetOf(c)}`).join("\n")}` : "",
+    ev ? `Where the criteria stand now: ${ev.checks.map((c) => `${c.label} ${c.shown} (${c.state})`).join("; ")}.` : "",
+    "Using the tools (filings, XBRL series, comps, filing changes, news on the web), make the strongest evidence-based case AGAINST this thesis.",
+    "Rules: cite every figure and claim with its source id; do not invent numbers; if the evidence for a point is thin, say so instead of overstating it.",
+    "Structure: 1) The three strongest counter-arguments, each with evidence. 2) Which pillar is weakest and why. 3) What would have to happen in the next two quarters to prove the thesis wrong, as checkable signals. 4) One question the holder should be able to answer and probably cannot.",
+    "Keep it under 450 words.",
+  ];
+  return lines.filter(Boolean).join("\n\n");
+}
+
+/** Starting points for a new position: kill criteria a desk commonly writes for each style. */
+export const TEMPLATES: { id: string; label: string; direction: Direction; thesis: string; criteria: Omit<Criterion, "id">[] }[] = [
+  { id: "growth", label: "High-growth software", direction: "long", thesis: "Durable 20%+ growth with best-in-class gross margins.", criteria: [{ metric: "revenue_growth", op: ">=", value: 20 }, { metric: "gross_margin", op: ">=", value: 70 }, { metric: "rule_of_40", op: ">=", value: 40 }] },
+  { id: "compounder", label: "Quality compounder", direction: "long", thesis: "Steady growth, high margins and cash conversion compound value.", criteria: [{ metric: "revenue_growth", op: ">=", value: 8 }, { metric: "operating_margin", op: ">=", value: 20 }, { metric: "fcf_margin", op: ">=", value: 15 }] },
+  { id: "value", label: "Value / re-rating", direction: "long", thesis: "Cheap on sales with a clean balance sheet; the multiple re-rates as margins recover.", criteria: [{ metric: "ev_revenue", op: "<=", value: 2 }, { metric: "net_debt", op: "<=", value: 0 }, { metric: "operating_margin", op: ">=", value: 5 }] },
+  { id: "short", label: "Deteriorating short", direction: "short", thesis: "Growth is stalling while the valuation still prices in a recovery.", criteria: [{ metric: "revenue_growth", op: "<=", value: 5 }, { metric: "operating_margin", op: "<=", value: 10 }, { metric: "ev_revenue", op: ">=", value: 4 }] },
+];

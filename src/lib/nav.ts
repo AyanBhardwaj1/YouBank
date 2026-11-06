@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "book" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -21,6 +21,7 @@ const tab = (path: string, param: string, value: string, label: string, isDefaul
 
 export const FEATURES: NavFeature[] = [
   { id: "home", href: "/app", label: "Home", icon: "Home", blurb: "Your brief, tools and watchlist" },
+  { id: "book", href: "/app/book", label: "Book", icon: "Briefcase", blurb: "Your positions, each thesis checked against filings and the market, with a red team" },
   {
     id: "terminal", href: "/app/terminal", label: "Terminal", icon: "Terminal", blurb: "Markets, comps, filings and news",
     links: [fn("TOP", "Top news"), fn("WEI", "World indices"), fn("ECO", "Economy"), fn("MA", "M&A"), fn("EQS", "Screener"), fn("GC", "Treasury curve")],
@@ -74,7 +75,7 @@ export const FEATURES: NavFeature[] = [
     id: "settings", href: "/app/settings", label: "Settings", icon: "Settings", blurb: "Style, AI model, alerts and data",
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
-      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "plan", "Plan"), tab("/app/settings", "tab", "sources", "Data sources"), tab("/app/settings", "tab", "security", "Security"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "plan", "Plan"), tab("/app/settings", "tab", "sources", "Data sources"), tab("/app/settings", "tab", "security", "Security"), tab("/app/settings", "tab", "connect", "Connect AI apps"), tab("/app/settings", "tab", "ledger", "Research ledger"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
       tab("/app/settings", "tab", "desktop", "Desktop app"),
     ],
   },
@@ -93,7 +94,7 @@ export type NavPrefs = {
 };
 
 export function defaultPinned(role: RoleId): NavId[] {
-  return ["home", "terminal", "news", "tools", "studio", ...(role === "vc" || role === "pe" ? (["vc"] as NavId[]) : []), "crm"];
+  return ["home", ...(role === "markets" ? (["book"] as NavId[]) : []), "terminal", "news", "tools", "studio", ...(role === "vc" || role === "pe" ? (["vc"] as NavId[]) : []), "crm"];
 }
 
 export const defaultNavPrefs = (role: RoleId): NavPrefs => ({ pinned: defaultPinned(role), labels: "full", dock: false });
