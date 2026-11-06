@@ -2,11 +2,14 @@
  * What changed, for the "New in YouBank" card (src/components/workspace/WhatsNew.tsx). Newest first.
  * Bump RELEASE when adding entries: the card shows once per release per browser.
  */
-export const RELEASE = "2026-11-06c";
+export const RELEASE = "2026-11-06d";
 
 export type NewThing = { title: string; body: string; href?: string; action?: "palette" | "arrange" | "shortcuts"; cta: string };
 
 export const WHATS_NEW: NewThing[] = [
+  { title: "The week in your book", body: "What changed, which forecasts resolved, what the committee said and what is coming, on one page, and in the bell after Friday's close.", href: "/report/week", cta: "Open it" },
+  { title: "A base rate for your forecasts", body: "Beside a forecast on a position with a price line, the chance the price holds from volatility alone. Start there, then adjust.", href: "/app/book", cta: "Open the Book" },
+  { title: "Compliance checks in your AI app", body: "Ask Claude or ChatGPT to draft LP commentary: it checks its own draft with YouBank for promises, AI claims and figures that don't match the filings.", href: "/app/settings?tab=connect", cta: "Connect" },
   { title: "An AI investment committee", body: "On any position: a bull and a bear write sourced briefs alone, then a chair recommends add, hold, trim or exit, with the dissent and a forecast scored beside yours.", href: "/app/book", cta: "Open the Book" },
   { title: "Track record and calibration", body: "Close a position with a reason and it joins your track record. Give a thesis a forecast and YouBank scores how well calibrated you are.", href: "/app/book", cta: "Open the Book" },
   { title: "LP letter and DDQ answers", body: "A draft LP letter from your book, and the AI questions LPs ask answered from your record, each with a compliance check as you edit.", href: "/report/letter", cta: "Draft the letter" },
