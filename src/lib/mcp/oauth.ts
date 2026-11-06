@@ -106,8 +106,10 @@ export function redirectWith(uri: string, params: Record<string, string>): strin
 export function secretFrom(form: Record<string, string>, authorization: string | null): { id: string | null; secret: string | null } {
   const basic = /^Basic\s+([A-Za-z0-9+/=]+)$/i.exec(authorization ?? "");
   if (basic) {
-    const [id, secret] = Buffer.from(basic[1], "base64").toString("utf8").split(":");
-    return { id: id ? decodeURIComponent(id) : null, secret: secret !== undefined ? decodeURIComponent(secret) : null };
+    const pair = Buffer.from(basic[1], "base64").toString("utf8"), at = pair.indexOf(":");
+    if (at < 0) return { id: null, secret: null };
+    const dec = (v: string) => { try { return decodeURIComponent(v.replace(/\+/g, " ")); } catch { return v; } };
+    return { id: dec(pair.slice(0, at)) || null, secret: dec(pair.slice(at + 1)) || null };
   }
   return { id: form.client_id || null, secret: form.client_secret || null };
 }
