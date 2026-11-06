@@ -82,6 +82,14 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 - **Human review.** A reviewer can approve, reject or note any entry. The review is written as its own entry, so the record stays append-only.
 - **Anchored outside YouBank.** The chain's latest hash can be kept where YouBank cannot change it: emailed automatically every day it moves (to the person, and to their compliance desk if they choose), kept in a compliance file, or notarized on Base from the person's own wallet. Pasting a saved line back proves that every entry up to it is unchanged. We tested the scenario this exists for: an operator rewrote one entry and recomputed every later hash. The chain alone still verified, and both kinds of anchor caught it.
 - **Checkable without YouBank.** The export (JSON Lines) states the recipe for re-checking the chain without YouBank's code. The test suite proves that the recipe works on its own.
+- **A report for compliance and DDQs.** "Governance report" prints a month (or the last 30 days) on one page:
+  - whether the chain and every outside anchor still check, as of now;
+  - when recording was off;
+  - how much AI output there was, by kind, model, connected AI app and tool;
+  - how much of it cites sources;
+  - what share a person reviewed, and each rejection with its reviewer and reason.
+
+  It uses metadata only, never the prompts or answers.
 - **Why it matters.** Funds can now show *what the AI said, from which sources, and who signed off*. That is the evidence Rule 204-2 and current practitioner guidance point towards, and it is what makes AI use defensible to LPs and examiners.
 
 ### What was already in YouBank, and still matters for this pitch
@@ -112,6 +120,7 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - Approve it, then press "Check the chain".
    - Copy the head line into an email to yourself. Then explain that pasting it back later proves nothing before it changed, even if someone with YouBank's database tried.
    - Export the ledger and explain that their compliance team can re-check it in five lines of code, without trusting us.
+   - Open "Governance report": the page a CCO attaches to a DDQ answer about AI use.
 
 ## 4. Honest limits (say these before an investor asks)
 

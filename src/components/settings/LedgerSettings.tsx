@@ -212,6 +212,7 @@ export function LedgerSettings() {
             <div className="ml-auto flex gap-1.5">
               <button type="button" disabled={!!busy || !page?.total} onClick={verify} className={ghost}>{busy === "verify" ? "Checking…" : "Check the chain"}</button>
               <a href="/api/ledger/export" className={`${ghost} ${page?.total ? "" : "pointer-events-none opacity-60"}`} download>Export (JSONL)</a>
+              <a href="/report/ledger" className={`${ghost} ${page?.total ? "" : "pointer-events-none opacity-60"}`}>Governance report</a>
             </div>
           </div>
           {check && (

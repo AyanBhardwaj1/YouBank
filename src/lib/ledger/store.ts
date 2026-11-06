@@ -8,11 +8,12 @@
  *
  * Without the table (migration 0033 not applied) the ledger reads as unavailable and nothing is written.
  */
-import { and, asc, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { isMissingTable, logError } from "@/lib/errors";
 import { updateExtra } from "@/lib/prefs/extra";
 import { cleanContent, nextEntry, signoffContent, verifyChain, type LedgerContent, type LedgerEntry, type LedgerKind, type Verification } from "./chain";
+import type { GovRow } from "./governance";
 
 export type LastAnchor = { seq: number; hash: string; at: string; to: string[] };
 export type LedgerSettings = {
@@ -161,6 +162,21 @@ export async function signOff(userId: string, seq: number, reviewer: string, dec
     .from(schema.researchLedger).where(and(eq(schema.researchLedger.userId, userId), eq(schema.researchLedger.seq, seq)));
   if (!ref || ref.kind === "signoff") return null;
   return append(userId, signoffContent(ref, reviewer, decision, note));
+}
+
+/**
+ * The rows a governance report needs for [from, to): metadata only (never prompts or answers), with the
+ * sign-offs written after the period, which can review entries in it. At most 20,000 rows.
+ */
+export async function governanceRows(userId: string, from: string, to: string): Promise<{ rows: GovRow[]; later: GovRow[] }> {
+  const t = schema.researchLedger;
+  const pick = { seq: t.seq, at: t.at, kind: t.kind, subject: t.subject, model: t.model, meta: t.meta, sources: sql<number>`coalesce(jsonb_array_length(${t.sources}), 0)::int`, note: sql<string>`case when ${t.kind} = 'signoff' then left(${t.output}, 300) else '' end` };
+  const toRow = (r: { seq: number; at: Date; kind: string; subject: string; model: string; meta: Record<string, unknown>; sources: number; note: string }): GovRow => ({ ...r, kind: r.kind as LedgerKind, at: r.at.toISOString() });
+  const [rows, later] = await Promise.all([
+    requireDb().select(pick).from(t).where(and(eq(t.userId, userId), gte(t.at, new Date(from)), lt(t.at, new Date(to)))).orderBy(asc(t.seq)).limit(20_000),
+    requireDb().select(pick).from(t).where(and(eq(t.userId, userId), eq(t.kind, "signoff"), gte(t.at, new Date(to)))).orderBy(asc(t.seq)).limit(5_000),
+  ]);
+  return { rows: rows.map(toRow), later: later.map(toRow) };
 }
 
 /** The newest entry: what to anchor. */
