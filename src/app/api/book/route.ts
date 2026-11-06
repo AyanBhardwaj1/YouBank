@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
-import { deletePosition, evaluateBook, loadBook, noteHistory, savePosition } from "@/lib/book/store";
+import { bookAlertsOn, deletePosition, evaluateBook, loadBook, noteHistory, savePosition, setBookAlerts } from "@/lib/book/store";
 import { summarize } from "@/lib/book/position";
 
 export const dynamic = "force-dynamic";
@@ -13,15 +13,18 @@ export async function GET() {
     const positions = await loadBook(user.id);
     const evaluations = await evaluateBook(positions);
     // Today's point in each thesis's history (the daily check writes it too); a failure only costs the point.
-    const history = await noteHistory(user.id, evaluations).catch(() => ({}));
-    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history }, { headers: { "Cache-Control": "private, no-store" } });
+    const [history, alerts] = await Promise.all([noteHistory(user.id, evaluations).catch(() => ({})), bookAlertsOn(user.id).catch(() => true)]);
+    return NextResponse.json({ positions, evaluations, summary: summarize(evaluations), history, alerts }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
 
-/** POST a position: added, or replaced by id. Cleaned on the server (src/lib/book/position.ts normalizePosition). */
+/** POST a position: added, or replaced by id. Cleaned on the server (src/lib/book/position.ts normalizePosition). POST { alerts }: the daily check's alerts on or off. */
 export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = await req.json().catch(() => null);
+    if (body && typeof body === "object" && Object.keys(body).length === 1 && typeof (body as { alerts?: unknown }).alerts === "boolean") {
+      return NextResponse.json({ alerts: await setBookAlerts(user.id, (body as { alerts: boolean }).alerts) });
+    }
     const saved = await savePosition(user.id, body);
     if (!saved) return NextResponse.json({ error: "A position needs a ticker and a one-line thesis." }, { status: 400 });
     return NextResponse.json({ position: saved });

@@ -23,7 +23,9 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
   let sent: BookAlert[] = [];
   await updateExtra(userId, (extra) => {
     const { alerts, next } = alertsFor(normalizeBookState(extra.bookState), evals, now);
-    sent = alerts;
+    // Alerts off (the Book's switch): the verdicts and history still move on, so turning them back on
+    // does not replay old changes.
+    sent = extra.bookAlerts === false ? [] : alerts;
     return { ...extra, bookState: next };
   });
   if (!sent.length) return [];

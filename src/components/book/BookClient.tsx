@@ -17,7 +17,7 @@ import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
-type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory };
+type BookData = { positions: Position[]; evaluations: Evaluation[]; summary: BookSummary; history?: BookHistory; alerts?: boolean };
 
 const VERDICT: Record<Verdict, { label: string; cls: string }> = {
   intact: { label: "Intact", cls: "bg-pos/15 text-pos" },
@@ -460,6 +460,17 @@ export function BookClient({ focus }: { focus?: string }) {
         </ul>
       )}
       </>)}
+      {data && data.evaluations.length > 0 && (
+        <label className="flex items-center gap-2 text-[12px] text-muted">
+          <input type="checkbox" checked={data.alerts !== false} onChange={async (e) => {
+            const on = e.target.checked;
+            setData((d) => (d ? { ...d, alerts: on } : d));
+            try { await fetchJson("/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ alerts: on }) }); }
+            catch (x) { setErr(errorMessage(x)); setData((d) => (d ? { ...d, alerts: !on } : d)); }
+          }} />
+          Alert me after each US close when a thesis breaks, comes close to a kill criterion or holds again, and the day before earnings (bell, plus your channels in Settings → News and alerts)
+        </label>
+      )}
       <p className="text-[11px] text-faint">Nothing here places trades. Filings refresh every six hours, prices on every load. Percentages are entered as percent (20 means 20%).</p>
     </div>
     </div>

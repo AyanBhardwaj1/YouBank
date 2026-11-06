@@ -176,3 +176,14 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
   const conflicts = [...byTicker.entries()].filter(([, v]) => v.long.length && v.short.length).map(([ticker, v]) => ({ ticker, ...v }));
   return { members: out, evaluations: evaluations.sort(byUrgency), conflicts };
 }
+
+/** Whether the daily check sends alerts (profiles.extra.bookAlerts; on unless turned off). */
+export async function bookAlertsOn(userId: string): Promise<boolean> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  return (row?.extra as Record<string, unknown> | undefined)?.bookAlerts !== false;
+}
+
+export async function setBookAlerts(userId: string, on: boolean): Promise<boolean> {
+  await updateExtra(userId, (extra) => ({ ...extra, bookAlerts: on }));
+  return on;
+}
