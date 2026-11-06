@@ -19,6 +19,7 @@ import type { Derived } from "@/lib/metrics";
 import type { InsiderFact } from "./insiders";
 import { isFresh, type FilingFact } from "./filings";
 import { nextPrint, type PrintBar } from "./print";
+import { normalizeConviction, type Conviction } from "./forecast";
 
 export type Direction = "long" | "short";
 export type Op = ">=" | "<=";
@@ -58,6 +59,8 @@ export type Position = {
   entry: number | null;
   thesis: string; pillars: string[];
   criteria: Criterion[]; catalysts: Catalyst[]; createdAt: string; updatedAt: string; redTeam?: RedTeam;
+  /** A forecast: the chance no kill criterion fails before a date, scored when it resolves (./forecast.ts). */
+  conviction?: Conviction;
 };
 
 export const POSITIONS_MAX = 25;
@@ -99,6 +102,7 @@ export function normalizePosition(raw: unknown, now = new Date().toISOString()):
     criteria, catalysts,
     createdAt: typeof r.createdAt === "string" ? r.createdAt : now, updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : now,
     ...(redTeam ? { redTeam } : {}),
+    ...(() => { const c = normalizeConviction(r.conviction); return c ? { conviction: c } : {}; })(),
   };
 }
 

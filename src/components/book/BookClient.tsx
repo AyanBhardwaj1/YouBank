@@ -17,6 +17,7 @@ import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
 import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
+import { calibrationLine, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -42,11 +43,15 @@ const navPct = (x: number) => `${x.toFixed(x % 1 ? 1 : 0)}%`;
 type Draft = {
   id?: string; ticker: string; direction: "long" | "short"; weight: string; entry: string; thesis: string; pillars: string;
   criteria: { metric: MetricKey; op: Op; value: string; note: string }[]; catalysts: { label: string; date: string }[];
+  /** Conviction: % chance no kill criterion fails before the date, and who said so (a proposal keeps its app's). */
+  convP: string; convBy: string; convSource?: string; convAt?: string;
 };
-const emptyDraft = (): Draft => ({ ticker: "", direction: "long", weight: "", entry: "", thesis: "", pillars: "", criteria: [{ metric: "revenue_growth", op: ">=", value: "", note: "" }], catalysts: [] });
+const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+const emptyDraft = (): Draft => ({ ticker: "", direction: "long", weight: "", entry: "", thesis: "", pillars: "", criteria: [{ metric: "revenue_growth", op: ">=", value: "", note: "" }], catalysts: [], convP: "", convBy: inDays(90) });
 const draftOf = (p: Position): Draft => ({
   id: p.id, ticker: p.ticker, direction: p.direction, weight: p.weight?.toString() ?? "", entry: p.entry?.toString() ?? "", thesis: p.thesis, pillars: p.pillars.join("\n"),
   criteria: p.criteria.map((c) => ({ metric: c.metric, op: c.op, value: String(c.value), note: c.note ?? "" })), catalysts: p.catalysts.map((c) => ({ label: c.label, date: c.date })),
+  convP: p.conviction ? String(Math.round(p.conviction.p * 100)) : "", convBy: p.conviction?.by ?? inDays(90), convSource: p.conviction?.source, convAt: p.conviction?.at,
 });
 const unitHint = (m: MetricKey) => (isPct(m) ? "%" : METRICS[m].unit === "usd" ? "$" : METRICS[m].unit === "usdmm" ? "$M" : METRICS[m].unit === "x" ? "x" : "pts");
 
@@ -77,6 +82,10 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
           ...d, weight: d.weight || null, entry: d.entry || null, pillars: d.pillars.split("\n"),
           criteria: d.criteria.filter((c) => c.value.trim()).map((c) => ({ ...c, value: Number(c.value) })),
           catalysts: d.catalysts.filter((c) => c.label.trim() && c.date),
+          // A conviction you change becomes yours; one left as an app proposed it keeps its source.
+          // Unchanged, it keeps the day it was made; changed, it is a new forecast made today.
+          conviction: d.convP.trim() ? { p: Number(d.convP), by: d.convBy, source: d.convSource ?? "You", ...(d.convAt ? { at: d.convAt } : {}) } : undefined,
+          convP: undefined, convBy: undefined, convSource: undefined, convAt: undefined,
         }),
       });
       onSaved();
@@ -116,6 +125,13 @@ function Editor({ initial, onSaved, onCancel, heading }: { initial: Draft; onSav
       </div>
       <label className="block text-[11px] text-muted">Thesis, in one line<input className={field} value={d.thesis} maxLength={280} onChange={(e) => set("thesis", e.target.value)} placeholder="Consumption growth re-accelerates as AI workloads land." /></label>
       <label className="block text-[11px] text-muted">Pillars: why it works, one per line<textarea className={`${field} min-h-[64px]`} value={d.pillars} onChange={(e) => set("pillars", e.target.value)} placeholder={"AI data workloads move to the platform\nNet retention bottoms this year"} /></label>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+        <span>Conviction:</span>
+        <input aria-label="Conviction, % chance" value={d.convP} onChange={(e) => setD((x) => ({ ...x, convP: e.target.value, convSource: undefined, convAt: undefined }))} inputMode="numeric" placeholder="70" className={`${fieldBox} w-16`} />
+        <span>% chance no kill criterion fails before</span>
+        <input aria-label="Conviction date" type="date" value={d.convBy} onChange={(e) => setD((x) => ({ ...x, convBy: e.target.value, convSource: undefined, convAt: undefined }))} className={`${fieldBox} w-40`} />
+        <span className="basis-full text-[11px] sm:basis-auto">Optional. YouBank scores it when it resolves, so the track record shows how well calibrated the book&apos;s conviction is{d.convSource && d.convSource !== "You" ? ` (this one is ${d.convSource}'s)` : ""}.</span>
+      </div>
       <div>
         <div className="mb-1 flex items-baseline justify-between"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Kill criteria</h3><span className="text-[10.5px] text-muted">Checked against SEC filings and the price on every load</span></div>
         <div className="space-y-1.5">
@@ -202,6 +218,7 @@ function PositionCard({ ev, position, history = [], focused, owner, onEdit, onCh
           <div>
             <div className="text-[11px] text-muted">{ev.name}</div>
             <p className="mt-0.5 text-[13px]">{position?.thesis}</p>
+            {position?.conviction && <p className="mt-0.5 text-[11.5px] text-muted">Conviction: <span className="font-semibold text-fg">{Math.round(position.conviction.p * 100)}%</span> that no kill criterion fails before {position.conviction.by}, set {position.conviction.at}{position.conviction.source !== "You" ? ` (${position.conviction.source})` : ""}</p>}
             {(() => {
               const st = streakOf(history, new Date());
               const scores = history.map((h) => h.s).filter((x): x is number => x !== null);
@@ -556,7 +573,7 @@ function RiskPanel({ sig, initiallyOpen = false }: { sig: string; initiallyOpen?
 
 /* ---------------- The track record ---------------- */
 
-type JournalData = { closed: ClosedPosition[]; scorecard: Scorecard };
+type JournalData = { closed: ClosedPosition[]; scorecard: Scorecard; calibration?: Calibration };
 const pctS = (x: number | null, d = 1) => (x === null ? "n/a" : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(d)}%`);
 
 /** Closed positions and the scorecard over them: hit rate, payoff, and how fast a broken thesis was exited. */
@@ -584,6 +601,14 @@ function TrackRecord({ sig }: { sig: string }) {
       {open && !d && !err && <div className="shimmer mt-3 h-24 ctl" />}
       {open && d && s && (
         <div className="mt-3 space-y-3">
+          {d.calibration && (d.calibration.n > 0 || d.calibration.open > 0) && (
+            <div className="ctl border border-line p-2.5 text-[12px]">
+              <div className="font-semibold">Calibration</div>
+              <p className="text-muted">{calibrationLine(d.calibration)}</p>
+              {d.calibration.buckets.length > 0 && <p className="mt-0.5">{d.calibration.buckets.map((b) => `when you said ${b.label}: ${Math.round(b.held * 100)}% held (${b.n})`).join(" · ")}</p>}
+              {d.calibration.bySource.length > 1 && <p className="mt-0.5 text-muted">By who forecast: {d.calibration.bySource.map((x) => `${x.source} ${x.brier.toFixed(3)} (${x.n})`).join(" · ")}</p>}
+            </div>
+          )}
           {!s.closed ? <p className="text-[12px] text-muted">Nothing closed yet. &ldquo;Close position&rdquo; on any card records it here with its exit, the reason and how its thesis stood, so the record builds itself.</p> : (<>
             <div className="flex flex-wrap gap-x-6 gap-y-3">
               <Stat label="Closed" value={String(s.closed)} />

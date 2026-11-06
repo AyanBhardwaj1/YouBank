@@ -8,7 +8,8 @@
  * enough to compare the exit taken with "out on the break". Nothing is traded. Pure (safe on the client);
  * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
  */
-import type { HistoryPoint } from "./alerts";
+import type { BookHistory, HistoryPoint } from "./alerts";
+import { breakAfter, calibration, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -23,6 +24,8 @@ export type ClosedPosition = {
   thesis: string; criteria: Criterion[];
   /** The verdict when it was closed, and the first day its thesis read broken (with that day's price, when kept). */
   verdictAtClose: Verdict; brokeOn: string | null; priceAtBreak: number | null;
+  /** The forecast, and the first break after it was made (null when it held to the close). */
+  conviction?: Conviction; convictionBrokeOn?: string | null;
 };
 
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
@@ -39,6 +42,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     openedAt: p.createdAt, closedAt: now.toISOString(), reason, note: clip(note, 280),
     thesis: p.thesis, criteria: p.criteria,
     verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
+    ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
   };
 }
 
@@ -59,6 +63,7 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       reason: isReason(r.reason) ? r.reason : "other", note: clip(r.note, 280), thesis: p.thesis, criteria: p.criteria,
       verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
+      ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),
     });
   }
   return out.slice(0, JOURNAL_MAX);
@@ -114,3 +119,21 @@ export function scorecardLine(s: Scorecard): string {
   if (s.broke) parts.push(`${s.exitedOnBreak} of ${s.broke} broken theses exited within 5 days${s.medianDaysToExit !== null ? ` (median ${s.medianDaysToExit} days)` : ""}`);
   return `${parts.join("; ")}.`;
 }
+
+/** Every forecast, open positions' and closed ones', resolved as of now; and the calibration over them. */
+export function forecastItems(open: Position[], history: BookHistory, closed: ClosedPosition[], now = new Date()): ForecastItem[] {
+  const items: ForecastItem[] = [];
+  for (const p of open) {
+    if (!p.conviction) continue;
+    const r = resolveForecast(p.conviction, history[p.id] ?? [], now);
+    items.push({ ticker: p.ticker, p: p.conviction.p, by: p.conviction.by, source: p.conviction.source, ...r });
+  }
+  for (const c of closed) {
+    if (!c.conviction) continue;
+    const r = resolveForecast(c.conviction, [], now, c.closedAt, c.convictionBrokeOn ?? null);
+    items.push({ ticker: c.ticker, p: c.conviction.p, by: c.conviction.by, source: c.conviction.source, ...r });
+  }
+  return items;
+}
+
+export const calibrationOf = (open: Position[], history: BookHistory, closed: ClosedPosition[], now = new Date()): Calibration => calibration(forecastItems(open, history, closed, now));

@@ -31,6 +31,8 @@ export function proposalFrom(args: Record<string, unknown>, from: string, now = 
   const position = normalizePosition({
     ticker: args.ticker, direction: args.direction, thesis: args.thesis, pillars: args.pillars,
     criteria: args.kill_criteria, catalysts: args.catalysts, weight: args.weight_pct_nav, entry: args.entry_price,
+    // The app's own forecast, kept as its, so its calibration can be set beside the person's.
+    ...(typeof args.conviction_pct === "number" && typeof args.review_by === "string" ? { conviction: { p: args.conviction_pct, by: args.review_by, source: clip(from, 80) || "An AI app" } } : {}),
   }, iso);
   if (!position) return { error: "A proposal needs a ticker and a one-line thesis." };
   const asked = Array.isArray(args.kill_criteria) ? args.kill_criteria.length : 0;

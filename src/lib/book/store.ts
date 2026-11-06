@@ -52,6 +52,12 @@ export async function deletePosition(userId: string, id: string): Promise<void> 
 
 /* ---------------- The track record: closed positions ---------------- */
 
+/** Each position's daily verdict history (profiles.extra.bookState). */
+export async function loadBookHistory(userId: string): Promise<BookHistory> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  return normalizeBookState((row?.extra as Record<string, unknown> | undefined)?.bookState).history;
+}
+
 export async function loadJournal(userId: string): Promise<ClosedPosition[]> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
   return normalizeJournal((row?.extra as Record<string, unknown> | undefined)?.bookClosed);

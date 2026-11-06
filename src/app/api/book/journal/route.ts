@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit } from "@/lib/locks";
-import { CLOSE_REASONS, scorecard, type CloseReason } from "@/lib/book/journal";
-import { closePosition, deleteClosed, loadJournal } from "@/lib/book/store";
+import { calibrationOf, CLOSE_REASONS, scorecard, type CloseReason } from "@/lib/book/journal";
+import { closePosition, deleteClosed, loadBook, loadBookHistory, loadJournal } from "@/lib/book/store";
 
 export const dynamic = "force-dynamic";
 
-/** GET: the track record: closed positions, newest first, and the scorecard over them. */
+/** GET: the track record: closed positions, newest first, the scorecard over them, and the calibration of every forecast. */
 export async function GET() {
   return guarded(async (user) => {
-    const closed = await loadJournal(user.id);
-    return NextResponse.json({ closed, scorecard: scorecard(closed) }, { headers: { "Cache-Control": "private, no-store" } });
+    const [closed, book, history] = await Promise.all([loadJournal(user.id), loadBook(user.id), loadBookHistory(user.id)]);
+    return NextResponse.json({ closed, scorecard: scorecard(closed), calibration: calibrationOf(book, history, closed) }, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
 

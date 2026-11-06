@@ -6,7 +6,8 @@ import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
-import { closedFrom, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
+import { calibrationOf, closedFrom, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
+import { calibration, calibrationLine, normalizeConviction, resolveForecast } from "@/lib/book/forecast";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
 import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
@@ -246,6 +247,26 @@ ok("the counterfactual: out on the break against the exit taken", sc.counterfact
 ok("one line for a person", scorecardLine(sc), "4 closed; 50% winners; average +2.5%; payoff 1.33x; 1 of 2 broken theses exited within 5 days (median 26 days).");
 ok("an empty record says so", [scorecard([]).hitRate, scorecardLine(scorecard([]))], [null, "No closed positions yet."]);
 ok("stored records are cleaned: junk dropped, duplicates once, unknown reason is other", normalizeJournal([c1, c1, { id: "x" }, { ...c1, id: "trk2", reason: "vibes", exit: -5 }]).map((x) => [x.id, x.reason, x.exit]), [["trk1", "thesis_broke", 140], ["trk2", "other", null]]);
+
+console.log("calibration");
+ok("a conviction is a 1-99% chance and a date, as percent or fraction; anything else is none", [normalizeConviction({ p: 70, by: "2027-02-01", at: "2026-11-01" }), normalizeConviction({ p: 0.7, by: "2027-02-01", source: "Claude (connected)" })?.source, normalizeConviction({ p: 100, by: "2027-02-01" }), normalizeConviction({ p: 50, by: "soon" }), normalizeConviction({ p: 50, by: "2026-10-01", at: "2026-11-01" })], [{ p: 0.7, by: "2027-02-01", at: "2026-11-01", source: "You" }, "Claude (connected)", null, null, null]);
+const conv = { p: 0.8, by: "2026-12-31", at: "2026-10-15", source: "You" };
+const hBreak = [{ d: "2026-11-01", v: "intact" as const, s: 100 }, { d: "2026-11-20", v: "broken" as const, s: 40 }];
+ok("a break before the date resolves 0; the date passing without one resolves 1; still open is unresolved", [resolveForecast(conv, hBreak, new Date("2026-11-25T00:00:00Z")), resolveForecast(conv, [{ d: "2026-11-01", v: "intact", s: 100 }], new Date("2027-01-02T00:00:00Z")), resolveForecast(conv, [], new Date("2026-11-25T00:00:00Z"))], [{ outcome: 0, resolvedOn: "2026-11-20" }, { outcome: 1, resolvedOn: "2026-12-31" }, { outcome: null, resolvedOn: null }]);
+ok("a break before the forecast was made does not count against it", resolveForecast({ ...conv, at: "2026-11-25" }, hBreak, new Date("2027-01-05T00:00:00Z")), { outcome: 1, resolvedOn: "2026-12-31" });
+ok("a closed record keeps the first break after the forecast", closedFrom(normalizePosition({ ...t, id: "cv09", conviction: { p: 60, by: "2027-01-31", at: "2026-11-05" } })!, "broken", hBreak, 100, "thesis_broke", "", new Date("2026-11-25T00:00:00Z")).convictionBrokeOn, "2026-11-20");
+ok("closed early without a break is not counted as a win; a break after the date does not count against it", [resolveForecast(conv, [], new Date("2027-03-01T00:00:00Z"), "2026-12-01T00:00:00Z").outcome, resolveForecast(conv, [], new Date("2027-03-01T00:00:00Z"), "2027-02-01T00:00:00Z", "2027-01-15").outcome], [null, 1]);
+const cal = calibration([
+  { ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }, { ticker: "B", p: 0.8, by: "x", source: "You", outcome: 0, resolvedOn: "x" },
+  { ticker: "C", p: 0.6, by: "x", source: "Claude (connected)", outcome: 1, resolvedOn: "x" }, { ticker: "D", p: 0.9, by: "x", source: "You", outcome: null, resolvedOn: null },
+]);
+ok("Brier, bias, buckets and by source", [cal.n, cal.open, cal.brier, cal.bias, cal.buckets.map((b) => [b.label, b.n, b.avgP, b.held]), cal.bySource], [3, 1, 0.28, 0.067, [["50-70%", 1, 0.6, 1], ["70-90%", 2, 0.8, 0.5]], [{ source: "You", n: 2, brier: 0.34 }, { source: "Claude (connected)", n: 1, brier: 0.16 }]]);
+ok("one line for a person", [calibrationLine(cal), calibrationLine(calibration([]))], ["Brier 0.280 over 3 resolved forecasts (0 is perfect, 0.25 a coin flip): overconfident by 7 points; 1 still open.", "No forecasts yet: give a position a conviction and a date."]);
+const withConv = normalizePosition({ ...t, id: "cv01", conviction: { p: 75, by: "2026-12-31", at: "2026-10-01" } })!;
+const closedConv = closedFrom(withConv, "broken", hBreak, 100, "thesis_broke", "", new Date("2026-11-25T00:00:00Z"));
+const prConv = proposalFrom({ ticker: "AMD", direction: "long", thesis: "Share gains continue.", conviction_pct: 65, review_by: "2027-03-31" }, "Claude (connected)", now);
+ok("an AI app's proposal carries its own forecast, marked as its", "proposal" in prConv ? [prConv.proposal.position.conviction?.p, prConv.proposal.position.conviction?.by, prConv.proposal.position.conviction?.source] : prConv, [0.65, "2027-03-31", "Claude (connected)"]);
+ok("positions and their closes keep the forecast; open and closed are scored together", [withConv.conviction, closedConv.conviction?.p, calibrationOf([withConv], { cv01: [{ d: "2026-11-01", v: "intact", s: 100 }] }, [{ ...closedConv, id: "cv02" }], new Date("2027-01-05T00:00:00Z")).n], [{ p: 0.75, by: "2026-12-31", at: "2026-10-01", source: "You" }, 0.75, 2]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

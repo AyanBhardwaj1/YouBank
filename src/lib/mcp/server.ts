@@ -140,7 +140,7 @@ function riskTool(userId: string) {
 function proposeTool(userId: string, from: string) {
   return def({
     name: "propose_position",
-    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used; call book_risk with what_if first to say what it would do to the book's risk. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M), return_since_entry (a stop-loss in %, with entry_price: >= -15 means out if down 15%).",
+    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used; call book_risk with what_if first to say what it would do to the book's risk. Give conviction_pct and review_by to put a scored forecast on it: YouBank resolves it and sets your calibration beside the person's. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M), return_since_entry (a stop-loss in %, with entry_price: >= -15 means out if down 15%).",
     schema: z.object({
       ticker: z.string().min(1).max(12),
       direction: z.enum(["long", "short"]),
@@ -150,6 +150,8 @@ function proposeTool(userId: string, from: string) {
       catalysts: z.array(z.object({ label: z.string().max(120), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).max(8).optional(),
       weight_pct_nav: z.number().min(0).max(100).optional(),
       entry_price: z.number().positive().optional(),
+      conviction_pct: z.number().min(1).max(99).optional().describe("Your probability (1-99) that no kill criterion fails before review_by; scored for calibration"),
+      review_by: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       rationale: z.string().max(600).optional(),
     }),
     run: async (args, ctx) => {
