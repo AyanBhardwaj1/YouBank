@@ -1,7 +1,7 @@
 /** The Book (src/lib/book/position.ts): pnpm exec tsx scripts/test-book.ts */
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
-import { alertsFor, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
+import { alertsFor, gateAlerts, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
 import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders";
 import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
 import type { InsiderTx } from "@/lib/edgar/insiders";
@@ -110,7 +110,7 @@ ok("recovery alerts; no data keeps the last verdict quietly", [third.alerts.map(
 ok("keys are per position, verdict and day: a re-run dedupes", alertsFor(first.next, [mk("b", "broken")], new Date("2026-11-07T23:00:00Z")).alerts[0].key, second.alerts[0].key);
 const cat = alertsFor(first.next, [mk("c", "intact", { catalysts: [{ id: "q3", label: "Q3 earnings", date: "2026-11-07", inDays: 1 }, { id: "x", label: "Investor day", date: "2026-11-20", inDays: 14 }] })], now);
 ok("a catalyst tomorrow alerts once per date; later ones do not", cat.alerts.map((a) => [a.kind, a.title, a.key]), [["catalyst", "C: Q3 earnings tomorrow", "book:c:catalyst:q3:2026-11-07"]]);
-ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5, history: { "bad id!": [], c: [] , abcd: [{ d: "2026-11-01", v: "intact", s: 100 }, { d: "x", v: "intact" }] } }), { verdicts: { a: "broken" }, checkedAt: null, history: { abcd: [{ d: "2026-11-01", v: "intact", s: 100 }] } });
+ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5, history: { "bad id!": [], c: [] , abcd: [{ d: "2026-11-01", v: "intact", s: 100 }, { d: "x", v: "intact" }] } }), { verdicts: { a: "broken" }, checkedAt: null, history: { abcd: [{ d: "2026-11-01", v: "intact", s: 100 }] }, muted: [] });
 
 console.log("history");
 const day = (iso: string) => new Date(`${iso}T21:30:00Z`);
@@ -124,7 +124,7 @@ ok("closed positions drop out of the history", Object.keys(h), ["a"]);
 ok("the streak counts from the first day of the current verdict", [streakOf(h.a, day("2026-11-06")), streakOf(h.a.slice(0, 2), day("2026-11-06"))], [{ since: "2026-11-05", verdict: "broken", days: 1 }, { since: "2026-11-02", verdict: "watch", days: 4 }]);
 ok("a read records today's point only when it is missing", [needsPoint(h, [mk("a", "broken")], day("2026-11-05")), needsPoint(h, [mk("a", "broken")], day("2026-11-06")), needsPoint(h, [mk("a", "unknown")], day("2026-11-06"))], [false, true, false]);
 ok("history is capped", recordHistory({ a: Array.from({ length: 200 }, (_, i) => ({ d: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), v: "intact" as const, s: 100 })) }, [mk("a", "intact")], day("2026-11-06")).a.length, 180);
-ok("the daily check carries the history forward", alertsFor({ verdicts: {}, checkedAt: null, history: { a: [{ d: "2026-11-01", v: "intact", s: 100 }] } }, [mk("a", "intact")], day("2026-11-02")).next.history.a.length, 2);
+ok("the daily check carries the history forward", alertsFor({ verdicts: {}, checkedAt: null, history: { a: [{ d: "2026-11-01", v: "intact", s: 100 }] }, muted: [] }, [mk("a", "intact")], day("2026-11-02")).next.history.a.length, 2);
 
 console.log("headroom");
 ok("percentages in points; past the line is negative", [growth.headroom?.shown, gm.headroom?.shown], ["+4.7 pts", "−3.2 pts"]);
@@ -152,11 +152,14 @@ ok("a header, a row per criterion, and one for a position without criteria; head
 console.log("insider selling");
 const tx = (code: string, shares: number | null, price: number | null, date = "2026-10-01", derivative = false) => ({ filed: date, owner: "o", relationship: "", security: "Common", date, code, codeLabel: "", shares, price, owned: null, acquired: code === "P", derivative, url: "" }) as InsiderTx;
 ok("sales less purchases, open market only, in $M", netSelling([tx("S", 100_000, 50), tx("P", 20_000, 50), tx("M", 1e6, 1), tx("F", 5e4, 50), tx("S", 1e5, 50, "2026-07-01"), tx("S", 1e5, 50, "2026-10-01", true)], "2026-08-08"), { value: 4, trades: 2, priced: true });
+const amend = (x: InsiderTx) => ({ ...x, amendment: true });
+ok("a Form 4/A replaces the lines it restates (no double count); a trade-free amendment changes nothing", [netSelling([tx("S", 100_000, 50), amend(tx("S", 100_000, 50))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), amend(tx("S", 100_000, 40))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), tx("S", 100_000, 50, "2026-10-02"), amend(tx("S", 100_000, 50))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), amend(tx("M", 1e5, 1, "2026-10-01", true))], "2026-08-08").value], [5, 4, 10, 5]);
 ok("a counted trade without a price makes the figure incomplete", netSelling([tx("S", 1000, null)], "2026-08-08").priced, false);
 const recent = { filingDate: ["2026-11-01", "2026-10-20", "2026-09-01", "2026-07-01"], form: ["4", "8-K", "4/A", "4"] };
 ok("filings in the window; complete when the list reaches back before it", [windowFilings(recent, true, "2026-08-08"), windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, true, "2026-08-08").complete, windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, false, "2026-08-08").complete], [{ indexes: [0, 2], complete: true }, false, true]);
 const fact = (value: number | null, complete: boolean): InsiderFact => ({ value, complete, filings: 3, trades: 2, since: "2026-08-08", asOf: "2026-11-06T21:30:00Z", url: "https://www.sec.gov/x", note: complete ? "" : "1 of 3 Form 4 filings could not be read" });
 const ins = { id: "i1", metric: "insider_selling" as const, op: "<=" as const, value: 5 };
+ok("$M amounts: decimals under $10M, the minus before the $", [fmtMetric("insider_selling", 0.45), fmtMetric("insider_selling", 4.56), fmtMetric("insider_selling", -3), fmtMetric("net_debt", -12345), fmtMetric("revenue", 61858.4), fmtMetric("insider_selling", -0.001)], ["$0.45M", "$4.6M", "-$3.0M", "-$12,345M", "$61,858M", "$0.00M"]);
 ok("a complete figure is checked, with its filings as evidence", [checkCriterion(ins, co, d, fact(4, true)).state, checkCriterion(ins, co, d, fact(4.6, true)).state, checkCriterion(ins, co, d, fact(4, true)).evidence?.source, checkCriterion(ins, co, d, fact(8, true)).state], ["pass", "near", "SEC Form 4 filings (3 filed, 2 open-market trades)", "fail"]);
 ok("an incomplete or missing figure is no data, with the reason, never a pass", [checkCriterion(ins, co, d, fact(0, false)).state, checkCriterion(ins, co, d, fact(0, false)).note, checkCriterion(ins, co, d, null).state, checkCriterion(ins, co, d, null).note], ["unknown", "No complete figure: 1 of 3 Form 4 filings could not be read.", "unknown", "Worked out from Form 4 filings after each US close."]);
 
@@ -173,6 +176,9 @@ ok("fresh for two weeks", [isFresh(filing, now), isFresh({ ...filing, filed: "20
 const withF = evaluate(t, co, d, [], now, null, null, filing);
 ok("a fresh filing rides on the evaluation; a stale one does not", [withF.filing?.form, evaluate(t, co, d, [], now, null, null, { ...filing, filed: "2026-09-01" }).filing], ["10-Q", null]);
 ok("one alert per filing", alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts.map((a) => [a.title, a.key]), [["C filed its 10-Q", "book:c:filing:10-Q:2026-11-03"]]);
+const fAlerts = alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts;
+const offRun = gateAlerts(fAlerts, [], true), onRun = gateAlerts(fAlerts, offRun.muted, false);
+ok("alerts off: nothing sent and the filing remembered; back on, it is not sent late; other alerts still go", [offRun.send.length, offRun.muted, onRun.send.length, gateAlerts([...fAlerts, ...eAlert], offRun.muted, false).send.map((a) => a.key)], [0, ["book:c:filing:10-Q:2026-11-03"], 0, ["book:c:earnings:2026-11-07"]]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

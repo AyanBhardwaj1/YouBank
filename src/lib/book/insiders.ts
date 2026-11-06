@@ -33,11 +33,19 @@ export function windowFilings(recent: Recent, hasOlderPages: boolean, since: str
   return { indexes: indexes.slice(0, cap), complete: reachesBack && indexes.length <= cap };
 }
 
-/** Net open-market selling ($M) from parsed Form 4 lines on or after `since`; incomplete when a counted trade has no price. */
-export function netSelling(txs: InsiderTx[], since: string): { value: number; trades: number; priced: boolean } {
+/**
+ * Net open-market selling ($M) from parsed Form 4 lines on or after `since`; incomplete when a counted trade
+ * has no price. A Form 4/A restates the lines it amends, so where an amendment reports an owner's trades of
+ * one kind on one day, those lines replace the original filing's for that owner, day and kind (counting
+ * both would double the sale). An amendment with no trades (a footnote fix) changes nothing.
+ */
+export function netSelling(txs: (InsiderTx & { amendment?: boolean })[], since: string): { value: number; trades: number; priced: boolean } {
   let net = 0, trades = 0, priced = true;
+  const group = (t: InsiderTx) => `${t.owner}|${t.date}|${t.code}`;
+  const amended = new Set(txs.filter((t) => t.amendment && !t.derivative).map(group));
   for (const t of txs) {
     if (t.derivative || t.date < since || (t.code !== "S" && t.code !== "P")) continue;
+    if (!t.amendment && amended.has(group(t))) continue;
     trades++;
     if (t.price === null || t.shares === null) { priced = false; continue; }
     net += (t.code === "S" ? 1 : -1) * t.shares * t.price;

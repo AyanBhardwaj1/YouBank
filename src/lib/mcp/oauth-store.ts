@@ -53,8 +53,10 @@ async function fetchMetadataClient(clientId: string): Promise<OAuthClient | null
   let doc: Record<string, unknown>;
   try { doc = JSON.parse(text) as Record<string, unknown>; } catch { return null; }
   if (doc.client_id !== clientId) return null;
+  // A metadata document cannot share a secret with us, so one that asks for secret authentication is refused
+  // rather than treated as public (the method it names would never be checked).
   const r = clientFrom(doc, clientId);
-  return "client" in r ? r.client : null;
+  return "client" in r && (r.client.auth_method ?? "none") === "none" ? r.client : null;
 }
 
 export async function getClient(clientId: string): Promise<OAuthClient | null> {

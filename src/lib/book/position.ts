@@ -145,7 +145,9 @@ export function fmtMetric(m: MetricKey, v: number | null): string {
   if (u === "pts") return v.toFixed(1);
   if (u === "x") return `${v.toFixed(1)}x`;
   if (u === "usd") return `$${v.toFixed(2)}`;
-  return `$${Math.round(v).toLocaleString("en-US")}M`;
+  // Under $10M keeps a decimal or two (insider selling is often a fraction of a million); a minus goes before the $.
+  const a = Math.abs(v), n = a < 1 ? a.toFixed(2) : a < 10 ? a.toFixed(1) : Math.round(a).toLocaleString("en-US");
+  return `${v < 0 && Number(n.replace(/,/g, "")) !== 0 ? "-" : ""}$${n}M`;
 }
 
 /** How close is "near": within 10% of the threshold (3 percentage points for percentages). */

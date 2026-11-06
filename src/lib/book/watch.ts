@@ -12,7 +12,7 @@ import { logError } from "@/lib/errors";
 import { deliverAlert } from "@/lib/news/alerts";
 import { readerFor } from "@/lib/news/reader";
 import { updateExtra } from "@/lib/prefs/extra";
-import { alertsFor, normalizeBookState, type BookAlert } from "./alerts";
+import { alertsFor, gateAlerts, normalizeBookState, type BookAlert } from "./alerts";
 import { evaluateBook, loadBook, warmFilings, warmInsiders } from "./store";
 
 /** Check one person's book and send what changed. Returns the alerts sent (not those already sent before). */
@@ -23,10 +23,11 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
   let sent: BookAlert[] = [];
   await updateExtra(userId, (extra) => {
     const { alerts, next } = alertsFor(normalizeBookState(extra.bookState), evals, now);
-    // Alerts off (the Book's switch): the verdicts and history still move on, so turning them back on
-    // does not replay old changes.
-    sent = extra.bookAlerts === false ? [] : alerts;
-    return { ...extra, bookState: next };
+    // Alerts off (the Book's switch): the verdicts and history still move on, and what came up is remembered
+    // as muted, so turning alerts back on does not replay old changes.
+    const g = gateAlerts(alerts, next.muted, extra.bookAlerts === false);
+    sent = g.send;
+    return { ...extra, bookState: { ...next, muted: g.muted } };
   });
   if (!sent.length) return [];
   const db = requireDb();

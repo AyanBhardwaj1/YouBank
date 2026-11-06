@@ -15,12 +15,14 @@ export async function fetchInsiderFact(ticker: string, cik: string, now = new Da
   const sub = await getSubmissions(cik.padStart(10, "0"));
   const recent = sub.filings.recent;
   const { indexes, complete } = windowFilings(recent, recent.form.length >= 1000, since);
-  const filings = listFilings(sub, ["4"], 250).filter((f) => (f.form === "4" || f.form === "4/A") && f.filed >= since);
-  const txs: InsiderTx[] = [];
+  // listFilings matches form prefixes ("4" also takes 424B2, 425, 40-F), so read the whole list and filter here;
+  // a cap applied before the filter would let a bank's prospectuses crowd out its Form 4s.
+  const filings = listFilings(sub, ["4"], recent.form.length).filter((f) => (f.form === "4" || f.form === "4/A") && f.filed >= since).slice(0, indexes.length);
+  const txs: (InsiderTx & { amendment: boolean })[] = [];
   let failures = 0;
   for (let i = 0; i < filings.length; i += 8) {
     await Promise.all(filings.slice(i, i + 8).map(async (f) => {
-      try { txs.push(...parseInsiderXml(await form4Xml(f.url.replace(/\/xsl[^/]*\//, "/"), f.accession), f)); } catch { failures++; }
+      try { txs.push(...parseInsiderXml(await form4Xml(f.url.replace(/\/xsl[^/]*\//, "/"), f.accession), f).map((t) => ({ ...t, amendment: f.form === "4/A" }))); } catch { failures++; }
     }));
   }
   const ns = netSelling(txs, since);

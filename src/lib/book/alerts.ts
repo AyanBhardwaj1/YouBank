@@ -15,7 +15,8 @@
 import type { Evaluation, Verdict } from "./position";
 import { filingLine } from "./filings";
 
-export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null; history: BookHistory };
+/** muted: keys of alerts that came up while the person's Book alerts were off, so they are not sent once alerts are back on. */
+export type BookState = { verdicts: Record<string, Verdict>; checkedAt: string | null; history: BookHistory; muted: string[] };
 export type BookAlert = { key: string; positionId: string; kind: "broken" | "watch" | "recovered" | "catalyst"; title: string; body: string; url: string; urgent: boolean; reasons: string[] };
 
 export function normalizeBookState(raw: unknown): BookState {
@@ -23,7 +24,21 @@ export function normalizeBookState(raw: unknown): BookState {
   const v = (r.verdicts && typeof r.verdicts === "object" ? r.verdicts : {}) as Record<string, unknown>;
   const verdicts: Record<string, Verdict> = {};
   for (const [k, x] of Object.entries(v)) if (x === "intact" || x === "watch" || x === "broken" || x === "unknown") verdicts[k] = x;
-  return { verdicts, checkedAt: typeof r.checkedAt === "string" ? r.checkedAt : null, history: normalizeHistory(r.history) };
+  const muted = Array.isArray(r.muted) ? r.muted.filter((k): k is string => typeof k === "string").slice(0, MUTED_MAX) : [];
+  return { verdicts, checkedAt: typeof r.checkedAt === "string" ? r.checkedAt : null, history: normalizeHistory(r.history), muted };
+}
+
+const MUTED_MAX = 300;
+
+/**
+ * The alerts to send, given the person's switch. Off: nothing is sent and every key that came up is remembered,
+ * so a filing, earnings date or catalyst seen while alerts were off is not sent late once they are back on
+ * (verdict changes need no such note: the verdicts move on either way). On: remembered keys are left out.
+ */
+export function gateAlerts(alerts: BookAlert[], muted: string[], off: boolean): { send: BookAlert[]; muted: string[] } {
+  if (off) return { send: [], muted: [...new Set([...alerts.map((a) => a.key), ...muted])].slice(0, MUTED_MAX) };
+  const m = new Set(muted);
+  return { send: alerts.filter((a) => !m.has(a.key)), muted };
 }
 
 export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { alerts: BookAlert[]; next: BookState } {
@@ -63,7 +78,7 @@ export function alertsFor(state: BookState, evals: Evaluation[], now: Date): { a
         title: `${e.ticker}: ${c.label} ${c.inDays === 0 ? "today" : "tomorrow"}`, body: `${side}. The thesis is ${e.verdict === "intact" ? "intact" : e.verdict === "watch" ? "on watch" : "broken"}: ${e.summary}`, reasons: [`Catalyst on ${c.date}`] });
     }
   }
-  return { alerts, next: { verdicts, checkedAt: now.toISOString(), history: recordHistory(state.history, evals, now) } };
+  return { alerts, next: { verdicts, checkedAt: now.toISOString(), history: recordHistory(state.history, evals, now), muted: state.muted } };
 }
 
 /* ---------------- History: one point a day per position ---------------- */

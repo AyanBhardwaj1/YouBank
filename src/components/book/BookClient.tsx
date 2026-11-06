@@ -374,7 +374,7 @@ export function BookClient({ focus }: { focus?: string }) {
   const [sampling, setSampling] = useState(false);
   const [teams, setTeams] = useState<TeamList | null>(null);
   const [view, setView] = useState<number | "mine">("mine");
-  const [only, setOnly] = useState<Verdict | null>(null);
+  const [pick, setOnly] = useState<Verdict | null>(null);
   useEffect(() => { fetchJson<TeamList>("/api/book/team").then(setTeams).catch(() => setTeams(null)); }, []);
   const share = async (teamId: number, on: boolean) => {
     const r = await fetchJson<{ sharing: number[] }>("/api/book/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: teamId, share: on }) });
@@ -391,6 +391,8 @@ export function BookClient({ focus }: { focus?: string }) {
   };
   const byId = useMemo(() => new Map((data?.positions ?? []).map((p) => [p.id, p])), [data]);
   const s = data?.summary;
+  // A filter whose last position left (edited, deleted or recovered) shows everything again rather than an empty list.
+  const only = pick && s?.verdicts[pick] ? pick : null;
   return (
     <div className="scroll-touch h-full overflow-auto">
     <div data-book-top className="mx-auto max-w-5xl space-y-4 p-4">
@@ -443,7 +445,7 @@ export function BookClient({ focus }: { focus?: string }) {
           <Stat label="P&L since entry" value={s.pnlContribution === null ? "n/a" : `${s.pnlContribution >= 0 ? "+" : ""}${s.pnlContribution.toFixed(2)}% NAV`} tone={s.pnlContribution === null ? "" : s.pnlContribution >= 0 ? "text-pos" : "text-neg"} hint="Weight times return since entry, over positions with both" />
           <div className="ml-auto flex items-end gap-1.5">
             {(Object.keys(VERDICT) as Verdict[]).filter((k) => s.verdicts[k]).map((k) => (
-              <button key={k} type="button" aria-pressed={only === k} title={only === k ? "Show every position" : `Show only positions ${VERDICT[k].label.toLowerCase()}`} onClick={() => setOnly((o) => (o === k ? null : k))}
+              <button key={k} type="button" aria-pressed={only === k} title={only === k ? "Show every position" : `Show only positions ${VERDICT[k].label.toLowerCase()}`} onClick={() => setOnly(only === k ? null : k)}
                 className={`ctl px-2 py-1 text-[11px] font-semibold ${VERDICT[k].cls} ${only && only !== k ? "opacity-40" : ""} ${only === k ? "ring-1 ring-current" : ""}`}>{s.verdicts[k]} {VERDICT[k].label.toLowerCase()}</button>
             ))}
           </div>

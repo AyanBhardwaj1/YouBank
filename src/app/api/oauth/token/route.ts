@@ -16,11 +16,13 @@ export async function POST(req: Request) {
   if (!(await withinRate(`oauth-token:${callerIp(req)}`, 60, 600_000).catch(() => true))) return oauthError("invalid_request", "Too many token requests. Try again later.", 429);
   const ct = req.headers.get("content-type") ?? "";
   const raw = ct.includes("application/json") ? ((await req.json().catch(() => ({}))) as Record<string, unknown>) : Object.fromEntries(new URLSearchParams(await req.text().catch(() => "")));
-  const p = (k: string) => (typeof raw[k] === "string" ? (raw[k] as string) : "");
+  // Strings only: a JSON body may carry numbers or objects, which the secret check must never see.
+  const form = Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === "string")) as Record<string, string>;
+  const p = (k: string) => form[k] ?? "";
   if (p("grant_type") !== "authorization_code") return oauthError("unsupported_grant_type", "Only authorization_code is supported.");
   const code = await takeCode(p("code"));
   if (!code) return oauthError("invalid_grant", "The code is unknown, used or expired.");
-  const cred = secretFrom(raw as Record<string, string>, req.headers.get("authorization"));
+  const cred = secretFrom(form, req.headers.get("authorization"));
   if ((cred.id ?? p("client_id")) !== code.client_id) return oauthError("invalid_grant", "client_id is required and must be the client the code was issued to.");
   const client = await getClient(code.client_id);
   if (!client) return oauthError("invalid_client", "The client is no longer registered.", 401);

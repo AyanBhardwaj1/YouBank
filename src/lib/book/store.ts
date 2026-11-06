@@ -67,6 +67,12 @@ export async function newsFor(tickers: string[]): Promise<Map<string, PositionNe
   return out;
 }
 
+/** A promise's value, or null once `ms` pass; the timer is cleared either way. */
+function within<T>(p: Promise<T | null>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<null>((r) => { timer = setTimeout(() => r(null), ms); })]).finally(() => clearTimeout(timer));
+}
+
 /** Every position's thesis checked, most urgent first. A company that cannot be read leaves it "unknown". */
 export async function evaluateBook(book: Position[], now = new Date()): Promise<Evaluation[]> {
   const tickers = [...new Set(book.map((t) => t.ticker))];
@@ -80,7 +86,7 @@ export async function evaluateBook(book: Position[], now = new Date()): Promise<
   await Promise.all(Array.from({ length: Math.min(6, tickers.length) }, async () => {
     while (i < tickers.length) {
       const t = tickers[i++];
-      const [c, e] = await Promise.all([getCompanyData(t).catch(() => null), calendar ? Promise.race([nasdaqEarningsDate(t).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 2500))]) : Promise.resolve(null)]);
+      const [c, e] = await Promise.all([getCompanyData(t).catch(() => null), calendar ? within(nasdaqEarningsDate(t).catch(() => null), 2500) : Promise.resolve(null)]);
       companies.set(t, c); earnings.set(t, e);
     }
   }));
@@ -210,6 +216,7 @@ export async function warmInsiders(tickers: string[], deadline: number): Promise
 }
 
 /** Look for new 10-Qs and 10-Ks among these tickers, within the time given (src/lib/book/filings.ts). */
+/** Read each held name's new periodic filing, if any; returns how many were read on this run. */
 export async function warmFilings(tickers: string[], deadline: number): Promise<number> {
   let fresh = 0;
   for (const t of tickers) {

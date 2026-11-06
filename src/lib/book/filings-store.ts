@@ -13,15 +13,21 @@ export async function cachedFilingFact(ticker: string): Promise<FilingFact | nul
   try { return raw ? (JSON.parse(raw) as FilingFact) : null; } catch { return null; }
 }
 
-/** Read a newly filed 10-Q or 10-K for this company, if there is one the cache has not seen. */
+/**
+ * Read a newly filed 10-Q or 10-K for this company, if there is one the cache has not seen. Returns the fact
+ * only when it was read on this call (null when there is none, or it was already read). A filing the radar
+ * cannot compare (the company's first of that form) is remembered too, so it is not tried again every day.
+ */
 export async function noteNewFiling(ticker: string, company: CompanyData, now = new Date()): Promise<FilingFact | null> {
   const latest = latestPeriodic(company);
   if (!latest || Date.parse(`${latest.filed}T00:00:00Z`) < now.getTime() - FILING_DAYS * 86_400_000) return null;
   const seen = await cachedFilingFact(ticker);
-  if (seen?.url === latest.url) return seen;
-  const [{ changeRadar }, { cacheSet }] = await Promise.all([import("@/lib/edge/docs/changes"), import("@/lib/cache")]);
+  if (seen?.url === latest.url) return null;
+  const [{ changeRadar }, { cacheGet, cacheSet }] = await Promise.all([import("@/lib/edge/docs/changes"), import("@/lib/cache")]);
+  const skip = `book-filing-skip:${latest.url}`;
+  if (await cacheGet(skip).catch(() => null)) return null;
   const r = await changeRadar(ticker, latest.form, "risk");
-  if (!r.current) return null;
+  if (!r.current) { await cacheSet(skip, "1", (FILING_DAYS + 2) * 86_400_000).catch(() => undefined); return null; }
   const fact: FilingFact = { form: r.form, filed: r.current.filed, url: r.current.url, counts: r.counts, summary: r.summary.slice(0, 2).map((x) => x.slice(0, 300)), prior: r.prior?.filed ?? null, asOf: now.toISOString() };
   await cacheSet(key(ticker), JSON.stringify(fact), (FILING_DAYS + 2) * 86_400_000);
   return fact;
