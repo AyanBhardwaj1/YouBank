@@ -120,6 +120,8 @@ export type Verdict = "intact" | "watch" | "broken" | "unknown";
 export type PositionNews = { id: number; headline: string; at: string };
 export type Evaluation = {
   positionId: string; ticker: string; name: string; direction: Direction; weight: number | null;
+  /** The company's industry (its data provider's, else its SEC SIC description), for concentration. */
+  industry: string;
   verdict: Verdict; score: number | null; price: number | null;
   /** Return since entry in the position's favour (a short gains when the price falls), as a fraction. */
   pnl: number | null;
@@ -208,7 +210,7 @@ export function evaluate(p: Position, company: CompanyData | null, d: Derived | 
     : near.length ? `Close to a kill criterion: ${near[0].label} is ${near[0].shown}, needs ${near[0].target}.`
     : !known.length ? (p.criteria.length ? "No criterion can be checked from the data yet." : "Add a kill criterion so YouBank can tell you when this thesis breaks.")
     : `All ${known.length} criteria hold${soon ? `; ${soon.label} ${soon.inDays === 0 ? "today" : `in ${soon.inDays} day${soon.inDays === 1 ? "" : "s"}`}` : ""}.`;
-  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, summary, checkedAt: now.toISOString() };
+  return { positionId: p.id, ticker: p.ticker, name: company?.name ?? p.ticker, direction: p.direction, weight: p.weight, industry: (company?.industry || company?.sicLabel || "").trim() || "Unclassified", verdict, score, price, pnl, checks, catalysts, news: news.slice(0, 5), earnings, summary, checkedAt: now.toISOString() };
 }
 
 /** Most urgent first: broken, then watch, then unknown, then intact; lower score first within each. */
@@ -224,6 +226,8 @@ export type BookSummary = {
   atRiskWeight: number;
   /** Weighted P&L since entry, in % of NAV, over positions with a weight and an entry. */
   pnlContribution: number | null;
+  /** Exposure by industry, % of NAV, largest gross first. */
+  byIndustry: { industry: string; positions: number; long: number; short: number; gross: number; net: number }[];
 };
 
 /** The book at a glance: exposure from weights (shorts net against longs) and how much of it is at risk. */
@@ -238,7 +242,17 @@ export function summarize(evals: Evaluation[]): BookSummary {
     if (e.weight && e.pnl !== null) { contrib += e.weight * e.pnl; priced++; }
   }
   const r = (x: number) => Math.round(x * 100) / 100;
-  return { positions: evals.length, long: r(long), short: r(short), gross: r(long + short), net: r(long - short), verdicts, atRiskWeight: r(atRisk), pnlContribution: priced ? r(contrib) : null };
+  const ind = new Map<string, { positions: number; long: number; short: number }>();
+  for (const e of evals) {
+    const k = e.industry || "Unclassified";
+    const v = ind.get(k) ?? { positions: 0, long: 0, short: 0 };
+    v.positions++;
+    if (e.direction === "long") v.long += e.weight ?? 0; else v.short += e.weight ?? 0;
+    ind.set(k, v);
+  }
+  const byIndustry = [...ind.entries()].map(([industry, v]) => ({ industry, positions: v.positions, long: r(v.long), short: r(v.short), gross: r(v.long + v.short), net: r(v.long - v.short) }))
+    .sort((a, b) => b.gross - a.gross || b.positions - a.positions || a.industry.localeCompare(b.industry));
+  return { positions: evals.length, long: r(long), short: r(short), gross: r(long + short), net: r(long - short), verdicts, atRiskWeight: r(atRisk), pnlContribution: priced ? r(contrib) : null, byIndustry };
 }
 
 /** The red team's brief: argue the other side of this position's thesis, with sources, and name what would prove it wrong. */

@@ -68,6 +68,9 @@ export default async function BookReport() {
             </section>
             <p className="mt-2 text-[11.5px] text-muted">{s.verdicts.broken} broken · {s.verdicts.watch} on watch · {s.verdicts.intact} intact{s.verdicts.unknown ? ` · ${s.verdicts.unknown} without data` : ""}. Weights are % of NAV as entered; &ldquo;at risk&rdquo; is the weight in positions whose thesis is broken or on watch.</p>
 
+            {s.byIndustry.filter((x) => x.gross > 0).length > 1 && (
+              <p className="mt-2 text-[11.5px] text-muted">By industry (% of NAV): {s.byIndustry.filter((x) => x.gross > 0).map((x) => `${x.industry} ${x.long ? `+${nav(x.long)}` : ""}${x.short ? ` −${nav(x.short)}` : ""} (net ${nav(x.net)})`).join(" · ")}.</p>
+            )}
             <div className="mt-4 overflow-x-auto print:overflow-visible"><table className="w-full min-w-[520px] border-collapse text-[11.5px] [&_td]:pr-3 [&_th]:pr-3">
               <thead><tr className="border-b border-line text-left text-[10px] uppercase tracking-wider text-muted"><th className="py-1">Position</th><th>Side</th><th className="text-right">Weight</th><th className="text-right">Price</th><th className="text-right">Since entry</th><th className="pl-3">Thesis</th></tr></thead>
               <tbody>{evals.map((e) => (

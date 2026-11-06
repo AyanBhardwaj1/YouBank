@@ -442,6 +442,27 @@ export function BookClient({ focus }: { focus?: string }) {
         </section>
       )}
 
+      {s && s.byIndustry.length > 1 && s.gross > 0 && (
+        <section aria-label="Exposure by industry" className="panel p-4">
+          <h2 className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-muted">By industry (% of NAV)</h2>
+          <ul className="space-y-1.5 text-[12px]">
+            {s.byIndustry.filter((x) => x.gross > 0).map((x) => {
+              const max = Math.max(...s.byIndustry.map((y) => Math.max(y.long, y.short)), 0.01);
+              return (
+                <li key={x.industry} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3">
+                  <span className="truncate" title={x.industry}>{x.industry} <span className="text-faint">· {x.positions}</span></span>
+                  <span className="grid grid-cols-2 gap-px" aria-hidden>
+                    <span className="flex justify-end"><span className="h-2.5 rounded-l-sm bg-neg/70" style={{ width: `${(x.short / max) * 100}%` }} /></span>
+                    <span className="flex"><span className="h-2.5 rounded-r-sm bg-pos/70" style={{ width: `${(x.long / max) * 100}%` }} /></span>
+                  </span>
+                  <span className="num whitespace-nowrap text-right text-muted">{[x.long ? `+${navPct(x.long)}` : "", x.short ? `−${navPct(x.short)}` : ""].filter(Boolean).join(" / ")} <span className={x.net >= 0 ? "text-fg" : "text-neg"}>net {x.net < 0 ? "−" : ""}{navPct(Math.abs(x.net))}</span></span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {data && data.evaluations.length === 0 && !editing && !importing && (
         <section className="panel p-6 text-center">
           <Icon name="Briefcase" className="mx-auto h-6 w-6 text-accent" />

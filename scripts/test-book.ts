@@ -159,5 +159,10 @@ const ins = { id: "i1", metric: "insider_selling" as const, op: "<=" as const, v
 ok("a complete figure is checked, with its filings as evidence", [checkCriterion(ins, co, d, fact(4, true)).state, checkCriterion(ins, co, d, fact(4.6, true)).state, checkCriterion(ins, co, d, fact(4, true)).evidence?.source, checkCriterion(ins, co, d, fact(8, true)).state], ["pass", "near", "SEC Form 4 filings (3 filed, 2 open-market trades)", "fail"]);
 ok("an incomplete or missing figure is no data, with the reason, never a pass", [checkCriterion(ins, co, d, fact(0, false)).state, checkCriterion(ins, co, d, fact(0, false)).note, checkCriterion(ins, co, d, null).state, checkCriterion(ins, co, d, null).note], ["unknown", "No complete figure: 1 of 3 Form 4 filings could not be read.", "unknown", "Worked out from Form 4 filings after each US close."]);
 
+console.log("concentration");
+const ind = summarize([{ ...ev, industry: "Software", weight: 4 }, { ...ev, positionId: "b", industry: "Software", direction: "short", weight: 1 }, { ...ev, positionId: "c", industry: "Semiconductors", weight: 2 }, { ...ev, positionId: "d", industry: "", weight: null }]).byIndustry;
+ok("exposure by industry: long, short, net, largest first", ind, [{ industry: "Software", positions: 2, long: 4, short: 1, gross: 5, net: 3 }, { industry: "Semiconductors", positions: 1, long: 2, short: 0, gross: 2, net: 2 }, { industry: "Unclassified", positions: 1, long: 0, short: 0, gross: 0, net: 0 }]);
+ok("a company's industry comes with its evaluation", ev.industry, "Unclassified");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
