@@ -1,6 +1,7 @@
 /** The Book (src/lib/book/position.ts): pnpm exec tsx scripts/test-book.ts */
 import { derive } from "@/lib/metrics";
 import type { CompanyData } from "@/lib/types";
+import { alertsFor, normalizeBookState } from "@/lib/book/alerts";
 import { byUrgency, checkCriterion, defaultTemplate, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
 
 let pass = 0, fail = 0;
@@ -92,6 +93,21 @@ ok("semicolons; a bare ticker", parseImport("MSFT;5;410\nAAPL").rows.map((r) => 
 ok("duplicates are reported; the cap holds", [parseImport("MSFT\nMSFT").problems.length, parseImport(Array.from({ length: 30 }, (_, i) => `T${String.fromCharCode(65 + (i % 26))}${i}`).join("\n")).rows.length], [1, POSITIONS_MAX]);
 ok("templates by side", [defaultTemplate("long").id, defaultTemplate("short").id], ["growth", "short"]);
 ok("the sample book is valid and says it is a sample", SAMPLE_BOOK.map((p) => { const n = normalizePosition({ ...p, id: `sample-${p.ticker.toLowerCase()}` }); return !!n && n.criteria.length === p.criteria.length && n.thesis.startsWith("Sample:"); }), [true, true, true, true, true]);
+
+console.log("alerts");
+const mk = (id: string, verdict: "intact" | "watch" | "broken" | "unknown", extra: Partial<typeof ev> = {}) => ({ ...ev, positionId: id, ticker: id.toUpperCase(), verdict, catalysts: [], ...extra });
+const first = alertsFor(normalizeBookState(null), [mk("a", "broken"), mk("b", "watch"), mk("c", "intact")], now);
+ok("first sight: only a thesis already broken alerts", first.alerts.map((a) => [a.positionId, a.kind, a.urgent]), [["a", "broken", true]]);
+ok("the baseline is kept", first.next.verdicts, { a: "broken", b: "watch", c: "intact" });
+const second = alertsFor(first.next, [mk("a", "broken"), mk("b", "broken"), mk("c", "watch")], new Date("2026-11-07T21:30:00Z"));
+ok("changes alert: watch→broken, intact→watch; still broken says nothing", second.alerts.map((a) => [a.positionId, a.kind]), [["b", "broken"], ["c", "watch"]]);
+ok("the alert names the criterion and the weight", second.alerts[0].reasons, ["Gross margin (LTM) 66.8% vs at least 70.0%", "4.5% of NAV"]);
+const third = alertsFor(second.next, [mk("a", "intact"), mk("b", "unknown"), mk("c", "watch")], new Date("2026-11-08T21:30:00Z"));
+ok("recovery alerts; no data keeps the last verdict quietly", [third.alerts.map((a) => [a.positionId, a.kind]), third.next.verdicts.b], [[["a", "recovered"]], "broken"]);
+ok("keys are per position, verdict and day: a re-run dedupes", alertsFor(first.next, [mk("b", "broken")], new Date("2026-11-07T23:00:00Z")).alerts[0].key, second.alerts[0].key);
+const cat = alertsFor(first.next, [mk("c", "intact", { catalysts: [{ id: "q3", label: "Q3 earnings", date: "2026-11-07", inDays: 1 }, { id: "x", label: "Investor day", date: "2026-11-20", inDays: 14 }] })], now);
+ok("a catalyst tomorrow alerts once per date; later ones do not", cat.alerts.map((a) => [a.kind, a.title, a.key]), [["catalyst", "C: Q3 earnings tomorrow", "book:c:catalyst:q3:2026-11-07"]]);
+ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5 }), { verdicts: { a: "broken" }, checkedAt: null });
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

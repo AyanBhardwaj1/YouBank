@@ -8,7 +8,7 @@
  * A red team (an agent briefed to argue the other side, with sources) can be run on any position.
  */
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
 import { confirmDialog } from "@/components/ui/Dialog";
@@ -133,8 +133,10 @@ function Editor({ initial, onSaved, onCancel }: { initial: Draft; onSaved: () =>
 
 /* ---------------- A position ---------------- */
 
-function PositionCard({ ev, position, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; onEdit: () => void; onChanged: () => void }) {
-  const [open, setOpen] = useState(ev.verdict === "broken");
+function PositionCard({ ev, position, focused, onEdit, onChanged }: { ev: Evaluation; position: Position | undefined; focused?: boolean; onEdit: () => void; onChanged: () => void }) {
+  const [open, setOpen] = useState(ev.verdict === "broken" || !!focused);
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => { if (focused) ref.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, [focused]);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const v = VERDICT[ev.verdict];
@@ -150,7 +152,7 @@ function PositionCard({ ev, position, onEdit, onChanged }: { ev: Evaluation; pos
     catch (e) { setErr(errorMessage(e)); setBusy(""); }
   };
   return (
-    <li className="panel">
+    <li ref={ref} className={`panel scroll-mt-20 ${focused ? "ring-1 ring-accent/60" : ""}`}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-3 text-left">
         <span className="num w-16 text-[13px] font-semibold">{ev.ticker}</span>
         <span className={`ctl px-1.5 py-0.5 text-[10.5px] font-semibold uppercase ${ev.direction === "long" ? "bg-pos/10 text-pos" : "bg-neg/10 text-neg"}`}>{ev.direction}</span>
@@ -272,7 +274,7 @@ function Stat({ label, value, tone, hint }: { label: string; value: string; tone
   );
 }
 
-export function BookClient() {
+export function BookClient({ focus }: { focus?: string }) {
   const [data, setData] = useState<BookData | null>(null);
   const [err, setErr] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -291,7 +293,8 @@ export function BookClient() {
   const byId = useMemo(() => new Map((data?.positions ?? []).map((p) => [p.id, p])), [data]);
   const s = data?.summary;
   return (
-    <div className="mx-auto max-w-5xl space-y-4 p-4">
+    <div className="scroll-touch h-full overflow-auto">
+    <div data-book-top className="mx-auto max-w-5xl space-y-4 p-4">
       <header className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-[18px] font-semibold">The Book</h1>
@@ -351,11 +354,12 @@ export function BookClient() {
         <ul className="space-y-2">
           {data.evaluations.map((ev) => {
             const p = byId.get(ev.positionId);
-            return <PositionCard key={ev.positionId} ev={ev} position={p} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); window.scrollTo({ top: 0, behavior: "smooth" }); } }} />;
+            return <PositionCard key={ev.positionId} ev={ev} position={p} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
         </ul>
       )}
       <p className="text-[11px] text-faint">Nothing here places trades. Filings refresh every six hours, prices on every load. Percentages are entered as percent (20 means 20%).</p>
+    </div>
     </div>
   );
 }
