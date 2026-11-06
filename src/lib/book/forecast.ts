@@ -33,6 +33,31 @@ export function normalizeConviction(raw: unknown): Conviction | null {
   return { p: Math.round(p * 100) / 100, by: r.by, at, source };
 }
 
+export const PAST_FORECASTS_MAX = 20;
+export const sameForecast = (a: Conviction, b: Conviction | null | undefined) => !!b && a.p === b.p && a.by === b.by && a.at === b.at && a.source === b.source;
+
+/**
+ * The earlier forecasts a position keeps when its forecast is changed or removed, so a forecast cannot be
+ * withdrawn once it is going wrong: each stays scored at its own date. A change made the same day as the
+ * forecast is a correction and is not kept. The newest {@link PAST_FORECASTS_MAX} are kept.
+ */
+export function supersede(past: Conviction[] | undefined, old: Conviction | null | undefined, next: Conviction | null | undefined, today: string): Conviction[] {
+  const list = past ?? [];
+  if (!old || sameForecast(old, next) || old.at >= today || list.some((x) => sameForecast(old, x))) return list;
+  return [...list, old].slice(-PAST_FORECASTS_MAX);
+}
+
+/**
+ * A forecast as posted by a person or an app, made now: a new or changed one is dated today and must resolve
+ * after today, so it cannot be backdated over a past that is already known. One left as it was keeps its date.
+ */
+export function freshForecast(posted: Conviction | undefined, prev: Conviction | undefined, today: string): { conviction?: Conviction; error?: string } {
+  if (!posted) return {};
+  if (prev && posted.p === prev.p && posted.by === prev.by && posted.source === prev.source) return { conviction: prev };
+  if (posted.by <= today) return { error: "A forecast must resolve after today." };
+  return { conviction: { ...posted, at: today } };
+}
+
 /** The first day after the forecast was made that the thesis read broken. */
 export const breakAfter = (c: Conviction, history: HistoryPoint[]) => history.find((h) => h.v === "broken" && h.d > c.at)?.d ?? null;
 

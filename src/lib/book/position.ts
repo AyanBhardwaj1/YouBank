@@ -19,7 +19,7 @@ import type { Derived } from "@/lib/metrics";
 import type { InsiderFact } from "./insiders";
 import { isFresh, type FilingFact } from "./filings";
 import { nextPrint, type PrintBar } from "./print";
-import { normalizeConviction, type Conviction } from "./forecast";
+import { normalizeConviction, PAST_FORECASTS_MAX, type Conviction } from "./forecast";
 import { normalizeCommittee, type Committee } from "./committee";
 
 export type Direction = "long" | "short";
@@ -64,6 +64,8 @@ export type Position = {
   conviction?: Conviction;
   /** The AI investment committee's last sitting (./committee.ts): written by the server only. */
   committee?: Committee;
+  /** Forecasts (the PM's or the committee's) replaced or removed after the day they were made: still scored (./forecast.ts supersede). Server-written only. */
+  pastForecasts?: Conviction[];
 };
 
 export const POSITIONS_MAX = 25;
@@ -107,6 +109,7 @@ export function normalizePosition(raw: unknown, now = new Date().toISOString()):
     ...(redTeam ? { redTeam } : {}),
     ...(() => { const c = normalizeConviction(r.conviction); return c ? { conviction: c } : {}; })(),
     ...(() => { const c = normalizeCommittee(r.committee); return c ? { committee: c } : {}; })(),
+    ...(() => { const xs = (Array.isArray(r.pastForecasts) ? r.pastForecasts : []).flatMap((x) => { const c = normalizeConviction(x); return c ? [c] : []; }).slice(-PAST_FORECASTS_MAX); return xs.length ? { pastForecasts: xs } : {}; })(),
   };
 }
 

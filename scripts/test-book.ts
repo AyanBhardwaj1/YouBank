@@ -7,7 +7,7 @@ import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
-import { calibration, calibrationLine, normalizeConviction, resolveForecast } from "@/lib/book/forecast";
+import { calibration, calibrationLine, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, resolveForecast, supersede } from "@/lib/book/forecast";
 import { draftLetter, lintLetter } from "@/lib/book/letter";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -303,6 +303,18 @@ ok("the PM's forecast and the committee's are scored side by side", [calCm.n, ca
 const closedCm = closedFrom(both, "broken", [{ d: "2026-11-20", v: "broken", s: 40 }], 90, "thesis_broke", "", new Date("2026-11-21T00:00:00Z"));
 const reread = normalizeJournal([JSON.parse(JSON.stringify(closedCm))])[0];
 ok("a close keeps the committee's forecast and when it broke", [reread?.aiConviction?.p, reread?.aiConvictionBrokeOn, reread?.aiConviction?.source], [0.62, "2026-11-20", "AI committee"]);
+
+console.log("Forecasts cannot be withdrawn");
+const f1 = { p: 0.9, by: "2027-01-31", at: "2026-11-01", source: "You" };
+const f2 = { p: 0.4, by: "2027-01-31", at: "2026-11-10", source: "You" };
+ok("a forecast changed on a later day is kept; one corrected the same day, unchanged, or already kept is not", [supersede([], f1, f2, "2026-11-10"), supersede([], f1, null, "2026-11-10"), supersede([], f1, f2, "2026-11-01"), supersede([], f1, f1, "2026-11-10"), supersede([f1], f1, f2, "2026-11-12")], [[f1], [f1], [], [], [f1]]);
+ok("a new or changed forecast is dated today and must resolve after today; an unchanged one keeps its date", [freshForecast({ ...f1, at: "2026-01-01" }, undefined, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-11-10" }, undefined, "2026-11-10").error, freshForecast({ ...f1, at: "2026-11-10" }, f1, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-06-01", at: "2026-01-01" }, f1, "2026-11-10").error], ["2026-11-10", "A forecast must resolve after today.", "2026-11-01", "A forecast must resolve after today."]);
+ok("only the newest twenty are kept", supersede(Array.from({ length: PAST_FORECASTS_MAX }, (_, i) => ({ ...f1, p: (i + 1) / 100 })), f1, f2, "2026-11-10").length, PAST_FORECASTS_MAX);
+const pf = normalizePosition({ ...t, id: "pf01", conviction: f2, pastForecasts: [f1, { p: 7 }] })!;
+const pfCal = calibrationOf([pf], { pf01: [{ d: "2026-11-05", v: "intact", s: 100 }, { d: "2026-11-08", v: "broken", s: 40 }] }, [], new Date("2026-11-20T00:00:00Z"));
+ok("a withdrawn 90% still counts as a miss when the thesis broke after it; the new 40% is still open", [pf.pastForecasts?.length, pfCal.n, pfCal.open, pfCal.brier], [1, 1, 1, 0.81]);
+const pfClosed = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(pf, "broken", [{ d: "2026-11-08", v: "broken", s: 40 }], 50, "thesis_broke", "", new Date("2026-11-20T00:00:00Z"))))])[0];
+ok("a close keeps the earlier forecasts and their breaks", pfClosed?.pastForecasts, [{ f: f1, brokeOn: "2026-11-08" }]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

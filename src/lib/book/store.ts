@@ -19,6 +19,7 @@ import { logError } from "@/lib/errors";
 import { needsPoint, normalizeBookState, recordHistory, type BookHistory } from "./alerts";
 import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
+import { freshForecast, supersede } from "./forecast";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -39,9 +40,15 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     const at = list.findIndex((x) => x.id === t.id);
     // A red team and a committee are written by the server only; an edit keeps the ones it has.
     const prev = at >= 0 ? list[at] : null;
-    const { committee: _ignored, ...posted } = t;
-    void _ignored;
-    const next: Position = { ...posted, createdAt: prev ? prev.createdAt : now, updatedAt: now, ...(prev?.redTeam ? { redTeam: prev.redTeam } : {}), ...(prev?.committee ? { committee: prev.committee } : {}) };
+    // So are earlier forecasts: a changed or removed forecast stays scored (forecast.ts supersede).
+    const { committee: _ignored, pastForecasts: _past, ...posted } = t;
+    void _ignored; void _past;
+    const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10));
+    if (fresh.error) throw Object.assign(new Error(fresh.error), { status: 400 });
+    const { conviction: _posted, ...rest } = posted;
+    void _posted;
+    const past = supersede(prev?.pastForecasts, prev?.conviction, fresh.conviction, now.slice(0, 10));
+    const next: Position = { ...rest, ...(fresh.conviction ? { conviction: fresh.conviction } : {}), createdAt: prev ? prev.createdAt : now, updatedAt: now, ...(prev?.redTeam ? { redTeam: prev.redTeam } : {}), ...(prev?.committee ? { committee: prev.committee } : {}), ...(past.length ? { pastForecasts: past } : {}) };
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });
     if (at >= 0) list[at] = next; else list.unshift(next);
     saved = next;
@@ -124,7 +131,16 @@ export async function dismissProposal(userId: string, id: string): Promise<void>
 }
 
 export async function setCommittee(userId: string, id: string, committee: Committee): Promise<void> {
-  await updateExtra(userId, (extra) => ({ ...extra, book: normalizeBook(extra.book).map((t) => (t.id === id ? normalizePosition({ ...t, committee }) ?? t : t)) }));
+  const today = new Date().toISOString().slice(0, 10);
+  await updateExtra(userId, (extra) => ({
+    ...extra,
+    book: normalizeBook(extra.book).map((t) => {
+      if (t.id !== id) return t;
+      // The committee's last forecast stays scored when it sits again (forecast.ts supersede).
+      const past = supersede(t.pastForecasts, t.committee?.forecast, committee.forecast, today);
+      return normalizePosition({ ...t, committee, ...(past.length ? { pastForecasts: past } : {}) }) ?? t;
+    }),
+  }));
 }
 
 export async function setRedTeam(userId: string, id: string, redTeam: NonNullable<Position["redTeam"]>): Promise<void> {

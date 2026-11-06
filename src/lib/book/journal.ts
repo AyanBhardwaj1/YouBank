@@ -9,7 +9,7 @@
  * tested in scripts/test-book.ts. Stored in profiles.extra.bookClosed by ./store.ts.
  */
 import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
-import { breakAfter, calibration, normalizeConviction, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
+import { breakAfter, calibration, normalizeConviction, PAST_FORECASTS_MAX, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -28,6 +28,8 @@ export type ClosedPosition = {
   conviction?: Conviction; convictionBrokeOn?: string | null;
   /** The AI committee's forecast, kept the same way, so its calibration survives the close. */
   aiConviction?: Conviction; aiConvictionBrokeOn?: string | null;
+  /** Earlier forecasts that were replaced while it was open, each with its first break after it was made. */
+  pastForecasts?: { f: Conviction; brokeOn: string | null }[];
 };
 
 const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "");
@@ -46,6 +48,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     verdictAtClose: verdict, brokeOn: brokeAt?.d ?? null, priceAtBreak: num(brokeAt?.p ?? null),
     ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
+    ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
   };
 }
 
@@ -68,6 +71,14 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
       ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),
       ...(() => { const a = normalizeConviction({ ...(r.aiConviction && typeof r.aiConviction === "object" ? r.aiConviction : {}), source: "AI committee" }); return a && r.aiConviction ? { aiConviction: a, aiConvictionBrokeOn: typeof r.aiConvictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.aiConvictionBrokeOn) ? r.aiConvictionBrokeOn : null } : {}; })(),
+      ...(() => {
+        const xs = (Array.isArray(r.pastForecasts) ? r.pastForecasts : []).flatMap((x) => {
+          const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+          const f = normalizeConviction(o.f);
+          return f ? [{ f, brokeOn: typeof o.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.brokeOn) ? o.brokeOn : null }] : [];
+        }).slice(-PAST_FORECASTS_MAX);
+        return xs.length ? { pastForecasts: xs } : {};
+      })(),
     });
   }
   return out.slice(0, JOURNAL_MAX);
@@ -128,13 +139,13 @@ export function scorecardLine(s: Scorecard): string {
 export function forecastItems(open: Position[], history: BookHistory, closed: ClosedPosition[], now = new Date()): ForecastItem[] {
   const items: ForecastItem[] = [];
   for (const p of open) {
-    for (const f of [p.conviction, p.committee?.forecast ?? undefined]) {
+    for (const f of [p.conviction, p.committee?.forecast ?? undefined, ...(p.pastForecasts ?? [])]) {
       if (!f) continue;
       items.push({ ticker: p.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, history[p.id] ?? [], now) });
     }
   }
   for (const c of closed) {
-    for (const [f, broke] of [[c.conviction, c.convictionBrokeOn], [c.aiConviction, c.aiConvictionBrokeOn]] as const) {
+    for (const [f, broke] of [[c.conviction, c.convictionBrokeOn], [c.aiConviction, c.aiConvictionBrokeOn], ...(c.pastForecasts ?? []).map((x) => [x.f, x.brokeOn] as const)] as const) {
       if (!f) continue;
       items.push({ ticker: c.ticker, p: f.p, by: f.by, source: f.source, ...resolveForecast(f, [], now, c.closedAt, broke ?? null) });
     }
