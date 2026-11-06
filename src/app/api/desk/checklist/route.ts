@@ -29,7 +29,10 @@ export async function GET() {
     // For a fund: a book with a position in it (or one closed), and an AI app connected (an MCP key).
     const book = (Array.isArray(extra.book) && extra.book.length > 0) || (Array.isArray(extra.bookClosed) && extra.bookClosed.length > 0);
     const aiApp = Array.isArray(extra.apiKeys) && extra.apiKeys.length > 0;
-    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean; role: string } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(extra), desktop, book, aiApp, role: profile.role };
+    // A forecast on any position, open or closed (one kept from before counts too).
+    const hasForecast = (x: unknown) => !!x && typeof x === "object" && (!!(x as { conviction?: unknown }).conviction || (Array.isArray((x as { pastForecasts?: unknown[] }).pastForecasts) && (x as { pastForecasts: unknown[] }).pastForecasts.length > 0));
+    const forecast = [...(Array.isArray(extra.book) ? extra.book : []), ...(Array.isArray(extra.bookClosed) ? extra.bookClosed : [])].some(hasForecast);
+    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean; role: string } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(extra), desktop, book, forecast, aiApp, role: profile.role };
     return NextResponse.json(facts, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
