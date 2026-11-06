@@ -41,8 +41,11 @@ export async function POST(req: Request) {
     // Calls from the person's AI apps go in their research ledger too, when they keep one.
     const m = msg as { method?: unknown; params?: { name?: unknown; arguments?: unknown } };
     if (m?.method === "tools/call" && res?.result) {
-      const r = res.result as { content?: { text?: string }[]; structuredContent?: { sources?: { id: string; label: string; url: string }[] }; isError?: boolean };
-      await record(who.userId, { kind: "mcp", subject: `${String(m.params?.name ?? "")} via ${who.keyName}`, model: "", prompt: JSON.stringify(m.params?.arguments ?? {}), output: r.content?.[0]?.text ?? "", sources: r.structuredContent?.sources ?? [], meta: { tool: m.params?.name, key: who.keyId, isError: !!r.isError } });
+      const r = res.result as { content?: { text?: string }[]; structuredContent?: { sources?: { id: string; label: string; url: string }[]; result?: unknown }; isError?: boolean };
+      // A tool that answered with { error } (a refused proposal, a bad ticker) did not do its job: say so in the record.
+      const answered = r.structuredContent?.result;
+      const failed = !!r.isError || (!!answered && typeof answered === "object" && "error" in answered);
+      await record(who.userId, { kind: "mcp", subject: `${String(m.params?.name ?? "")} via ${who.keyName}`, model: "", prompt: JSON.stringify(m.params?.arguments ?? {}), output: r.content?.[0]?.text ?? "", sources: r.structuredContent?.sources ?? [], meta: { tool: m.params?.name, key: who.keyId, isError: failed } });
     }
     // A notification or a response: accepted, nothing to say.
     if (!res) return new Response(null, { status: 202 });

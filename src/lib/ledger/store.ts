@@ -168,15 +168,16 @@ export async function signOff(userId: string, seq: number, reviewer: string, dec
  * The rows a governance report needs for [from, to): metadata only (never prompts or answers), with the
  * sign-offs written after the period, which can review entries in it. At most 20,000 rows.
  */
-export async function governanceRows(userId: string, from: string, to: string): Promise<{ rows: GovRow[]; later: GovRow[] }> {
+export const GOV_ROWS_MAX = 20_000;
+export async function governanceRows(userId: string, from: string, to: string): Promise<{ rows: GovRow[]; later: GovRow[]; truncated: boolean }> {
   const t = schema.researchLedger;
   const pick = { seq: t.seq, at: t.at, kind: t.kind, subject: t.subject, model: t.model, meta: t.meta, sources: sql<number>`coalesce(jsonb_array_length(${t.sources}), 0)::int`, note: sql<string>`case when ${t.kind} = 'signoff' then left(${t.output}, 300) else '' end` };
   const toRow = (r: { seq: number; at: Date; kind: string; subject: string; model: string; meta: Record<string, unknown>; sources: number; note: string }): GovRow => ({ ...r, kind: r.kind as LedgerKind, at: r.at.toISOString() });
   const [rows, later] = await Promise.all([
-    requireDb().select(pick).from(t).where(and(eq(t.userId, userId), gte(t.at, new Date(from)), lt(t.at, new Date(to)))).orderBy(asc(t.seq)).limit(20_000),
+    requireDb().select(pick).from(t).where(and(eq(t.userId, userId), gte(t.at, new Date(from)), lt(t.at, new Date(to)))).orderBy(asc(t.seq)).limit(GOV_ROWS_MAX),
     requireDb().select(pick).from(t).where(and(eq(t.userId, userId), eq(t.kind, "signoff"), gte(t.at, new Date(to)))).orderBy(asc(t.seq)).limit(5_000),
   ]);
-  return { rows: rows.map(toRow), later: later.map(toRow) };
+  return { rows: rows.map(toRow), later: later.map(toRow), truncated: rows.length >= GOV_ROWS_MAX || later.length >= 5_000 };
 }
 
 /** The newest entry: what to anchor. */

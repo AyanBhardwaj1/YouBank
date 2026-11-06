@@ -34,9 +34,10 @@ export async function riskOf(book: Position[], now = new Date()): Promise<Source
 }
 
 /** Before a trade: the book's risk with one more position. Prices as above (each answer cached); not kept itself. */
-export async function riskWhatIf(book: Position[], add: RiskInput & { weight: number }, now = new Date()): Promise<WhatIf & { sources: string[] }> {
+export async function riskWhatIf(book: Position[], add: RiskInput & { weight: number }, now = new Date()): Promise<WhatIf & { sources: string[]; missingPrices: string[] }> {
   const input = inputOf(book);
-  const tickers = [...new Set([...input.filter((p) => p.weight).map((p) => p.ticker), add.ticker])];
-  const c = await dailyCloses([...tickers, BENCHMARK], HISTORY_FROM, { max: 41, deadline: Date.now() + 20_000 });
-  return { ...whatIf(input, add, c.prices, now), sources: [...new Set(c.providers)].map((p) => `${p} daily closes`) };
+  // The benchmark and the new name first, so no cap on the list can leave them out.
+  const tickers = [...new Set([BENCHMARK, add.ticker, ...input.filter((p) => p.weight).map((p) => p.ticker)])];
+  const c = await dailyCloses(tickers, HISTORY_FROM, { max: tickers.length, deadline: Date.now() + 20_000 });
+  return { ...whatIf(input, add, c.prices, now), sources: [...new Set(c.providers)].map((p) => `${p} daily closes`), missingPrices: c.missing };
 }

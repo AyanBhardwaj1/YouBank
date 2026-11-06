@@ -331,7 +331,7 @@ const ago = (iso: string) => {
 /** What a proposal would do to the book's risk, on request (weight as proposed, else 2% of NAV). */
 function ProposalImpact({ p }: { p: Proposal }) {
   const [res, setRes] = useState<WhatIf | null>(null), [busy, setBusy] = useState(false), [err, setErr] = useState("");
-  const weight = p.position.weight ?? 2;
+  const weight = p.position.weight || 2;
   const run = async () => {
     setBusy(true); setErr("");
     try { setRes(await fetchJson<WhatIf>(`/api/book/risk?add=${encodeURIComponent(p.position.ticker)}&side=${p.position.direction}&weight=${weight}`)); }
@@ -340,7 +340,7 @@ function ProposalImpact({ p }: { p: Proposal }) {
   if (res) return <div className="mt-2 ctl border border-line p-2"><WhatIfResult w={res} /></div>;
   return (
     <p className="mt-1 text-[11.5px]">
-      <button type="button" onClick={run} disabled={busy} className="text-accent hover:underline disabled:opacity-60">{busy ? "Working out the risk…" : `What would it do to the book's risk${p.position.weight === null ? " (at 2% of NAV)" : ""}?`}</button>
+      <button type="button" onClick={run} disabled={busy} className="text-accent hover:underline disabled:opacity-60">{busy ? "Working out the risk…" : `What would it do to the book's risk${!p.position.weight ? " (at 2% of NAV)" : ""}?`}</button>
       {err && <span role="alert" className="ml-2 text-neg">{err}</span>}
     </p>
   );
@@ -382,23 +382,26 @@ function Proposals({ list, held, focus, onReview, onDismiss }: { list: Proposal[
 const signed = (x: number, digits = 2) => `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(digits)}%`;
 
 /** Before a trade: the book's risk now and with the position added, and what the new name moves with. */
-function WhatIfResult({ w }: { w: WhatIf }) {
+function WhatIfResult({ w }: { w: WhatIf & { missingPrices?: string[] } }) {
   if (w.note) return <p className="text-[12px] text-muted">{w.note}</p>;
-  const row = (label: string, a: number | null, b: number | null, digits = 2, worseUp = true) => {
+  // Red when risk grows: a larger figure, or for beta-adjusted net a larger exposure either way (net short too).
+  const row = (label: string, a: number | null, b: number | null, digits = 2, size: (x: number) => number = (x) => x) => {
     const delta = a !== null && b !== null ? b - a : null;
-    const tone = delta === null || Math.abs(delta) < 10 ** -digits ? "text-muted" : (delta > 0) === worseUp ? "text-neg" : "text-pos";
+    const grows = a !== null && b !== null ? size(b) - size(a) : 0;
+    const tone = delta === null || Math.abs(grows) < 10 ** -digits ? "text-muted" : grows > 0 ? "text-neg" : "text-pos";
     return <tr key={label} className="border-t border-line"><td className="py-1 pr-3">{label}</td><td className="num py-1 pr-3 text-right text-muted">{a === null ? "n/a" : `${a.toFixed(digits)}%`}</td><td className="num py-1 pr-3 text-right font-semibold">{b === null ? "n/a" : `${b.toFixed(digits)}%`}</td><td className={`num py-1 text-right ${tone}`}>{delta === null ? "" : signed(delta, digits)}</td></tr>;
   };
   return (
     <div className="space-y-2 text-[12px]">
       <table className="w-full"><thead><tr className="text-left text-[10.5px] uppercase tracking-wider text-faint"><th className="py-1 font-medium">Adding {w.add.direction} {w.add.ticker} at {navPct(w.add.weight)}</th><th className="py-1 text-right font-medium">Now</th><th className="py-1 text-right font-medium">After</th><th className="py-1 text-right font-medium">Change</th></tr></thead>
         <tbody>
-          {row("Beta-adjusted net", w.before.betaNet, w.after.betaNet, 1, Math.abs(w.after.betaNet ?? 0) > Math.abs(w.before.betaNet ?? 0))}
+          {row("Beta-adjusted net", w.before.betaNet, w.after.betaNet, 1, Math.abs)}
           {row("1-day VaR (95%)", w.before.var95, w.after.var95)}
           {row("Expected shortfall", w.before.es95, w.after.es95)}
-          {w.after.worst && <tr className="border-t border-line"><td className="py-1 pr-3">Worst replay</td><td className="num py-1 pr-3 text-right text-muted">{w.before.worst ? `${signed(w.before.worst.pnl)}` : "n/a"}</td><td className="num py-1 pr-3 text-right font-semibold">{signed(w.after.worst.pnl)}</td><td className="py-1 text-right text-[11px] text-faint">{w.after.worst.label}</td></tr>}
+          {w.after.worst && row(`${w.after.worst.label} replay`, w.before.worst?.label === w.after.worst.label ? w.before.worst.pnl : null, w.after.worst.pnl, 2, (x) => -x)}
         </tbody>
       </table>
+      {!!w.missingPrices?.length && <p className="text-accent">No prices just now for {w.missingPrices.join(", ")}: left out of these figures.</p>}
       <p className="text-muted">{w.add.ticker}: beta {w.beta?.toFixed(2) ?? "n/a"}, volatility {w.vol?.toFixed(0) ?? "n/a"}% a year. {w.movesWith.length ? <>Moves with {w.movesWith.map((m, i) => <span key={m.ticker}>{i ? ", " : ""}<span className="font-semibold text-fg">{m.ticker}</span> ({m.rho.toFixed(2)}, <span className={m.kind === "stacked" ? "text-accent" : "text-pos"}>{m.kind === "stacked" ? "more of the same bet" : "a hedge"}</span>)</span>)}.</> : "It does not move closely with anything held."}</p>
     </div>
   );

@@ -25,9 +25,10 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
   const { month } = await searchParams;
   const now = new Date();
   const period = periodOf(typeof month === "string" ? month : undefined, now);
-  const settings = await ledgerSettings(user.id).catch(() => null);
-  const data = await governanceRows(user.id, period.from, period.to).catch(() => null);
-  const [verification, head, onChain] = await Promise.all([verifyAll(user.id).catch(() => null), ledgerHead(user.id).catch(() => null), chainAnchors(user.id).catch(() => [])]);
+  const [settings, data, verification, head, onChain] = await Promise.all([
+    ledgerSettings(user.id).catch(() => null), governanceRows(user.id, period.from, period.to).catch(() => null),
+    verifyAll(user.id).catch(() => null), ledgerHead(user.id).catch(() => null), chainAnchors(user.id).catch(() => []),
+  ]);
   const saved = settings?.lastAnchor ? await checkAnchors(user.id, [{ seq: settings.lastAnchor.seq, hash: settings.lastAnchor.hash, source: `the daily email of ${day(settings.lastAnchor.at)} UTC` }]).catch(() => []) : [];
   const anchors = [...saved, ...onChain];
   const g = data ? governance(data.rows, period.from, period.to, data.later) : null;
@@ -59,6 +60,7 @@ export default async function LedgerReport({ searchParams }: { searchParams: Pro
             {settings && <p className="mt-1 text-muted">Recording is {settings.on ? `on${settings.since ? ` since ${day(settings.since)} UTC` : ""}` : "off"}{g.pauses.length ? `; in this period it was ${g.pauses.map((p) => `${p.on ? "turned on" : "turned off"} ${day(p.at)} UTC`).join(", ")}` : "; it was not turned off in this period"}.</p>}
           </section>
 
+          {data.truncated && <p className="mt-3 font-semibold text-accent">This period has more entries than one report reads (20,000): the figures below cover its first 20,000. Use a shorter period or the export for the rest.</p>}
           <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5 print:grid-cols-5" aria-label="Summary">
             {[["AI outputs", String(g.ai)], ["With sources", pct(g.sourcedShare)], ["Reviewed by a person", pct(g.reviewedShare)], ["Rejected", String(g.reviews.rejected)], ["Days with activity", String(g.activeDays)]].map(([k, v]) => (
               <div key={k}><div className="text-[10px] uppercase tracking-wider text-muted">{k}</div><div className="num text-[15px] font-semibold">{v}</div></div>

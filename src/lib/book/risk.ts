@@ -221,11 +221,15 @@ const headline = (r: BookRisk): RiskHeadline => {
 export function whatIf(book: RiskInput[], add: RiskInput & { weight: number }, prices: Record<string, Close[]>, now = new Date()): WhatIf {
   const before = bookRisk(book, prices, now);
   const after = bookRisk([...book, add], prices, now);
+  // The worst replay after the trade, against the same episode before it (the worst one before may differ).
+  const afterH = headline(after);
+  const same = afterH.worst ? before.scenarios.find((x) => x.label === afterH.worst!.label) : undefined;
+  const beforeH: RiskHeadline = { ...headline(before), worst: same && same.pnl !== null ? { label: same.label, pnl: same.pnl } : null };
   const bench = prices[BENCHMARK] ?? [];
   const calendar = bench.slice(-(RISK_DAYS + 1)).map((c) => c.date);
   const mine = prices[add.ticker] ? returnsOn(calendar, prices[add.ticker]) : [];
   const n = mine.filter((x) => x !== null).length;
-  const base = { add, before: headline(before), after: headline(after) };
+  const base = { add, before: beforeH, after: afterH };
   if (calendar.length < MIN_RETURNS + 1 || n < MIN_RETURNS) {
     return { ...base, beta: null, vol: null, movesWith: [], note: !prices[add.ticker]?.length ? `No prices for ${add.ticker}.` : `${add.ticker} has ${n} trading days of prices in the last year; at least ${MIN_RETURNS} are needed.` };
   }

@@ -83,6 +83,7 @@ ok("the new name's beta, and the holding it doubles up on, named as more of the 
 const hedgeWi = whatIf(base, { ticker: "TWIN", direction: "short", weight: 4 }, prices);
 ok("shorting it instead is a hedge against HI and lowers beta-net", [hedgeWi.movesWith[0]?.kind, hedgeWi.after.betaNet! < hedgeWi.before.betaNet!], ["hedge", true]);
 ok("a name without enough history: no answer, and why", [whatIf(base, { ticker: "NEW", direction: "long", weight: 2 }, prices).note, whatIf(base, { ticker: "NOPE", direction: "long", weight: 2 }, prices).note], ["NEW has 39 trading days of prices in the last year; at least 120 are needed.", "No prices for NOPE."]);
+ok("the worst replay is compared on the same episode before and after", wi.after.worst ? [wi.before.worst === null || wi.before.worst.label === wi.after.worst.label] : [true], [true]);
 ok("one line for a person", /^Adding long TWIN at 4% of NAV: beta-adjusted net [\d.]+% → [\d.]+%, one-day VaR [\d.]+% → [\d.]+%\. It moves with HI \(correlation 0\.\d+\): more of the same bet\.$/.test(whatIfLine(wi)), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
