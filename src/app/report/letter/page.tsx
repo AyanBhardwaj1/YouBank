@@ -42,7 +42,8 @@ export default async function LetterPage() {
     risk: risk ? headline(risk) : null,
     ai: g ? { outputs: g.ai, reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, ledgerOn } : null,
     // The PM's own journal notes (not YouBank's automatic entries), open and closed positions, newest first.
-    notes: [...book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...closed.map((c) => ({ ticker: c.ticker, log: c.log ?? [] }))]
+    // A close's own note is already in "What we closed", so it is not quoted again here.
+    notes: [...book.map((p) => ({ ticker: p.ticker, log: p.log ?? [] })), ...closed.map((c) => ({ ticker: c.ticker, log: (c.log ?? []).filter((e) => !(e.at === c.closedAt && e.text === c.note)) }))]
       .flatMap((x) => x.log.filter((e) => !e.auto).map((e) => ({ ticker: x.ticker, at: e.at, text: e.text })))
       .sort((a, b) => b.at.localeCompare(a.at)),
   });

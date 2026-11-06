@@ -119,7 +119,7 @@ export function draftDdq(i: DdqInput): DdqItem[] {
   items.push({
     id: "decisions", topic: "Documenting decisions", q: "How are investment decisions, and the reasons for them, documented?",
     a: [
-      "Every position carries written kill criteria and a dated decision journal. YouBank writes an entry itself whenever the weight, the forecast, the kill criteria, the thesis or the side changes, and the portfolio manager adds the reason. The journal is written by the server, so it cannot be backfilled, and it is kept through the close.",
+      "Every position carries written kill criteria and a dated decision journal. YouBank writes an entry itself whenever the weight, the forecast, the kill criteria, the thesis or the side changes, and the portfolio manager adds the reason. Every entry is dated by the server, so none can be backdated; the newest 100 of YouBank's entries and 30 of the manager's notes are kept per position, through the close.",
       jr && jr.positions ? `Today ${jr.withNotes} of ${jr.positions} positions carry the manager's own notes (${jr.notes} in all).` : "",
       "[Say who reviews the journal, and how often.]",
     ].filter(Boolean).join(" "),

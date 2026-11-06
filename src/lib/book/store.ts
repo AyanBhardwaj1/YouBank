@@ -53,7 +53,12 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     const next: Position = { ...rest, ...(fresh.conviction ? { conviction: fresh.conviction } : {}), createdAt: prev ? prev.createdAt : now, updatedAt: now, ...(prev?.redTeam ? { redTeam: prev.redTeam } : {}), ...(prev?.committee ? { committee: prev.committee } : {}), ...(past.length ? { pastForecasts: past } : {}) };
     // The decision journal: what this save changed, written by the server (decisions.ts), and the PM's note.
     const note = raw && typeof raw === "object" && typeof (raw as { note?: unknown }).note === "string" ? (raw as { note: string }).note : undefined;
-    const log = withEntries(prev?.log, changesOf(prev, next), now, note);
+    // A position added from an AI app's proposal: where it came from, and the app's reasoning in its own name,
+    // read from the stored proposal (never from what the client sent), so it is never mistaken for the PM's note.
+    const fromId = raw && typeof raw === "object" ? (raw as { fromProposal?: unknown }).fromProposal : undefined;
+    const proposal = !prev && typeof fromId === "string" ? normalizeProposals(extra.bookProposals).find((x) => x.id === fromId) : undefined;
+    const origin = proposal ? [`Proposed by ${proposal.from}${proposal.rationale ? `, whose reasoning was: "${proposal.rationale}"` : "."}`] : [];
+    const log = withEntries(prev?.log, [...changesOf(prev, next), ...origin], now, note);
     if (log.length) next.log = log;
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });
     if (at >= 0) list[at] = next; else list.unshift(next);

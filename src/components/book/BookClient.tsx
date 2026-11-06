@@ -64,10 +64,10 @@ const fieldBox = "ctl border border-line bg-bg px-2 py-1.5 text-[12px] placehold
 const field = `${fieldBox} w-full`;
 
 /** `heading` replaces the title (a proposal under review: a new position, without the templates). */
-function Editor({ initial, onSaved, onCancel, heading, market, initialWhy = "" }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** A starting "Why?" (an AI app's proposal: who proposed it and why). */ initialWhy?: string; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
+function Editor({ initial, onSaved, onCancel, heading, market, proposal }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Reviewing an AI app's proposal: its id (the server records where the position came from) and the app's reasoning, shown for reference only. */ proposal?: { id: string; from: string; rationale: string }; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
   const [d, setD] = useState<Draft>(initial);
   // Why this change: saved with it into the decision journal (decisions.ts), dated by the server.
-  const [why, setWhy] = useState(initialWhy);
+  const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -97,6 +97,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, initialWhy = "" }
           conviction: d.convP.trim() ? { p: Number(d.convP), by: d.convBy, source: d.convSource ?? "You", ...(d.convAt ? { at: d.convAt } : {}) } : undefined,
           convP: undefined, convBy: undefined, convSource: undefined, convAt: undefined,
           ...(why.trim() ? { note: why.trim() } : {}),
+          ...(proposal ? { fromProposal: proposal.id } : {}),
         }),
       });
       onSaved();
@@ -181,6 +182,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, initialWhy = "" }
           {d.catalysts.length < 8 && <button type="button" className="text-[11.5px] text-accent" onClick={() => set("catalysts", [...d.catalysts, { label: "", date: "" }])}>+ Add a catalyst</button>}
         </div>
       </div>
+      {proposal?.rationale && <p className="text-[11px] text-muted"><span className="font-semibold">{proposal.from}&apos;s reasoning</span> (kept in the journal in its name): {proposal.rationale}</p>}
       <label className="block text-[11px] text-muted">Why? Optional, kept in the position&apos;s decision journal with today&apos;s date
         <input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={500} placeholder="e.g. sizing up after the call: margins guided above 70%" className={field} />
       </label>
@@ -887,7 +889,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
   const [view, setView] = useState<number | "mine">("mine");
   const [pick, setOnly] = useState<Verdict | null>(null);
   // The proposal being reviewed in the editor: saving the position clears it.
-  const [reviewing, setReviewing] = useState<{ id: string; heading: string; why?: string } | null>(null);
+  const [reviewing, setReviewing] = useState<{ id: string; heading: string; from?: string; rationale?: string } | null>(null);
   useEffect(() => { fetchJson<TeamList>("/api/book/team").then(setTeams).catch(() => setTeams(null)); }, []);
   const share = async (teamId: number, on: boolean) => {
     const r = await fetchJson<{ sharing: number[] }>("/api/book/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ team: teamId, share: on }) });
@@ -961,11 +963,11 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
 
       {!!data?.proposals?.length && !editing && (
         <Proposals list={data.proposals} held={new Set(data.positions.map((p) => p.ticker))} focus={proposal}
-          onReview={(x) => { setReviewing({ id: x.id, heading: `Review ${x.position.ticker}, proposed by ${x.from}`, why: `Added from ${x.from}'s proposal${x.rationale ? `: ${x.rationale}` : "."}`.slice(0, 500) }); setImporting(false); setEditing({ ...draftOf(x.position), id: undefined }); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); }}
+          onReview={(x) => { setReviewing({ id: x.id, heading: `Review ${x.position.ticker}, proposed by ${x.from}`, from: x.from, rationale: x.rationale }); setImporting(false); setEditing({ ...draftOf(x.position), id: undefined }); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); }}
           onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
       )}
 
-      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} initialWhy={reviewing?.why} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
         if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));

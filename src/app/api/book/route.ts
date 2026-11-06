@@ -37,6 +37,10 @@ export async function POST(req: Request) {
     if (body && typeof body === "object" && Object.keys(body).length === 1 && typeof (body as { alerts?: unknown }).alerts === "boolean") {
       return NextResponse.json({ alerts: await setBookAlerts(user.id, (body as { alerts: boolean }).alerts) });
     }
+    // A note sent with a save counts against the same daily limit as /api/book/note.
+    if (body && typeof body === "object" && typeof (body as { note?: unknown }).note === "string" && (body as { note: string }).note.trim()) {
+      await rateLimit(`book-note:${user.id}`, 30, 86_400_000, "That is many notes for one day. Save without the note, or try again tomorrow.");
+    }
     const saved = await savePosition(user.id, body);
     if (!saved) return NextResponse.json({ error: "A position needs a ticker and a one-line thesis." }, { status: 400 });
     // An insider-selling criterion: work the figure out now, after the answer, rather than at the next close.
