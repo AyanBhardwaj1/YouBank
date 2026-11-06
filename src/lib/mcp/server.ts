@@ -15,7 +15,7 @@ import { z } from "zod";
 import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/ai/tools";
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { evaluateBook, loadBook, newsFor } from "@/lib/book/store";
-import { summarize, tickerOf } from "@/lib/book/position";
+import { METRIC_KEYS, normalizePosition, summarize, tickerOf } from "@/lib/book/position";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
@@ -26,7 +26,7 @@ const TITLES: Record<string, string> = {
   get_company_financials: "Company fundamentals (SEC XBRL)", get_trading_comps: "Trading comps", search_companies: "Find a company", search_filing: "Search a filing",
   read_filing: "Read a filing section", edgar_fulltext_search: "EDGAR full-text search", read_document: "Read an SEC document", get_recent_filings: "Recent filings",
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
-  filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", book_status: "My book: which theses hold",
+  filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
 };
 
 /** This week's Newsroom stories that name a ticker, most important first, with links into YouBank. */
@@ -39,6 +39,30 @@ const tickerNewsTool = def({
     if (!t) return JSON.stringify({ error: `Not a ticker: ${ticker}` });
     const stories = (await newsFor([t])).get(t) ?? [];
     return JSON.stringify({ ticker: t, stories: stories.map((s) => ({ headline: s.headline, first_seen: s.at, source: ctx.addSource(s.headline, siteLink(`/app/news?story=${s.id}`)) })), note: stories.length ? undefined : "No stories naming this ticker in the last seven days." });
+  },
+});
+
+
+/** Check kill criteria for any ticker now, without saving: the Book's check, on demand. */
+const checkThesisTool = def({
+  name: "check_thesis",
+  description: "Check a thesis's kill criteria against a company's SEC XBRL filings and price right now, the way YouBank's Book does, without saving anything. Give the ticker, long or short, and criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%). Returns each criterion's figure, period, source, headroom and state (pass, near, fail, unknown) and the overall verdict. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price.",
+  schema: z.object({
+    ticker: z.string().min(1).max(12),
+    direction: z.enum(["long", "short"]).default("long"),
+    thesis: z.string().max(280).optional(),
+    criteria: z.array(z.object({ metric: z.enum(METRIC_KEYS as [string, ...string[]]), op: z.enum([">=", "<="]), value: z.number() })).min(1).max(8),
+  }),
+  run: async ({ ticker, direction, thesis, criteria }, ctx) => {
+    const p = normalizePosition({ ticker, direction, thesis: thesis || `${direction} ${ticker}`, criteria });
+    if (!p) return JSON.stringify({ error: `Not a ticker: ${ticker}` });
+    const [e] = await evaluateBook([p]);
+    if (!e || e.verdict === "unknown") return JSON.stringify({ ticker: p.ticker, verdict: "unknown", note: "The company's filings could not be read just now, or it is not a US SEC filer." });
+    return JSON.stringify({
+      ticker: e.ticker, name: e.name, direction: e.direction, verdict: e.verdict, score: e.score, summary: e.summary,
+      criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
+      note: "Nothing was saved. Add the position in YouBank → Book to have it checked after every close.",
+    });
   },
 });
 
@@ -122,7 +146,7 @@ export const PROMPTS: McpPrompt[] = [
 ];
 
 export function mcpServer(userId: string): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>];
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>];
   return {
     name: "youbank", title: "YouBank research", version: "1.0.0",
     instructions: [

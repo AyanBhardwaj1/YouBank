@@ -23,7 +23,7 @@ const TOOLS = [
   ["Company fundamentals", "LTM income, cash flow and balance sheet from SEC XBRL, with price and EV"], ["Trading comps", "a target against peers, with medians"],
   ["Filings", "search, read sections, EDGAR full text, recent filings, any sec.gov document"], ["What changed", "the latest 10-K or 10-Q against the one before"],
   ["XBRL series and insiders", "any reported concept over time; Form 4 transactions"], ["Private markets", "Form D raises and the startup directory"],
-  ["News", "this week's Newsroom stories for a ticker"], ["Your Book", "every position's thesis checked, exposure and P&L"],
+  ["News", "this week's Newsroom stories for a ticker"], ["Your Book", "every position's thesis checked, exposure and P&L"], ["Check a thesis", "any kill criteria against filings and price, without saving"],
 ];
 
 function Snippet({ title, code }: { title: string; code: string }) {

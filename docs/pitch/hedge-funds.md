@@ -46,14 +46,15 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 ### YouBank inside the fund's own AI apps: an MCP server (`/api/mcp`, Settings → Connect AI apps)
 
-- **What it offers.** Sixteen read-only tools over the Model Context Protocol (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
+- **What it offers.** Seventeen read-only tools over the Model Context Protocol (Streamable HTTP, versions 2025-03-26 through 2025-11-25):
   - SEC XBRL fundamentals and comps;
   - filing search and reading, EDGAR full text and recent filings;
   - XBRL time series and insider transactions;
   - "what changed in the 10-K";
   - Form D raises and startups;
   - a calculator and news for a ticker;
-  - the person's **Book**, with every thesis checked.
+  - the person's **Book**, with every thesis checked;
+  - `check_thesis`: any kill criteria checked against filings and the price on demand, without saving.
 - **Ready-made prompts.** *Review my book*, *Argue against a position*, *What changed in the latest filing* and *Earnings prep* appear in the AI app's slash or prompt menu. Each tells the model which YouBank tools to use and to cite every figure.
 - **Every figure is cited.** Each result carries source ids with links, so an answer written in Claude or ChatGPT can be checked like one written in YouBank. This answers vendor sprawl: one subscription, used from wherever the analyst already works.
 - **One URL to connect.** Claude and ChatGPT custom connectors take just the server address. YouBank implements the MCP authorization flow: OAuth 2.1 with PKCE, Protected Resource Metadata, and both Client ID Metadata Documents and Dynamic Client Registration. The person approves the app on a YouBank consent page, and the app receives its own revocable key.
