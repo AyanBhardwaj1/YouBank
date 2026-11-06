@@ -34,10 +34,12 @@ export async function POST(req: Request) {
     return rpcError(ERR.invalidRequest, "Sign in to YouBank to connect, or send a key from Settings → Connect AI apps as Authorization: Bearer <key>.", 401, { "WWW-Authenticate": `Bearer realm="YouBank MCP", resource_metadata="${meta}"`, ...CORS });
   }
   if (!(await withinRate(`mcp:${who.userId}`, 600, 3_600_000))) return rpcError(ERR.internal, "This key has made many calls this hour. Try again later.", 429, { "Retry-After": "600" });
+  // The kill switch (Settings → Connect AI apps): a paused app is refused before anything runs.
+  if (who.policy.paused) return rpcError(ERR.invalidRequest, `${who.keyName} is paused in YouBank (Settings → Connect AI apps). The person can resume it there.`, 403);
   let msg: unknown;
   try { msg = await req.json(); } catch { return rpcError(ERR.parse, "The body is not valid JSON.", 400); }
   try {
-    const res = await runAsUser(who.userId, () => dispatch(msg, mcpServer(who.userId, who.keyName)));
+    const res = await runAsUser(who.userId, () => dispatch(msg, mcpServer(who.userId, who.keyName, who.policy)));
     // Calls from the person's AI apps go in their research ledger too, when they keep one.
     const m = msg as { method?: unknown; params?: { name?: unknown; arguments?: unknown } };
     if (m?.method === "tools/call" && res?.result) {

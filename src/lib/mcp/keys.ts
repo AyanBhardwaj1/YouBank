@@ -12,9 +12,31 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 export const KEYS_MAX = 10;
 export const KEY_PREFIX = "ybm_";
 
-export type StoredKey = { id: string; name: string; hint: string; hash: string; createdAt: string; lastUsedAt: string | null; /** The OAuth client it was issued to, when an app connected with sign-in. */ client?: string };
+/**
+ * What a connected app may do: paused stops every call at once (the kill switch); book lets it read the
+ * person's Book and its risk; propose lets it propose positions. All on by default except paused.
+ */
+export type KeyPolicy = { paused: boolean; book: boolean; propose: boolean };
+export const DEFAULT_POLICY: KeyPolicy = { paused: false, book: true, propose: true };
+
+export type StoredKey = { id: string; name: string; hint: string; hash: string; createdAt: string; lastUsedAt: string | null; /** The OAuth client it was issued to, when an app connected with sign-in. */ client?: string; policy?: KeyPolicy };
+
+/** A stored policy, cleaned: anything missing is the default. */
+export function normalizePolicy(raw: unknown): KeyPolicy {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return { paused: r.paused === true, book: r.book !== false, propose: r.propose !== false && r.book !== false };
+}
+
+/** The tools a policy allows out of the server's list: no Book, no Book tools; no proposing, no propose_position. */
+export const BOOK_TOOLS = new Set(["book_status", "book_risk", "propose_position"]);
+export function toolAllowed(policy: KeyPolicy, tool: string): boolean {
+  if (policy.paused) return false;
+  if (!policy.book && BOOK_TOOLS.has(tool)) return false;
+  if (!policy.propose && tool === "propose_position") return false;
+  return true;
+}
 /** What Settings shows: never the hash. */
-export type KeyView = Omit<StoredKey, "hash">;
+export type KeyView = Omit<StoredKey, "hash" | "policy"> & { policy: KeyPolicy };
 
 export const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64url");
@@ -57,8 +79,8 @@ export function normalizeKeys(raw: unknown): StoredKey[] {
     const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
     if (typeof o.id !== "string" || !/^[a-f0-9]{12}$/.test(o.id) || seen.has(o.id) || typeof o.hash !== "string" || !/^[a-f0-9]{64}$/.test(o.hash)) return [];
     seen.add(o.id);
-    return [{ id: o.id, name: cleanKeyName(o.name), hint: typeof o.hint === "string" ? o.hint.slice(0, 20) : KEY_PREFIX, hash: o.hash, createdAt: typeof o.createdAt === "string" ? o.createdAt : "", lastUsedAt: typeof o.lastUsedAt === "string" ? o.lastUsedAt : null, ...(typeof o.client === "string" && o.client.length <= 500 ? { client: o.client } : {}) }];
+    return [{ id: o.id, name: cleanKeyName(o.name), hint: typeof o.hint === "string" ? o.hint.slice(0, 20) : KEY_PREFIX, hash: o.hash, createdAt: typeof o.createdAt === "string" ? o.createdAt : "", lastUsedAt: typeof o.lastUsedAt === "string" ? o.lastUsedAt : null, ...(typeof o.client === "string" && o.client.length <= 500 ? { client: o.client } : {}), ...(o.policy ? { policy: normalizePolicy(o.policy) } : {}) }];
   }).slice(0, KEYS_MAX);
 }
 
-export const viewOf = (k: StoredKey): KeyView => ({ id: k.id, name: k.name, hint: k.hint, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, ...(k.client ? { client: k.client } : {}) });
+export const viewOf = (k: StoredKey): KeyView => ({ id: k.id, name: k.name, hint: k.hint, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt, ...(k.client ? { client: k.client } : {}), policy: normalizePolicy(k.policy) });

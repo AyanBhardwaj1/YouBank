@@ -27,6 +27,7 @@ import { cachedRisk, riskOf, riskWhatIf } from "@/lib/book/risk-store";
 import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
+import { DEFAULT_POLICY, toolAllowed, type KeyPolicy } from "./keys";
 
 const OFFERED = new Set(["get_company_financials", "get_trading_comps", "search_companies", "search_filing", "read_filing", "edgar_fulltext_search", "read_document", "get_recent_filings", "get_xbrl_series", "get_insider_transactions", "calc", "form_d_search", "search_startups"]);
 
@@ -246,8 +247,10 @@ export const PROMPTS: McpPrompt[] = [
 ];
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
-export function mcpServer(userId: string, from = "An AI app"): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>];
+export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy = DEFAULT_POLICY): McpServer {
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
+    // What this app may use (Settings → Connect AI apps): tools it may not use are neither listed nor callable.
+    .filter((t) => toolAllowed(policy, t.name));
   return {
     name: "youbank", title: "YouBank research", version: "1.0.0",
     instructions: [

@@ -7,7 +7,7 @@
 import { eq } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { updateExtra } from "@/lib/prefs/extra";
-import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf, type KeyView } from "./keys";
+import { KEYS_MAX, makeKey, matchKey, normalizeKeys, normalizePolicy, parseKey, viewOf, type KeyPolicy, type KeyView } from "./keys";
 
 const status = (message: string, code: number) => Object.assign(new Error(message), { status: code });
 
@@ -35,8 +35,24 @@ export async function revokeKey(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => ({ ...extra, apiKeys: normalizeKeys(extra.apiKeys).filter((k) => k.id !== id) }));
 }
 
+/** Change what a connected app may do. Returns the key as Settings shows it, or null when it is gone. */
+export async function setPolicy(userId: string, id: string, change: Partial<KeyPolicy>): Promise<{ view: KeyView; before: KeyPolicy } | null> {
+  let out: { view: KeyView; before: KeyPolicy } | null = null;
+  await updateExtra(userId, (extra) => ({
+    ...extra,
+    apiKeys: normalizeKeys(extra.apiKeys).map((k) => {
+      if (k.id !== id) return k;
+      const before = normalizePolicy(k.policy);
+      const next = { ...k, policy: normalizePolicy({ ...before, ...change }) };
+      out = { view: viewOf(next), before };
+      return next;
+    }),
+  }));
+  return out;
+}
+
 /** Whose key this is (from an Authorization header), or null. */
-export async function authenticate(header: string | null): Promise<{ userId: string; keyId: string; keyName: string } | null> {
+export async function authenticate(header: string | null): Promise<{ userId: string; keyId: string; keyName: string; policy: KeyPolicy } | null> {
   const parsed = parseKey(header);
   if (!parsed) return null;
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, parsed.userId));
@@ -47,5 +63,5 @@ export async function authenticate(header: string | null): Promise<{ userId: str
     const at = new Date().toISOString();
     await updateExtra(parsed.userId, (extra) => ({ ...extra, apiKeys: normalizeKeys(extra.apiKeys).map((k) => (k.id === hit.id ? { ...k, lastUsedAt: at } : k)) })).catch(() => null);
   }
-  return { userId: parsed.userId, keyId: hit.id, keyName: hit.name };
+  return { userId: parsed.userId, keyId: hit.id, keyName: hit.name, policy: normalizePolicy(hit.policy) };
 }

@@ -61,6 +61,14 @@ async function main() {
   const tools = await rpc(K, "tools/list");
   const names = (tools.body.result?.tools ?? []).map((t: { name: string }) => t.name);
   check("tools include the Book, its risk and check_thesis", names.includes("book_status") && names.includes("book_risk") && names.includes("check_thesis"), names);
+  const keyId = key.body.view?.id as string;
+  await j("/api/settings/mcp-keys", { method: "PATCH", body: JSON.stringify({ id: keyId, paused: true }) });
+  const paused = await rpc(K, "tools/list");
+  check("a paused app is refused before anything runs", paused.status === 403 && /paused/.test(paused.body?.error?.message ?? ""), paused.body);
+  await j("/api/settings/mcp-keys", { method: "PATCH", body: JSON.stringify({ id: keyId, paused: false, book: false }) });
+  const noBook = ((await rpc(K, "tools/list")).body.result?.tools ?? []).map((t: { name: string }) => t.name);
+  check("an app kept from the Book does not see the Book's tools", noBook.length > 0 && !noBook.includes("book_status") && !noBook.includes("propose_position") && noBook.includes("check_thesis"), noBook);
+  await j("/api/settings/mcp-keys", { method: "PATCH", body: JSON.stringify({ id: keyId, book: true, propose: true }) });
   const prompts = await rpc(K, "prompts/list");
   check("five prompts", (prompts.body.result?.prompts ?? []).length === 5, prompts.body);
   const ct = await rpc(K, "tools/call", { name: "check_thesis", arguments: { ticker: "MSFT", criteria: [{ metric: "gross_margin", op: ">=", value: 50 }] } });

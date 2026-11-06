@@ -13,7 +13,8 @@ import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
 import { siteLink } from "@/lib/site";
 
-type Key = { id: string; name: string; hint: string; createdAt: string; lastUsedAt: string | null };
+type Policy = { paused: boolean; book: boolean; propose: boolean };
+type Key = { id: string; name: string; hint: string; createdAt: string; lastUsedAt: string | null; policy?: Policy };
 
 const input = "ctl w-full border border-line bg-panel px-2.5 py-2 text-[13px] text-fg outline-none focus:border-accent";
 const primary = "ctl bg-accent px-3 py-2 text-[12.5px] font-semibold text-accent-fg disabled:opacity-60";
@@ -54,6 +55,12 @@ export function ConnectAISettings() {
       setFresh({ key: r.key, name: r.view.name }); setName(""); await load();
     } catch (e) { setErr(errorMessage(e)); } finally { setBusy(false); }
   };
+  // What a connected app may do: pause it (every call refused), and whether it may read the Book or propose.
+  const setPolicy = async (k: Key, change: Partial<Policy>) => {
+    setErr("");
+    try { await fetchJson("/api/settings/mcp-keys", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: k.id, ...change }) }); await load(); }
+    catch (e) { setErr(errorMessage(e)); }
+  };
   const revoke = async (k: Key) => {
     if (!(await confirmDialog({ title: `Revoke “${k.name}”?`, body: "Apps using this key stop reaching YouBank at once.", confirmLabel: "Revoke", tone: "danger" }))) return;
     try { await fetchJson(`/api/settings/mcp-keys?id=${k.id}`, { method: "DELETE" }); if (fresh && keys?.length === 1) setFresh(null); await load(); } catch (e) { setErr(errorMessage(e)); }
@@ -67,7 +74,7 @@ export function ConnectAISettings() {
       <section className="panel p-4">
         <div className="flex items-center gap-2"><Icon name="Bot" className="h-4 w-4 text-accent" /><h2 className="text-[14px] font-semibold">Use YouBank from your AI apps</h2></div>
         <p className="mt-1 text-[12.5px] text-muted">
-          YouBank is an MCP server: Claude, ChatGPT, Cursor and your own agents can call its research tools under your account. Every figure comes back with the filing, XBRL fact or price feed it is from, so an answer written elsewhere can be checked the same way as one written here. Nothing trades, sends or changes your data: an app can only propose a position, which waits in your Book until you add it.
+          YouBank is an MCP server: Claude, ChatGPT, Cursor and your own agents can call its research tools under your account. Every figure comes back with the filing, XBRL fact or price feed it is from, so an answer written elsewhere can be checked the same way as one written here. Nothing trades, sends or changes your data: an app can only propose a position, which waits in your Book until you add it. Each app below can be paused at once, or kept from your Book; every change is noted in your research ledger.
         </p>
         <ul className="mt-3 grid gap-x-4 gap-y-1 text-[12px] sm:grid-cols-2">
           {TOOLS.map(([t, d]) => <li key={t}><span className="font-semibold">{t}</span> <span className="text-muted">· {d}</span></li>)}
@@ -92,7 +99,13 @@ export function ConnectAISettings() {
               <li key={k.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
                 <span className="font-semibold">{k.name}</span><span className="num text-muted">{k.hint}</span>
                 <span className="text-[11px] text-muted">made {when(k.createdAt)} · last used {when(k.lastUsedAt)}</span>
+                {k.policy?.paused && <span className="ctl bg-neg/15 px-1.5 py-0.5 text-[10.5px] font-semibold uppercase text-neg">Paused</span>}
                 <button type="button" onClick={() => revoke(k)} className="ml-auto text-[11.5px] text-muted hover:text-neg">Revoke</button>
+                <span className="flex basis-full flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted">
+                  <label className="flex items-center gap-1.5"><input type="checkbox" checked={!(k.policy?.paused ?? false)} onChange={(e) => void setPolicy(k, { paused: !e.target.checked })} />Active</label>
+                  <label className={`flex items-center gap-1.5 ${k.policy?.paused ? "opacity-60" : ""}`}><input type="checkbox" checked={k.policy?.book ?? true} disabled={k.policy?.paused} onChange={(e) => void setPolicy(k, { book: e.target.checked, ...(e.target.checked ? {} : { propose: false }) })} />May read my Book and its risk</label>
+                  <label className={`flex items-center gap-1.5 ${k.policy?.paused || !(k.policy?.book ?? true) ? "opacity-60" : ""}`}><input type="checkbox" checked={k.policy?.propose ?? true} disabled={k.policy?.paused || !(k.policy?.book ?? true)} onChange={(e) => void setPolicy(k, { propose: e.target.checked })} />May propose positions</label>
+                </span>
               </li>
             ))}
           </ul>

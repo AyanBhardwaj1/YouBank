@@ -2,6 +2,7 @@
 import { KEYS_MAX, makeKey, matchKey, normalizeKeys, parseKey, viewOf } from "@/lib/mcp/keys";
 import { dispatch, LATEST_PROTOCOL, withSources, type McpServer } from "@/lib/mcp/protocol";
 import { mcpServer, PROMPTS } from "@/lib/mcp/server";
+import { normalizePolicy, toolAllowed } from "@/lib/mcp/keys";
 import { authServerMetadata, clientFrom, isMetadataClientId, parseAuthorize, pkceOk, redirectOk, redirectWith, resourceMetadata, secretFrom, secretMatches } from "@/lib/mcp/oauth";
 import { createHash } from "node:crypto";
 
@@ -73,6 +74,11 @@ async function main() {
   ok("the pre-trade check carries the side and weight into book_risk's what_if, defaulting to long at 2%", [ptc.build({ ticker: "$amd", direction: "short", weight: "3" }).includes("what_if { ticker: AMD, direction: short, weight_pct_nav: 3 }"), ptc.build({ ticker: "amd" }).includes("long AMD at 2% of NAV.")], [true, true]);
   ok("\"Short\" and \"3%\" are read as meant; an unreadable weight falls back to 2% and says so", [ptc.build({ ticker: "amd", direction: "Short", weight: "3%" }).includes("short AMD at 3% of NAV."), ptc.build({ ticker: "amd", direction: "SHORT", weight: " 4.5 % " }).includes("direction: short, weight_pct_nav: 4.5"), ptc.build({ ticker: "amd", weight: "lots" }).includes('the weight "lots" could not be read, so 2% is used')], [true, true, true]);
   ok("a ticker argument is cleaned", PROMPTS[1].build({ ticker: "$snow" }).includes("position in SNOW."), true);
+  ok("a policy: missing is the default; no Book also means no proposing", [normalizePolicy(undefined), normalizePolicy({ book: false, propose: true }), normalizePolicy({ paused: true })], [{ paused: false, book: true, propose: true }, { paused: false, book: false, propose: false }, { paused: true, book: true, propose: true }]);
+  const noBook = mcpServer("u", "App", normalizePolicy({ book: false })), noPropose = mcpServer("u", "App", normalizePolicy({ propose: false }));
+  ok("an app kept from the Book sees no Book tools; one kept from proposing sees no propose_position; paused allows nothing", [noBook.tools.some((t) => ["book_status", "book_risk", "propose_position"].includes(t.name)), noBook.tools.some((t) => t.name === "check_thesis"), noPropose.tools.some((t) => t.name === "propose_position"), noPropose.tools.some((t) => t.name === "book_status"), toolAllowed(normalizePolicy({ paused: true }), "calc")], [false, true, false, true, false]);
+  const blocked = await dispatch({ jsonrpc: "2.0", id: 31, method: "tools/call", params: { name: "book_status", arguments: {} } }, noBook) as { error?: { code: number } };
+  ok("calling a withheld tool is refused as unknown", blocked.error?.code, -32602);
   const listed = await dispatch({ jsonrpc: "2.0", id: 30, method: "tools/list" }, real) as { result: { tools: { name: string; annotations: { readOnlyHint: boolean; destructiveHint?: boolean } }[] } };
   const ann = Object.fromEntries(listed.result.tools.map((t) => [t.name, t.annotations]));
   ok("only propose_position writes (and destroys nothing); every other tool says read-only", [ann.propose_position, listed.result.tools.filter((t) => t.name !== "propose_position").every((t) => t.annotations.readOnlyHint === true), !!ann.book_risk], [{ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, true, true]);
