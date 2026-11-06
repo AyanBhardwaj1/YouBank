@@ -2,9 +2,16 @@
  * Home's "Getting started": the few steps that make YouBank useful to a new person, each ticked from
  * what they have actually done (GET /api/desk/checklist), never from a click on the list. Pure.
  */
-export type ChecklistFacts = { asked: boolean; ranTool: boolean; mail: boolean; calendar: boolean; twoFactor: boolean; styled: boolean; installed: boolean };
+export type ChecklistFacts = { asked: boolean; ranTool: boolean; mail: boolean; calendar: boolean; twoFactor: boolean; styled: boolean; installed: boolean; book?: boolean; aiApp?: boolean };
 
 export type ChecklistStep = { id: keyof ChecklistFacts; label: string; hint: string; href: string; cta: string };
+
+/** For a fund (public markets, private equity): the Book and their own AI app come first, since they are the product. */
+export const FUND_STEPS: ChecklistStep[] = [
+  { id: "book", label: "Put your book in", hint: "Paste it from a spreadsheet or try the sample: every thesis checked against filings after each close.", href: "/app/book", cta: "Open the Book" },
+  { id: "aiApp", label: "Connect an AI app", hint: "Claude, ChatGPT or Cursor gets your Book and YouBank's research, with sources, under your control.", href: "/app/settings?tab=connect", cta: "Connect" },
+];
+export const FUND_ROLES: ReadonlySet<string> = new Set(["markets", "pe"]);
 
 export const STEPS: ChecklistStep[] = [
   { id: "asked", label: "Ask your first question", hint: "Any company, filing or number. Answers come with their sources.", href: "/app/terminal?fn=AI", cta: "Ask" },
@@ -16,8 +23,8 @@ export const STEPS: ChecklistStep[] = [
   { id: "installed", label: "Install the app", hint: "Its own window and icon, on your phone or desktop.", href: "/download", cta: "Install" },
 ];
 
-export function checklist(f: ChecklistFacts): { steps: (ChecklistStep & { done: boolean })[]; done: number; total: number; next: ChecklistStep | null } {
-  const steps = STEPS.map((s) => ({ ...s, done: !!f[s.id] }));
+export function checklist(f: ChecklistFacts, role?: string | null): { steps: (ChecklistStep & { done: boolean })[]; done: number; total: number; next: ChecklistStep | null } {
+  const steps = [...(role && FUND_ROLES.has(role) ? FUND_STEPS : []), ...STEPS].map((s) => ({ ...s, done: !!f[s.id] }));
   const done = steps.filter((s) => s.done).length;
   return { steps, done, total: steps.length, next: steps.find((s) => !s.done) ?? null };
 }

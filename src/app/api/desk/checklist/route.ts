@@ -21,11 +21,15 @@ export async function GET() {
       any(db.select({ id: schema.emailAccounts.id }).from(schema.emailAccounts).where(eq(schema.emailAccounts.userId, user.id)).limit(1)),
       any(db.select({ id: schema.calendarAccounts.id }).from(schema.calendarAccounts).where(eq(schema.calendarAccounts.userId, user.id)).limit(1)),
       db.select({ on: schema.authUsers.twoFactorEnabled }).from(schema.authUsers).where(eq(schema.authUsers.id, user.id)).limit(1).then((r) => !!r[0]?.on).catch(() => false),
-      db.select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).limit(1).then((r) => r[0]?.extra ?? {}).catch(() => ({})),
+      db.select({ extra: schema.profiles.extra, role: schema.profiles.role }).from(schema.profiles).where(eq(schema.profiles.userId, user.id)).limit(1).then((r) => r[0] ?? { extra: {}, role: "" }).catch(() => ({ extra: {}, role: "" })),
       // The desktop app paired counts as installed too.
       any(db.select({ id: schema.desktopDevices.id }).from(schema.desktopDevices).where(eq(schema.desktopDevices.userId, user.id)).limit(1)),
     ]);
-    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(profile), desktop };
+    const extra = (profile.extra ?? {}) as Record<string, unknown>;
+    // For a fund: a book with a position in it (or one closed), and an AI app connected (an MCP key).
+    const book = (Array.isArray(extra.book) && extra.book.length > 0) || (Array.isArray(extra.bookClosed) && extra.bookClosed.length > 0);
+    const aiApp = Array.isArray(extra.apiKeys) && extra.apiKeys.length > 0;
+    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean; role: string } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(extra), desktop, book, aiApp, role: profile.role };
     return NextResponse.json(facts, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
