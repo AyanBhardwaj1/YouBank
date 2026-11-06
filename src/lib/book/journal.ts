@@ -30,6 +30,8 @@ export type ClosedPosition = {
   conviction?: Conviction; convictionBrokeOn?: string | null;
   /** The AI committee's forecast, kept the same way, so its calibration survives the close. */
   aiConviction?: Conviction; aiConvictionBrokeOn?: string | null;
+  /** The AI committee's last call before the close, if it sat: to see whether its calls tracked outcomes. */
+  aiDecision?: "add" | "hold" | "trim" | "exit";
   /** Earlier forecasts that were replaced while it was open, each with its first break after it was made. */
   pastForecasts?: { f: Conviction; brokeOn: string | null }[];
 };
@@ -53,6 +55,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: breakAfter(p.conviction, history) } : {}),
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
     ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
+    ...(p.committee ? { aiDecision: p.committee.decision } : {}),
   };
 }
 
@@ -73,6 +76,7 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       reason: isReason(r.reason) ? r.reason : "other", note: clip(r.note, 280), thesis: p.thesis, criteria: p.criteria,
       verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
+      ...(r.aiDecision === "add" || r.aiDecision === "hold" || r.aiDecision === "trim" || r.aiDecision === "exit" ? { aiDecision: r.aiDecision } : {}),
       ...(typeof r.brokenSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokenSince) ? { brokenSince: r.brokenSince } : {}),
       ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),
       ...(() => { const a = normalizeConviction({ ...(r.aiConviction && typeof r.aiConviction === "object" ? r.aiConviction : {}), source: "AI committee" }); return a && r.aiConviction ? { aiConviction: a, aiConvictionBrokeOn: typeof r.aiConvictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.aiConvictionBrokeOn) ? r.aiConvictionBrokeOn : null } : {}; })(),
@@ -106,6 +110,8 @@ export type Scorecard = {
    * still broken at the close and had been for more than five days. Over closes with a return; tickers in each box.
    */
   process: { earned: string[]; unlucky: string[]; lucky: string[]; deserved: string[] } | null;
+  /** Returns grouped by the AI committee's last call before the close (closes with a return and a sitting). */
+  byCommittee: { decision: "add" | "hold" | "trim" | "exit"; n: number; avgReturn: number | null }[];
 };
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -132,6 +138,10 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
     byReason,
     broke: broke.length, exitedOnBreak: lags.filter((d) => d <= 5).length, medianDaysToExit: median(lags),
     counterfactual: cf.length ? { n: cf.length, onBreak: r4(mean(cf.map((x) => x.onBreak)))!, taken: r4(mean(cf.map((x) => x.taken)))! } : null,
+    byCommittee: (["add", "hold", "trim", "exit"] as const).map((decision) => {
+      const xs = rets.filter((x) => x.c.aiDecision === decision).map((x) => x.r);
+      return { decision, n: xs.length, avgReturn: r4(mean(xs)) };
+    }).filter((x) => x.n > 0),
     process: rets.length ? (() => {
       const box = { earned: [] as string[], unlucky: [] as string[], lucky: [] as string[], deserved: [] as string[] };
       for (const { c, r } of rets) {

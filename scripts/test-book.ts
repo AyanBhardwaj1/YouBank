@@ -438,5 +438,14 @@ console.log("The Friday brief");
   ok("after Friday's close the week's headline goes to the bell once (keyed by the week), linking to the page; not on other days or for an empty book", [a?.key, a?.url, a?.body, weekAlert({ now: thu, book: [pF], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example"), weekAlert({ now: fri, book: [], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example")], ["book:week:2026-11-13", "https://x.example/report/week", "A quiet week: no thesis changed verdict.", null, null]);
 }
 
+console.log("Returns by the committee's call");
+{
+  const withCall = (id: string, entry: number, exit: number, aiDecision?: "add" | "hold" | "trim" | "exit") => ({ ...mk2(id, entry, exit, "other"), ...(aiDecision ? { aiDecision } : {}) });
+  const sc2 = scorecard([withCall("k1", 100, 80, "exit"), withCall("k2", 100, 90, "exit"), withCall("k3", 100, 130, "hold"), withCall("k4", 100, 110)]);
+  ok("closes are grouped by the committee's last call; ones it never sat on are left out", sc2.byCommittee, [{ decision: "hold", n: 1, avgReturn: 0.3 }, { decision: "exit", n: 2, avgReturn: -0.15 }]);
+  const cl = closedFrom(normalizePosition({ ...t, id: "kc01", committee: committeeFrom({ decision: "trim", probability: 50, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")) })!, "intact", [], 90, "other", "", now);
+  ok("a close keeps the committee's last call through storage", normalizeJournal([JSON.parse(JSON.stringify(cl))])[0]?.aiDecision, "trim");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

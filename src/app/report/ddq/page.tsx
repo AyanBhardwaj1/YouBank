@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { LetterEditor } from "@/components/book/LetterEditor";
 import { currentUser } from "@/lib/auth/user";
-import { calibrationOf } from "@/lib/book/journal";
+import { calibrationOf, scorecard } from "@/lib/book/journal";
 import { loadBook, loadBookHistory, loadJournal } from "@/lib/book/store";
 import { ddqMarkdown, draftDdq } from "@/lib/ledger/ddq";
 import { governance, periodOf } from "@/lib/ledger/governance";
@@ -40,7 +40,7 @@ export default async function DdqPage({ searchParams }: { searchParams: Promise<
     firm, period: period.label, now, g,
     ledger: { on: ledgerOn, since: settings?.since ?? null, chainOk: verification ? verification.ok : null, checked: verification?.checked ?? null, anchors: anchors.length, anchorsMatch: anchors.filter((a) => a.state === "matches").length },
     apps: keys.map((k) => ({ name: k.name, paused: k.policy.paused, book: k.policy.book, propose: k.policy.propose, lastUsedAt: k.lastUsedAt })),
-    calibration: calibrationOf(book, history, closed, now), committees: book.filter((p) => p.committee).length,
+    calibration: calibrationOf(book, history, closed, now), committees: book.filter((p) => p.committee).length, committeeCalls: scorecard(closed).byCommittee,
   });
   const draft = ddqMarkdown(items, firm, period.label, now);
   const months = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)).toISOString().slice(0, 7));

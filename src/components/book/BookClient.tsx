@@ -725,6 +725,7 @@ function TrackRecord({ sig }: { sig: string }) {
                 <p className="mt-1 text-[11px] text-muted">Judge the decisions, not just the results: a win taken after ignoring a broken thesis is luck to not repeat.</p>
               </div>
             )}
+            {s.byCommittee.length > 0 && <p className="text-[12px] text-muted" title="Closed positions grouped by the AI committee's last call before the close">By the AI committee&apos;s last call: {s.byCommittee.map((x) => `${DECISIONS[x.decision]} ${x.n}${x.avgReturn !== null ? ` (${pctS(x.avgReturn)})` : ""}`).join(" · ")}. If its exit and trim calls sit on the losers, it is earning its keep.</p>}
             {s.byReason.length > 0 && <p className="text-[12px] text-muted">By reason: {s.byReason.map((r) => `${r.label} ${r.n}${r.avgReturn !== null ? ` (${pctS(r.avgReturn)})` : ""}`).join(" · ")}</p>}
             <ul className="text-[12px]">
               {d.closed.slice(0, 30).map((c) => {

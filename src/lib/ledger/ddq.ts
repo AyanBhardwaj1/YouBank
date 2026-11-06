@@ -21,6 +21,8 @@ export type DdqInput = {
   calibration: Calibration | null;
   /** Positions whose last AI committee sitting is on record. */
   committees: number;
+  /** Closed positions' returns by the committee's last call before the close (scorecard byCommittee). */
+  committeeCalls?: { decision: "add" | "hold" | "trim" | "exit"; n: number; avgReturn: number | null }[];
 };
 export type DdqItem = { id: string; topic: string; q: string; a: string };
 
@@ -84,6 +86,7 @@ export function draftDdq(i: DdqInput): DdqItem[] {
       "Forecasts are recorded before the outcome is known and scored when they resolve: the probability that a position's kill criteria hold to a date, scored with the Brier score.",
       ai && pm ? `To date the AI committee's Brier score is ${ai.brier.toFixed(3)} on ${ai.n} resolved forecast${ai.n === 1 ? "" : "s"} and the portfolio managers' is ${pm.brier.toFixed(3)} on ${pm.n} (lower is better).` : c && c.n ? `${c.n} forecast${c.n === 1 ? " has" : "s have"} resolved so far${c.brier !== null ? `, with a Brier score of ${c.brier.toFixed(3)}` : ""}.` : "No forecast has resolved yet; the record starts with the first one.",
       i.committees ? `${i.committees} position${i.committees === 1 ? " has" : "s have"} an AI committee recommendation on record.` : "",
+      i.committeeCalls?.length ? `Closed positions by the committee's last call before the close: ${list(i.committeeCalls.map((c) => `${c.decision} ${c.n}${c.avgReturn !== null ? ` (average ${c.avgReturn >= 0 ? "+" : "−"}${Math.abs(c.avgReturn * 100).toFixed(1)}%)` : ""}`))}. These are position price moves before costs, not fund performance.` : "",
     ].filter(Boolean).join(" "),
   });
 
