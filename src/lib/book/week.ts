@@ -68,6 +68,16 @@ export function weekBrief(i: WeekInput): WeekBrief {
     if (e.earnings && e.earnings.inDays >= 0 && e.earnings.inDays <= 14) coming.push({ positionId: e.positionId, ticker: e.ticker, label: `Earnings${e.earnings.estimated ? " (estimated)" : ""}`, date: e.earnings.date, inDays: e.earnings.inDays });
     for (const c of e.catalysts) if (c.inDays >= 0 && c.inDays <= 14) coming.push({ positionId: e.positionId, ticker: e.ticker, label: c.label, date: c.date, inDays: c.inDays });
   }
+  // Forecasts about to be scored (still open, their date within two weeks), the PM's and the committee's.
+  const today0 = Date.parse(`${to}T00:00:00Z`);
+  const open = forecastItems(i.book, i.history, [], i.now).filter((x) => x.outcome === null);
+  for (const p of i.book) {
+    for (const f of [p.conviction, p.committee?.forecast ?? undefined]) {
+      if (!f || f.source === "Sample" || !open.some((x) => x.ticker === p.ticker && x.by === f.by && x.p === f.p)) continue;
+      const inDays = Math.round((Date.parse(`${f.by}T00:00:00Z`) - today0) / 86_400_000);
+      if (inDays >= 0 && inDays <= 14) coming.push({ positionId: p.id, ticker: p.ticker, label: `${f.source === "You" ? "Your" : `${f.source}'s`} ${Math.round(f.p * 100)}% forecast is scored`, date: f.by, inDays });
+    }
+  }
   coming.sort((a, b) => a.inDays - b.inDays || a.ticker.localeCompare(b.ticker));
 
   const proposals = i.proposals.map((p) => ({ ticker: p.position.ticker, from: p.from }));

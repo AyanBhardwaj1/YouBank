@@ -459,5 +459,14 @@ console.log("Figure check: the third review's cases");
   ok("a name with a comma still matches, and a wrong figure is still caught", got("Salesforce operating margin was 33%."), [["CRM", "operating margin", 33]]);
 }
 
+console.log("Forecasts about to be scored");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pS = normalizePosition({ ...t, catalysts: [], id: "fsc1", ticker: "FSC", conviction: { p: 70, by: "2026-11-15", at: "2026-09-01" } })!;
+  const pL = normalizePosition({ ...t, catalysts: [], id: "fsc2", ticker: "FSL", conviction: { p: 70, by: "2027-01-15", at: "2026-09-01" } })!;
+  const pX = normalizePosition({ ...t, catalysts: [], id: "fsc3", ticker: "FSX", conviction: { p: 70, by: "2026-11-15", at: "2026-09-01", source: "Sample" } })!;
+  ok("an open forecast due within two weeks is listed as coming; a later or sample one is not", weekBrief({ now: wNow, book: [pS, pL, pX], evals: [], history: { fsc1: [{ d: "2026-10-01", v: "intact", s: 100 }] }, closed: [], proposals: [] }).coming.map((c) => [c.ticker, c.label, c.inDays]), [["FSC", "Your 70% forecast is scored", 6]]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
