@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "The week in your book", robots: { index: false } };
 
 const TONE = { intact: "text-pos", watch: "text-accent", broken: "text-neg", unknown: "text-muted" } as const;
+function H({ children }: { children: React.ReactNode }) { return <h2 className="mt-5 text-[10px] uppercase tracking-wider text-muted">{children}</h2>; }
 const pct = (x: number | null) => (x === null ? "" : ` (${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(1)}%)`);
 
 /**
@@ -23,7 +24,6 @@ export default async function WeekPage() {
   const [book, history, closed, proposals] = await Promise.all([loadBook(user.id), loadBookHistory(user.id).catch(() => ({})), loadJournal(user.id).catch(() => []), loadProposals(user.id).catch(() => [])]);
   const evals = await evaluateBook(book, now);
   const w = weekBrief({ now, book, evals, history, closed, proposals });
-  const H = ({ children }: { children: React.ReactNode }) => <h2 className="mt-5 text-[10px] uppercase tracking-wider text-muted">{children}</h2>;
   const none = (t: string) => <p className="mt-0.5 text-muted">{t}</p>;
   return (
     <main className="min-h-dvh bg-bg text-fg print:bg-white print:text-black">
