@@ -152,6 +152,12 @@ async function main() {
     const relabel = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: { p: 60, by: later, source: "AI committee" } }) });
     check("a posted forecast cannot claim to be the AI committee's", relabel.body.position?.conviction?.source !== "AI committee", relabel.body.position?.conviction);
     await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });
+    const jw = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, weight: Number(target.weight ?? 0) + 1, log: [{ at: "2020-01-01T00:00:00Z", text: "forged" }] }) });
+    const jlog = (jw.body.position?.log ?? []) as { text: string; auto?: boolean }[];
+    check("a change is written to the decision journal by the server; a posted journal is ignored", jlog.some((x) => x.auto && /^Weight /.test(x.text)) && !jlog.some((x) => x.text === "forged"), jlog);
+    const jn = await j("/api/book/note", { method: "POST", body: JSON.stringify({ id: target.id, text: "e2e: why we sized up" }) });
+    check("a note is added to the decision journal, dated", jn.status === 200 && jn.body.log?.some((x: { text: string; at: string }) => x.text === "e2e: why we sized up" && x.at), jn.body);
+    await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });
     const cm404 = await j("/api/book/committee", { method: "POST", body: JSON.stringify({ id: "no-such-position" }) });
     check("the committee needs a position in the book", cm404.status === 404, cm404.body);
     const cmSt = await j(`/api/book/committee?id=${encodeURIComponent(target.id)}`);

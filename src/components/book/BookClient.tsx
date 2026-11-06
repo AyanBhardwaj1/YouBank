@@ -22,6 +22,7 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
+import type { LogEntry } from "@/lib/book/decisions";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -183,6 +184,42 @@ function Editor({ initial, onSaved, onCancel, heading, market }: { initial: Draf
         <button type="button" onClick={onCancel} className="ctl px-3 py-1.5 text-[12px] text-muted hover:text-fg">Cancel</button>
       </div>
     </section>
+  );
+}
+
+/* ---------------- The decision journal ---------------- */
+
+function DecisionJournal({ log, id, readOnly, onChanged }: { log: LogEntry[]; id: string; readOnly: boolean; onChanged?: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [all, setAll] = useState(false);
+  if (readOnly && !log.length) return null;
+  const shown = all ? [...log].reverse() : [...log].reverse().slice(0, 4);
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    setBusy(true); setErr("");
+    try { await fetchJson("/api/book/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, text }) }); setText(""); onChanged?.(); }
+    catch (x) { setErr(errorMessage(x)); } finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-md border border-line p-2.5" aria-label="Decision journal">
+      <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">Decision journal</h3>
+      {log.length ? (
+        <ul className="space-y-0.5 text-[11.5px]">
+          {shown.map((x, i) => <li key={i} className="flex gap-2"><span className="num shrink-0 text-muted">{x.at.slice(0, 10)}</span><span className={x.auto ? "text-muted" : ""}>{x.text}</span></li>)}
+        </ul>
+      ) : <p className="text-[11.5px] text-muted">Changes to this position are written here as they happen. Add why you made them, so the record shows your reasons, not just your results.</p>}
+      {log.length > 4 && <button type="button" onClick={() => setAll((v) => !v)} className="mt-0.5 text-[11px] text-muted hover:text-fg">{all ? "Show fewer" : `Show all ${log.length}`}</button>}
+      {!readOnly && (
+        <form onSubmit={add} className="mt-1.5 flex gap-1.5">
+          <input aria-label="Note for the decision journal" value={text} onChange={(e) => setText(e.target.value)} maxLength={500} placeholder="Why: e.g. added after the call, margins guided up" className="ctl min-w-0 flex-1 border border-line bg-bg px-2 py-1 text-[12px] focus:border-accent/60 focus:outline-none" />
+          <button type="submit" disabled={busy || !text.trim()} className="ctl border border-line px-2 py-1 text-[11.5px] text-muted hover:text-fg disabled:opacity-50">{busy ? "Saving…" : "Add note"}</button>
+        </form>
+      )}
+      {err && <p role="alert" className="mt-1 text-[11.5px] text-neg">{err}</p>}
+    </div>
   );
 }
 
@@ -381,6 +418,7 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
               ? <div className="prose-sm text-[12px] leading-relaxed"><Markdown text={position.redTeam.text} sources={position.redTeam.sources} /></div>
               : owner ? <p className="text-[11.5px] text-muted">No red team has been run on this position yet.</p> : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
           </div>
+          <DecisionJournal log={position?.log ?? []} id={ev.positionId} readOnly={!!owner} onChanged={onChanged} />
           {!owner ? <CommitteePanel c={position?.committee} busy={busy} onRun={convene} direction={ev.direction} /> : position?.committee ? <CommitteePanel c={position.committee} busy="" direction={ev.direction} /> : null}
           {err && <p role="alert" className="text-neg">{err}</p>}
           <div className="flex flex-wrap gap-3 text-[11.5px]">

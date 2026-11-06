@@ -13,6 +13,7 @@ import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
+import { changesOf, LOG_MAX, normalizeLog, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -493,6 +494,19 @@ console.log("Kill criteria that cannot fail");
 {
   const mkc = (metric: "revenue_growth" | "rule_of_40" | "pe" | "price" | "return_since_entry", value: number, room: number, state: "pass" | "near" | "fail" = "pass") => ({ criterion: { id: metric, metric, op: ">=" as const, value }, label: metric, state, actual: 0, shown: "", target: "", headroom: { value: room, shown: `+${room}` }, evidence: null });
   ok("growth with 75 points of room, a rule of 40 with 40, a multiple at triple its line are toothless; a tight one, a price line, a stop or a failing one are not", toothless([mkc("revenue_growth", -50, 75), mkc("revenue_growth", 20, 4.7), mkc("rule_of_40", 0, 40), mkc("pe", 5, 200), mkc("price", 10, 900), mkc("return_since_entry", -15, 60), mkc("revenue_growth", 20, 30, "fail")]).map((x) => x.label), ["revenue_growth", "rule_of_40", "pe"]);
+}
+
+console.log("Decision journal");
+{
+  const a = normalizePosition({ ...t, id: "dj01", weight: 3, conviction: { p: 70, by: "2027-02-01", at: "2026-11-01" } })!;
+  const b = normalizePosition({ ...a, weight: 5, thesis: "A rewritten thesis for the journal.", conviction: { p: 55, by: "2027-02-01", at: "2026-11-06" } })!;
+  ok("a save writes what changed: weight, thesis, forecast; nothing when nothing changed; an opening for a new position", [changesOf(a, b), changesOf(a, a), changesOf(null, a)[0].startsWith("Opened: long")], [["Weight 3% → 5% of NAV.", "Thesis rewritten.", "Forecast 70% to 2027-02-01 → 55% to 2027-02-01."], [], true]);
+  const log = withEntries([], ["Weight 3% → 5% of NAV."], "2026-11-06T10:00:00.000Z", "  added after the call  ");
+  ok("entries are dated; the change is marked automatic and the note is the PM's", log, [{ at: "2026-11-06T10:00:00.000Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-11-06T10:00:00.000Z", text: "added after the call" }]);
+  ok("the journal is kept to the newest entries, and junk is dropped", [withEntries(Array.from({ length: LOG_MAX }, (_, k) => ({ at: "2026-11-01T00:00:00Z", text: `e${k}` })), ["new"], "2026-11-06T00:00:00Z").length, normalizeLog([{ at: "bad", text: "x" }, { at: "2026-11-06T00:00:00Z", text: "" }, { at: "2026-11-06T00:00:00Z", text: "ok" }])], [LOG_MAX, [{ at: "2026-11-06T00:00:00Z", text: "ok" }]]);
+  const withLog = normalizePosition({ ...a, log })!;
+  const closedLog = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(withLog, "intact", [], 120, "target", "", new Date("2026-11-20T00:00:00Z"))))])[0]?.log;
+  ok("the journal is kept through the close, ending with it", [closedLog?.length, closedLog?.[closedLog.length - 1]?.text], [3, "Closed: target reached at $120."]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

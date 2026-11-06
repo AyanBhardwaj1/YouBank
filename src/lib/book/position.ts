@@ -21,6 +21,7 @@ import { isFresh, type FilingFact } from "./filings";
 import { nextPrint, type PrintBar } from "./print";
 import { normalizeConviction, PAST_FORECASTS_MAX, type Conviction } from "./forecast";
 import { normalizeCommittee, type Committee } from "./committee";
+import { normalizeLog, type LogEntry } from "./decisions";
 
 export type Direction = "long" | "short";
 export type Op = ">=" | "<=";
@@ -66,6 +67,8 @@ export type Position = {
   committee?: Committee;
   /** Forecasts (the PM's or the committee's) replaced or removed after the day they were made: still scored (./forecast.ts supersede). Server-written only. */
   pastForecasts?: Conviction[];
+  /** The decision journal (./decisions.ts): server-written entries for each change, and the PM's notes. */
+  log?: LogEntry[];
 };
 
 export const POSITIONS_MAX = 25;
@@ -110,6 +113,7 @@ export function normalizePosition(raw: unknown, now = new Date().toISOString()):
     ...(() => { const c = normalizeConviction(r.conviction); return c ? { conviction: c } : {}; })(),
     ...(() => { const c = normalizeCommittee(r.committee); return c ? { committee: c } : {}; })(),
     ...(() => { const xs = (Array.isArray(r.pastForecasts) ? r.pastForecasts : []).flatMap((x) => { const c = normalizeConviction(x); return c ? [c] : []; }).slice(-PAST_FORECASTS_MAX); return xs.length ? { pastForecasts: xs } : {}; })(),
+    ...(() => { const xs = normalizeLog(r.log); return xs.length ? { log: xs } : {}; })(),
   };
 }
 

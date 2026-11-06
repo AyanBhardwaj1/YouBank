@@ -10,6 +10,7 @@
  */
 import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
 import { breakAfter, calibration, isSample, normalizeConviction, PAST_FORECASTS_MAX, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
+import { normalizeLog, withEntries, type LogEntry } from "./decisions";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -30,6 +31,8 @@ export type ClosedPosition = {
   conviction?: Conviction; convictionBrokeOn?: string | null;
   /** The AI committee's forecast, kept the same way, so its calibration survives the close. */
   aiConviction?: Conviction; aiConvictionBrokeOn?: string | null;
+  /** The decision journal, ending with the close. */
+  log?: LogEntry[];
   /** The AI committee's last call before the close, if it sat: to see whether its calls tracked outcomes. */
   aiDecision?: "add" | "hold" | "trim" | "exit";
   /** Earlier forecasts that were replaced while it was open, each with its first break after it was made. */
@@ -56,6 +59,7 @@ export function closedFrom(p: Position, verdict: Verdict, history: HistoryPoint[
     ...(p.committee?.forecast ? { aiConviction: p.committee.forecast, aiConvictionBrokeOn: breakAfter(p.committee.forecast, history) } : {}),
     ...(p.pastForecasts?.length ? { pastForecasts: p.pastForecasts.map((f) => ({ f, brokeOn: breakAfter(f, history) })) } : {}),
     ...(p.committee ? { aiDecision: p.committee.decision } : {}),
+    log: withEntries(p.log, [`Closed: ${CLOSE_REASONS[reason].toLowerCase()}${num(exit) ? ` at $${num(exit)}` : ""}.`], now.toISOString()),
   };
 }
 
@@ -76,6 +80,7 @@ export function normalizeJournal(raw: unknown): ClosedPosition[] {
       reason: isReason(r.reason) ? r.reason : "other", note: clip(r.note, 280), thesis: p.thesis, criteria: p.criteria,
       verdictAtClose: v === "intact" || v === "watch" || v === "broken" ? v : "unknown",
       brokeOn: typeof r.brokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokeOn) ? r.brokeOn : null, priceAtBreak: num(r.priceAtBreak),
+      ...(() => { const l = normalizeLog(r.log); return l.length ? { log: l } : {}; })(),
       ...(r.aiDecision === "add" || r.aiDecision === "hold" || r.aiDecision === "trim" || r.aiDecision === "exit" ? { aiDecision: r.aiDecision } : {}),
       ...(typeof r.brokenSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.brokenSince) ? { brokenSince: r.brokenSince } : {}),
       ...(p.conviction ? { conviction: p.conviction, convictionBrokeOn: typeof r.convictionBrokeOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.convictionBrokeOn) ? r.convictionBrokeOn : null } : {}),

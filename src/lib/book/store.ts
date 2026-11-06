@@ -21,6 +21,7 @@ import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
 import { factsFrom, type FilingFact } from "./letter";
 import { freshForecast, standing, supersede } from "./forecast";
+import { changesOf, withEntries } from "./decisions";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -42,14 +43,18 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     // A red team and a committee are written by the server only; an edit keeps the ones it has.
     const prev = at >= 0 ? list[at] : null;
     // So are earlier forecasts: a changed or removed forecast stays scored (forecast.ts supersede).
-    const { committee: _ignored, pastForecasts: _past, ...posted } = t;
-    void _ignored; void _past;
+    const { committee: _ignored, pastForecasts: _past, log: _log, ...posted } = t;
+    void _ignored; void _past; void _log;
     const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10));
     if (fresh.error) throw Object.assign(new Error(fresh.error), { status: 400 });
     const { conviction: _posted, ...rest } = posted;
     void _posted;
     const past = supersede(prev?.pastForecasts, prev?.conviction, fresh.conviction, now.slice(0, 10));
     const next: Position = { ...rest, ...(fresh.conviction ? { conviction: fresh.conviction } : {}), createdAt: prev ? prev.createdAt : now, updatedAt: now, ...(prev?.redTeam ? { redTeam: prev.redTeam } : {}), ...(prev?.committee ? { committee: prev.committee } : {}), ...(past.length ? { pastForecasts: past } : {}) };
+    // The decision journal: what this save changed, written by the server (decisions.ts), and the PM's note.
+    const note = raw && typeof raw === "object" && typeof (raw as { note?: unknown }).note === "string" ? (raw as { note: string }).note : undefined;
+    const log = withEntries(prev?.log, changesOf(prev, next), now, note);
+    if (log.length) next.log = log;
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });
     if (at >= 0) list[at] = next; else list.unshift(next);
     saved = next;
@@ -105,6 +110,22 @@ export async function closePosition(userId: string, id: string, opts: { exit: nu
 }
 
 /** Remove a record from the track record (one closed by mistake). */
+/** A note in a position's decision journal, dated now. Null when the position is not in the book. */
+export async function addNote(userId: string, id: string, text: string): Promise<Position | null> {
+  let saved: Position | null = null;
+  const now = new Date().toISOString();
+  await updateExtra(userId, (extra) => ({
+    ...extra,
+    book: normalizeBook(extra.book).map((t) => {
+      if (t.id !== id) return t;
+      const p = normalizePosition({ ...t, log: withEntries(t.log, [], now, text) }) ?? t;
+      saved = p;
+      return p;
+    }),
+  }));
+  return saved;
+}
+
 export async function deleteClosed(userId: string, id: string): Promise<void> {
   await updateExtra(userId, (extra) => {
     const list = normalizeJournal(extra.bookClosed);
@@ -246,7 +267,8 @@ export async function addPositions(userId: string, raws: unknown[]): Promise<{ a
       if (!p) continue;
       if (list.some((x) => x.ticker === p.ticker)) { skipped.push(`${p.ticker} is already in the book`); continue; }
       if (list.length >= POSITIONS_MAX) { skipped.push(`${p.ticker}: the book holds ${POSITIONS_MAX} positions`); continue; }
-      list.push(p); added.push(p);
+      const opened = { ...p, log: withEntries(p.log, changesOf(null, p), now) };
+      list.push(opened); added.push(opened);
     }
     return { ...extra, book: list };
   });
