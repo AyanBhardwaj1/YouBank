@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import { LetterEditor } from "@/components/book/LetterEditor";
 import { currentUser } from "@/lib/auth/user";
 import { calibrationOf, scorecard } from "@/lib/book/journal";
-import { draftLetter } from "@/lib/book/letter";
+import { draftLetter, factsFrom } from "@/lib/book/letter";
 import { summarize } from "@/lib/book/position";
 import { headline } from "@/lib/book/risk";
 import { cachedRisk } from "@/lib/book/risk-store";
@@ -53,7 +53,7 @@ export default async function LetterPage() {
           <h1 className="mt-1 text-[22px] font-semibold">A draft from your book, to rewrite in your own voice</h1>
           <p className="text-muted">Written from the Book, the track record, calibration, risk and the research ledger as of {now.toISOString().slice(0, 10)}. Bracketed lines are yours to fill in.</p>
         </header>
-        <LetterEditor draft={draft} ledgerOn={ledgerOn} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-letter-${user.id}-${period}`} />
+        <LetterEditor draft={draft} ledgerOn={ledgerOn} facts={factsFrom(evals)} record={g ? { reviewedShare: g.reviewedShare, verifiedShare: g.figures.verifiedShare, outputs: g.ai } : null} storageKey={`yb-letter-${user.id}-${period}`} />
       </div>
     </main>
   );

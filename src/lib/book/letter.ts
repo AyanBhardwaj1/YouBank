@@ -73,13 +73,59 @@ export type LetterFinding = { rule: string; severity: "high" | "medium" | "info"
 const sentences = (t: string) => t.replace(/\r/g, "").split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
 const PERIOD = /\b(since|year|years|quarter|quarterly|month|ytd|annuali[sz]ed|q[1-4]|20\d\d|19\d\d|inception|1-year|5-year|10-year|trailing)\b/i;
 
+/** A company figure YouBank holds (from a kill-criterion check), for checking a figure written about it. */
+/** The facts to check from the Book's evaluations: each percent kill-criterion figure YouBank holds. */
+export function factsFrom(evals: Evaluation[]): FilingFact[] {
+  const M: Partial<Record<string, FilingFact["metric"]>> = { revenue_growth: "revenue growth", gross_margin: "gross margin", operating_margin: "operating margin", fcf_margin: "free cash flow margin" };
+  return evals.flatMap((e) => e.checks.flatMap((c) => {
+    const metric = M[c.criterion.metric];
+    const v = Number(/(-?\d+(?:\.\d+)?)/.exec(c.shown.replace("−", "-"))?.[1]);
+    return metric && c.evidence && Number.isFinite(v) ? [{ ticker: e.ticker, name: e.name, metric, value: v, shown: c.shown, source: `${c.evidence.source}, ${c.evidence.period}` }] : [];
+  }));
+}
+
+export type FilingFact = { ticker: string; name: string; metric: "revenue growth" | "gross margin" | "operating margin" | "free cash flow margin"; value: number; shown: string; source: string };
+
+const METRIC_WORDS: Record<FilingFact["metric"], string> = {
+  "revenue growth": "(?:revenue|sales|top[- ]line)\\s+(?:growth|grew|growing|rose|increased)|grew\\s+(?:revenue|sales)",
+  "gross margin": "gross\\s+margins?",
+  "operating margin": "operating\\s+margins?|operating\\s+profit\\s+margin",
+  "free cash flow margin": "(?:free\\s+cash\\s+flow|fcf)\\s+margins?",
+};
+const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Figures written about a held company, checked against the filing: in a clause naming the company (ticker
+ * or name) and a metric, the percent nearest the metric must match YouBank's figure within half a point.
+ */
+export function checkFigures(text: string, facts: FilingFact[]): { excerpt: string; fact: FilingFact; said: number }[] {
+  const out: { excerpt: string; fact: FilingFact; said: number }[] = [];
+  for (const s of sentences(text)) {
+    for (const cl of s.split(/[;:]\s*|,\s+(?=(?:and|while|but)\b)/)) {
+      for (const f of facts) {
+        // The ticker, or the company's first word when it is distinctive ("Snowflake", not "The" or "First").
+        const first = f.name.split(/\s+/)[0] ?? "";
+        const named = first.length >= 4 && !/^(the|first|general|american|united|international|national|global|western|eastern|southern|northern)$/i.test(first);
+        const who = new RegExp(`\\b(?:${esc(f.ticker)}${named ? `|${esc(first)}` : ""})\\b`, "i");
+        if (!who.test(cl)) continue;
+        const kw = METRIC_WORDS[f.metric];
+        const m = new RegExp(`(?:${kw})[^.%]{0,40}?(-?\\d+(?:\\.\\d+)?)\\s?%`, "i").exec(cl) ?? new RegExp(`(-?\\d+(?:\\.\\d+)?)\\s?%\\s+(?:\\w+\\s+){0,2}(?:${kw})`, "i").exec(cl);
+        if (!m) continue;
+        const said = Number(m[1]);
+        if (Number.isFinite(said) && Math.abs(said - f.value) > 0.5 && !out.some((o) => o.excerpt === s && o.fact === f)) out.push({ excerpt: s, fact: f, said });
+      }
+    }
+  }
+  return out;
+}
+
 /** What the record says, for checking a claim about AI against it: shares in percent, over the period. */
 export type AiRecord = { reviewedShare: number | null; verifiedShare: number | null; outputs: number };
 
-export function lintLetter(text: string, ctx: { ledgerOn: boolean; record?: AiRecord | null }): LetterFinding[] {
+export function lintLetter(text: string, ctx: { ledgerOn: boolean; record?: AiRecord | null; facts?: FilingFact[] }): LetterFinding[] {
   const out: LetterFinding[] = [];
   const add = (rule: string, severity: LetterFinding["severity"], excerpt: string, why: string) => {
-    if (!out.some((f) => f.rule === rule && f.excerpt === excerpt)) out.push({ rule, severity, excerpt: excerpt.slice(0, 200), why });
+    if (!out.some((f) => f.rule === rule && f.excerpt === excerpt.slice(0, 200) && f.why === why)) out.push({ rule, severity, excerpt: excerpt.slice(0, 200), why });
   };
   // The draft's own bracketed prompts and disclaimer are not claims.
   const body = text.replace(/\n---\n\*Past performance is not indicative[\s\S]*?\*\s*$/, "");
@@ -116,5 +162,6 @@ export function lintLetter(text: string, ctx: { ledgerOn: boolean; record?: AiRe
       else add("AI claim: keep the record on file", "info", s, "The research ledger supports this: keep this period's governance report with the letter's file.");
     }
   }
+  for (const x of checkFigures(body, ctx.facts ?? [])) add("Figure does not match the filing", "high", x.excerpt, `${x.fact.ticker}'s ${x.fact.metric} is ${x.fact.shown} (${x.fact.source}), not ${x.said}%. A wrong figure in investor communications is a Marketing Rule problem.`);
   return out;
 }

@@ -8,7 +8,7 @@ import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
 import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
-import { draftLetter, lintLetter } from "@/lib/book/letter";
+import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekBrief } from "@/lib/book/week";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
@@ -416,6 +416,18 @@ console.log("Second review: edge cases");
   const lintAi = (x: string) => lintLetter(x, { ledgerOn: true, record: { reviewedShare: 12, verifiedShare: 91, outputs: 42 } }).filter((f) => f.rule.startsWith("AI claim c")).length;
   ok("ordinary sentences are not read as AI claims; a real one still is", [lintAi("We aim for every figure in this letter to be accurate."), lintAi("Our AI screening tool reviewed 40% more filings this quarter than last."), lintAi("We used AI to screen 1,200 companies, and 30% of our holdings were reviewed by the committee."), lintAi("Every AI output is reviewed by a person.")], [0, 0, 0, 1]);
   ok("a break seen only at the close starts on the close day", closedFrom(normalizePosition({ ...t, id: "bsc1" })!, "broken", [{ d: "2026-06-01", v: "broken", s: 0 }, { d: "2026-06-02", v: "intact", s: 100 }], 90, "thesis_broke", "", new Date("2026-10-12T00:00:00Z")).brokenSince, "2026-10-12");
+}
+
+console.log("Figures checked against the filing");
+{
+  const facts = [{ ticker: "SNOW", name: "Snowflake Inc.", metric: "gross margin" as const, value: 66.8, shown: "66.8%", source: "SEC XBRL company facts, LTM to 2026-07-31" }, { ticker: "TTD", name: "The Trade Desk", metric: "revenue growth" as const, value: 18.2, shown: "18.2%", source: "SEC XBRL" }];
+  const got = (x: string) => checkFigures(x, facts).map((r) => [r.fact.ticker, r.said]);
+  ok("a figure about a holding that does not match its filing is caught, by ticker or name; a matching or rounded one is not", [got("Snowflake's gross margin reached 72% this quarter."), got("SNOW gross margin was 66.8%, and we added."), got("SNOW's gross margin is about 67%."), got("Gross margins of 40% at SNOW would be a problem.")], [[["SNOW", 72]], [], [], [["SNOW", 40]]]);
+  ok("a common first word is not a company name; the ticker still works", [got("The gross margin across the book was 55%."), got("TTD revenue growth was 25%.")], [[], [["TTD", 25]]]);
+  const evF = evaluate(t, co, d, [], now);
+  const draftF = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [evF], summary: summarize([evF]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null });
+  ok("the draft's own figures match the filing", lintLetter(draftF, { ledgerOn: false, facts: factsFrom([evF]) }).filter((f) => f.rule === "Figure does not match the filing").length, 0);
+  ok("the compliance pass names the filing's figure and source", lintLetter("Snowflake's gross margin reached 72% this quarter.", { ledgerOn: false, facts }).find((f) => f.rule === "Figure does not match the filing")?.why.startsWith("SNOW's gross margin is 66.8% (SEC XBRL company facts, LTM to 2026-07-31), not 72%."), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
