@@ -804,7 +804,7 @@ function TrackRecord({ sig }: { sig: string }) {
 /* ---------------- The team's books (read-only) ---------------- */
 
 type TeamList = { teams: { id: number; name: string; members: number }[]; sharing: number[] };
-type TeamData = { members: { userId: string; name: string; positions: number; summary: BookSummary }[]; evaluations: (Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"]; committee?: Position["committee"]; conviction?: Position["conviction"] })[]; conflicts: { ticker: string; long: string[]; short: string[] }[]; memberCount: number };
+type TeamData = { members: { userId: string; name: string; positions: number; summary: BookSummary }[]; evaluations: (Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"]; committee?: Position["committee"]; conviction?: Position["conviction"]; log?: Position["log"] })[]; conflicts: { ticker: string; long: string[]; short: string[] }[]; memberCount: number };
 
 function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string }; sharing: boolean; onShare: (on: boolean) => Promise<void> }) {
   const [d, setD] = useState<TeamData | null>(null);
@@ -829,7 +829,7 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
   return (
     <div className="space-y-3">
       <section className="panel flex flex-wrap items-center gap-3 p-3 text-[12.5px]">
-        <span className="min-w-0 basis-full text-muted sm:basis-0 sm:flex-1">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""} Sharing shows your positions, theses and kill criteria, your forecasts, and your red team and AI committee write-ups.</span>
+        <span className="min-w-0 basis-full text-muted sm:basis-0 sm:flex-1">{team.name}: the books its members chose to share, read-only. {d ? `${d.members.length} of ${d.memberCount} member${d.memberCount === 1 ? "" : "s"} share.` : ""} Sharing shows your positions, theses and kill criteria, your forecasts, your decision journal, and your red team and AI committee write-ups.</span>
         <label className="flex items-center gap-2"><input type="checkbox" checked={sharing} disabled={busy} onChange={() => void toggle()} />Share my book with {team.name}</label>
       </section>
       {err && <div role="alert" className="panel p-3 text-[12px] text-neg">{err}</div>}
@@ -853,7 +853,7 @@ function TeamBook({ team, sharing, onShare }: { team: { id: number; name: string
       )}
       {d && d.members.length === 0 && <p className="panel p-4 text-[12.5px] text-muted">Nobody on {team.name} shares a book yet. Share yours with the switch above; each member chooses for themselves.</p>}
       {d && d.evaluations.length > 0 && (
-        <ul className="space-y-2">{d.evaluations.map((e) => <PositionCard key={`${e.owner}:${e.positionId}`} ev={e} owner={e.ownerName} position={{ id: e.positionId, ticker: e.ticker, direction: e.direction, weight: e.weight, entry: null, thesis: e.thesis, pillars: [], criteria: [], catalysts: [], createdAt: "", updatedAt: "", ...(e.redTeam ? { redTeam: e.redTeam } : {}), ...(e.committee ? { committee: e.committee } : {}), ...(e.conviction ? { conviction: e.conviction } : {}) }} />)}</ul>
+        <ul className="space-y-2">{d.evaluations.map((e) => <PositionCard key={`${e.owner}:${e.positionId}`} ev={e} owner={e.ownerName} position={{ id: e.positionId, ticker: e.ticker, direction: e.direction, weight: e.weight, entry: null, thesis: e.thesis, pillars: [], criteria: [], catalysts: [], createdAt: "", updatedAt: "", ...(e.redTeam ? { redTeam: e.redTeam } : {}), ...(e.committee ? { committee: e.committee } : {}), ...(e.conviction ? { conviction: e.conviction } : {}), ...(e.log ? { log: e.log } : {}) }} />)}</ul>
       )}
     </div>
   );
