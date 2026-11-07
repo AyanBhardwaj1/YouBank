@@ -659,7 +659,13 @@ console.log("Decision journal");
   ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
   const fc = normalizePosition({ ...t, id: "tdo4", ticker: "FCS", catalysts: [], createdAt: "2026-11-01T00:00:00Z", conviction: { p: 70, by: "2027-02-01", at: "2026-11-05", source: "You" }, log: [{ at: "2026-11-15T00:00:00Z", text: "Weight 3% → 2% of NAV.", auto: true }, { at: "2026-11-15T01:00:00Z", text: "cut on the miss" }] })!;
   const ft = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
-  ok("needs you: a forecast made before the break is not asked to be updated (the break already resolved it as a miss)", ft.map((x) => x.kind), []);
+  ok("needs you: a forecast made before the break is not asked to be updated while the thesis is broken (no new one is taken)", ft.map((x) => x.kind), []);
+  const rec = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: once it recovers, a forecast made before the break asks for a new one (for two weeks)", rec.map((x) => [x.kind, x.text]), [["forecast", "Recovered from the break on 2026-11-13: set a new forecast"]]);
+  const rec2 = bookTodos([{ ...fc, conviction: { ...fc.conviction!, at: "2026-11-14" } }, { ...fc, id: "tdo5", conviction: undefined }], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }], tdo5: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: not once a new forecast was set after the recovery, nor for a position that never had one", rec2.filter((x) => x.kind === "forecast"), []);
+  const rec3 = bookTodos([fc], { tdo4: [{ d: "2026-10-01", v: "broken", s: null }, { d: "2026-10-02", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: a recovery more than two weeks ago is not asked about", rec3.filter((x) => x.kind === "forecast"), []);
   ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
 }
 
