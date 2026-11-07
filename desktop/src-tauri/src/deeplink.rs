@@ -70,6 +70,9 @@ pub fn parse(raw: &str) -> Option<Link> {
             None => open("/app/studio"),
         },
         "edge" => open("/app/edge"),
+        // The Book (positions, Needs you) and the week's one-page read.
+        "book" => open("/app/book"),
+        "week" => open("/report/week"),
         "news" => open("/app/news"),
         "crm" => open("/app/crm"),
         "settings" => open("/app/settings"),
@@ -91,6 +94,8 @@ mod tests {
         assert_eq!(parse("youbank://ticker/aapl"), Some(Link::Open("/app/terminal?ticker=AAPL".into())));
         assert_eq!(parse("youbank://ticker/BRK.B"), Some(Link::Open("/app/terminal?ticker=BRK.B".into())));
         assert_eq!(parse("youbank://ticker/<script>"), Some(Link::Open("/app/terminal".into())));
+        assert_eq!(parse("youbank://book"), Some(Link::Open("/app/book".into())));
+        assert_eq!(parse("youbank://week"), Some(Link::Open("/report/week".into())));
         assert_eq!(parse("youbank://deal/42"), Some(Link::Open("/app/crm?tab=pipeline&deal=42".into())));
         assert_eq!(parse("youbank://studio/17"), Some(Link::Open("/app/studio/17".into())));
         assert_eq!(parse("youbank://studio/abc"), Some(Link::Open("/app/studio".into())));

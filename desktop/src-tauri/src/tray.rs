@@ -67,6 +67,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &item("open", "Open YouBank", None)?,
             &item("ask", "Quick ask…", (!hotkey.is_empty()).then_some(hotkey.as_str()))?,
             &item("latest", "Open latest alert", None)?,
+            &item("book", "Open the Book", None)?,
+            &item("week", "The week in your book", None)?,
             &PredefinedMenuItem::separator(app)?,
             &item("check-alerts", "Check for alerts now", None)?,
             &item("brief", "Morning brief now", None)?,
@@ -102,6 +104,8 @@ fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "open" => windows::show_main(app),
         "ask" => windows::toggle_quick_ask(app, None),
+        "book" => windows::open_site(app, "/app/book"),
+        "week" => windows::open_site(app, "/report/week"),
         "latest" => {
             let url = app.state::<AppState>().last_alert.lock().unwrap().clone();
             windows::open_site(app, url.as_deref().unwrap_or("/app/news"));
