@@ -121,6 +121,7 @@ export function draftDdq(i: DdqInput): DdqItem[] {
     a: [
       "Every position carries written kill criteria and a dated decision journal. YouBank writes an entry itself whenever the weight, the forecast, the kill criteria, the thesis or the side changes, and the portfolio manager adds the reason. Every entry is dated by the server, so none can be backdated; the newest 100 of YouBank's entries and 30 of the manager's notes are kept per position, through the close.",
       jr && jr.positions ? `Today ${jr.withNotes} of ${jr.positions} positions carry the manager's own notes (${jr.notes} in all).` : "",
+      "The record is also checked for the habits behind the results: whether changes carry a reason, whether a broken thesis was acted on, whether a kill criterion was loosened while its thesis was failing (recorded as such), whether a passed catalyst played out, and whether any thesis has gone 90 days without review.",
       "[Say who reviews the journal, and how often.]",
     ].filter(Boolean).join(" "),
   });
