@@ -376,6 +376,34 @@ export const PROMPTS: McpPrompt[] = [
       ].join("\n");
     },
   },
+  {
+    // Prospective hindsight (Mitchell, Russo and Pennington 1989; Klein's pre-mortem): imagining the failure has
+    // already happened surfaces more, and more specific, reasons than asking what could go wrong.
+    name: "pre_mortem", title: "Pre-mortem a position", description: "Imagine the position has already failed and say why; then check each cause against its kill criteria, and name the failure modes no criterion would catch.",
+    arguments: [{ name: "ticker", description: "The position's ticker, e.g. SNOW", required: true }],
+    build: ({ ticker }) => [
+      `It is a year from now and my position in ${tick(ticker)} has lost 30%. Write its pre-mortem.`,
+      `1. Call book_status with ticker ${tick(ticker)} for the thesis, pillars, kill criteria (with where each stands) and the decision journal.`,
+      `2. Using get_company_financials, get_xbrl_series, filing_changes (risk factors) and ticker_news for ${tick(ticker)}, list the five most plausible reasons it failed, most likely first, each specific to this company and grounded in evidence. Write them as things that happened, not things that might.`,
+      "3. For each reason: which kill criterion would have caught it, and how early (quote the criterion and its headroom), or 'none'.",
+      "4. For each reason no criterion would catch, propose one checkable kill criterion (a metric, at least or at most, a value) that would. Do not change my book; I will add the ones I agree with.",
+      "Under 500 words.",
+      CITE,
+    ].join("\n"),
+  },
+  {
+    name: "process_review", title: "Review my process", description: "A frank read of the habits behind the results: reasons recorded, broken theses acted on, goalposts moved, the disposition effect, stale theses and calibration.",
+    arguments: [],
+    build: () => [
+      "Review how I run my book, not how it performed.",
+      "1. Call book_track_record. Read its process_health items, the disposition figures, process_vs_outcome and the calibration line.",
+      "2. Call book_status for the positions behind any item marked fix or watch, and book_week for what happened this week.",
+      "3. For each item marked fix or watch: what it shows, the positions involved, and one concrete habit that would change it (for example: a note on every resize; a review date on every thesis). Say plainly when the history is too short to judge.",
+      "4. End with the single habit that would most improve the record, in one line.",
+      "Be direct; do not grade outcomes as process. Under 400 words.",
+      CITE,
+    ].join("\n"),
+  },
 ];
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */

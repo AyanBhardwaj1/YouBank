@@ -81,7 +81,7 @@ export function ConnectAISettings() {
         <ul className="mt-3 grid gap-x-4 gap-y-1 text-[12px] sm:grid-cols-2">
           {TOOLS.map(([t, d]) => <li key={t}><span className="font-semibold">{t}</span> <span className="text-muted">· {d}</span></li>)}
         </ul>
-        <p className="mt-3 text-[12px] text-muted"><span className="font-semibold text-fg">Ready-made prompts</span> appear in your app&apos;s slash or prompt menu: <i>Review my book</i>, <i>Argue against a position</i>, <i>Convene an investment committee</i>, <i>Draft LP commentary</i> (checked by YouBank&apos;s compliance pass before you see it), <i>What changed in the latest filing</i>, <i>Earnings prep</i> and <i>Pre-trade check</i>. Each tells the AI which YouBank tools to use and to cite every figure.</p>
+        <p className="mt-3 text-[12px] text-muted"><span className="font-semibold text-fg">Ready-made prompts</span> appear in your app&apos;s slash or prompt menu: <i>Review my book</i>, <i>Argue against a position</i>, <i>Convene an investment committee</i>, <i>Draft LP commentary</i> (checked by YouBank&apos;s compliance pass before you see it), <i>What changed in the latest filing</i>, <i>Earnings prep</i>, <i>Pre-trade check</i>, <i>Pre-mortem a position</i> (imagine it failed, then find the failure modes no kill criterion would catch) and <i>Review my process</i>. Each tells the AI which YouBank tools to use and to cite every figure.</p>
       </section>
 
       <section className="panel space-y-3 p-4">
