@@ -105,7 +105,7 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
   await noteCommittee(userId, position, committee).catch(() => undefined);
   await record(userId, {
     kind: "red_team", subject: `Committee: ${position.ticker}`, model: `${chair.provider}/${chair.model}`, prompt: prompt.slice(0, 4000),
-    output: JSON.stringify({ decision: committee.decision, probability: committee.forecast?.p ?? committee.brokenP ?? null, chairs: pooled.samples, rationale: committee.rationale, dissent: committee.dissent, watch: committee.watch }),
+    output: JSON.stringify({ decision: committee.decision, probability: committee.forecast?.p ?? committee.brokenP ?? null, ...(committee.brokenAtSitting ? { forecast_kept: false, why: "the thesis read broken when the committee sat" } : {}), chairs: pooled.samples, rationale: committee.rationale, dissent: committee.dissent, watch: committee.watch }),
     sources: [...bull.sources, ...bear.sources].slice(0, 60), meta: { feature: "book.committee.chair" },
   }).catch(() => {});
 }

@@ -7,6 +7,7 @@
  * habits are a short to-do list rather than six panels to read. Pure; tested in scripts/test-book.ts.
  */
 import type { BookHistory } from "./alerts";
+import { breakAfter } from "./forecast";
 import { isPmChange, recentVerdict } from "./decisions";
 import { brokenNow, catalystsDue, staleTheses } from "./discipline";
 import type { Position } from "./position";
@@ -29,7 +30,10 @@ export function bookTodos(open: Position[], history: BookHistory, now = new Date
     const lastBroken = pts.map((x) => x.v).lastIndexOf("broken");
     if (p.conviction && v && v !== "broken" && v !== "unknown" && lastBroken >= 0 && lastBroken < pts.length - 1) {
       const back = pts[lastBroken + 1].d;
-      if (p.conviction.at < back && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${back}T00:00:00Z`) <= 14 * 86_400_000) out.push({ positionId: p.id, ticker: p.ticker, kind: "forecast", text: `Recovered from the break on ${back}: set a new forecast` });
+      // Only a forecast the break actually resolved (a break after it was made, by its date): not one made on the
+      // last broken day, which is still open, nor one that had already run its course before the break.
+      const hit = breakAfter(p.conviction, pts);
+      if (hit && hit <= p.conviction.by && hit < back && Date.parse(`${today}T00:00:00Z`) - Date.parse(`${back}T00:00:00Z`) <= 14 * 86_400_000) out.push({ positionId: p.id, ticker: p.ticker, kind: "forecast", text: `Recovered from the break on ${back}: set a new forecast` });
     }
     for (const c of catalystsDue(p, now)) out.push({ positionId: p.id, ticker: p.ticker, kind: "catalyst", text: `Did ${c.label} (${c.date}) play out?` });
     // The latest change of the PM's own in the last 30 days, with no note at or after it.

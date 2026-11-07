@@ -34,7 +34,7 @@ export function normalizeConviction(raw: unknown): Conviction | null {
 }
 
 export const PAST_FORECASTS_MAX = 40;
-export const BROKEN_FORECAST = "The thesis reads broken: a forecast made now would be scored on a break that has already happened. Keep the forecast as it is or clear it, and set a new one once the thesis recovers.";
+export const BROKEN_FORECAST = "The thesis reads broken: a forecast made now would be scored on a break that has already happened. Save without a new forecast (an existing one stays as it was), and set one once the thesis recovers.";
 /** The shortest forecast accepted: long enough that a forecast cannot be farmed day by day. */
 export const MIN_HORIZON_DAYS = 30;
 export const AI_COMMITTEE = "AI committee";

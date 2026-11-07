@@ -666,6 +666,8 @@ console.log("Decision journal");
   ok("needs you: not once a new forecast was set after the recovery, nor for a position that never had one", rec2.filter((x) => x.kind === "forecast"), []);
   const rec3 = bookTodos([fc], { tdo4: [{ d: "2026-10-01", v: "broken", s: null }, { d: "2026-10-02", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
   ok("needs you: a recovery more than two weeks ago is not asked about", rec3.filter((x) => x.kind === "forecast"), []);
+  const rec4 = bookTodos([{ ...fc, conviction: { ...fc.conviction!, at: "2026-11-12" } }], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: not for a forecast made on the last broken day (no break after it, so still open)", rec4.filter((x) => x.kind === "forecast"), []);
   ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
 }
 

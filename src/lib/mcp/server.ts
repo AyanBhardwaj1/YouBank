@@ -108,7 +108,7 @@ function bookTool(userId: string) {
         summary: summarize(evals), link: siteLink("/app/book"),
         // Theses broken now: acted on since the break (a resize or change of side), or nothing done and for how long.
         ...(broken ? { broken_now: broken } : {}),
-        // What the book needs from the PM now, ranked (todo.ts): broken with nothing done, catalysts to review, changes with no reason, stale theses.
+        // What the book needs from the PM now, ranked (todo.ts): broken with nothing done, catalysts to review, a recovered thesis to forecast again, changes with no reason, stale theses.
         ...(() => { const t = bookTodos(positions, history); return t.length ? { needs_you: t.map((x) => `${x.ticker}: ${x.text}`) } : {}; })(),
         // The risk headline when it is already worked out today (book_risk has the detail and works it out).
         ...(risk && !only ? { risk: riskLine(risk) } : {}),

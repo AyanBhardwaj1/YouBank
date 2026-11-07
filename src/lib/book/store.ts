@@ -45,7 +45,8 @@ export async function liveVerdictFor(userId: string, raw: unknown): Promise<Verd
   if (!t?.conviction) return undefined;
   const prev = (await loadBook(userId)).find((x) => x.id === t.id);
   if (prev?.conviction && prev.conviction.p === t.conviction.p && prev.conviction.by === t.conviction.by) return undefined;
-  const [ev] = await evaluateBook([t]);
+  // At most a few seconds: on a slow source the save falls back to the history rather than waiting on it.
+  const ev = await Promise.race([evaluateBook([t]).then((x) => x[0]), new Promise<undefined>((r) => setTimeout(() => r(undefined), 8_000))]);
   return ev?.verdict;
 }
 
