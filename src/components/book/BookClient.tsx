@@ -215,7 +215,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
 
 /* ---------------- The decision journal ---------------- */
 
-const TODO_ICON: Record<Todo["kind"], string> = { broken: "AlertTriangle", catalyst: "Calendar", reason: "NotebookPen", stale: "Timer" };
+const TODO_ICON: Record<Todo["kind"], string> = { broken: "AlertTriangle", catalyst: "Calendar", forecast: "Compass", reason: "NotebookPen", stale: "Timer" };
 
 /** What the Book needs from the PM now (todo.ts), ranked, each linked to its position. */
 function NeedsYou({ todos }: { todos: Todo[] }) {

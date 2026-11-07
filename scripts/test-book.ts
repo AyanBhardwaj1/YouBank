@@ -654,6 +654,9 @@ console.log("Decision journal");
   const old = normalizePosition({ ...t, id: "tdo3", ticker: "OLD", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
   const todos = bookTodos([old, cat, brk], { tdo1: [{ d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
   ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
+  const fc = normalizePosition({ ...t, id: "tdo4", ticker: "FCS", catalysts: [], createdAt: "2026-11-01T00:00:00Z", conviction: { p: 70, by: "2027-02-01", at: "2026-11-05", source: "You" }, log: [{ at: "2026-11-15T00:00:00Z", text: "Weight 3% → 2% of NAV.", auto: true }, { at: "2026-11-15T01:00:00Z", text: "cut on the miss" }] })!;
+  const ft = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
+  ok("needs you: a forecast made before the break asks to be updated (the PM's own, even once the break was acted on)", ft.map((x) => [x.kind, x.text]), [["forecast", "Your 70% forecast predates the break (2026-11-10): update it"]]);
   ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
 }
 
