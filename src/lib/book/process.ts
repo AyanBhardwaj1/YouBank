@@ -102,3 +102,33 @@ export function healthLine(xs: HealthItem[]): string {
   if (!judged) return "Process health: not enough history yet.";
   return `Process health: ${n("good")} good, ${n("watch")} to watch, ${n("fix")} to fix${n("none") ? ` (${n("none")} not enough history yet)` : ""}.`;
 }
+
+/** A week's process health, kept so the week can say whether it improved (watch.ts records one on Fridays). */
+export type HealthSnapshot = { d: string; good: number; watch: number; fix: number };
+export const HEALTH_HISTORY_MAX = 26;
+
+export function snapshotOf(items: HealthItem[], day: string): HealthSnapshot {
+  const n = (s: HealthStatus) => items.filter((x) => x.status === s).length;
+  return { d: day, good: n("good"), watch: n("watch"), fix: n("fix") };
+}
+
+export function normalizeHealthHistory(raw: unknown): HealthSnapshot[] {
+  const ok = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 100;
+  return (Array.isArray(raw) ? raw : []).flatMap((x): HealthSnapshot[] => {
+    const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    return typeof o.d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.d) && ok(o.good) && ok(o.watch) && ok(o.fix) ? [{ d: o.d, good: o.good as number, watch: o.watch as number, fix: o.fix as number }] : [];
+  }).sort((a, b) => a.d.localeCompare(b.d)).slice(-HEALTH_HISTORY_MAX);
+}
+
+/** The history with today's snapshot (replacing one already taken today), newest last, capped. */
+export function recordHealth(prev: unknown, snap: HealthSnapshot): HealthSnapshot[] {
+  return normalizeHealthHistory([...normalizeHealthHistory(prev).filter((x) => x.d !== snap.d), snap]);
+}
+
+/** Against the last snapshot before today, in one line, or "" when there is none. */
+export function healthTrend(history: HealthSnapshot[], now: HealthSnapshot): string {
+  const before = [...history].reverse().find((x) => x.d < now.d);
+  if (!before) return "";
+  const word = now.fix < before.fix ? "better" : now.fix > before.fix ? "worse" : now.watch < before.watch ? "better" : now.watch > before.watch ? "worse" : "unchanged";
+  return `Since ${before.d}: ${before.fix} to fix and ${before.watch} to watch then, ${now.fix} and ${now.watch} now (${word}).`;
+}

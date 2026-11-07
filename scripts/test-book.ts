@@ -14,7 +14,7 @@ import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, conjunctionCheck, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { thesisGaps, toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
-import { healthLine, processHealth } from "@/lib/book/process";
+import { healthLine, healthTrend, processHealth, recordHealth } from "@/lib/book/process";
 import { bookTodos } from "@/lib/book/todo";
 import { csvRow } from "@/lib/csv";
 import { AUTO_MAX, journalRows, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
@@ -685,6 +685,14 @@ console.log("Decision journal");
   // The conjunction rule: the chance no criterion fails cannot beat the chance the price lines alone hold.
   ok("above the base rate: asks for a reason, naming the other criteria when there are some", conjunctionCheck(0.8, { p: 0.6, lines: 1 }, 3), "80% is above the 60% volatility-only chance the price line holds. With the other kill criteria also needing to hold, what do you expect that the model does not (drift in your favour, calmer volatility)?");
   ok("above the base rate: price lines only; an older forecast is asked to be updated; at or under (or within rounding) is fine", [conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2), conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2, true), conjunctionCheck(0.61, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.5, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.9, null, 3)], ["90% is above the 70% volatility-only chance the price lines hold. What do you expect that the model does not (drift in your favour, calmer volatility)?", "90% is now above the 70% volatility-only chance the price lines hold; consider updating it. What do you expect that the model does not (drift in your favour, calmer volatility)?", null, null, null]);
+}
+
+{
+  // Process health over time.
+  const h1 = recordHealth(undefined, { d: "2026-11-13", good: 2, watch: 2, fix: 1 });
+  const h2 = recordHealth([...h1, { d: "bad", good: 1, watch: 1, fix: 1 }], { d: "2026-11-20", good: 3, watch: 1, fix: 0 });
+  ok("health history: kept in date order, malformed entries dropped, one per day", recordHealth(h2, { d: "2026-11-20", good: 4, watch: 0, fix: 0 }).map((x) => [x.d, x.good]), [["2026-11-13", 2], ["2026-11-20", 4]]);
+  ok("health trend: against the last snapshot before today", [healthTrend(h2, { d: "2026-11-20", good: 3, watch: 1, fix: 0 }), healthTrend([], { d: "2026-11-20", good: 3, watch: 1, fix: 0 })], ["Since 2026-11-13: 1 to fix and 2 to watch then, 0 and 1 now (better).", ""]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

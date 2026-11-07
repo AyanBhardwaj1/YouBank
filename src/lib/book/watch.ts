@@ -13,9 +13,10 @@ import { deliverAlert } from "@/lib/news/alerts";
 import { readerFor } from "@/lib/news/reader";
 import { updateExtra } from "@/lib/prefs/extra";
 import { alertsFor, gateAlerts, normalizeBookState, type BookAlert } from "./alerts";
-import { forecastAlerts } from "./journal";
+import { calibrationOf, forecastAlerts } from "./journal";
 import { evaluateBook, loadBook, loadJournal, loadProposals, warmFilings, warmInsiders } from "./store";
 import { weekAlert } from "./week";
+import { processHealth, recordHealth, snapshotOf } from "./process";
 
 /** Check one person's book and send what changed. Returns the alerts sent (not those already sent before). */
 export async function watchBook(userId: string, now = new Date()): Promise<BookAlert[]> {
@@ -35,7 +36,9 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
     // as muted, so turning alerts back on does not replay old changes.
     const g = gateAlerts(alerts, next.muted, extra.bookAlerts === false);
     sent = g.send;
-    return { ...extra, bookState: { ...next, muted: g.muted } };
+    // On Fridays, the week's process health is kept, so the week page can say whether it improved (process.ts).
+    const health = friday ? recordHealth(extra.bookHealth, snapshotOf(processHealth({ open: book, closed, history: next.history, calibration: calibrationOf(book, next.history, closed, now), now }), now.toISOString().slice(0, 10))) : null;
+    return { ...extra, bookState: { ...next, muted: g.muted }, ...(health ? { bookHealth: health } : {}) };
   });
   if (!sent.length) return [];
   const db = requireDb();

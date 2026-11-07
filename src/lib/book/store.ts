@@ -24,7 +24,7 @@ import { freshForecast, standing, supersede } from "./forecast";
 import { catalystEntry, changesOf, goalpostEntry, recentVerdict, withEntries, type CatalystOutcome } from "./decisions";
 import { catalystsDue } from "./discipline";
 import { bookTodos } from "./todo";
-import { healthLine, processHealth } from "./process";
+import { healthLine, normalizeHealthHistory, processHealth, type HealthSnapshot } from "./process";
 
 import { calibrationOf, closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
@@ -86,6 +86,12 @@ export async function deletePosition(userId: string, id: string): Promise<void> 
 }
 
 /* ---------------- The track record: closed positions ---------------- */
+
+/** The weekly process-health snapshots (profiles.extra.bookHealth, recorded by watch.ts on Fridays). */
+export async function loadHealthHistory(userId: string): Promise<HealthSnapshot[]> {
+  const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
+  return normalizeHealthHistory((row?.extra as Record<string, unknown> | undefined)?.bookHealth);
+}
 
 /** Each position's daily verdict history (profiles.extra.bookState). */
 export async function loadBookHistory(userId: string): Promise<BookHistory> {
