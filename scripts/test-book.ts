@@ -13,8 +13,9 @@ import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { brokenNow, brokenNowLine, catalystsDue, staleTheses } from "@/lib/book/discipline";
+import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
+import { bookTodos } from "@/lib/book/todo";
 import { AUTO_MAX, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -634,8 +635,23 @@ console.log("Decision journal");
   const reviewed = { ...cp, log: [{ at: "2026-11-12T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-11-10", "mixed"), auto: true }] };
   ok("a reviewed catalyst is no longer due; its outcome reads back", [catalystsDue(reviewed, cNow).length, catalystOutcome(reviewed.log[0]), isPmChange(reviewed.log[0])], [0, "mixed", false]);
   const ch = processHealth({ open: [cp], closed: [{ ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Launch", "2026-08-30", "yes"), auto: true }, { at: "2026-10-01T00:00:00Z", text: catalystEntry("Deal", "2026-09-30", "no"), auto: true }] }], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!;
-  ok("process health: the catalyst hit rate and the reviews still owed", [ch.value, ch.status, ch.detail], ["1 of 2 played out", "watch", "Of 2 catalysts reviewed, 1 played out as expected. 1 passed catalyst waits for a review."]);
+  ok("process health: the catalyst hit rate and the reviews still owed", [ch.value, ch.status, ch.detail], ["1 of 2 played out", "fix", "Of 2 catalysts reviewed, 1 played out as expected. 1 passed catalyst waits for a review. 1 passed more than 60 days ago without one."]);
+  const miss = normalizePosition({ ...t, id: "cat2", catalysts: [{ label: "Old deal", date: "2026-08-01" }] })!;
+  ok("a catalyst ignored past 60 days is missed, not forgotten", [catalystsMissed(miss, cNow), processHealth({ open: [miss], closed: [], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.status], [1, "fix"]);
+  const twice = { ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Q3 prnt", "2026-08-30", "no"), auto: true }, { at: "2026-09-02T00:00:00Z", text: catalystEntry("Q3 print", "2026-08-30", "yes"), auto: true }] };
+  ok("a relabelled catalyst answered again counts once, by its latest answer", processHealth({ open: [], closed: [twice], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.value, "1 of 1 played out");
   ok("a catalyst review counts as looking at the thesis", staleTheses([{ ...reviewed, createdAt: "2026-01-01T00:00:00Z" }], cNow), []);
+}
+
+{
+  // Needs you: one ranked list.
+  const tNow = new Date("2026-11-20T12:00:00Z");
+  const brk = normalizePosition({ ...t, id: "tdo1", ticker: "BRK", catalysts: [], createdAt: "2026-11-01T00:00:00Z" })!;
+  const cat = normalizePosition({ ...t, id: "tdo2", ticker: "CAT", createdAt: "2026-11-01T00:00:00Z", catalysts: [{ label: "Q3 earnings", date: "2026-11-15" }], log: [{ at: "2026-11-16T00:00:00Z", text: "Weight 2% → 1% of NAV.", auto: true }] })!;
+  const old = normalizePosition({ ...t, id: "tdo3", ticker: "OLD", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
+  const todos = bookTodos([old, cat, brk], { tdo1: [{ d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
+  ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
+  ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

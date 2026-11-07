@@ -15,7 +15,7 @@
  */
 import type { BookHistory } from "./alerts";
 import { catalystOutcome, isGoalposts, isPmChange, type LogEntry } from "./decisions";
-import { brokenNow, catalystsDue, staleTheses } from "./discipline";
+import { brokenNow, CATALYST_REVIEW_DAYS, catalystsDue, catalystsMissed, staleTheses } from "./discipline";
 import type { Calibration } from "./forecast";
 import { scorecard, type ClosedPosition } from "./journal";
 import type { Position } from "./position";
@@ -71,11 +71,18 @@ export function processHealth(i: { open: Position[]; closed: ClosedPosition[]; h
     : { key: "stale", label: "Theses not reviewed in 90 days", value: "—", status: "none", detail: "The book is empty." });
 
   // Catalysts: did the ones the theses counted on play out, and are any passed ones still unreviewed?
-  const outcomes = logs.flat().map(catalystOutcome).filter((x) => x !== null);
+  // The latest review per catalyst date on each position, so a catalyst relabelled and answered again counts once.
+  const latest = new Map<string, NonNullable<ReturnType<typeof catalystOutcome>>>();
+  logs.forEach((log, k) => [...log].sort((a, b) => a.at.localeCompare(b.at)).forEach((e) => {
+    const o = catalystOutcome(e), d = /\((\d{4}-\d{2}-\d{2})\) (?:played|did|was)/.exec(e.text)?.[1];
+    if (o && d) latest.set(`${k}:${d}`, o);
+  }));
+  const outcomes = [...latest.values()];
   const pending = i.open.reduce((n, p) => n + catalystsDue(p, now).length, 0);
+  const missed = i.open.reduce((n, p) => n + catalystsMissed(p, now), 0);
   const yes = outcomes.filter((x) => x === "yes").length, mixed = outcomes.filter((x) => x === "mixed").length;
-  items.push(outcomes.length || pending
-    ? { key: "catalysts", label: "Catalysts reviewed", value: outcomes.length ? `${yes} of ${outcomes.length} played out` : `${pending} to review`, status: pending ? "watch" : "good", detail: `${outcomes.length ? `Of ${outcomes.length} catalysts reviewed, ${yes} played out as expected${mixed ? ` and ${mixed} were mixed` : ""}.` : "No catalyst reviewed yet."}${pending ? ` ${pending} passed catalyst${pending === 1 ? " waits" : "s wait"} for a review.` : ""}` }
+  items.push(outcomes.length || pending || missed
+    ? { key: "catalysts", label: "Catalysts reviewed", value: outcomes.length ? `${yes} of ${outcomes.length} played out` : pending ? `${pending} to review` : `${missed} missed`, status: missed ? "fix" : pending ? "watch" : "good", detail: `${outcomes.length ? `Of ${outcomes.length} catalysts reviewed, ${yes} played out as expected${mixed ? ` and ${mixed} were mixed` : ""}.` : "No catalyst reviewed yet."}${pending ? ` ${pending} passed catalyst${pending === 1 ? " waits" : "s wait"} for a review.` : ""}${missed ? ` ${missed} passed more than ${CATALYST_REVIEW_DAYS} days ago without one.` : ""}` }
     : { key: "catalysts", label: "Catalysts reviewed", value: "—", status: "none", detail: "No catalyst has passed yet." });
 
   const c = i.calibration;

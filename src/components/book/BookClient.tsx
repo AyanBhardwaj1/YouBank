@@ -25,6 +25,7 @@ import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
 import { isPmChange, loosened, recentVerdict, type CatalystOutcome, type LogEntry } from "@/lib/book/decisions";
 import { processHealth } from "@/lib/book/process";
+import { bookTodos, type Todo } from "@/lib/book/todo";
 import { ProcessHealth } from "@/components/book/ProcessHealth";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
@@ -208,6 +209,29 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
 
 /* ---------------- The decision journal ---------------- */
 
+const TODO_ICON: Record<Todo["kind"], string> = { broken: "AlertTriangle", catalyst: "Calendar", reason: "NotebookPen", stale: "Timer" };
+
+/** What the Book needs from the PM now (todo.ts), ranked, each linked to its position. */
+function NeedsYou({ todos }: { todos: Todo[] }) {
+  const [all, setAll] = useState(false);
+  if (!todos.length) return null;
+  const shown = all ? todos : todos.slice(0, 5);
+  return (
+    <section aria-label="Needs you" className="panel p-3">
+      <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">Needs you ({todos.length})</h2>
+      <ul className="space-y-1 text-[12.5px]">
+        {shown.map((x, i) => (
+          <li key={i} className="flex items-start gap-2">
+            <Icon name={TODO_ICON[x.kind]} className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${x.kind === "broken" ? "text-neg" : "text-accent"}`} />
+            <Link href={`/app/book?position=${encodeURIComponent(x.positionId)}`} className="min-w-0 flex-1 hover:underline"><span className="font-semibold">{x.ticker}</span> <span className="text-muted">{x.text}</span></Link>
+          </li>
+        ))}
+      </ul>
+      {todos.length > 5 && <button type="button" onClick={() => setAll((v) => !v)} className="mt-1 text-[11px] text-muted hover:text-fg">{all ? "Show fewer" : `Show all ${todos.length}`}</button>}
+    </section>
+  );
+}
+
 /** Passed catalysts not yet reviewed: did each play out as the thesis expected? Written to the journal by the server. */
 function CatalystReviews({ position, onChanged }: { position: Position; onChanged?: () => void }) {
   const [busy, setBusy] = useState("");
@@ -216,8 +240,9 @@ function CatalystReviews({ position, onChanged }: { position: Position; onChange
   if (!due.length) return null;
   const review = async (catalystId: string, outcome: CatalystOutcome) => {
     setBusy(catalystId); setErr("");
+    // On success the buttons stay disabled until the reload takes the catalyst off the list.
     try { await fetchJson("/api/book/catalyst", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: position.id, catalystId, outcome }) }); onChanged?.(); }
-    catch (x) { setErr(errorMessage(x)); } finally { setBusy(""); }
+    catch (x) { setErr(errorMessage(x)); setBusy(""); }
   };
   return (
     <div className="rounded-md border border-accent/40 p-2.5" aria-label="Catalysts to review">
@@ -1059,6 +1084,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           <button type="button" aria-label="Dismiss" onClick={() => setSince(null)} className="text-muted hover:text-fg"><Icon name="X" className="h-3.5 w-3.5" /></button>
         </section>
       )}
+      {data && <NeedsYou todos={bookTodos(data.positions, data.history ?? {})} />}
 
       {sizing && sizing.notes.length > 0 && (
         <section aria-label="Sizing against conviction" className="panel flex items-start gap-2 p-3 text-[12px]">

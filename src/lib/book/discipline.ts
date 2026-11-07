@@ -100,3 +100,10 @@ export function catalystsDue(p: Position, now = new Date()): { id: string; label
     .map((c) => ({ id: c.id, label: c.label, date: c.date, daysAgo: daysBetween(c.date, today) }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+
+/** Catalysts that passed more than CATALYST_REVIEW_DAYS ago with no review: no longer asked about, but missed. */
+export function catalystsMissed(p: Position, now = new Date()): number {
+  const today = day(now.toISOString());
+  const reviewed = new Set((p.log ?? []).filter(isCatalystReview).map((e) => e.text));
+  return p.catalysts.filter((c) => c.date < today && daysBetween(c.date, today) > CATALYST_REVIEW_DAYS && !(["yes", "no", "mixed"] as const).some((o) => reviewed.has(catalystEntry(c.label, c.date, o)))).length;
+}
