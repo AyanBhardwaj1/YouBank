@@ -32,7 +32,10 @@ export async function GET() {
     // A forecast on any position, open or closed (one kept from before counts too).
     const hasForecast = (x: unknown) => !!x && typeof x === "object" && (!!(x as { conviction?: unknown }).conviction || (Array.isArray((x as { pastForecasts?: unknown[] }).pastForecasts) && (x as { pastForecasts: unknown[] }).pastForecasts.length > 0));
     const forecast = [...(Array.isArray(extra.book) ? extra.book : []), ...(Array.isArray(extra.bookClosed) ? extra.bookClosed : [])].some(hasForecast);
-    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean; role: string } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(extra), desktop, book, forecast, aiApp, role: profile.role };
+    // A note of the PM's own in any position's decision journal, open or closed.
+    const hasNote = (x: unknown) => !!x && typeof x === "object" && Array.isArray((x as { log?: unknown[] }).log) && (x as { log: { auto?: unknown }[] }).log.some((e) => e && typeof e === "object" && e.auto !== true);
+    const reason = [...(Array.isArray(extra.book) ? extra.book : []), ...(Array.isArray(extra.bookClosed) ? extra.bookClosed : [])].some(hasNote);
+    const facts: Omit<ChecklistFacts, "installed"> & { desktop: boolean; role: string } = { asked, ranTool, mail, calendar, twoFactor, styled: hasStyled(extra), desktop, book, forecast, reason, aiApp, role: profile.role };
     return NextResponse.json(facts, { headers: { "Cache-Control": "private, no-store" } });
   });
 }
