@@ -298,7 +298,7 @@ export const PROMPTS: McpPrompt[] = [
     arguments: [],
     build: () => [
       "Review my book in YouBank.",
-      "1. Call book_status. Lead with the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk.",
+      "1. Call book_status. Lead with its needs_you list (what the book needs from me now), then the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk. Flag any pm_forecast_incoherent.",
       "2. For each broken or on-watch name, call ticker_news and filing_changes (10-Q, section mdna) to find what moved it.",
       "3. Then the intact names in one line each, and any catalyst in the next two weeks.",
       "4. Call book_risk: the beta-adjusted net, the one-day VaR, any stacked bets, and the worst stress replay, in three lines.",
