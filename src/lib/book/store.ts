@@ -23,7 +23,10 @@ import { factsFrom, type FilingFact } from "./letter";
 import { freshForecast, standing, supersede } from "./forecast";
 import { catalystEntry, changesOf, goalpostEntry, recentVerdict, withEntries, type CatalystOutcome } from "./decisions";
 import { catalystsDue } from "./discipline";
-import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
+import { bookTodos } from "./todo";
+import { healthLine, processHealth } from "./process";
+
+import { calibrationOf, closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
 
@@ -341,7 +344,11 @@ export async function setBookShare(userId: string, teamId: number, on: boolean):
   return teams;
 }
 
-export type TeamBookMember = { userId: string; name: string; email: string; positions: number; summary: ReturnType<typeof summarize> };
+export type TeamBookMember = {
+  userId: string; name: string; email: string; positions: number; summary: ReturnType<typeof summarize>;
+  /** Positions with something on the member's Needs you list (todo.ts), and their process health in one line (process.ts). */
+  needs: number; health: string;
+};
 export type TeamEvaluation = Evaluation & { owner: string; ownerName: string; thesis: string; redTeam?: Position["redTeam"]; committee?: Position["committee"]; conviction?: Position["conviction"]; log?: Position["log"] };
 export type Conflict = { ticker: string; long: string[]; short: string[] };
 
@@ -362,7 +369,12 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
     const m = members.find((x) => x.userId === r.userId)!;
     const book = normalizeBook(extra.book);
     const evals = await evaluateBook(book, now);
-    out.push({ userId: m.userId, name: m.name || m.email, email: m.email, positions: book.length, summary: summarize(evals) });
+    const history = normalizeBookState(extra.bookState).history, closed = normalizeJournal(extra.bookClosed);
+    out.push({
+      userId: m.userId, name: m.name || m.email, email: m.email, positions: book.length, summary: summarize(evals),
+      needs: new Set(bookTodos(book, history, now).map((x) => x.positionId)).size,
+      health: healthLine(processHealth({ open: book, closed, history, calibration: calibrationOf(book, history, closed, now), now })),
+    });
     for (const e of evals) {
       const p = book.find((x) => x.id === e.positionId);
       evaluations.push({ ...e, owner: m.userId, ownerName: m.name || m.email, thesis: p?.thesis ?? "", ...(p?.redTeam ? { redTeam: p.redTeam } : {}), ...(p?.committee ? { committee: p.committee } : {}), ...(p?.conviction ? { conviction: p.conviction } : {}), ...(p?.log?.length ? { log: p.log } : {}) });
