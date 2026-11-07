@@ -12,7 +12,7 @@ import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/let
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
-import { toothless } from "@/lib/book/quality";
+import { thesisGaps, toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
 import { bookTodos } from "@/lib/book/todo";
@@ -666,6 +666,13 @@ console.log("Decision journal");
   const fri = new Date("2026-11-20T22:00:00Z");
   const stale = normalizePosition({ ...t, id: "wka9", ticker: "STL", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
   ok("the Friday alert says how many things need the PM", weekAlert({ now: fri, book: [stale], evals: [], history: {}, closed: [], proposals: [] }, "https://x")?.reasons, ["2026-11-13 to 2026-11-20", "1 thing in the Book needs you"]);
+}
+
+{
+  const gNow = new Date("2026-11-20T12:00:00Z");
+  ok("thesis gaps: only market lines, and no catalyst ahead", thesisGaps({ criteria: [{ metric: "price" }, { metric: "pe" }], catalysts: [{ date: "2026-11-01" }] }, gNow).length, 2);
+  ok("thesis gaps: a known earnings date ahead is a catalyst", thesisGaps({ criteria: [{ metric: "revenue_growth" }], catalysts: [] }, gNow, "2026-12-10"), []);
+  ok("thesis gaps: a business line and a catalyst ahead leave none; no criteria is said", [thesisGaps({ criteria: [{ metric: "price" }, { metric: "gross_margin" }], catalysts: [{ date: "2026-12-01" }] }, gNow), thesisGaps({ criteria: [], catalysts: [{ date: "2026-12-01" }] }, gNow)], [[], ["No kill criterion: nothing would show the thesis is wrong."]]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

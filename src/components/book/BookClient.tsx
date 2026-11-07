@@ -22,7 +22,7 @@ import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
-import { toothless } from "@/lib/book/quality";
+import { thesisGaps, toothless } from "@/lib/book/quality";
 import { isPmChange, loosened, recentVerdict, type CatalystOutcome, type LogEntry } from "@/lib/book/decisions";
 import { processHealth } from "@/lib/book/process";
 import { bookTodos, type Todo } from "@/lib/book/todo";
@@ -459,6 +459,10 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
               </table>
             </div>
           )}
+          {(() => {
+            const g = position && !owner ? thesisGaps(position, new Date(), ev.earnings?.date) : [];
+            return g.length ? <p className="text-[11.5px] text-muted"><span className="font-semibold text-accent">To make it testable:</span> {g.join(" ")}</p> : null;
+          })()}
           {(() => {
             const loose = toothless(ev.checks);
             return loose.length ? <p className="text-[11.5px] text-muted"><span className="font-semibold text-accent">Unlikely ever to fire:</span> {loose.map((x) => `${x.label} (${x.room} of room)`).join("; ")}. A kill criterion that cannot fail does not test the thesis; {owner ? "its owner could tighten it" : "tighten it so it would catch the thesis going wrong"}.</p> : null;

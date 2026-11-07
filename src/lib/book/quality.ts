@@ -22,3 +22,20 @@ export function toothless(checks: CheckResult[]): { label: string; room: string 
     return loose ? [{ label: c.label, room: c.headroom.shown }] : [];
   });
 }
+
+/** Kill criteria about the market's view rather than the business (the price, valuation, insiders). */
+const MARKET_METRICS = new Set(["price", "return_since_entry", "ev_revenue", "pe", "insider_selling"]);
+
+/**
+ * What would make the thesis testable but is missing: a kill criterion on the business (revenue, margins, cash
+ * flow, debt) rather than only on the price, and a dated catalyst ahead (when should the market see it?).
+ * A thesis is a claim about a business; a book of stops is a claim about nothing. Pure.
+ */
+export function thesisGaps(p: { criteria: { metric: string }[]; catalysts: { date: string }[] }, now = new Date(), /** The next earnings date, when known: it is a dated catalyst too. */ nextEarnings?: string | null): string[] {
+  const out: string[] = [];
+  if (!p.criteria.length) out.push("No kill criterion: nothing would show the thesis is wrong.");
+  else if (p.criteria.every((c) => MARKET_METRICS.has(c.metric))) out.push("Only market lines (price, valuation, insiders): nothing checks the business the thesis is about. Add one on revenue, margins or cash flow.");
+  const today = now.toISOString().slice(0, 10);
+  if (!p.catalysts.some((c) => c.date >= today) && !(nextEarnings && nextEarnings >= today)) out.push("No dated catalyst ahead: when should the market see the thesis play out?");
+  return out;
+}

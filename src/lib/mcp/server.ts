@@ -24,7 +24,7 @@ import { brokenNow, brokenNowLine, catalystsDue, staleTheses } from "@/lib/book/
 import { healthLine, processHealth } from "@/lib/book/process";
 import { bookTodos } from "@/lib/book/todo";
 import { isGoalposts } from "@/lib/book/decisions";
-import { toothless } from "@/lib/book/quality";
+import { thesisGaps, toothless } from "@/lib/book/quality";
 import { lintLetter } from "@/lib/book/letter";
 import { governance, periodOf } from "@/lib/ledger/governance";
 import { governanceRows, ledgerSettings } from "@/lib/ledger/store";
@@ -136,6 +136,7 @@ function bookTool(userId: string) {
           ...(() => { const p = positions.find((x) => x.id === e.positionId); const due = p ? catalystsDue(p) : []; return due.length ? { catalysts_to_review: due.map((c) => ({ label: c.label, date: c.date, note: "Passed; the PM has not said whether it played out." })) } : {}; })(),
           ...(() => { const p = positions.find((x) => x.id === e.positionId); const st = p ? staleTheses([p])[0] : undefined; return st ? { not_reviewed: { since: st.since, days: st.days, note: "No note or change from the PM in this time." } } : {}; })(),
           ...(() => { const g = (positions.find((x) => x.id === e.positionId)?.log ?? []).filter(isGoalposts); return g.length ? { criteria_loosened_while_failing: g.map((x) => ({ on: x.at.slice(0, 10), entry: x.text })) } : {}; })(),
+          ...(() => { const p = positions.find((x) => x.id === e.positionId); const g = p ? thesisGaps(p, new Date(), e.earnings?.date) : []; return g.length ? { to_make_it_testable: g } : {}; })(),
           ...(toothless(e.checks).length ? { criteria_unlikely_to_fire: toothless(e.checks).map((x) => `${x.label}: ${x.room} of room`) } : {}),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),
           next_earnings: e.earnings ? { date: e.earnings.date, estimated: e.earnings.estimated, in_days: e.earnings.inDays } : null,
