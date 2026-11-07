@@ -19,7 +19,7 @@ import { ALL_TOOLS, def, type Source, type ToolCtx, type ToolDef } from "@/lib/a
 import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { addProposal, evaluateBook, holdingFacts, loadBook, loadBookHistory, loadJournal, loadProposals, newsFor, noteProposal } from "@/lib/book/store";
 import { weekBrief } from "@/lib/book/week";
-import { priceBaseRate } from "@/lib/book/baserate";
+import { conjunctionCheck, priceBaseRate } from "@/lib/book/baserate";
 import { brokenNow, brokenNowLine, catalystsDue, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
 import { bookTodos } from "@/lib/book/todo";
@@ -126,7 +126,8 @@ function bookTool(userId: string) {
                 const vol = risk?.positions.find((x) => x.ticker === e.ticker)?.vol ?? null;
                 const by = p?.conviction?.by ?? new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
                 const b = p ? priceBaseRate(p, e.price, vol, by, new Date()) : null;
-                return b ? { price_base_rate: { price_lines_hold_pct: Math.round(b.p * 100), by, volatility_pct: vol, note: "From price volatility alone (driftless random walk); fundamental criteria not included." } } : {};
+                const warn = b && p?.conviction ? conjunctionCheck(p.conviction.p, b, p.criteria.length) : null;
+                return b ? { price_base_rate: { price_lines_hold_pct: Math.round(b.p * 100), by, volatility_pct: vol, note: "From price volatility alone (driftless random walk); fundamental criteria not included.", ...(warn ? { pm_forecast_incoherent: warn } : {}) } } : {};
               })(),
               ...(p?.committee ? { ai_committee: { decision: p.committee.decision, on: p.committee.at.slice(0, 10), rationale: p.committee.rationale, dissent: p.committee.dissent, watch: p.committee.watch, ...(p.committee.forecast ? { no_kill_criterion_fails_pct: Math.round(p.committee.forecast.p * 100), by: p.committee.forecast.by } : {}) } } : {}),
             };

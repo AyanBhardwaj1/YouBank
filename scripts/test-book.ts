@@ -11,7 +11,7 @@ import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForec
 import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
-import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
+import { noTouch, phi, conjunctionCheck, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { thesisGaps, toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
@@ -675,6 +675,12 @@ console.log("Decision journal");
   ok("thesis gaps: only market lines, and no catalyst ahead", thesisGaps({ criteria: [{ metric: "price" }, { metric: "pe" }], catalysts: [{ date: "2026-11-01" }] }, gNow).length, 2);
   ok("thesis gaps: a known earnings date ahead is a catalyst", thesisGaps({ criteria: [{ metric: "revenue_growth" }], catalysts: [] }, gNow, "2026-12-10"), []);
   ok("thesis gaps: a business line and a catalyst ahead leave none; no criteria is said", [thesisGaps({ criteria: [{ metric: "price" }, { metric: "gross_margin" }], catalysts: [{ date: "2026-12-01" }] }, gNow), thesisGaps({ criteria: [], catalysts: [{ date: "2026-12-01" }] }, gNow)], [[], ["No kill criterion: nothing would show the thesis is wrong."]]);
+}
+
+{
+  // The conjunction rule: the chance no criterion fails cannot beat the chance the price lines alone hold.
+  ok("conjunction: a forecast above the price base rate with more criteria to hold is incoherent", conjunctionCheck(0.8, { p: 0.6, lines: 1 }, 3), "80% is above the 60% chance the price line alone holds; with the other kill criteria also needing to hold, the chance none fails can only be lower.");
+  ok("conjunction: price lines only, asks what the PM knows; at or under the base rate (or within rounding) is fine", [conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2), conjunctionCheck(0.61, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.5, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.9, null, 3)], ["90% is above the 70% chance the price lines hold from volatility alone: say what you know that the price does not.", null, null, null]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

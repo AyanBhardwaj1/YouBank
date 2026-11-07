@@ -63,3 +63,17 @@ export function priceBaseRate(p: Pick<Position, "criteria" | "entry" | "directio
   const pc = ceilings.length ? noTouch(price, Math.min(...ceilings), sigma, years, "ceiling") : 1;
   return { p: floors.length && ceilings.length ? Math.max(0, pf + pc - 1) : Math.min(pf, pc), lines: lines.length };
 }
+
+/**
+ * A forecast that no kill criterion fails cannot be more likely than the price lines alone holding: every other
+ * criterion is one more thing that must hold too (the conjunction rule; Tversky and Kahneman 1983). A forecast
+ * above the price base rate (by more than rounding) is incoherent, whatever the fundamentals. Returns the
+ * warning, or null. Both are chances in 0..1, the base rate to the forecast's own date.
+ */
+export function conjunctionCheck(forecast: number, base: { p: number; lines: number } | null, criteria: number): string | null {
+  if (!base || forecast <= base.p + 0.02) return null;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return criteria > base.lines
+    ? `${pct(forecast)} is above the ${pct(base.p)} chance the price line${base.lines === 1 ? "" : "s"} alone hold${base.lines === 1 ? "s" : ""}; with the other kill criteria also needing to hold, the chance none fails can only be lower.`
+    : `${pct(forecast)} is above the ${pct(base.p)} chance the price line${base.lines === 1 ? "" : "s"} hold${base.lines === 1 ? "s" : ""} from volatility alone: say what you know that the price does not.`;
+}

@@ -21,7 +21,7 @@ import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type Clos
 import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
-import { priceBaseRate } from "@/lib/book/baserate";
+import { conjunctionCheck, priceBaseRate } from "@/lib/book/baserate";
 import { thesisGaps, toothless } from "@/lib/book/quality";
 import { isPmChange, loosened, recentVerdict, type CatalystOutcome, type LogEntry } from "@/lib/book/decisions";
 import { processHealth } from "@/lib/book/process";
@@ -149,7 +149,8 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
         {(() => {
           const pos = { direction: d.direction, entry: d.entry ? Number(d.entry) : null, criteria: d.criteria.filter((c) => c.value.trim() && Number.isFinite(Number(c.value))).map((c, k) => ({ id: `d${k}`, metric: c.metric, op: c.op, value: Number(c.value) })) };
           const base = market ? priceBaseRate(pos, market.price, market.vol, d.convBy, new Date()) : null;
-          return base ? <span className="basis-full text-[11px] text-fg sm:basis-auto">Base rate from price alone: <span className="font-semibold">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to that date. Start there, then adjust for the fundamentals.</span> : null;
+          const warn = base && d.convP.trim() && Number.isFinite(Number(d.convP)) ? conjunctionCheck(Number(d.convP) / 100, base, pos.criteria.length) : null;
+          return base ? <span className="basis-full text-[11px] text-fg sm:basis-auto">Base rate from price alone: <span className="font-semibold">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to that date. Start there, then adjust for the fundamentals.{warn && <span role="status" className="block text-neg">{warn}</span>}</span> : null;
         })()}
         <span className="basis-full text-[11px] sm:basis-auto">Optional. YouBank scores it when it resolves, so the track record shows how well calibrated the book&apos;s conviction is{d.convSource && d.convSource !== "You" ? ` (this one is ${d.convSource}'s)` : ""}.</span>
       </div>
@@ -415,7 +416,7 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
             {(() => {
               const by = position?.conviction?.by ?? inDays(90);
               const base = position ? priceBaseRate(position, ev.price, vol, by, new Date()) : null;
-              return base ? <p className="mt-0.5 text-[11.5px] text-muted" title="The chance the price never touches a price line in the kill criteria before the date, as a driftless random walk with the stock's one-year volatility. Fundamentals are not included.">Base rate from price alone: <span className="font-semibold text-fg">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to {by} ({vol}% volatility, no drift; fundamentals not included).</p> : null;
+              return base ? <p className="mt-0.5 text-[11.5px] text-muted" title="The chance the price never touches a price line in the kill criteria before the date, as a driftless random walk with the stock's one-year volatility. Fundamentals are not included.">Base rate from price alone: <span className="font-semibold text-fg">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to {by} ({vol}% volatility, no drift; fundamentals not included).{(() => { const w = position?.conviction ? conjunctionCheck(position.conviction.p, base, position.criteria.length) : null; return w ? <span className="block text-neg">Your forecast: {w}</span> : null; })()}</p> : null;
             })()}
             {position && !position.conviction && !owner && onEdit && <p className="mt-0.5 text-[11.5px] text-muted">No forecast yet. <button type="button" onClick={onEdit} className="text-accent hover:underline">Add a forecast</button> (how sure you are its kill criteria hold, and until when) and YouBank scores it.</p>}
             {!!position?.pastForecasts?.length && <p className="mt-0.5 text-[11px] text-muted" title={position.pastForecasts.map((f) => `${Math.round(f.p * 100)}% to ${f.by}, set ${f.at} (${f.source})`).join("\n")}>{position.pastForecasts.length} earlier forecast{position.pastForecasts.length === 1 ? " was" : "s were"} changed and {position.pastForecasts.length === 1 ? "is" : "are"} still scored at {position.pastForecasts.length === 1 ? "its" : "their"} own date{position.pastForecasts.length === 1 ? "" : "s"}.</p>}
