@@ -23,7 +23,9 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { isPmChange, loosened, type LogEntry } from "@/lib/book/decisions";
+import { isPmChange, loosened, recentVerdict, type LogEntry } from "@/lib/book/decisions";
+import { processHealth } from "@/lib/book/process";
+import { ProcessHealth } from "@/components/book/ProcessHealth";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -186,7 +188,9 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
       {proposal?.rationale && <p className="text-[11px] text-muted"><span className="font-semibold">{proposal.from}&apos;s reasoning</span> (kept in the journal in its name): {proposal.rationale}</p>}
       {(() => {
         if (!initial.id || (verdict !== "broken" && verdict !== "watch")) return null;
-        const lines = (x: Draft) => ({ criteria: x.criteria.map((c) => ({ metric: c.metric, op: c.op, value: Number(c.value) })).filter((c) => Number.isFinite(c.value)) });
+        // As the server reads them: a blank value is no line at all.
+        const lines = (x: Draft) => ({ criteria: x.criteria.filter((c) => c.value.trim()).map((c) => ({ metric: c.metric, op: c.op, value: Number(c.value) })).filter((c) => Number.isFinite(c.value)) });
+        if (d.direction !== initial.direction) return null;
         const xs = loosened(lines(initial), lines(d));
         return xs.length ? <p role="status" className="text-[11.5px] text-neg">The thesis reads {verdict === "broken" ? "broken" : "on watch"}, and this loosens its kill criteria ({xs.join("; ")}). That can be right, but it looks like moving the goalposts later: say why below.</p> : null;
       })()}
@@ -749,7 +753,7 @@ type JournalData = { closed: ClosedPosition[]; scorecard: Scorecard; calibration
 const pctS = (x: number | null, d = 1) => (x === null ? "n/a" : `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(d)}%`);
 
 /** Closed positions and the scorecard over them: hit rate, payoff, and how fast a broken thesis was exited. */
-function TrackRecord({ sig }: { sig: string }) {
+function TrackRecord({ sig, open: held = [], history = {} }: { sig: string; /** The positions held now and their daily history, for process health. */ open?: Position[]; history?: BookHistory }) {
   const [open, setOpen] = useState(false);
   const [res, setRes] = useState<{ sig: string; d?: JournalData; err?: string } | null>(null);
   useEffect(() => {
@@ -766,13 +770,14 @@ function TrackRecord({ sig }: { sig: string }) {
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-2 text-left">
         <Icon name="ClipboardList" className="h-4 w-4 text-accent" />
         <span className="text-[13px] font-semibold">Track record</span>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">Closed positions, hit rate, payoff, and how fast a broken thesis was exited</span>
+        <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted">Process health, closed positions, hit rate, payoff, and how fast a broken thesis was exited</span>
         <Icon name={open ? "ChevronUp" : "ChevronDown"} className="h-4 w-4 text-muted" />
       </button>
       {open && err && <p role="alert" className="mt-3 text-[12px] text-neg">{err}</p>}
       {open && !d && !err && <div className="shimmer mt-3 h-24 ctl" />}
       {open && d && s && (
         <div className="mt-3 space-y-3">
+          <div className="ctl border border-line p-2.5 text-[12px] [&_section]:mt-0"><ProcessHealth items={processHealth({ open: held, closed: d.closed, history, calibration: d.calibration ?? null })} heading={false} /></div>
           {d.calibration && (d.calibration.n > 0 || d.calibration.open > 0) && (
             <div className="ctl border border-line p-2.5 text-[12px]">
               <div className="font-semibold">Calibration</div>
@@ -989,7 +994,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
       )}
 
-      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} verdict={editing.id ? data?.evaluations.find((x) => x.positionId === editing.id)?.verdict : undefined} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} verdict={editing.id ? recentVerdict(data?.history?.[editing.id]) : undefined} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
         if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));
@@ -1033,7 +1038,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
 
       {s && s.gross > 0 && data && <RiskPanel initiallyOpen={riskOpen} sig={data.positions.map((p) => `${p.ticker}:${p.direction}:${p.weight ?? ""}`).sort().join(",")} />}
 
-      {data && <TrackRecord sig={data.positions.map((p) => p.id).sort().join(",")} />}
+      {data && <TrackRecord sig={data.positions.map((p) => p.id).sort().join(",")} open={data.positions} history={data.history ?? {}} />}
 
       {s && s.byIndustry.length > 1 && s.gross > 0 && (
         <section aria-label="Exposure by industry" className="panel p-4">

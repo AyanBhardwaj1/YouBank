@@ -85,14 +85,30 @@ export function notesOf(log: LogEntry[]): { at: string; text: string; with?: str
 type Line = { metric: string; op: ">=" | "<="; value: number };
 export function loosened(prev: { criteria: Line[] }, next: { criteria: Line[] }): string[] {
   const line = (c: Line) => `${c.metric.replace(/_/g, " ")} ${c.op === ">=" ? "at least" : "at most"} ${r2(c.value)}`;
-  const out: string[] = [];
+  const out = new Set<string>();
   for (const c of prev.criteria) {
     const same = next.criteria.filter((x) => x.metric === c.metric && x.op === c.op).map((x) => x.value);
-    if (!same.length) { out.push(`${line(c)} removed`); continue; }
+    if (!same.length) {
+      // The same metric kept the other way round is a changed line, not a vanished one.
+      const flipped = next.criteria.find((x) => x.metric === c.metric);
+      out.add(flipped ? `${line(c)} changed to ${flipped.op === ">=" ? "at least" : "at most"} ${r2(flipped.value)}` : `${line(c)} removed`);
+      continue;
+    }
     const strictest = c.op === ">=" ? Math.max(...same) : Math.min(...same);
-    if (c.op === ">=" ? strictest < c.value : strictest > c.value) out.push(`${line(c)} → ${r2(strictest)}`);
+    if (c.op === ">=" ? strictest < c.value : strictest > c.value) out.add(`${line(c)} → ${r2(strictest)}`);
   }
-  return out;
+  return [...out];
+}
+
+/**
+ * The verdict to judge a save by: the latest daily check, if it is recent (the check skips days without data,
+ * so a broken reading from weeks ago does not count). Shared by the server and the editor's warning.
+ */
+export function recentVerdict(points: { d: string; v: string }[] | undefined, now = new Date(), maxDays = 5): string | undefined {
+  const last = points?.[points.length - 1];
+  if (!last) return undefined;
+  const age = (Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${last.d}T00:00:00Z`)) / 86_400_000;
+  return age >= 0 && age <= maxDays ? last.v : undefined;
 }
 
 export const GOALPOSTS = "Kill criteria loosened while the thesis read";
@@ -100,7 +116,8 @@ export const isGoalposts = (e: LogEntry) => !!e.auto && e.text.startsWith(GOALPO
 
 /** The journal entry for loosened criteria while the thesis reads broken or on watch, or null. */
 export function goalpostEntry(prev: Position | null, next: Position, verdict: string | undefined): string | null {
-  if (!prev || (verdict !== "broken" && verdict !== "watch")) return null;
+  // Flipping the side is a response to the break, not a way round it: its criteria change with it.
+  if (!prev || prev.direction !== next.direction || (verdict !== "broken" && verdict !== "watch")) return null;
   const xs = loosened(prev, next);
   return xs.length ? `${GOALPOSTS} ${verdict === "broken" ? "broken" : "on watch"}: ${xs.join("; ")}.` : null;
 }

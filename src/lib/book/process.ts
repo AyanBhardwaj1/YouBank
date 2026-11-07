@@ -61,8 +61,8 @@ export function processHealth(i: { open: Position[]; closed: ClosedPosition[]; h
 
   const h = scorecard(i.closed).holding;
   items.push(h
-    ? { key: "disposition", label: "Losers held longer than winners", value: `${h.losers} vs ${h.winners} days`, status: h.disposition ? "fix" : "good", detail: `Median days held: ${h.losers} for losers, ${h.winners} for winners, over ${h.n} closes.${h.disposition ? " Cutting gains early and waiting on losses is the disposition effect." : ""}` }
-    : { key: "disposition", label: "Losers held longer than winners", value: "—", status: "none", detail: "Needs at least two winners and two losers closed." });
+    ? { key: "disposition", label: "Holding period, losers vs winners", value: `${h.losers} vs ${h.winners} days`, status: h.disposition ? "fix" : "good", detail: `Median days held: ${h.losers} for losers, ${h.winners} for winners, over ${h.n} closes.${h.disposition ? " Cutting gains early and waiting on losses is the disposition effect." : ""}` }
+    : { key: "disposition", label: "Holding period, losers vs winners", value: "—", status: "none", detail: "Needs at least two winners and two losers closed." });
 
   const s = staleTheses(i.open, now);
   items.push(i.open.length

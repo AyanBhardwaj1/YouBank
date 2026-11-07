@@ -79,7 +79,9 @@ export function staleTheses(open: Position[], now = new Date(), after = STALE_DA
   const today = day(now.toISOString());
   return open.flatMap((p) => {
     const touched = (p.log ?? []).filter((e) => !e.auto || isPmChange(e)).map((e) => e.at);
-    const last = [p.createdAt, ...touched].filter(Boolean).sort().pop()!;
+    const last = [p.createdAt, ...touched].filter(Boolean).sort().pop();
+    // Nothing to date it by (a teammate's position seen without its history): no judgement.
+    if (!last) return [];
     const days = daysBetween(last, today);
     return days >= after ? [{ positionId: p.id, ticker: p.ticker, since: day(last), days }] : [];
   }).sort((a, b) => b.days - a.days || a.ticker.localeCompare(b.ticker));

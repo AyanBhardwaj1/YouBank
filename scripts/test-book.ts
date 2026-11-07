@@ -15,7 +15,7 @@ import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
-import { AUTO_MAX, changesOf, goalpostEntry, loosened, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
+import { AUTO_MAX, changesOf, goalpostEntry, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -612,6 +612,17 @@ console.log("Decision journal");
   ok("process health: a broken thesis left alone more than five days is to fix", [by("broken").value, by("broken").status], ["0 of 1", "fix"]);
   ok("process health: goalposts moved once is to watch; no history yet is said", [by("goalposts").status, by("disposition").status, by("calibration").status, by("stale").status], ["watch", "none", "none", "good"]);
   ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (2 not enough history yet).");
+}
+
+{
+  // Fixes from the eighth review.
+  const lb = normalizePosition({ ...t, id: "rv81", direction: "long", criteria: [{ metric: "revenue_growth", op: ">=", value: 20 }, { metric: "gross_margin", op: ">=", value: 70 }] })!;
+  const flip = normalizePosition({ ...lb, direction: "short", criteria: [{ metric: "revenue_growth", op: "<=", value: 20 }, { metric: "gross_margin", op: "<=", value: 70 }] })!;
+  ok("flipping the side is not moving the goalposts", goalpostEntry(lb, flip, "broken"), null);
+  ok("an op changed on the same side is said as changed, not removed; duplicates are said once", loosened(lb, { criteria: [{ metric: "revenue_growth", op: "<=", value: 30 }, { metric: "gross_margin", op: ">=", value: 60 }, { metric: "gross_margin", op: ">=", value: 60 }] }), ["revenue growth at least 20 changed to at most 30", "gross margin at least 70 → 60"]);
+  ok("a recent check counts; a stale or future one does not", [recentVerdict([{ d: "2026-11-18", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict([{ d: "2026-10-01", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict(undefined)], ["broken", undefined, undefined]);
+  const team = { ...normalizePosition({ ...t, id: "rv82" })!, createdAt: "", log: [{ at: "2026-11-01T00:00:00Z", text: "AI committee: hold.", auto: true }] };
+  ok("a teammate's position with nothing to date it by is not judged stale (and does not throw)", staleTheses([team], new Date("2026-11-20T12:00:00Z")), []);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -21,7 +21,7 @@ import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
 import { factsFrom, type FilingFact } from "./letter";
 import { freshForecast, standing, supersede } from "./forecast";
-import { changesOf, goalpostEntry, withEntries } from "./decisions";
+import { changesOf, goalpostEntry, recentVerdict, withEntries } from "./decisions";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -59,8 +59,7 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     const proposal = !prev && typeof fromId === "string" ? normalizeProposals(extra.bookProposals).find((x) => x.id === fromId) : undefined;
     const origin = proposal ? [`Proposed by ${proposal.from}${proposal.rationale ? `, whose reasoning was: "${proposal.rationale}"` : "."}`] : [];
     // Loosening a kill criterion while the thesis reads broken or on watch is recorded as such (decisions.ts).
-    const pts = prev ? normalizeBookState(extra.bookState).history[prev.id] ?? [] : [];
-    const goalposts = goalpostEntry(prev, next, pts[pts.length - 1]?.v);
+    const goalposts = goalpostEntry(prev, next, prev ? recentVerdict(normalizeBookState(extra.bookState).history[prev.id]) : undefined);
     const log = withEntries(prev?.log, [...changesOf(prev, next), ...origin, ...(goalposts ? [goalposts] : [])], now, note);
     if (log.length) next.log = log;
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });

@@ -71,7 +71,7 @@ async function main() {
   check("an app kept from the Book does not see the Book's tools", noBook.length > 0 && !noBook.includes("book_status") && !noBook.includes("propose_position") && noBook.includes("check_thesis"), noBook);
   await j("/api/settings/mcp-keys", { method: "PATCH", body: JSON.stringify({ id: keyId, book: true, propose: true }) });
   const prompts = await rpc(K, "prompts/list");
-  check("seven prompts, the committee among them", (prompts.body.result?.prompts ?? []).length === 7 && prompts.body.result.prompts.some((x: { name: string }) => x.name === "investment_committee"), prompts.body);
+  check("nine prompts, the committee and the pre-mortem among them", (prompts.body.result?.prompts ?? []).length === 9 && ["investment_committee", "pre_mortem", "process_review"].every((n) => prompts.body.result.prompts.some((x: { name: string }) => x.name === n)), (prompts.body.result?.prompts ?? []).map((x: { name: string }) => x.name));
   check("initialize announces resources (the MCP Apps proposal card)", !!init.body.result?.capabilities?.resources, init.body.result?.capabilities);
   const cardRes = await rpc(K, "resources/read", { uri: "ui://youbank/proposal-card" });
   check("the proposal card is served as an MCP Apps view and declared on propose_position", cardRes.body.result?.contents?.[0]?.mimeType === "text/html;profile=mcp-app" && ((tools.body.result?.tools ?? []) as { name: string; _meta?: { ui?: { resourceUri?: string } } }[]).find((t) => t.name === "propose_position")?._meta?.ui?.resourceUri === "ui://youbank/proposal-card", cardRes.body);
