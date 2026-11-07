@@ -807,7 +807,7 @@ function ExportMenu() {
   const item = "flex items-center gap-2 ctl px-2.5 py-1.5 text-[12px] hover:bg-elevated";
   return (
     <details className="group relative">
-      <summary className="ctl flex cursor-pointer list-none items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg [&::-webkit-details-marker]:hidden"><Icon name="Share2" className="h-3.5 w-3.5" />Share &amp; export<Icon name="ChevronDown" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary>
+      <summary className="ctl flex cursor-pointer list-none items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg [&::-webkit-details-marker]:hidden"><Icon name="Share2" className="h-3.5 w-3.5" />Share<span className="max-sm:hidden">&nbsp;&amp; export</span><Icon name="ChevronDown" className="h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary>
       <div className="panel absolute left-0 z-20 mt-1 w-64 max-w-[calc(100vw-2rem)] p-1 shadow-lg sm:left-auto sm:right-0">
         <Link href="/report/book" className={item}><Icon name="FileText" className="h-3.5 w-3.5 text-muted" /><span><span className="block">IC / LP report</span><span className="block text-[11px] text-muted">Printable, with risk and the track record</span></span></Link>
         <Link href="/report/letter" className={item}><Icon name="Newspaper" className="h-3.5 w-3.5 text-muted" /><span><span className="block">LP letter</span><span className="block text-[11px] text-muted">A draft, with a compliance pass</span></span></Link>
@@ -1038,7 +1038,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
         <div className="flex gap-2">
           {!!data?.evaluations.length && <ExportMenu />}
           <button type="button" onClick={() => { setImporting((v) => !v); setEditing(null); setReviewing(null); }} className="ctl flex items-center gap-1.5 border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg"><Icon name="Upload" className="h-3.5 w-3.5" />Import</button>
-          <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); setReviewing(null); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add a position</button>
+          <button type="button" onClick={() => { setEditing(emptyDraft()); setImporting(false); setReviewing(null); }} className="ctl flex items-center gap-1.5 bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg"><Icon name="Plus" className="h-3.5 w-3.5" />Add<span className="max-sm:hidden">&nbsp;a position</span></button>
         </div>
       </header>
 

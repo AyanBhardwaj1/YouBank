@@ -25,10 +25,10 @@ export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} title={`Style: ${theme.name}`} aria-label="Change style"
-        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10">
+        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent">
         <Icon name="Palette" className="h-3.5 w-3.5" />
         <span className={nameClass}>{theme.name}</span>
-        <span className="flex gap-0.5">
+        <span className="flex gap-0.5 max-md:hidden">
           {[theme.vars.accent, theme.vars.chart1, theme.vars.panel].map((c, i) => <span key={i} className="h-2.5 w-2.5 rounded-sm border border-line" style={{ background: c }} />)}
         </span>
       </button>
