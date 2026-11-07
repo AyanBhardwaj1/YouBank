@@ -77,5 +77,6 @@ export function conjunctionCheck(forecast: number, base: { p: number; lines: num
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const lines = `the ${pct(base.p)} volatility-only chance the price line${base.lines === 1 ? "" : "s"} hold${base.lines === 1 ? "s" : ""}`;
   const why = criteria > base.lines ? "With the other kill criteria also needing to hold, what do you expect that the model does not (drift in your favour, calmer volatility)?" : "What do you expect that the model does not (drift in your favour, calmer volatility)?";
-  return stale ? `${pct(forecast)} is now above ${lines}; consider updating it. ${why}` : `${pct(forecast)} is above ${lines}. ${why}`;
+  // An older forecast may have been above it from the start: it is asked whether it still stands, not told it moved.
+  return stale ? `${pct(forecast)}, made earlier, is above ${lines} as priced today. ${why} If nothing does any more, update it.` : `${pct(forecast)} is above ${lines}. ${why}`;
 }
