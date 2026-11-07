@@ -165,6 +165,14 @@ async function main() {
       check("loosening a kill criterion while the thesis fails is recorded as moving the goalposts", (gp.body.position?.log ?? []).some((x: { text: string; auto?: boolean }) => x.auto && x.text.startsWith("Kill criteria loosened while the thesis read")), gp.body.position?.log);
       await j("/api/book", { method: "POST", body: JSON.stringify(failing) });
     } else console.log("  skip  no failing position with two criteria to loosen");
+    // No new forecast while the thesis reads broken: the next daily check would score it on a known break.
+    const broke = (hb.body.positions as { id: string; conviction?: unknown }[]).find((p) => { const h = hb.body.history?.[p.id] ?? []; const l = h[h.length - 1]; return l?.v === "broken" && (Date.now() - Date.parse(`${l.d}T00:00:00Z`)) / 86_400_000 <= 5; });
+    if (broke) {
+      const bf = await j("/api/book", { method: "POST", body: JSON.stringify({ ...broke, conviction: { p: 1, by: later } }) });
+      check("a new forecast on a thesis that reads broken is refused", bf.status === 400 && /reads broken/.test(bf.body?.error ?? ""), bf.body);
+      const keep = await j("/api/book", { method: "POST", body: JSON.stringify(broke) });
+      check("an edit that leaves the forecast as it is still saves on a broken thesis", keep.status === 200, keep.body);
+    } else console.log("  skip  no position reads broken");
     // Catalyst reviews: a passed catalyst, said once, in a fixed form; anything else is refused.
     const catDay = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
     const withCat = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, catalysts: [...((target.catalysts ?? []) as { label: string; date: string }[]), { label: "e2e catalyst", date: catDay }] }) });
