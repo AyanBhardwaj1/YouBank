@@ -188,6 +188,11 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
       </div>
       {proposal?.rationale && <p className="text-[11px] text-muted"><span className="font-semibold">{proposal.from}&apos;s reasoning</span> (kept in the journal in its name): {proposal.rationale}</p>}
       {(() => {
+        // Live, as the thesis is written: what would make it testable (quality.ts thesisGaps).
+        const g = thesisGaps({ criteria: d.criteria.filter((c) => c.value.trim()), catalysts: d.catalysts.filter((c) => c.label.trim() && c.date) });
+        return d.ticker.trim() && g.length ? <p className="text-[11.5px] text-muted"><span className="font-semibold text-accent">To make it testable:</span> {g.join(" ")}</p> : null;
+      })()}
+      {(() => {
         if (!initial.id || (verdict !== "broken" && verdict !== "watch")) return null;
         // As the server reads them: a blank value is no line at all.
         const lines = (x: Draft) => ({ criteria: x.criteria.filter((c) => c.value.trim()).map((c) => ({ metric: c.metric, op: c.op, value: Number(c.value) })).filter((c) => Number.isFinite(c.value)) });
