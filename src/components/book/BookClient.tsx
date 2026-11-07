@@ -68,7 +68,7 @@ const fieldBox = "ctl border border-line bg-bg px-2 py-1.5 text-[12px] placehold
 const field = `${fieldBox} w-full`;
 
 /** `heading` replaces the title (a proposal under review: a new position, without the templates). */
-function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict }: { /** The thesis's verdict now, when editing a held position: loosening a criterion while it fails is flagged. */ verdict?: string; initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Reviewing an AI app's proposal: its id (the server records where the position came from) and the app's reasoning, shown for reference only. */ proposal?: { id: string; from: string; rationale: string }; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
+function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict }: { /** The thesis's verdict now, when editing a held position: loosening a criterion while it fails is flagged. */ verdict?: string; initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Reviewing an AI app's proposal: its id (the server records where the position came from) and the app's reasoning, shown for reference only. */ proposal?: { id: string; from: string; rationale: string }; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null; earnings?: string | null } }) {
   const [d, setD] = useState<Draft>(initial);
   // Why this change: saved with it into the decision journal (decisions.ts), dated by the server.
   const [why, setWhy] = useState("");
@@ -189,7 +189,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
       {proposal?.rationale && <p className="text-[11px] text-muted"><span className="font-semibold">{proposal.from}&apos;s reasoning</span> (kept in the journal in its name): {proposal.rationale}</p>}
       {(() => {
         // Live, as the thesis is written: what would make it testable (quality.ts thesisGaps).
-        const g = thesisGaps({ criteria: d.criteria.filter((c) => c.value.trim()), catalysts: d.catalysts.filter((c) => c.label.trim() && c.date) });
+        const g = thesisGaps({ criteria: d.criteria.filter((c) => c.value.trim()), catalysts: d.catalysts.filter((c) => c.label.trim() && c.date) }, new Date(), market?.earnings);
         return d.ticker.trim() && g.length ? <p className="text-[11.5px] text-muted"><span className="font-semibold text-accent">To make it testable:</span> {g.join(" ")}</p> : null;
       })()}
       {(() => {
@@ -257,7 +257,7 @@ function CatalystReviews({ position, onChanged }: { position: Position; onChange
           <li key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="min-w-0 flex-1"><span className="font-semibold">{c.label}</span> <span className="num text-muted">{c.date}</span><span className="text-muted"> ({c.daysAgo} day{c.daysAgo === 1 ? "" : "s"} ago)</span></span>
             {(["yes", "mixed", "no"] as CatalystOutcome[]).map((o) => (
-              <button key={o} type="button" disabled={!!busy} onClick={() => review(c.id, o)} className="ctl border border-line px-2 py-0.5 text-[11.5px] text-muted hover:text-fg disabled:opacity-50">{o === "yes" ? "As expected" : o === "mixed" ? "Mixed" : "It didn't"}</button>
+              <button key={o} type="button" disabled={busy === c.id} onClick={() => review(c.id, o)} className="ctl border border-line px-2 py-0.5 text-[11.5px] text-muted hover:text-fg disabled:opacity-50">{o === "yes" ? "As expected" : o === "mixed" ? "Mixed" : "It didn't"}</button>
             ))}
           </li>
         ))}
@@ -1060,7 +1060,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
       )}
 
-      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} verdict={editing.id ? recentVerdict(data?.history?.[editing.id]) : undefined} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} verdict={editing.id ? recentVerdict(data?.history?.[editing.id]) : undefined} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null, earnings: e.earnings?.date ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
         if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));
@@ -1146,7 +1146,8 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
         <ul className="space-y-2">
           {data.evaluations.filter((ev) => !only || ev.verdict === only).map((ev) => {
             const p = byId.get(ev.positionId);
-            return <PositionCard key={ev.positionId} ev={ev} position={p} history={data.history?.[ev.positionId]} vol={data.vols?.[ev.ticker] ?? null} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); setReviewing(null); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
+            // Re-keyed when focused, so a card reached from Needs you (or a link) opens even if it was collapsed.
+            return <PositionCard key={`${ev.positionId}${ev.positionId === focus ? ":focus" : ""}`} ev={ev} position={p} history={data.history?.[ev.positionId]} vol={data.vols?.[ev.ticker] ?? null} focused={ev.positionId === focus} onChanged={load} onEdit={() => { if (p) { setEditing(draftOf(p)); setReviewing(null); document.querySelector("[data-book-top]")?.scrollIntoView({ behavior: "smooth" }); } }} />;
           })}
         </ul>
       )}

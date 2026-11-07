@@ -71,11 +71,13 @@ export function processHealth(i: { open: Position[]; closed: ClosedPosition[]; h
     : { key: "stale", label: "Theses not reviewed in 90 days", value: "—", status: "none", detail: "The book is empty." });
 
   // Catalysts: did the ones the theses counted on play out, and are any passed ones still unreviewed?
-  // The latest review per catalyst date on each position, so a catalyst relabelled and answered again counts once.
+  // The latest review per catalyst (label and date) on each position: a catalyst answered again counts once.
   const latest = new Map<string, NonNullable<ReturnType<typeof catalystOutcome>>>();
   logs.forEach((log, k) => [...log].sort((a, b) => a.at.localeCompare(b.at)).forEach((e) => {
-    const o = catalystOutcome(e), d = /\((\d{4}-\d{2}-\d{2})\) (?:played|did|was)/.exec(e.text)?.[1];
-    if (o && d) latest.set(`${k}:${d}`, o);
+    // "Catalyst reviewed: "<label>" (<date>) <outcome>." read from the end, so a label holding a date cannot fool it.
+    const o = catalystOutcome(e);
+    const m = /^Catalyst reviewed: "(.*)" \((\d{4}-\d{2}-\d{2})\) (?:played out|did not play out|was mixed)\.$/.exec(e.text);
+    if (o && m) latest.set(`${k}:${m[2]}:${m[1]}`, o);
   }));
   const outcomes = [...latest.values()];
   const pending = i.open.reduce((n, p) => n + catalystsDue(p, now).length, 0);

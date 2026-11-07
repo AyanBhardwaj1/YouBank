@@ -630,17 +630,19 @@ console.log("Decision journal");
 {
   // Catalyst reviews.
   const cNow = new Date("2026-11-20T12:00:00Z");
-  const cp = normalizePosition({ ...t, id: "cat1", catalysts: [{ label: "Q3 earnings", date: "2026-11-10" }, { label: "Investor day", date: "2026-12-05" }, { label: "Old", date: "2026-08-01" }] })!;
+  const cp = normalizePosition({ ...t, id: "cat1", createdAt: "2026-01-01T00:00:00Z", catalysts: [{ label: "Q3 earnings", date: "2026-11-10" }, { label: "Investor day", date: "2026-12-05" }, { label: "Old", date: "2026-08-01" }] })!;
   const due = catalystsDue(cp, cNow);
   ok("catalysts due: passed within 60 days and not yet reviewed (not future, not long gone)", due.map((x) => [x.label, x.daysAgo]), [["Q3 earnings", 10]]);
   const reviewed = { ...cp, log: [{ at: "2026-11-12T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-11-10", "mixed"), auto: true }] };
   ok("a reviewed catalyst is no longer due; its outcome reads back", [catalystsDue(reviewed, cNow).length, catalystOutcome(reviewed.log[0]), isPmChange(reviewed.log[0])], [0, "mixed", false]);
   const ch = processHealth({ open: [cp], closed: [{ ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Launch", "2026-08-30", "yes"), auto: true }, { at: "2026-10-01T00:00:00Z", text: catalystEntry("Deal", "2026-09-30", "no"), auto: true }] }], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!;
   ok("process health: the catalyst hit rate and the reviews still owed", [ch.value, ch.status, ch.detail], ["1 of 2 played out", "fix", "Of 2 catalysts reviewed, 1 played out as expected. 1 passed catalyst waits for a review. 1 passed more than 60 days ago without one."]);
-  const miss = normalizePosition({ ...t, id: "cat2", catalysts: [{ label: "Old deal", date: "2026-08-01" }] })!;
+  const miss = normalizePosition({ ...t, id: "cat2", createdAt: "2026-01-01T00:00:00Z", catalysts: [{ label: "Old deal", date: "2026-08-01" }] })!;
   ok("a catalyst ignored past 60 days is missed, not forgotten", [catalystsMissed(miss, cNow), processHealth({ open: [miss], closed: [], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.status], [1, "fix"]);
-  const twice = { ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Q3 prnt", "2026-08-30", "no"), auto: true }, { at: "2026-09-02T00:00:00Z", text: catalystEntry("Q3 print", "2026-08-30", "yes"), auto: true }] };
-  ok("a relabelled catalyst answered again counts once, by its latest answer", processHealth({ open: [], closed: [twice], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.value, "1 of 1 played out");
+  const same = { ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-08-30", "yes"), auto: true }, { at: "2026-09-01T01:00:00Z", text: catalystEntry("Investor day", "2026-08-30", "no"), auto: true }, { at: "2026-09-02T00:00:00Z", text: catalystEntry("Ruling (2026-01-15) was due", "2026-08-31", "mixed"), auto: true }] };
+  ok("two catalysts on one date are two outcomes; a date inside a label is not read as the catalyst's", processHealth({ open: [], closed: [same], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.value, "1 of 3 played out");
+  const hist = normalizePosition({ ...t, id: "cat3", createdAt: "2026-09-01T00:00:00Z", catalysts: [{ label: "Before we owned it", date: "2026-07-01" }] })!;
+  ok("a catalyst dated before the position was opened is never missed", catalystsMissed(hist, cNow), 0);
   ok("a catalyst review counts as looking at the thesis", staleTheses([{ ...reviewed, createdAt: "2026-01-01T00:00:00Z" }], cNow), []);
 }
 
@@ -658,7 +660,7 @@ console.log("Decision journal");
 {
   // The decision journal as CSV rows for compliance.
   const rows = journalRows([{ id: "jo1", ticker: "OPN", log: [{ at: "2026-11-02T10:00:00Z", text: "=HYPERLINK(1)" }, { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }] }], [{ id: "jc1", ticker: "CLS", closedAt: "2026-10-30T00:00:00Z", log: [{ at: "2026-10-01T09:00:00Z", text: "AI committee: hold.", auto: true }] }]);
-  ok("journal rows: header, oldest first, who wrote each, closed marked", rows.map((r) => [r[0], r[1], r[3], r[4]]), [["Recorded at (UTC)", "Ticker", "Status", "Written by"], ["2026-10-01 09:00:00", "CLS", "closed 2026-10-30", "AI committee (recorded by YouBank)"], ["2026-11-01 10:00:00", "OPN", "open", "YouBank (a change)"], ["2026-11-02 10:00:00", "OPN", "open", "Portfolio manager"]]);
+  ok("journal rows: header, oldest first, who wrote each, closed marked", rows.map((r) => [r[0], r[1], r[3], r[4]]), [["Recorded at (UTC)", "Ticker", "Status", "Written by"], ["2026-10-01 09:00:00", "CLS", "closed 2026-10-30", "AI committee (recorded by YouBank)"], ["2026-11-01 10:00:00", "OPN", "open", "Portfolio manager's change (recorded by YouBank)"], ["2026-11-02 10:00:00", "OPN", "open", "Portfolio manager"]]);
   ok("journal CSV: a note that looks like a formula is neutralised", csvRow(rows[3]).endsWith(",'=HYPERLINK(1)"), true);
 }
 

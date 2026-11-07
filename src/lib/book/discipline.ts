@@ -105,5 +105,8 @@ export function catalystsDue(p: Position, now = new Date()): { id: string; label
 export function catalystsMissed(p: Position, now = new Date()): number {
   const today = day(now.toISOString());
   const reviewed = new Set((p.log ?? []).filter(isCatalystReview).map((e) => e.text));
-  return p.catalysts.filter((c) => c.date < today && daysBetween(c.date, today) > CATALYST_REVIEW_DAYS && !(["yes", "no", "mixed"] as const).some((o) => reviewed.has(catalystEntry(c.label, c.date, o)))).length;
+  // Only catalysts dated after the position was opened: one entered as history at the opening was never owed a review.
+  const opened = p.createdAt ? day(p.createdAt) : null;
+  if (!opened) return 0;
+  return p.catalysts.filter((c) => c.date >= opened && c.date < today && daysBetween(c.date, today) > CATALYST_REVIEW_DAYS && !(["yes", "no", "mixed"] as const).some((o) => reviewed.has(catalystEntry(c.label, c.date, o)))).length;
 }

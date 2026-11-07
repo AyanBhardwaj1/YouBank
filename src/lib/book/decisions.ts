@@ -148,7 +148,9 @@ export function authorOf(e: LogEntry): string {
   if (e.text.startsWith("AI committee:")) return "AI committee (recorded by YouBank)";
   if (e.text.startsWith("Proposed by ")) return "AI app proposal (recorded by YouBank)";
   if (e.text.startsWith("Catalyst reviewed:")) return "Portfolio manager (recorded by YouBank)";
-  return "YouBank (a change)";
+  if (isGoalposts(e)) return "YouBank (a flag on the manager's change)";
+  // The PM's own decisions (a resize, a new forecast, the close), which YouBank records as they are saved.
+  return "Portfolio manager's change (recorded by YouBank)";
 }
 
 /**
