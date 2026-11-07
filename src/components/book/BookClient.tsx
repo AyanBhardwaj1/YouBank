@@ -797,6 +797,7 @@ function ExportMenu() {
         <Link href="/report/week" className={item}><Icon name="Calendar" className="h-3.5 w-3.5 text-muted" /><span><span className="block">The week in your book</span><span className="block text-[11px] text-muted">What changed, resolved and is coming</span></span></Link>
         <Link href="/report/ddq" className={item}><Icon name="Shield" className="h-3.5 w-3.5 text-muted" /><span><span className="block">AI due-diligence answers</span><span className="block text-[11px] text-muted">The AI questions LPs ask, from your record</span></span></Link>
         <a href="/api/book/export" download className={item}><Icon name="Download" className="h-3.5 w-3.5 text-muted" /><span><span className="block">CSV</span><span className="block text-[11px] text-muted">One row per kill criterion</span></span></a>
+        <a href="/api/book/decisions" download className={item}><Icon name="Download" className="h-3.5 w-3.5 text-muted" /><span><span className="block">Decision journal (CSV)</span><span className="block text-[11px] text-muted">Every dated entry, open and closed, with who wrote it</span></span></a>
         <a href="/api/book/calendar" download className={item}><Icon name="Calendar" className="h-3.5 w-3.5 text-muted" /><span><span className="block">Calendar (.ics)</span><span className="block text-[11px] text-muted">Earnings dates and catalysts</span></span></a>
       </div>
     </details>

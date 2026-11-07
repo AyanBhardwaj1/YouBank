@@ -16,7 +16,8 @@ import { toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
 import { bookTodos } from "@/lib/book/todo";
-import { AUTO_MAX, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
+import { csvRow } from "@/lib/csv";
+import { AUTO_MAX, journalRows, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -652,6 +653,13 @@ console.log("Decision journal");
   const todos = bookTodos([old, cat, brk], { tdo1: [{ d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
   ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
   ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
+}
+
+{
+  // The decision journal as CSV rows for compliance.
+  const rows = journalRows([{ id: "jo1", ticker: "OPN", log: [{ at: "2026-11-02T10:00:00Z", text: "=HYPERLINK(1)" }, { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }] }], [{ id: "jc1", ticker: "CLS", closedAt: "2026-10-30T00:00:00Z", log: [{ at: "2026-10-01T09:00:00Z", text: "AI committee: hold.", auto: true }] }]);
+  ok("journal rows: header, oldest first, who wrote each, closed marked", rows.map((r) => [r[0], r[1], r[3], r[4]]), [["Recorded at (UTC)", "Ticker", "Status", "Written by"], ["2026-10-01 09:00:00", "CLS", "closed 2026-10-30", "AI committee (recorded by YouBank)"], ["2026-11-01 10:00:00", "OPN", "open", "YouBank (a change)"], ["2026-11-02 10:00:00", "OPN", "open", "Portfolio manager"]]);
+  ok("journal CSV: a note that looks like a formula is neutralised", csvRow(rows[3]).endsWith(",'=HYPERLINK(1)"), true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

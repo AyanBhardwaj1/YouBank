@@ -141,3 +141,24 @@ export function withEntries(log: LogEntry[] | undefined, texts: string[], at: st
   const add: LogEntry[] = [...texts.map((text) => ({ at, text, auto: true })), ...(typed ? [{ at, text: typed }] : [])];
   return capped([...(log ?? []), ...add]);
 }
+
+/** Who wrote a journal entry, in words a compliance reviewer reads without a key. */
+export function authorOf(e: LogEntry): string {
+  if (!e.auto) return "Portfolio manager";
+  if (e.text.startsWith("AI committee:")) return "AI committee (recorded by YouBank)";
+  if (e.text.startsWith("Proposed by ")) return "AI app proposal (recorded by YouBank)";
+  if (e.text.startsWith("Catalyst reviewed:")) return "Portfolio manager (recorded by YouBank)";
+  return "YouBank (a change)";
+}
+
+/**
+ * The decision journal of every position, open and closed, as rows for a CSV a compliance reviewer can file:
+ * one row per entry, oldest first, with who wrote it. Header first.
+ */
+export function journalRows(open: { id: string; ticker: string; log?: LogEntry[] }[], closed: { id: string; ticker: string; closedAt: string; log?: LogEntry[] }[]): string[][] {
+  const rows = [
+    ...open.flatMap((p) => (p.log ?? []).map((e) => ({ e, ticker: p.ticker, id: p.id, status: "open" }))),
+    ...closed.flatMap((c) => (c.log ?? []).map((e) => ({ e, ticker: c.ticker, id: c.id, status: `closed ${c.closedAt.slice(0, 10)}` }))),
+  ].sort((a, b) => a.e.at.localeCompare(b.e.at) || a.ticker.localeCompare(b.ticker));
+  return [["Recorded at (UTC)", "Ticker", "Position id", "Status", "Written by", "Entry"], ...rows.map((r) => [r.e.at.slice(0, 19).replace("T", " "), r.ticker, r.id, r.status, authorOf(r.e), r.e.text])];
+}
