@@ -23,7 +23,7 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { isPmChange, type LogEntry } from "@/lib/book/decisions";
+import { isPmChange, loosened, type LogEntry } from "@/lib/book/decisions";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
 import { isPct, METRIC_KEYS, METRICS, TEMPLATES, type BookSummary, type CheckState, type Evaluation, type MetricKey, type Op, type Position, type Verdict } from "@/lib/book/position";
 
@@ -65,7 +65,7 @@ const fieldBox = "ctl border border-line bg-bg px-2 py-1.5 text-[12px] placehold
 const field = `${fieldBox} w-full`;
 
 /** `heading` replaces the title (a proposal under review: a new position, without the templates). */
-function Editor({ initial, onSaved, onCancel, heading, market, proposal }: { initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Reviewing an AI app's proposal: its id (the server records where the position came from) and the app's reasoning, shown for reference only. */ proposal?: { id: string; from: string; rationale: string }; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
+function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict }: { /** The thesis's verdict now, when editing a held position: loosening a criterion while it fails is flagged. */ verdict?: string; initial: Draft; onSaved: () => void; onCancel: () => void; heading?: string; /** Reviewing an AI app's proposal: its id (the server records where the position came from) and the app's reasoning, shown for reference only. */ proposal?: { id: string; from: string; rationale: string }; /** Today's price and one-year volatility for the ticker, when known: the base rate beside the forecast. */ market?: { price: number | null; vol: number | null } }) {
   const [d, setD] = useState<Draft>(initial);
   // Why this change: saved with it into the decision journal (decisions.ts), dated by the server.
   const [why, setWhy] = useState("");
@@ -184,6 +184,12 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal }: { ini
         </div>
       </div>
       {proposal?.rationale && <p className="text-[11px] text-muted"><span className="font-semibold">{proposal.from}&apos;s reasoning</span> (kept in the journal in its name): {proposal.rationale}</p>}
+      {(() => {
+        if (!initial.id || (verdict !== "broken" && verdict !== "watch")) return null;
+        const lines = (x: Draft) => ({ criteria: x.criteria.map((c) => ({ metric: c.metric, op: c.op, value: Number(c.value) })).filter((c) => Number.isFinite(c.value)) });
+        const xs = loosened(lines(initial), lines(d));
+        return xs.length ? <p role="status" className="text-[11.5px] text-neg">The thesis reads {verdict === "broken" ? "broken" : "on watch"}, and this loosens its kill criteria ({xs.join("; ")}). That can be right, but it looks like moving the goalposts later: say why below.</p> : null;
+      })()}
       <label className="block text-[11px] text-muted">Why? Optional, kept in the position&apos;s decision journal with today&apos;s date
         <input value={why} onChange={(e) => setWhy(e.target.value)} maxLength={500} placeholder="e.g. sizing up after the call: margins guided above 70%" className={field} />
       </label>
@@ -979,7 +985,7 @@ export function BookClient({ focus, riskOpen, proposal }: { focus?: string; risk
           onDismiss={async (x) => { try { await fetchJson(`/api/book/proposals?id=${x.id}`, { method: "DELETE" }); load(); } catch (e) { setErr(errorMessage(e)); } }} />
       )}
 
-      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
+      {editing && <Editor key={editing.id ?? reviewing?.id ?? "new"} initial={editing} verdict={editing.id ? data?.evaluations.find((x) => x.positionId === editing.id)?.verdict : undefined} heading={reviewing?.heading} proposal={reviewing ? { id: reviewing.id, from: reviewing.from ?? "An AI app", rationale: reviewing.rationale ?? "" } : undefined} market={(() => { const e = data?.evaluations.find((x) => x.ticker === editing.ticker.trim().toUpperCase()); return e ? { price: e.price, vol: data?.vols?.[e.ticker] ?? null } : undefined; })()} onCancel={() => { setEditing(null); setReviewing(null); }} onSaved={async () => {
         const done = reviewing?.id;
         setEditing(null); setReviewing(null);
         if (done) await fetchJson(`/api/book/proposals?id=${done}`, { method: "DELETE" }).catch(() => setErr("The position was added, but its proposal could not be cleared. Dismiss it so it is not added twice."));

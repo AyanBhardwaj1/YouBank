@@ -14,7 +14,7 @@ import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
-import { AUTO_MAX, changesOf, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
+import { AUTO_MAX, changesOf, goalpostEntry, loosened, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -555,6 +555,26 @@ console.log("Decision journal");
   ok("broken now: one line", brokenNowLine(b), "Broken now: nothing done since the break on IDL (6 days); ACT cut 3 days after the break.");
   ok("broken now: a break seen today reads as today", brokenNowLine(brokenNow([fine], H("dsc3", [["2026-11-20", "broken"]]), dNow)), "Broken now: nothing done since the break on FIN (broke today).");
   ok("broken now: nothing to say when no thesis is broken", brokenNowLine(brokenNow([fine], hist, dNow)), "");
+}
+
+{
+  // Moving the goalposts: a kill criterion loosened while the thesis reads broken or on watch.
+  const before = normalizePosition({ ...t, id: "gp1", criteria: [{ metric: "revenue_growth", op: ">=", value: 20 }, { metric: "gross_margin", op: ">=", value: 70 }, { metric: "net_debt", op: "<=", value: 500 }] })!;
+  const looser = normalizePosition({ ...before, criteria: [{ metric: "revenue_growth", op: ">=", value: 15 }, { metric: "net_debt", op: "<=", value: 800 }] })!;
+  const tighter = normalizePosition({ ...before, criteria: [{ metric: "revenue_growth", op: ">=", value: 25 }, { metric: "gross_margin", op: ">=", value: 70 }, { metric: "net_debt", op: "<=", value: 400 }] })!;
+  ok("loosened: a lowered 'at least', a removed line and a raised 'at most'; tightening is not loosening", [loosened(before, looser), loosened(before, tighter)], [["revenue growth at least 20 → 15", "gross margin at least 70 removed", "net debt at most 500 → 800"], []]);
+  ok("goalposts: recorded only while the thesis reads broken or on watch", [goalpostEntry(before, looser, "broken"), goalpostEntry(before, looser, "intact"), goalpostEntry(null, looser, "broken"), goalpostEntry(before, tighter, "watch")], ["Kill criteria loosened while the thesis read broken: revenue growth at least 20 → 15; gross margin at least 70 removed; net debt at most 500 → 800.", null, null, null]);
+}
+
+{
+  // Goalposts in the week and the track record (not in the LP letter's line).
+  const gNow = new Date("2026-11-09T12:00:00Z");
+  const g = normalizePosition({ ...t, catalysts: [], id: "gpw", ticker: "GPW", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-05T10:00:00Z", text: "Kill criteria loosened while the thesis read broken: gross margin at least 70 removed.", auto: true }] })!;
+  const wg = weekBrief({ now: gNow, book: [g], evals: [], history: {}, closed: [], proposals: [] });
+  ok("the week lists goalposts moved and says so in the headline", [wg.goalposts.map((x) => x.ticker), wg.headline.includes("kill criteria loosened while failing on GPW")], [["GPW"], true]);
+  const gc = { ...c1, ticker: "GPC", log: g.log };
+  const sc = scorecard([gc, { ...c1, ticker: "CLN", log: [] }]);
+  ok("the track record counts closes whose criteria were loosened while failing", [sc.goalposts, scorecardLine(sc).includes("kill criteria loosened while failing on 1 of 2")], [["GPC"], true]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

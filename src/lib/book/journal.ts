@@ -10,7 +10,7 @@
  */
 import type { BookAlert, BookHistory, HistoryPoint } from "./alerts";
 import { breakAfter, calibration, isSample, normalizeConviction, PAST_FORECASTS_MAX, resolveForecast, type Calibration, type Conviction, type ForecastItem } from "./forecast";
-import { normalizeLog, withEntries, type LogEntry } from "./decisions";
+import { isGoalposts, normalizeLog, withEntries, type LogEntry } from "./decisions";
 import { normalizePosition, type Criterion, type Direction, type Position, type Verdict } from "./position";
 
 export const CLOSE_REASONS = { thesis_broke: "The thesis broke", target: "Target reached", risk: "Risk or sizing", better_idea: "A better idea", other: "Other" } as const;
@@ -117,6 +117,8 @@ export type Scorecard = {
   process: { earned: string[]; unlucky: string[]; lucky: string[]; deserved: string[] } | null;
   /** Returns grouped by the AI committee's last call before the close (closes with a return and a sitting). */
   byCommittee: { decision: "add" | "hold" | "trim" | "exit"; n: number; avgReturn: number | null }[];
+  /** Closed positions whose kill criteria were loosened while the thesis read broken or on watch. */
+  goalposts: string[];
 };
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -143,6 +145,7 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
     byReason,
     broke: broke.length, exitedOnBreak: lags.filter((d) => d <= 5).length, medianDaysToExit: median(lags),
     counterfactual: cf.length ? { n: cf.length, onBreak: r4(mean(cf.map((x) => x.onBreak)))!, taken: r4(mean(cf.map((x) => x.taken)))! } : null,
+    goalposts: list.filter((c) => (c.log ?? []).some(isGoalposts)).map((c) => c.ticker),
     byCommittee: (["add", "hold", "trim", "exit"] as const).map((decision) => {
       const xs = rets.filter((x) => x.c.aiDecision === decision).map((x) => x.r);
       return { decision, n: xs.length, avgReturn: r4(mean(xs)) };
@@ -171,6 +174,7 @@ export function scorecardLine(s: Scorecard): string {
   if (s.avgReturn !== null) parts.push(`average ${pct(s.avgReturn)}`);
   if (s.payoff !== null) parts.push(`payoff ${s.payoff.toFixed(2)}x`);
   if (s.broke) parts.push(`${s.exitedOnBreak} of ${s.broke} broken theses exited within 5 days${s.medianDaysToExit !== null ? ` (median ${s.medianDaysToExit} days)` : ""}`);
+  if (s.goalposts.length) parts.push(`kill criteria loosened while failing on ${s.goalposts.length} of ${s.closed}`);
   return `${parts.join("; ")}.`;
 }
 

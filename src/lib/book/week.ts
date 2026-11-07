@@ -10,7 +10,7 @@ import { closedReturn, CLOSE_REASONS, forecastItems, type ClosedPosition } from 
 import type { Evaluation, Position, Verdict } from "./position";
 import type { Proposal } from "./proposals";
 import { DECISIONS, type Decision } from "./committee";
-import { isPmChange, notesOf } from "./decisions";
+import { isGoalposts, isPmChange, notesOf } from "./decisions";
 
 export type WeekInput = { now: Date; days?: number; book: Position[]; evals: Evaluation[]; history: BookHistory; closed: ClosedPosition[]; proposals: Proposal[] };
 export type WeekBrief = {
@@ -26,6 +26,8 @@ export type WeekBrief = {
   notes: { ticker: string; on: string; text: string; /** The changes saved with the note. */ with?: string }[];
   /** Positions held before the week that YouBank recorded a change on this week with no note from the PM: the journal has the what, not the why. */
   unexplained: { positionId: string; ticker: string; changes: string[] }[];
+  /** Kill criteria loosened this week while the thesis read broken or on watch. */
+  goalposts: { positionId: string; ticker: string; on: string; text: string }[];
   headline: string;
 };
 
@@ -102,6 +104,8 @@ export function weekBrief(i: WeekInput): WeekBrief {
     .map(({ p, open }) => ({ positionId: p.id, ticker: p.ticker, changes: open.map((e) => e.text) }))
     .sort((a, b) => a.ticker.localeCompare(b.ticker));
 
+  const goalposts = i.book.flatMap((p) => (p.log ?? []).filter((e) => isGoalposts(e) && inWeek(e.at.slice(0, 10))).map((e) => ({ positionId: p.id, ticker: p.ticker, on: e.at.slice(0, 10), text: e.text })));
+
   const parts: string[] = [];
   const roundTrip = changes.filter((c) => c.to === c.from && c.path.includes("broken"));
   const moved = changes.filter((c) => c.to !== c.from);
@@ -114,9 +118,10 @@ export function weekBrief(i: WeekInput): WeekBrief {
   if (committees.length) parts.push(`the AI committee sat on ${list(committees.map((c) => `${c.ticker} (${DECISIONS[c.decision].toLowerCase()})`))}`);
   if (closed.length) parts.push(`${closed.length} closed`);
   if (coming.length) parts.push(`${plural(coming.length, "date")} in the next two weeks`);
+  if (goalposts.length) parts.push(`kill criteria loosened while failing on ${list([...new Set(goalposts.map((g) => g.ticker))])}`);
   if (proposals.length) parts.push(`${plural(proposals.length, "proposal")} waiting for review`);
   const headline = parts.length ? `This week: ${parts.join("; ")}.` : "A quiet week: no thesis changed verdict.";
-  return { from, to, changes, resolved, committees, closed, coming, proposals, notes, unexplained, headline };
+  return { from, to, changes, resolved, committees, closed, coming, proposals, notes, unexplained, goalposts, headline };
 }
 
 export const verdictWord = (v: Verdict) => WORD[v];

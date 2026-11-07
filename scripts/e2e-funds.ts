@@ -157,6 +157,14 @@ async function main() {
     const jw = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, weight: Number(target.weight ?? 0) + 1, log: [{ at: "2020-01-01T00:00:00Z", text: "forged" }] }) });
     const jlog = (jw.body.position?.log ?? []) as { text: string; auto?: boolean }[];
     check("a change is written to the decision journal by the server; a posted journal is ignored", jlog.some((x) => x.auto && /^Weight /.test(x.text)) && !jlog.some((x) => x.text === "forged"), jlog);
+    // Moving the goalposts: loosening a criterion while the daily check reads the thesis broken or on watch.
+    const hb = await j("/api/book");
+    const failing = (hb.body.positions as { id: string; criteria: { metric: string; op: string; value: number }[] }[]).find((p) => { const h = hb.body.history?.[p.id] ?? []; return ["broken", "watch"].includes(h[h.length - 1]?.v) && p.criteria.length > 1; });
+    if (failing) {
+      const gp = await j("/api/book", { method: "POST", body: JSON.stringify({ ...failing, criteria: failing.criteria.slice(1) }) });
+      check("loosening a kill criterion while the thesis fails is recorded as moving the goalposts", (gp.body.position?.log ?? []).some((x: { text: string; auto?: boolean }) => x.auto && x.text.startsWith("Kill criteria loosened while the thesis read")), gp.body.position?.log);
+      await j("/api/book", { method: "POST", body: JSON.stringify(failing) });
+    } else console.log("  skip  no failing position with two criteria to loosen");
     const jn = await j("/api/book/note", { method: "POST", body: JSON.stringify({ id: target.id, text: "e2e: why we sized up" }) });
     check("a note is added to the decision journal, dated", jn.status === 200 && jn.body.log?.some((x: { text: string; at: string }) => x.text === "e2e: why we sized up" && x.at), jn.body);
     await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });

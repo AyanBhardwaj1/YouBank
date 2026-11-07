@@ -80,6 +80,13 @@ export default async function WeekPage() {
           </>) : null;
         })()}
 
+        {w.goalposts.length > 0 && (<>
+          <H>Goalposts moved</H>
+          <ul className="mt-0.5 space-y-0.5">{w.goalposts.map((g, k) => (
+            <li key={k}><Link href={`/app/book?position=${encodeURIComponent(g.positionId)}`} className="font-semibold hover:underline">{g.ticker}</Link> <span className="num text-muted">{g.on}</span>: <span className="text-neg">{g.text}</span></li>
+          ))}</ul>
+        </>)}
+
         {w.unexplained.length > 0 && (<>
           <H>Changes without a reason</H>
           <p className="mt-0.5 text-muted">YouBank recorded what changed; a line on why makes the journal worth reading in the next letter or DDQ.</p>

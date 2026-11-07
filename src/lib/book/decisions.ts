@@ -76,6 +76,34 @@ export function notesOf(log: LogEntry[]): { at: string; text: string; with?: str
   });
 }
 
+/**
+ * Kill criteria the save made easier to pass: a line removed, or its threshold moved the lenient way (an "at
+ * least" lowered, an "at most" raised). Moving the goalposts after the evidence turns is the commonest way a
+ * thesis survives its own test; YouBank records it in the journal when the thesis reads broken or on watch.
+ */
+type Line = { metric: string; op: ">=" | "<="; value: number };
+export function loosened(prev: { criteria: Line[] }, next: { criteria: Line[] }): string[] {
+  const line = (c: Line) => `${c.metric.replace(/_/g, " ")} ${c.op === ">=" ? "at least" : "at most"} ${r2(c.value)}`;
+  const out: string[] = [];
+  for (const c of prev.criteria) {
+    const same = next.criteria.filter((x) => x.metric === c.metric && x.op === c.op).map((x) => x.value);
+    if (!same.length) { out.push(`${line(c)} removed`); continue; }
+    const strictest = c.op === ">=" ? Math.max(...same) : Math.min(...same);
+    if (c.op === ">=" ? strictest < c.value : strictest > c.value) out.push(`${line(c)} → ${r2(strictest)}`);
+  }
+  return out;
+}
+
+export const GOALPOSTS = "Kill criteria loosened while the thesis read";
+export const isGoalposts = (e: LogEntry) => !!e.auto && e.text.startsWith(GOALPOSTS);
+
+/** The journal entry for loosened criteria while the thesis reads broken or on watch, or null. */
+export function goalpostEntry(prev: Position | null, next: Position, verdict: string | undefined): string | null {
+  if (!prev || (verdict !== "broken" && verdict !== "watch")) return null;
+  const xs = loosened(prev, next);
+  return xs.length ? `${GOALPOSTS} ${verdict === "broken" ? "broken" : "on watch"}: ${xs.join("; ")}.` : null;
+}
+
 /** The journal with the automatic entries for a save, and an optional note, appended. */
 export function withEntries(log: LogEntry[] | undefined, texts: string[], at: string, note?: string): LogEntry[] {
   const typed = clip(note, 500);
