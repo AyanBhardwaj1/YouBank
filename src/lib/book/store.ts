@@ -49,7 +49,9 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     // So are earlier forecasts: a changed or removed forecast stays scored (forecast.ts supersede).
     const { committee: _ignored, pastForecasts: _past, log: _log, ...posted } = t;
     void _ignored; void _past; void _log;
-    const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10));
+    // The thesis's verdict now (the latest daily check, if recent): judges both the forecast and the criteria change.
+    const verdict = prev ? recentVerdict(normalizeBookState(extra.bookState).history[prev.id]) : undefined;
+    const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10), verdict === "broken");
     if (fresh.error) throw Object.assign(new Error(fresh.error), { status: 400 });
     const { conviction: _posted, ...rest } = posted;
     void _posted;
@@ -63,7 +65,7 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     const proposal = !prev && typeof fromId === "string" ? normalizeProposals(extra.bookProposals).find((x) => x.id === fromId) : undefined;
     const origin = proposal ? [`Proposed by ${proposal.from}${proposal.rationale ? `, whose reasoning was: "${proposal.rationale}"` : "."}`] : [];
     // Loosening a kill criterion while the thesis reads broken or on watch is recorded as such (decisions.ts).
-    const goalposts = goalpostEntry(prev, next, prev ? recentVerdict(normalizeBookState(extra.bookState).history[prev.id]) : undefined);
+    const goalposts = goalpostEntry(prev, next, verdict);
     const log = withEntries(prev?.log, [...changesOf(prev, next), ...origin, ...(goalposts ? [goalposts] : [])], now, note);
     if (log.length) next.log = log;
     if (at < 0 && list.length >= POSITIONS_MAX) throw Object.assign(new Error(`The book holds ${POSITIONS_MAX} positions. Close one to add another.`), { status: 400 });

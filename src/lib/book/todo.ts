@@ -1,7 +1,8 @@
 /**
  * What the Book needs from the PM now, ranked: a broken thesis with nothing done since, a passed catalyst to
- * review, a forecast made before its thesis broke, a recent change with no reason, a thesis nobody has
- * reviewed in 90 days. Each comes from a check that
+ * review, a recent change with no reason, a thesis nobody has reviewed in 90 days. (A forecast made before the
+ * break is not on the list: the break already resolved it as a miss, and a new one waits until the thesis
+ * recovers, see forecast.ts freshForecast.) Each comes from a check that
  * already exists (discipline.ts, decisions.ts); this puts them in one list at the top of the Book, so the
  * habits are a short to-do list rather than six panels to read. Pure; tested in scripts/test-book.ts.
  */
@@ -10,18 +11,15 @@ import { isPmChange } from "./decisions";
 import { brokenNow, catalystsDue, staleTheses } from "./discipline";
 import type { Position } from "./position";
 
-export type Todo = { positionId: string; ticker: string; kind: "broken" | "catalyst" | "forecast" | "reason" | "stale"; text: string };
+export type Todo = { positionId: string; ticker: string; kind: "broken" | "catalyst" | "reason" | "stale"; text: string };
 
-const RANK: Record<Todo["kind"], number> = { broken: 0, catalyst: 1, forecast: 2, reason: 3, stale: 4 };
+const RANK: Record<Todo["kind"], number> = { broken: 0, catalyst: 1, reason: 2, stale: 3 };
 const dd = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 export function bookTodos(open: Position[], history: BookHistory, now = new Date()): Todo[] {
   const out: Todo[] = [];
   for (const b of brokenNow(open, history, now)) {
     if (b.actedAfter === null) out.push({ positionId: b.positionId, ticker: b.ticker, kind: "broken", text: b.days ? `Broken for ${dd(b.days)}, nothing done since` : "Broke today: decide what to do" });
-    // A forecast made before the break has not absorbed it: good forecasters update, in small steps, as evidence comes.
-    const f = open.find((p) => p.id === b.positionId)?.conviction;
-    if (f && f.source === "You" && f.at < b.since) out.push({ positionId: b.positionId, ticker: b.ticker, kind: "forecast", text: `Your ${Math.round(f.p * 100)}% forecast predates the break (${b.since}): update it` });
   }
   for (const p of open) {
     for (const c of catalystsDue(p, now)) out.push({ positionId: p.id, ticker: p.ticker, kind: "catalyst", text: `Did ${c.label} (${c.date}) play out?` });

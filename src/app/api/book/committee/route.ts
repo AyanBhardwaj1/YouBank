@@ -99,7 +99,7 @@ async function sit(userId: string, admin: boolean, position: Position, persona: 
   const pooled = poolChairs(done.map((r) => r.data));
   if (!pooled) throw new SittingError("The chair could not decide just now. Try again in a minute.");
   const chair = done[0];
-  const committee = committeeFrom(pooled.chair, bull, bear, new Date(), pooled.samples, base?.p ?? null);
+  const committee = committeeFrom(pooled.chair, bull, bear, new Date(), pooled.samples, base?.p ?? null, ev?.verdict === "broken");
   // The position may have been closed or deleted while the committee sat: then nothing is kept or announced.
   if (!(await setCommittee(userId, position.id, committee))) throw new SittingError("The position was closed or removed while the committee sat, so its decision was not kept.");
   await noteCommittee(userId, position, committee).catch(() => undefined);

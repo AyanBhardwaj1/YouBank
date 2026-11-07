@@ -125,9 +125,13 @@ export function recordHealth(prev: unknown, snap: HealthSnapshot): HealthSnapsho
   return normalizeHealthHistory([...normalizeHealthHistory(prev).filter((x) => x.d !== snap.d), snap]);
 }
 
-/** Against the last snapshot before today, in one line, or "" when there is none. */
+/**
+ * Against the newest snapshot at least six days old (a week ago, so a Saturday is not read against the day
+ * before), in one line, or "" when there is none.
+ */
 export function healthTrend(history: HealthSnapshot[], now: HealthSnapshot): string {
-  const before = [...history].reverse().find((x) => x.d < now.d);
+  const cutoff = new Date(Date.parse(`${now.d}T00:00:00Z`) - 6 * DAY).toISOString().slice(0, 10);
+  const before = [...history].reverse().find((x) => x.d <= cutoff);
   if (!before) return "";
   const word = now.fix < before.fix ? "better" : now.fix > before.fix ? "worse" : now.watch < before.watch ? "better" : now.watch > before.watch ? "worse" : "unchanged";
   return `Since ${before.d}: ${before.fix} to fix and ${before.watch} to watch then, ${now.fix} and ${now.watch} now (${word}).`;

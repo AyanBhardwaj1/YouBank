@@ -7,7 +7,7 @@ import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book
 import type { InsiderTx } from "@/lib/edgar/insiders";
 import { nextPrint } from "@/lib/book/print";
 import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
-import { calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
+import { BROKEN_FORECAST, calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
 import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
 import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
@@ -310,6 +310,7 @@ console.log("AI investment committee");
 const brief = (text: string) => ({ at: "2026-11-06T10:00:00.000Z", text, sources: [{ id: "S1", label: "10-Q", url: "https://www.sec.gov/x" }, { id: "S2", label: "bad", url: "http://insecure" }] });
 const cm = committeeFrom({ decision: "trim", probability: 62.4, rationale: "  The bear's   margin evidence carried it.  ", dissent: "Growth is still 30%.", watch: ["NRR", "", "FCF margin", "Billings", "Extra"] }, brief("For."), brief("Against."), new Date("2026-11-06T12:00:00Z"));
 ok("the chair's answer becomes a committee with a 90-day forecast from the AI committee", [cm.decision, cm.rationale, cm.watch, cm.forecast], ["trim", "The bear's margin evidence carried it.", ["NRR", "FCF margin", "Billings"], { p: 0.62, by: "2027-02-04", at: "2026-11-06", source: "AI committee" }]);
+ok("on a thesis that reads broken the chair still decides but keeps no forecast", [committeeFrom({ decision: "exit", probability: 10, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b"), new Date(), undefined, null, true)].map((x) => [x.decision, x.forecast]), [["exit", null]]);
 ok("a probability out of range is clamped to 1-99", [committeeFrom({ decision: "hold", probability: 140, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, committeeFrom({ decision: "hold", probability: 0, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p], [0.99, 0.01]);
 const stored = normalizeCommittee(JSON.parse(JSON.stringify({ ...cm, forecast: { ...cm.forecast, source: "You" } })));
 ok("a stored committee round-trips, keeps only https sources, and its forecast is always the AI's", [stored?.decision, stored?.bull.sources.map((x) => x.id), stored?.forecast?.source], ["trim", ["S1"], "AI committee"]);
@@ -331,6 +332,7 @@ const f1 = { p: 0.9, by: "2027-01-31", at: "2026-11-01", source: "You" };
 const f2 = { p: 0.4, by: "2027-01-31", at: "2026-11-10", source: "You" };
 ok("a forecast changed on a later day is kept; one corrected the same day, unchanged, or already kept is not", [supersede([], f1, f2, "2026-11-10"), supersede([], f1, null, "2026-11-10"), supersede([], f1, f2, "2026-11-01"), supersede([], f1, f1, "2026-11-10"), supersede([f1], f1, f2, "2026-11-12")], [[f1], [f1], [], [], [f1]]);
 ok("a new or changed forecast is dated today and must resolve after today; an unchanged one keeps its date", [freshForecast({ ...f1, at: "2026-01-01" }, undefined, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-11-10" }, undefined, "2026-11-10").error, freshForecast({ ...f1, at: "2026-11-10" }, f1, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-06-01", at: "2026-01-01" }, f1, "2026-11-10").error], ["2026-11-10", "A forecast must resolve after today.", "2026-11-01", "A forecast must resolve after today."]);
+ok("while the thesis reads broken a new or changed forecast is refused (it would be scored on a known break); an unchanged one or none is kept", [freshForecast({ ...f1, p: 0.01 }, f1, "2026-11-10", true).error === BROKEN_FORECAST, freshForecast({ ...f1, at: "2026-11-10" }, f1, "2026-11-10", true).conviction, freshForecast(undefined, f1, "2026-11-10", true).error], [true, f1, undefined]);
 ok("a posted forecast cannot claim to be the AI committee's", freshForecast({ ...f1, source: "AI committee" }, undefined, "2026-11-10").conviction?.source, "You");
 ok("only the newest twenty are kept", supersede(Array.from({ length: PAST_FORECASTS_MAX }, (_, i) => ({ ...f1, p: (i + 1) / 100 })), f1, f2, "2026-11-10").length, PAST_FORECASTS_MAX);
 const pf = normalizePosition({ ...t, id: "pf01", conviction: f2, pastForecasts: [f1, { p: 7 }] })!;
@@ -657,7 +659,7 @@ console.log("Decision journal");
   ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
   const fc = normalizePosition({ ...t, id: "tdo4", ticker: "FCS", catalysts: [], createdAt: "2026-11-01T00:00:00Z", conviction: { p: 70, by: "2027-02-01", at: "2026-11-05", source: "You" }, log: [{ at: "2026-11-15T00:00:00Z", text: "Weight 3% → 2% of NAV.", auto: true }, { at: "2026-11-15T01:00:00Z", text: "cut on the miss" }] })!;
   const ft = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
-  ok("needs you: a forecast made before the break asks to be updated (the PM's own, even once the break was acted on)", ft.map((x) => [x.kind, x.text]), [["forecast", "Your 70% forecast predates the break (2026-11-10): update it"]]);
+  ok("needs you: a forecast made before the break is not asked to be updated (the break already resolved it as a miss)", ft.map((x) => x.kind), []);
   ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
 }
 
@@ -671,7 +673,7 @@ console.log("Decision journal");
 {
   const fri = new Date("2026-11-20T22:00:00Z");
   const stale = normalizePosition({ ...t, id: "wka9", ticker: "STL", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
-  ok("the Friday alert says how many things need the PM", weekAlert({ now: fri, book: [stale], evals: [], history: {}, closed: [], proposals: [] }, "https://x")?.reasons, ["2026-11-13 to 2026-11-20", "1 thing in the Book needs you"]);
+  ok("the Friday alert says how many things need the PM", weekAlert({ now: fri, book: [stale], evals: [], history: {}, closed: [], proposals: [] }, "https://x")?.reasons, ["2026-11-13 to 2026-11-20", "1 position in the Book needs you"]);
 }
 
 {
@@ -693,6 +695,7 @@ console.log("Decision journal");
   const h2 = recordHealth([...h1, { d: "bad", good: 1, watch: 1, fix: 1 }], { d: "2026-11-20", good: 3, watch: 1, fix: 0 });
   ok("health history: kept in date order, malformed entries dropped, one per day", recordHealth(h2, { d: "2026-11-20", good: 4, watch: 0, fix: 0 }).map((x) => [x.d, x.good]), [["2026-11-13", 2], ["2026-11-20", 4]]);
   ok("health trend: against the last snapshot before today", [healthTrend(h2, { d: "2026-11-20", good: 3, watch: 1, fix: 0 }), healthTrend([], { d: "2026-11-20", good: 3, watch: 1, fix: 0 })], ["Since 2026-11-13: 1 to fix and 2 to watch then, 0 and 1 now (better).", ""]);
+  ok("health trend: a Saturday is read against the Friday a week before, not the day before", healthTrend(h2, { d: "2026-11-21", good: 3, watch: 1, fix: 0 }), "Since 2026-11-13: 1 to fix and 2 to watch then, 0 and 1 now (better).");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

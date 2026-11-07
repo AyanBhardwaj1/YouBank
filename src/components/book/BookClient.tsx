@@ -18,7 +18,7 @@ import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
 import type { Proposal } from "@/lib/book/proposals";
 import { CLOSE_REASONS, closedReturn, scorecardLine, type CloseReason, type ClosedPosition, type Scorecard } from "@/lib/book/journal";
-import { calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/forecast";
+import { BROKEN_FORECAST, calibrationLine, MIN_HORIZON_DAYS, type Calibration } from "@/lib/book/forecast";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { conjunctionCheck, priceBaseRate } from "@/lib/book/baserate";
@@ -151,9 +151,11 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
           const base = market ? priceBaseRate(pos, market.price, market.vol, d.convBy, new Date()) : null;
           // Read as the server does: 70 and 0.7 both mean 70%.
           const pn = Number(d.convP), pf = pn >= 1 ? pn / 100 : pn;
-          const warn = base && d.convP.trim() && Number.isFinite(pn) && pn > 0 ? conjunctionCheck(pf, base, pos.criteria.length) : null;
+          // Only a chance the server accepts (1% to 99%): "150" is rejected on save, not compared.
+          const warn = base && d.convP.trim() && pf >= 0.01 && pf <= 0.99 ? conjunctionCheck(pf, base, pos.criteria.length) : null;
           return base ? <span className="basis-full text-[11px] text-fg sm:basis-auto">Base rate from price alone: <span className="font-semibold">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to that date. Start there, then adjust for the fundamentals.{warn && <span role="status" className="block text-neg">{warn}</span>}</span> : null;
         })()}
+        {verdict === "broken" && d.convP.trim() && (d.convP !== initial.convP || d.convBy !== initial.convBy) && <span role="status" className="basis-full text-[11px] text-neg">{BROKEN_FORECAST}</span>}
         <span className="basis-full text-[11px] sm:basis-auto">Optional. YouBank scores it when it resolves, so the track record shows how well calibrated the book&apos;s conviction is{d.convSource && d.convSource !== "You" ? ` (this one is ${d.convSource}'s)` : ""}.</span>
       </div>
       <div>
@@ -217,7 +219,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
 
 /* ---------------- The decision journal ---------------- */
 
-const TODO_ICON: Record<Todo["kind"], string> = { broken: "AlertTriangle", catalyst: "Calendar", forecast: "Compass", reason: "NotebookPen", stale: "Timer" };
+const TODO_ICON: Record<Todo["kind"], string> = { broken: "AlertTriangle", catalyst: "Calendar", reason: "NotebookPen", stale: "Timer" };
 
 /** What the Book needs from the PM now (todo.ts), ranked, each linked to its position. */
 function NeedsYou({ todos }: { todos: Todo[] }) {
@@ -326,6 +328,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
         <div className="space-y-1.5 text-[12px]">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`ctl px-2 py-0.5 text-[11px] font-semibold uppercase ${DECISION_CLS[c.decision]}`}>{DECISIONS[c.decision]}</span>
+            {!c.forecast && <span className="text-[11.5px] text-muted">The chair kept no forecast: the thesis read broken when the committee sat, and a forecast made then would be scored on a break already known.</span>}
             {c.forecast && <span className="text-[11.5px] text-muted">Chair&apos;s forecast: <span className="font-semibold text-fg">{Math.round(c.forecast.p * 100)}%</span> that no kill criterion fails before {c.forecast.by}{typeof c.baseRate === "number" ? `, starting from a ${Math.round(c.baseRate * 100)}% price base rate` : ""}. Scored in your track record beside your own.{typeof c.baseRate === "number" && c.forecast.p > c.baseRate + 0.02 && <span className="block text-accent">Above the volatility-only base rate for the price lines: weigh whether the briefs give a reason for that.</span>}</span>}
           </div>
           {c.samples && c.samples.length > 1 && <p className="text-[11px] text-muted" title="Each chair read the same briefs and decided alone; the forecast is their mean in log-odds, the decision the majority">{c.samples.length} chairs sat independently: {c.samples.map((x) => `${DECISIONS[x.decision]} ${Math.round(x.p * 100)}%`).join(" · ")}{new Set(c.samples.map((x) => x.decision)).size > 1 ? ". They split, so treat the call as close." : "."}</p>}

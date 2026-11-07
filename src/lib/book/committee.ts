@@ -98,15 +98,19 @@ export function poolChairs(answers: Chair[]): { chair: Chair; samples: { decisio
   return { chair: { ...rep, decision, probability: Math.round(pooled * 100) }, samples };
 }
 
-/** A committee from the chair's answer and the two briefs, as of `now`: its forecast runs 90 days. */
-export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[], baseRate?: number | null): Committee {
+/**
+ * A committee from the chair's answer and the two briefs, as of `now`: its forecast runs 90 days. On a thesis
+ * that reads broken the chair still decides, but keeps no forecast: the next daily check would resolve it on a
+ * break already known, which says nothing about the chair's calibration (as for the PM's, forecast.ts).
+ */
+export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, now = new Date(), samples?: { decision: Decision; p: number }[], baseRate?: number | null, broken = false): Committee {
   const today = now.toISOString().slice(0, 10);
   const by = new Date(now.getTime() + 90 * 86_400_000).toISOString().slice(0, 10);
   return {
     at: now.toISOString(), bull, bear, decision: chair.decision,
     rationale: clip(chair.rationale, 800), dissent: clip(chair.dissent, 400), watch: chair.watch.map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
     // A chance given as a fraction (0.72) is 72%, not 1%.
-    forecast: normalizeConviction({ p: pctOf(chair.probability), by, at: today, source: AI_COMMITTEE }),
+    forecast: broken ? null : normalizeConviction({ p: pctOf(chair.probability), by, at: today, source: AI_COMMITTEE }),
     ...(samples && samples.length > 1 ? { samples: samples.slice(0, 5) } : {}),
     ...(typeof baseRate === "number" && baseRate >= 0 && baseRate <= 1 ? { baseRate: Math.round(baseRate * 100) / 100 } : {}),
   };

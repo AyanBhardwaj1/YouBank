@@ -136,6 +136,6 @@ export function weekAlert(i: WeekInput, origin: string): BookAlert | null {
   const w = weekBrief(i);
   return {
     key: `book:week:${w.to}`, positionId: "", kind: "week", urgent: false, url: `${origin}/report/week`,
-    title: "The week in your book", body: w.headline, reasons: [`${w.from} to ${w.to}`, ...(() => { const n = bookTodos(i.book, i.history, i.now).length; return n ? [`${n} thing${n === 1 ? "" : "s"} in the Book need${n === 1 ? "s" : ""} you`] : []; })()],
+    title: "The week in your book", body: w.headline, reasons: [`${w.from} to ${w.to}`, ...(() => { const n = new Set(bookTodos(i.book, i.history, i.now).map((x) => x.positionId)).size; return n ? [`${n} position${n === 1 ? "" : "s"} in the Book need${n === 1 ? "s" : ""} you`] : []; })()],
   };
 }

@@ -34,6 +34,7 @@ export function normalizeConviction(raw: unknown): Conviction | null {
 }
 
 export const PAST_FORECASTS_MAX = 40;
+export const BROKEN_FORECAST = "The thesis reads broken: a forecast made now would be scored on a break that has already happened. Keep the forecast as it is or clear it, and set a new one once the thesis recovers.";
 /** The shortest forecast accepted: long enough that a forecast cannot be farmed day by day. */
 export const MIN_HORIZON_DAYS = 30;
 export const AI_COMMITTEE = "AI committee";
@@ -54,10 +55,13 @@ export function supersede(past: Conviction[] | undefined, old: Conviction | null
  * A forecast as posted by a person or an app, made now: a new or changed one is dated today and must resolve
  * after today, so it cannot be backdated over a past that is already known. One left as it was keeps its date.
  */
-export function freshForecast(posted: Conviction | undefined, prev: Conviction | undefined, today: string): { conviction?: Conviction; error?: string } {
+export function freshForecast(posted: Conviction | undefined, prev: Conviction | undefined, today: string, broken = false): { conviction?: Conviction; error?: string } {
   if (!posted) return {};
   // The same chance and date is the same forecast, whoever it is posted as: it keeps its date and author.
   if (prev && posted.p === prev.p && posted.by === prev.by) return { conviction: prev };
+  // While the thesis reads broken, the next daily check is a break after today, so a forecast made now would be
+  // resolved by a break already known (a 1% would score near-perfect). A new one waits until the thesis recovers.
+  if (broken) return { error: BROKEN_FORECAST };
   if (posted.by <= today) return { error: "A forecast must resolve after today." };
   const min = new Date(Date.parse(`${today}T00:00:00Z`) + MIN_HORIZON_DAYS * 86_400_000).toISOString().slice(0, 10);
   if (posted.by < min) return { error: `A forecast must look at least ${MIN_HORIZON_DAYS} days ahead (to ${min} or later).` };
