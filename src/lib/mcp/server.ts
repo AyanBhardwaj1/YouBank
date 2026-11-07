@@ -22,6 +22,7 @@ import { weekBrief } from "@/lib/book/week";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { brokenNow, brokenNowLine, catalystsDue, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
+import { bookTodos } from "@/lib/book/todo";
 import { isGoalposts } from "@/lib/book/decisions";
 import { toothless } from "@/lib/book/quality";
 import { lintLetter } from "@/lib/book/letter";
@@ -107,6 +108,8 @@ function bookTool(userId: string) {
         summary: summarize(evals), link: siteLink("/app/book"),
         // Theses broken now: acted on since the break (a resize or change of side), or nothing done and for how long.
         ...(broken ? { broken_now: broken } : {}),
+        // What the book needs from the PM now, ranked (todo.ts): broken with nothing done, catalysts to review, changes with no reason, stale theses.
+        ...(() => { const t = bookTodos(positions, history); return t.length ? { needs_you: t.map((x) => `${x.ticker}: ${x.text}`) } : {}; })(),
         // The risk headline when it is already worked out today (book_risk has the detail and works it out).
         ...(risk && !only ? { risk: riskLine(risk) } : {}),
         // The track record over closed positions: hit rate, payoff, and how fast broken theses were exited.
