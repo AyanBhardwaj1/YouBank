@@ -254,7 +254,7 @@ function complianceTool(userId: string) {
 function proposeTool(userId: string, from: string) {
   return def({
     name: "propose_position",
-    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used; call book_risk with what_if first to say what it would do to the book's risk. Give conviction_pct and review_by to put a scored forecast on it: YouBank resolves it and sets your calibration beside the person's. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M), return_since_entry (a stop-loss in %, with entry_price: >= -15 means out if down 15%).",
+    description: "Propose a position for the signed-in person's Book in YouBank, with a one-line thesis, pillars, kill criteria (metric, >= or <=, threshold; percentages as percent, 20 = 20%) and catalysts. It does NOT change the Book: the proposal waits on the Book page, marked as coming from this app, until the person reviews it in the editor and adds it, or dismisses it. Returns where the criteria stand today (as check_thesis would) and a link. Say why in rationale, citing the sources you used; call book_risk with what_if first to say what it would do to the book's risk. Give conviction_pct and review_by to put a scored forecast on it: YouBank resolves it and sets your calibration beside the person's. Leave them out when a kill criterion already fails: a thesis that reads broken takes no new forecast, so the person would have to clear it before adding. Metrics: revenue_growth, gross_margin, operating_margin, fcf_margin, rule_of_40, revenue ($M), net_debt ($M), ev_revenue, pe, price, insider_selling ($M), return_since_entry (a stop-loss in %, with entry_price: >= -15 means out if down 15%).",
     schema: z.object({
       ticker: z.string().min(1).max(12),
       direction: z.enum(["long", "short"]),
@@ -282,6 +282,7 @@ function proposeTool(userId: string, from: string) {
       return JSON.stringify({
         proposed: true, id: r.proposal.id, link,
         note: "Nothing was added to the Book. The person reviews the proposal on the Book page and adds or dismisses it.",
+        ...(e?.verdict === "broken" && r.proposal.position.conviction ? { forecast_warning: "A kill criterion already fails, so the thesis reads broken: the forecast will be refused when the person adds it, unless they clear it. Say so, or propose again without conviction_pct." } : {}),
         today: e && e.verdict !== "unknown" ? { verdict: e.verdict, summary: e.summary, criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })) } : { verdict: "unknown", note: "The company's filings could not be read just now." },
       });
     },
