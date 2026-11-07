@@ -22,9 +22,19 @@ import { useNav } from "./NavContext";
 import { ROLES } from "@/lib/roles";
 import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
+import { openPalette, preloadPalette } from "./CommandPalette";
+import { useWaiting } from "@/lib/client/waiting";
+import { clearAiHistory } from "@/lib/client/ai-history";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
 import { NotificationBell } from "@/components/news/NotificationBell";
+
+/** On Home's tab: how many decisions wait in the desk inbox. */
+function WaitingBadge() {
+  const n = useWaiting();
+  if (!n) return null;
+  return <span className="num relative ml-0.5 rounded-full bg-accent px-1.5 text-[9.5px] font-bold leading-[15px] text-accent-fg" aria-label={`${n} waiting for you`} title={`${n} waiting for you on Home`}>{n > 99 ? "99+" : n}</span>;
+}
 
 function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active: boolean; iconsOnly: boolean; temporary?: boolean; onPin?: () => void }) {
   const link = (
@@ -33,6 +43,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
       {active && <motion.span layoutId="nav-active" className="absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
       <Icon name={f.icon} className="relative h-3.5 w-3.5 shrink-0" />
       {!iconsOnly && <span className="relative hidden lg:inline">{f.label}</span>}
+      {f.id === "home" && <WaitingBadge />}
     </Link>
   );
   if (!temporary) return <motion.div layout="position" transition={{ type: "spring", stiffness: 520, damping: 42 }}>{link}</motion.div>;
@@ -69,6 +80,8 @@ export function AppNav({ email }: { email: string }) {
     setLeaving(true); setStuck(false);
     const res = await getAuthClient().then((c) => c.signOut()).catch((error: unknown) => ({ error }));
     if (res?.error) { setLeaving(false); setStuck(true); return; }
+    // What was asked of the AI stays with the account, not this browser.
+    clearAiHistory();
     window.location.replace("/");
   };
   useEffect(() => {
@@ -105,6 +118,12 @@ export function AppNav({ email }: { email: string }) {
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
         {status?.configured && <span className="num hidden text-[10.5px] text-muted 2xl:inline" title={`Model ${status.model}, reasoning ${status.effort}`}>{status.label ?? status.model}</span>}
+        <button type="button" onClick={openPalette} onMouseEnter={preloadPalette} onFocus={preloadPalette} title="Go anywhere, change the look, or ask (⌘K)" aria-label="Search, go to, or ask"
+          className="ctl flex items-center gap-1.5 border border-line px-2 py-1 text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">
+          <Icon name="Search" className="h-3.5 w-3.5 max-md:h-[18px] max-md:w-[18px]" />
+          <span className="hidden lg:inline">Search or ask</span>
+          <kbd className="hidden rounded border border-line px-1 font-mono text-[9.5px] text-faint lg:inline">⌘K</kbd>
+        </button>
         <NotificationBell />
         <ThemeMenu nameClass="hidden 2xl:inline" />
         <div className="relative">

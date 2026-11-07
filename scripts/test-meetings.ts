@@ -19,6 +19,7 @@ import { durationLabel, isMeetingUrl, normalizeSettings, platformOfUrl, refusedB
 import { meetingDay, parseNotes, resolveDue } from "@/lib/meetings/notes";
 import { chunkLabel, dropRepeatedPrefix, labelSelf, nameSpeakers, parseLevels, renderTranscript, stitch, turns, type Chunk } from "@/lib/meetings/stitch";
 import { pickTranscriber, segmentsFromMl, segmentsFromOpenAi, wavSeconds } from "@/lib/meetings/transcribe";
+import { CONSENT_NEEDED, consentProblem } from "@/lib/meetings/pipeline";
 import { DEAL_STAGES } from "@/lib/crm/model";
 
 let pass = 0, fail = 0;
@@ -289,11 +290,20 @@ function premium() {
 
 stitching();
 matching();
+function consent() {
+  console.log("recording consent");
+  check("a confirmed start is allowed", consentProblem({ attested: true, noticeCopied: true }) === null);
+  check("confirming without pasting the notice is allowed", consentProblem({ attested: true }) === null);
+  check("no confirmation is refused (older desktop apps)", consentProblem({ noticeCopied: true }) === CONSENT_NEEDED);
+  check("an automatic start is refused even when confirmed", consentProblem({ attested: true, auto: true }) === CONSENT_NEEDED);
+}
+
 notes();
 zones();
 diffing();
 webhooks();
 contextAndModel();
 premium();
+consent();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

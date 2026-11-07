@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { THEMES } from "@/lib/themes";
 import { useTheme } from "./ThemeProvider";
+import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { ThemeThumb } from "./ThemePicker";
 import { Icon } from "@/components/ui/Icon";
 
 /** Compact style switcher for headers and navs: a swatch button that opens a preview grid. */
 export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: { align?: "left" | "right"; /** When the style's name shows beside the swatches. */ nameClass?: string }) {
   const { theme, themeId, setTheme, preview } = useTheme();
+  // Choosing a style by hand ends "match my system" (Settings → Style).
+  const { look, setLook } = useWorkspace();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -22,10 +25,10 @@ export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} title={`Style: ${theme.name}`} aria-label="Change style"
-        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10">
+        className="ctl flex items-center gap-1.5 border border-line px-2 py-1.5 text-[12px] text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent">
         <Icon name="Palette" className="h-3.5 w-3.5" />
         <span className={nameClass}>{theme.name}</span>
-        <span className="flex gap-0.5">
+        <span className="flex gap-0.5 max-md:hidden">
           {[theme.vars.accent, theme.vars.chart1, theme.vars.panel].map((c, i) => <span key={i} className="h-2.5 w-2.5 rounded-sm border border-line" style={{ background: c }} />)}
         </span>
       </button>
@@ -34,7 +37,7 @@ export function ThemeMenu({ align = "right", nameClass = "hidden sm:inline" }: {
           <div className="mb-1.5 flex items-baseline justify-between px-1 text-[10.5px] uppercase tracking-wider text-muted"><span>Interface style</span><span className="normal-case tracking-normal max-md:hidden">hover to preview</span></div>
           <div className="grid max-h-[62vh] grid-cols-3 gap-1.5 overflow-auto sm:grid-cols-4">
             {THEMES.map((t) => (
-              <button key={t.id} type="button" onMouseEnter={() => preview(t.id)} onFocus={() => preview(t.id)} onClick={() => { setTheme(t.id); setOpen(false); }}
+              <button key={t.id} type="button" onMouseEnter={() => preview(t.id)} onFocus={() => preview(t.id)} onClick={() => { setTheme(t.id); if (look.system) setLook({ system: false }); setOpen(false); }}
                 className={`ctl border p-1 text-left transition ${t.id === themeId ? "border-accent bg-accent-soft" : "border-line hover:border-accent/50"}`} title={t.tagline}>
                 <ThemeThumb theme={t} active={t.id === themeId} size="sm" />
                 <div className={`truncate px-0.5 pt-1 text-[10.5px] font-semibold ${t.id === themeId ? "text-accent" : ""}`}>{t.name}</div>

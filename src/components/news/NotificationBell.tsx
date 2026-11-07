@@ -35,7 +35,7 @@ export function NotificationBell() {
                     className={`flex gap-2.5 border-b border-line/60 px-3 py-2.5 hover:bg-elevated ${n.read ? "opacity-70" : ""}`}>
                     <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${n.read ? "bg-transparent" : n.urgent ? "bg-neg" : "bg-accent"}`} />
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-muted">{n.kind === "brief" ? <><Newspaper className="h-3 w-3" /> Brief</> : n.kind === "follow" ? <span className="text-accent">Story update</span> : n.urgent ? <span className="text-neg">Urgent</span> : "Alert"}<span className="normal-case tracking-normal">· {now ? ago(n.at, now) : ""}</span></span>
+                      <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-muted">{n.kind === "brief" ? <><Newspaper className="h-3 w-3" /> Brief</> : n.kind === "agent" ? <span className="text-accent">Email agent</span> : n.kind === "follow" ? <span className="text-accent">Story update</span> : n.urgent ? <span className="text-neg">Urgent</span> : "Alert"}<span className="normal-case tracking-normal">· {now ? ago(n.at, now) : ""}</span></span>
                       <span className="mt-0.5 block leading-snug text-fg">{n.title}</span>
                       {n.body && <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted">{n.body}</span>}
                     </span>

@@ -257,7 +257,8 @@ export function VcWorkspace({ initialTab }: { initialTab?: string }) {
       </section>
 
       <aside className={`w-[420px] shrink-0 flex-col bg-panel ${view === "ai" ? "flex max-xl:w-auto max-xl:min-w-0 max-xl:flex-1" : "hidden xl:flex"}`}>
-        <AiScreen ticker="" ai={ai} openPanels={[]} subject={subject} prompts={prompts} />
+        {/* Keyed by company, so each keeps and shows its own conversation. */}
+        <AiScreen key={subject} ticker="" ai={ai} openPanels={[]} subject={subject} prompts={prompts} />
       </aside>
     </div>
     </div>

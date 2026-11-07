@@ -10,7 +10,7 @@ import { ToolCard } from "./ToolCard";
 export { ToolCard };
 
 export function ToolsGallery({ role: roleProp }: { role?: RoleId }) {
-  const { profile } = useWorkspace();
+  const { profile, starred } = useWorkspace();
   const role = roleProp ?? profile.role;
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("");
@@ -22,8 +22,9 @@ export function ToolsGallery({ role: roleProp }: { role?: RoleId }) {
     return base.filter((t) => (!cat || t.category === cat) && (!kind || t.kind === kind) && (!s || [t.title, t.tagline, ...(t.tags ?? []), t.category].join(" ").toLowerCase().includes(s)));
   }, [base, q, cat, kind]);
   const cats = CATEGORIES.filter((c) => base.some((t) => t.category === c));
-  const forYou = list.filter((t) => t.roles !== "all" && t.specialties?.includes(profile.specialty));
-  const rest = list.filter((t) => !forYou.includes(t));
+  const stars = starred.map((id) => list.find((t) => t.id === id)).filter((t): t is (typeof list)[number] => !!t);
+  const forYou = list.filter((t) => t.roles !== "all" && t.specialties?.includes(profile.specialty) && !stars.includes(t));
+  const rest = list.filter((t) => !forYou.includes(t) && !stars.includes(t));
   const counts = { ai: base.filter((t) => t.kind === "ai").length, calc: base.filter((t) => t.kind === "calc").length };
 
   return (
@@ -47,6 +48,12 @@ export function ToolsGallery({ role: roleProp }: { role?: RoleId }) {
         {cats.map((c) => <button key={c} type="button" onClick={() => setCat(cat === c ? "" : c)} className={`rounded-full border px-2.5 py-0.5 text-[11px] ${cat === c ? "border-accent bg-accent-soft text-accent" : "border-line text-muted hover:text-fg"}`}>{c} <span className="num opacity-60">{base.filter((t) => t.category === c).length}</span></button>)}
       </div>
       <div className="scroll-touch min-h-0 flex-1 overflow-auto p-4">
+        {stars.length > 0 && (
+          <>
+            <div className="mb-2 text-[10.5px] uppercase tracking-wider text-muted">Starred</div>
+            <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{stars.map((t) => <ToolCard key={t.id} t={t} />)}</div>
+          </>
+        )}
         {forYou.length > 0 && (
           <>
             <div className="mb-2 text-[10.5px] uppercase tracking-wider text-muted">Built for {profile.specialty}</div>

@@ -11,6 +11,8 @@ import { imapChanges, imapClient, imapThread, smtpSend, type ImapSettings } from
 export type OutgoingMail = {
   to: EmailAddress[]; subject: string; body: string;
   inReplyTo?: string; references?: string[]; providerThreadId?: string | null;
+  /** Extra headers, e.g. List-Unsubscribe on commercial mail. */
+  headers?: Record<string, string>;
 };
 export type SentMail = { providerMessageId: string; providerThreadId: string; rfcMessageId: string };
 
@@ -57,7 +59,7 @@ function gmailMailbox(account: AccountRow, token: string): Mailbox {
       const threadId = mail.providerThreadId && !mail.providerThreadId.includes(":") && !mail.providerThreadId.startsWith("manual-") ? mail.providerThreadId : null;
       const sent = await sendMessage(token, {
         to: mail.to.map((a) => (a.name ? `"${a.name.replace(/"/g, "")}" <${a.address}>` : a.address)),
-        subject: mail.subject, body: mail.body, threadId, inReplyTo: mail.inReplyTo, references: mail.references, messageId,
+        subject: mail.subject, body: mail.body, threadId, inReplyTo: mail.inReplyTo, references: mail.references, messageId, headers: mail.headers,
       });
       return { providerMessageId: sent.id, providerThreadId: sent.threadId, rfcMessageId: messageId };
     },

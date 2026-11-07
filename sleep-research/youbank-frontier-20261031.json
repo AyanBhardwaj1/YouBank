@@ -1,0 +1,109 @@
+{
+  "run_id": "youbank-frontier-20261031",
+  "created": "2026-10-31T08:52:13+00:00",
+  "phases": [
+    {
+      "name": "brief",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T08:54:19+00:00",
+      "artifact": "sleep-research/BRIEF.md",
+      "verdict": "sleep-research/BRIEF.md",
+      "reviewer": "self",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
+    },
+    {
+      "name": "literature",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:02:08+00:00",
+      "artifact": "sleep-research/research/",
+      "verdict": "sleep-research/traces/triage/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
+    },
+    {
+      "name": "ideas",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:03:31+00:00",
+      "artifact": "sleep-research/IDEA_REPORT.md",
+      "verdict": "sleep-research/traces/triage/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
+    },
+    {
+      "name": "triage",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:15:43+00:00",
+      "artifact": "sleep-research/IDEA_REPORT.md",
+      "verdict": "sleep-research/traces/novelty/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
+    },
+    {
+      "name": "pilots",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:15:43+00:00",
+      "artifact": "sleep-research/EXPERIMENT_TRACKER.md",
+      "verdict": "sleep-research/runs/probe-verify-entity_typed.json",
+      "reviewer": "deterministic",
+      "accepted_at": "2026-10-31T09:15:43+00:00"
+    },
+    {
+      "name": "plan",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:29:55+00:00",
+      "artifact": "sleep-research/EXPERIMENT_PLAN.md",
+      "verdict": "sleep-research/traces/plan/round2_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:29:55+00:00"
+    },
+    {
+      "name": "implement",
+      "status": "skipped",
+      "accepted": false,
+      "at": "2026-10-31T09:29:55+00:00"
+    },
+    {
+      "name": "audit",
+      "status": "skipped",
+      "accepted": false,
+      "at": "2026-10-31T09:29:55+00:00"
+    },
+    {
+      "name": "review",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:29:55+00:00",
+      "artifact": "sleep-research/AUTO_REVIEW.md",
+      "verdict": "sleep-research/traces/plan/round2_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:29:55+00:00"
+    },
+    {
+      "name": "claims",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:37:52+00:00",
+      "artifact": "sleep-research/CLAIMS.md",
+      "verdict": "sleep-research/traces/claims/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:37:52+00:00"
+    },
+    {
+      "name": "report",
+      "status": "done",
+      "accepted": true,
+      "at": "2026-10-31T09:38:17+00:00",
+      "artifact": "sleep-research/MORNING_SUMMARY.md",
+      "verdict": "sleep-research/traces/claims/round1_response.md",
+      "reviewer": "same-family",
+      "accepted_at": "2026-10-31T09:38:18+00:00"
+    }
+  ],
+  "updated": "2026-10-31T09:38:18+00:00"
+}

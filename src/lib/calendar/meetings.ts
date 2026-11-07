@@ -118,12 +118,15 @@ export async function getMeetingAt(userId: string, time: Date, opts: { leadMinut
   return (await enrich(userId, [best]))[0];
 }
 
-/** Meetings starting in the window, soonest first. Defaults to the next 24 hours. */
-export async function getUpcomingMeetings(userId: string, window: { from?: Date; to?: Date; hours?: number; limit?: number } = {}): Promise<Meeting[]> {
+/**
+ * Meetings starting in the window, soonest first. Defaults to the next 24 hours. With `ongoing`, also
+ * those that started before `from` and have not ended (Home's agenda, where Join matters most then).
+ */
+export async function getUpcomingMeetings(userId: string, window: { from?: Date; to?: Date; hours?: number; limit?: number; ongoing?: boolean } = {}): Promise<Meeting[]> {
   const from = window.from ?? new Date();
   const to = window.to ?? new Date(from.getTime() + (window.hours ?? 24) * 3_600_000);
   const rows = await selectJoined()
-    .where(and(eq(E.userId, userId), eq(C.visible, true), sql`${E.status} <> 'cancelled'`, gte(E.startsAt, from), lt(E.startsAt, to)))
+    .where(and(eq(E.userId, userId), eq(C.visible, true), sql`${E.status} <> 'cancelled'`, window.ongoing ? gt(E.endsAt, from) : gte(E.startsAt, from), lt(E.startsAt, to)))
     .orderBy(asc(E.startsAt)).limit(Math.min(window.limit ?? 50, 200));
   return enrich(userId, rows);
 }

@@ -5,6 +5,7 @@ import { ingestThread, type DraftRow } from "./db";
 import { openMailbox, type SentMail } from "./mailbox";
 import { nextDueAfter, normalizeSteps } from "./model";
 import { getSettings } from "./settings";
+import { complianceFooter, isCommercial, POSTAL_ADDRESS_NEEDED, unsubscribeHeaders, unsubscribeUrl } from "./compliance";
 import { describeFailure } from "@/lib/errors";
 
 export type SentBy = "you" | "autopilot";
@@ -26,6 +27,8 @@ export function withSignature(body: string, signature: string): string {
  * - claims the draft first (pending → sending), so a double click or two overlapping runs cannot send
  *   it twice, and releases it with the error if the send fails;
  * - refuses outreach to anyone who asked not to be contacted (a reply to them is still allowed);
+ * - gives campaign and nurture mail the sender's postal address, an unsubscribe line and the one-click
+ *   List-Unsubscribe headers, and refuses it when no postal address is set (compliance.ts);
  * - sends the text the reviewer last had on screen when a person sends it, with the signature added;
  * - threads the reply under the conversation's last message on both Gmail and IMAP mailboxes.
  */
@@ -73,6 +76,13 @@ async function deliver(userId: string, draft: DraftRow, origin: string, edits: {
 
   const settings = await getSettings(userId);
   const body = withSignature(text, settings.signature);
+  // Outreach carries the postal address and a way to stop it. The footer is not part of the draft, so
+  // what is recorded (and what the engine compares with the draft) is the text the person approved.
+  const commercial = isCommercial(draft.kind);
+  if (commercial && !settings.postalAddress.trim()) throw Object.assign(new Error(POSTAL_ADDRESS_NEEDED), { status: 409 });
+  const optOut = commercial ? unsubscribeUrl(userId, to[0].address) : null;
+  const outgoing = optOut ? body + complianceFooter(settings.postalAddress, optOut) : body;
+  const headers = optOut ? unsubscribeHeaders(optOut, account.address) : undefined;
   const mailbox = await openMailbox(account, origin);
   let sent: SentMail;
   try {
@@ -91,7 +101,7 @@ async function deliver(userId: string, draft: DraftRow, origin: string, edits: {
       if (last && providerThreadId) inReplyTo = last.rfcMessageId || (await mailbox.rfcIdOf(last.providerMessageId).catch(() => "")) || undefined;
       if (inReplyTo && !references.includes(inReplyTo)) references.push(inReplyTo);
     }
-    sent = await mailbox.send({ to, subject, body, inReplyTo, references: references.length ? references : undefined, providerThreadId });
+    sent = await mailbox.send({ to, subject, body: outgoing, inReplyTo, references: references.length ? references : undefined, providerThreadId, headers });
   } finally {
     await mailbox.close();
   }

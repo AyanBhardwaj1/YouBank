@@ -1,0 +1,5 @@
+LTM revenue was $2.0 billion. vs {"revenue":1950.3} -> found 0, derived 0, missing $2.0 billion
+LTM revenue was $1,950 million. vs {"revenue":1950.3} -> found 0, derived 0, missing $1,950 million
+Revenue was $7.4 billion. vs {"sic":"7372 Services-Prepackaged Software","revenue":512.1} -> found 1, derived 0, missing 
+Revenue was $2.4 million. vs {"revenue":2400} -> found 1, derived 0, missing 
+Revenue was 1.2B. vs {"revenue":1200} -> found 0, derived 0, missing 1.2B

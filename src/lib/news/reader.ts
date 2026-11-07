@@ -1,4 +1,5 @@
 /** Everything needed to rank stories for one person: their profile, preferences, desk, watchlist, network and what their reading has taught the page. */
+import { normalizeWatchlist } from "@/lib/desk/watchlist";
 import { and, eq, gte, isNull, ne, or, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { memo } from "@/lib/memo";
@@ -57,10 +58,11 @@ export async function signalsOf(userId: string): Promise<Signal[]> {
 export const affinityOf = (userId: string): Promise<Affinity> =>
   memo(`news:affinity:${userId}`, 120_000, async () => learnAffinity(await signalsOf(userId))).catch(() => EMPTY_AFFINITY);
 
-export function readerFromParts(profile: Profile, prefs: NewsPrefs, network: Map<string, NetworkPerson[]>, affinity?: Affinity): { desk: Desk; ownDesk: Desk; watchlist: string[]; reader: Reader } {
+/** `own` is the person's own watchlist (profiles.extra.watchlist) when they keep one; otherwise their role's. */
+export function readerFromParts(profile: Profile, prefs: NewsPrefs, network: Map<string, NetworkPerson[]>, affinity?: Affinity, own?: string[] | null): { desk: Desk; ownDesk: Desk; watchlist: string[]; reader: Reader } {
   const ownDesk = deskFor(profile);
   const desk = (prefs.desk && allDesks().find((d) => d.id === prefs.desk)) || ownDesk;
-  const watchlist = [...new Set([...(profile.firmTicker ? [profile.firmTicker.toUpperCase()] : []), ...workspaceFor(profile).watchlist, ...prefs.follows.tickers])];
+  const watchlist = [...new Set([...(profile.firmTicker ? [profile.firmTicker.toUpperCase()] : []), ...(own ?? workspaceFor(profile).watchlist), ...prefs.follows.tickers])];
   return { desk, ownDesk, watchlist, reader: { desk, watch: new Set(watchlist), follows: prefs.follows, mutes: prefs.mutes, network, ...(affinity ? { affinity } : {}) } };
 }
 
@@ -81,6 +83,6 @@ export async function readerFor(userId: string, opts: { learned?: boolean } = {}
   const profile = profileOf(p);
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const prefs = normalizeNewsPrefs(extra.news, profile);
-  const parts = readerFromParts(profile, prefs, network, affinity);
+  const parts = readerFromParts(profile, prefs, network, affinity, normalizeWatchlist(extra.watchlist));
   return { userId, email: p.email, name: p.name, profile, prefs, extra, ...parts };
 }

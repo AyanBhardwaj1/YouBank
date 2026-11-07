@@ -5,8 +5,9 @@
  * history, earnings surprises and dates, EPS forecasts, analyst targets and ratings, and the day's movers.
  *
  * It is the API behind nasdaq.com, not a licensed feed: Nasdaq's site terms are for personal use. It is
- * a backup for the free beta, switched off everywhere with MARKET_BACKUP=off; a paid plan (FMP Starter
- * and its display licence) is the answer before charging users.
+ * a backup for the free beta, switched off on its own with MARKET_NASDAQ=off (or with every unverified
+ * backup by MARKET_BACKUP=off); a paid plan (FMP Starter and its display licence) is the answer before
+ * charging users, and MARKET_NASDAQ=off goes with it.
  */
 import { cacheEntry, cacheGet, cacheSet } from "@/lib/cache";
 import { fetchRetry, retryServerErrors } from "@/lib/net";
@@ -34,6 +35,9 @@ const MIN = 60_000, HOUR = 60 * MIN;
 /** Backups (Nasdaq, AI research) are on unless MARKET_BACKUP=off. */
 export const backupEnabled = () => (process.env.MARKET_BACKUP ?? "on").trim().toLowerCase() !== "off";
 
+/** The Nasdaq.com scrape alone: off with MARKET_NASDAQ=off, leaving the other backups (CoinGecko, AI research) as they are. */
+export const nasdaqEnabled = () => backupEnabled() && (process.env.MARKET_NASDAQ ?? "on").trim().toLowerCase() !== "off";
+
 /**
  * One GET, cached: answers for `ttlMs` (then served while one refresh runs, and for a day when Nasdaq
  * fails, flagged stale), a well-formed "nothing here" for five minutes. A failure (network, timeout, 5xx,
@@ -47,7 +51,7 @@ async function get<T>(path: string, ttlMs: number): Promise<T | null> {
 
 /** As `get`, but a failure is thrown rather than read as null (to tell "nothing here" from "Nasdaq failed"). */
 async function getOrThrow<T>(path: string, ttlMs: number): Promise<T | null> {
-  if (!backupEnabled()) return null;
+  if (!nasdaqEnabled()) return null;
   const op = path.split("?")[0].replace(/\/(quote|company|analyst)\/[^/]+\//, "/$1/X/");
   const e = await cacheEntry<T | null>(`nasdaq:${path}`, ttlMs, () => callSource("nasdaq", op, async () => {
     const b = budget();

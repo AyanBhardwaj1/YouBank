@@ -11,6 +11,8 @@ import {
   // Newsroom: audio, Brief mode, the recap, the globe, following and sharing.
   Headphones, AudioLines, Film, Share2, SkipForward, SkipBack, BellPlus, BellRing, BellOff, Info, ChevronUp, ChevronDown, ChevronLeft, Volume2, Link2, Image, Maximize2, ArrowUpRight,
   ExternalLink, Bookmark, BookmarkCheck, EyeOff, ThumbsDown, GalleryVerticalEnd, Globe2, Keyboard, ArrowLeft, Square, Clapperboard, Crosshair,
+  // Workspace and Style settings.
+  SlidersHorizontal, Inbox, NotebookPen, Type, Contrast, Move, Paintbrush, LayoutGrid, Focus, Sofa, GripVertical, ArrowUp, ArrowDown, PanelLeft, Command, Smartphone, HelpCircle, Send, Trash2, Hand,
 } from "lucide-react";
 
 const MAP: Record<string, React.ComponentType<LucideProps>> = {
@@ -23,6 +25,7 @@ const MAP: Record<string, React.ComponentType<LucideProps>> = {
   Save, Copy, Download, RefreshCw, X, Plus, ArrowRight, Check, Bot, Cpu, Eye, Filter, Lightbulb, Star, Timer, Wand2, Bell, Lock, Layout, MousePointerClick, Building, FlaskConical, Stethoscope, Factory, Store, Radio, Fuel, Server, Newspaper, Mountain,
   Headphones, AudioLines, Film, Share2, SkipForward, SkipBack, BellPlus, BellRing, BellOff, Info, ChevronUp, ChevronDown, ChevronLeft, Volume2, Link2, Image, Maximize2, ArrowUpRight,
   ExternalLink, Bookmark, BookmarkCheck, EyeOff, ThumbsDown, GalleryVerticalEnd, Globe2, Keyboard, ArrowLeft, Square, Clapperboard, Crosshair,
+  SlidersHorizontal, Inbox, NotebookPen, Type, Contrast, Move, Paintbrush, LayoutGrid, Focus, Sofa, GripVertical, ArrowUp, ArrowDown, PanelLeft, Command, Smartphone, HelpCircle, Send, Trash2, Hand,
   // Aliases for names packs may use
   Chart: BarChart3, BarChart: BarChart3, Trending: TrendingUp, Money: DollarSign, Doc: FileText, Document: FileText, List: ListChecks, Book: BookOpen, Graduation: GraduationCap, Bank: Landmark, People: Users, Waterfall: Layers, Grid: Table, Spreadsheet: FileSpreadsheet, Balance: Scale, Clock: Timer, Search2: FileSearch, Filing: ScrollText, Deal: Handshake, Fire: Flame,
 };

@@ -89,6 +89,18 @@ export async function cacheGet(key: string): Promise<string | null> {
   return (await readRaw([key]))?.value ?? null;
 }
 
+/**
+ * A value other instances may change, read from the shared table (no per-instance memory or disk copy),
+ * so one instance never serves another's stale state. Falls back to cacheGet without a database.
+ */
+export async function cacheGetShared(key: string): Promise<string | null> {
+  if (!db) return cacheGet(key);
+  try {
+    const [row] = await db.select({ value: schema.kvCache.value }).from(schema.kvCache).where(and(eq(schema.kvCache.key, key), gt(schema.kvCache.expiresAt, new Date())));
+    return row?.value ?? null;
+  } catch { return cacheGet(key); }
+}
+
 /** When a key expires (epoch ms), or null when it is missing or expired. Reads the expiry only, never the value. */
 export async function cacheExpiry(key: string): Promise<number | null> {
   const m = mem.get(key);

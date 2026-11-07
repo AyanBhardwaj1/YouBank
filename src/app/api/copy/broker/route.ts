@@ -4,6 +4,7 @@ import { canUse } from "@/lib/billing/entitlements";
 import { CROSS_SITE, requestMeta, sameSiteJson } from "@/lib/copytrade/access";
 import { accounts, brokerSetup, connectLink, disconnect } from "@/lib/copytrade/live";
 import { rateLimit } from "@/lib/locks";
+import { requireRecentTwoFactor } from "@/lib/auth/step-up";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -22,6 +23,8 @@ export async function POST(req: Request) {
   if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     await rateLimit(`copy-connect:${user.id}`, 5, 60_000, "Too many connection attempts. Wait a moment and try again.");
+    // A brokerage connection needs a fresh authenticator code (src/lib/auth/step-up).
+    await requireRecentTwoFactor(user);
     const body = (await req.json().catch(() => ({}))) as { reconnect?: unknown };
     return NextResponse.json({ url: await connectLink(user, requestMeta(req), typeof body.reconnect === "string" ? body.reconnect : undefined) });
   });

@@ -9,6 +9,9 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
 import { apiError, errorMessage } from "@/lib/client/errors";
+import { LAYOUTS, WALLPAPERS, widgetsFor, type HomeLayout } from "@/lib/desk/desk";
+import { RELEASE } from "@/lib/whats-new";
+import { LAYOUT_INFO, LayoutSketch } from "./home/LayoutSketch";
 
 type Draft = Profile;
 const EMPTY: Draft = { role: "banker", specialty: "", seniority: "", firmType: "", firmName: "", firmTicker: "", sectors: [], goals: "" };
@@ -21,8 +24,11 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Null: let YouBank pick the Home layout from the answers (src/lib/desk/desk.ts recommendDesk).
+  const [layout, setLayout] = useState<HomeLayout | null>(null);
+  const [wallpaper, setWallpaper] = useState<(typeof WALLPAPERS)[number]>("none");
   const role = ROLES[d.role];
-  const steps = ["Role", role.specialtyLabel, "Experience", "Focus", "Style", "Goals"];
+  const steps = ["Role", role.specialtyLabel, "Experience", "Focus", "Look and feel", "Goals"];
   const toolCount = catalogForRole(d.role).length;
 
   const pickRole = (id: RoleId) => {
@@ -35,7 +41,14 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
     try {
       const res = await fetch("/api/profile", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(d) });
       if (!res.ok) throw await apiError(res);
-      await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ theme: themeId }) }).catch(() => {});
+      // After the profile, which sets the desk up from these answers: then the choices made here win.
+      await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        theme: themeId,
+        ...(layout ? { desk: { layout, widgets: widgetsFor(layout, d.role), source: "auto" } } : {}),
+        ...(wallpaper !== "none" ? { look: { wallpaper } } : {}),
+      }) }).catch(() => {});
+      // Everything is new to a new account: Getting started on Home covers it, not the "New in YouBank" card.
+      try { localStorage.setItem("yb-whats-new-seen", RELEASE); } catch { /* fine */ }
       router.push(next);
       router.refresh();
     } catch (e) { setError(errorMessage(e)); setBusy(false); }
@@ -126,14 +139,41 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
 
       {step === 4 && (
         <div className="rise" onMouseLeave={() => preview(null)}>
-          <h1 className="text-[24px] font-semibold tracking-tight">Pick your interface</h1>
-          <p className="mt-1 text-[12.5px] text-muted">Hover to preview, click to keep. Terminal styles are dense and square; modern styles are rounder and lighter. We started you on the one most people in your seat pick.</p>
-          <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <h1 className="text-[24px] font-semibold tracking-tight">How should YouBank feel?</h1>
+          <p className="mt-1 text-[12.5px] text-muted">Your Home page, a style and a wallpaper. All of it changes later in Settings, or with ⌘K.</p>
+          <div className="mt-5 text-[10.5px] uppercase tracking-wider text-muted">Home</div>
+          <div className="mt-1.5 grid gap-2 sm:grid-cols-4" role="radiogroup" aria-label="Home layout">
+            <button type="button" role="radio" aria-checked={layout === null} onClick={() => setLayout(null)}
+              className={`ctl border p-2 text-left transition ${layout === null ? "border-accent bg-accent-soft/40" : "border-line bg-panel hover:border-accent/50"}`}>
+              <div className="grid h-14 place-items-center ctl border border-line bg-bg text-accent"><Icon name="Wand2" className="h-5 w-5" /></div>
+              <div className="mt-1.5 text-[12px] font-medium">Pick for me</div>
+              <div className="text-[10.5px] text-muted">From your answers</div>
+            </button>
+            {LAYOUTS.map((l) => (
+              <button key={l} type="button" role="radio" aria-checked={layout === l} onClick={() => setLayout(l)}
+                className={`ctl border p-2 text-left transition ${layout === l ? "border-accent bg-accent-soft/40" : "border-line bg-panel hover:border-accent/50"}`}>
+                <div className="ctl border border-line bg-bg"><LayoutSketch layout={l} /></div>
+                <div className="mt-1.5 text-[12px] font-medium">{LAYOUT_INFO[l].name}</div>
+                <div className="line-clamp-2 text-[10.5px] text-muted">{LAYOUT_INFO[l].blurb}</div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 text-[10.5px] uppercase tracking-wider text-muted">Style <span className="normal-case tracking-normal">· hover to preview, click to keep</span></div>
+          <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {THEMES.map((t) => (
               <button key={t.id} type="button" onMouseEnter={() => preview(t.id)} onFocus={() => preview(t.id)} onClick={() => setTheme(t.id)}
                 className={`lift ctl border p-1.5 text-left ${t.id === themeId ? "border-accent bg-accent-soft" : "border-line bg-panel"}`} title={t.tagline}>
                 <ThemeThumb theme={t} active={t.id === themeId} size="sm" />
                 <div className="flex items-baseline justify-between px-0.5 pt-1"><span className={`text-[11.5px] font-semibold ${t.id === themeId ? "text-accent" : ""}`}>{t.name}</span><span className="text-[9px] uppercase tracking-wider text-muted">{t.mode}</span></div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 text-[10.5px] uppercase tracking-wider text-muted">Wallpaper on Home</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Wallpaper">
+            {WALLPAPERS.map((w) => (
+              <button key={w} type="button" role="radio" aria-checked={wallpaper === w} onClick={() => setWallpaper(w)}
+                className={`ctl flex items-center gap-1.5 border px-2.5 py-1.5 text-[12px] capitalize transition ${wallpaper === w ? "border-accent bg-accent-soft text-fg" : "border-line bg-panel text-muted hover:text-fg"}`}>
+                {w !== "none" && <span className={`wall-swatch wall-${w} h-3.5 w-5 rounded-sm border border-line`} aria-hidden />}{w}
               </button>
             ))}
           </div>
@@ -150,7 +190,7 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
           <div className="mt-4 panel p-3 text-[12px]">
             <div className="text-[10.5px] uppercase tracking-wider text-muted">Your desk</div>
             <div className="mt-1"><span className="font-semibold text-fg">{role.label}</span> · {d.specialty || "—"} · {d.seniority || "—"} · {d.firmType || "—"}{d.firmName ? ` · ${d.firmName}` : ""}{d.sectors.length ? ` · ${d.sectors.join(", ")}` : ""}</div>
-            <div className="mt-1 text-muted">{toolCount} tools wired to this seat, plus the terminal, the assistant and the shared toolkit. Style: {THEMES.find((t) => t.id === themeId)?.name}.</div>
+            <div className="mt-1 text-muted">{toolCount} tools wired to this seat, plus the terminal, the assistant and the shared toolkit. Home: {layout ? LAYOUT_INFO[layout].name : "picked for you"}. Style: {THEMES.find((t) => t.id === themeId)?.name}.</div>
           </div>
         </div>
       )}

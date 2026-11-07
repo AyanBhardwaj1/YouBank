@@ -7,7 +7,9 @@
  * the auth endpoints or the sign-in page (a loop). What is returned is that resolved path.
  */
 export const safeNext = (v: unknown): string => {
-  if (typeof v !== "string" || !/^\/app(\/[A-Za-z0-9/_\-?=&.%]*)?$/.test(v) || v.startsWith("//")) return "/app";
+  // The query may also hold ~ + : , (an OAuth request carried back to the consent page, /app/connect/authorize,
+  // whose state is whatever the app chose); the path keeps the narrower set.
+  if (typeof v !== "string" || !/^\/app(\/[A-Za-z0-9/_\-=&.%]*)?(\?[A-Za-z0-9/_\-?=&.%~+:,]*)?$/.test(v) || v.startsWith("//")) return "/app";
   try {
     const u = new URL(v, "http://n.invalid");
     if (u.origin !== "http://n.invalid" || !(u.pathname === "/app" || u.pathname.startsWith("/app/"))) return "/app";

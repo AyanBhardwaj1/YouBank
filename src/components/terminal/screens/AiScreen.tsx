@@ -9,9 +9,53 @@ import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 import { PremiumBadge } from "@/components/billing/Premium";
 import { PlanNotice } from "@/components/billing/PlanNotice";
 import { apiError, errorMessage, safeText } from "@/lib/client/errors";
+import type { FigureReport } from "@/lib/ai/figures";
+import { FigureCheck } from "@/components/ai/FigureCheck";
+import { CostLine } from "@/components/ai/CostLine";
+import { keepable, loadAiHistory, saveAiHistory } from "@/lib/client/ai-history";
+import { answerFileName, answerMarkdown, firstTable, followUps, noteEntry, toTsv } from "@/lib/ai/answer-actions";
+import { NOTES_MAX, toggleWidget } from "@/lib/desk/desk";
 
 type ToolCall = { name: string; status: "start" | "end"; summary?: string };
-type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; error?: string; streaming?: boolean };
+type Msg = { role: "user" | "assistant"; content: string; tools?: ToolCall[]; sources?: Source[]; figures?: FigureReport; error?: string; streaming?: boolean };
+
+
+/**
+ * What to do with a finished answer: copy it with its sources, copy its table for a spreadsheet, keep it
+ * in Home's notes, or download it.
+ */
+function AnswerActions({ m, question }: { m: Msg; question: string }) {
+  const { desk, setDesk } = useWorkspace();
+  const [done, setDone] = useState<string | null>(null);
+  const table = firstTable(m.content);
+  const flash = (t: string) => { setDone(t); window.setTimeout(() => setDone((d) => (d === t ? null : d)), 2200); };
+  const copy = async (text: string, what: string) => {
+    try { await navigator.clipboard.writeText(text); flash(what); } catch { flash("Your browser did not allow copying"); }
+  };
+  const keep = () => {
+    const entry = noteEntry(question, m.content, new Date());
+    const notes = `${entry}\n\n${desk.notes}`.slice(0, NOTES_MAX);
+    const on = desk.widgets.find((w) => w.id === "notes")?.on;
+    setDesk(on ? { notes } : { notes, widgets: toggleWidget(desk.widgets, "notes", true) });
+    flash("Saved to your notes on Home");
+  };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([answerMarkdown(m.content, m.sources ?? [], question)], { type: "text/markdown" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: answerFileName(question, new Date()) });
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const btn = "rounded border border-line px-1.5 py-0.5 text-[10.5px] text-muted hover:border-accent/50 hover:text-fg";
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-1.5">
+      <button type="button" className={btn} onClick={() => void copy(answerMarkdown(m.content, m.sources ?? [], question), "Copied with its sources")}>Copy</button>
+      {table && <button type="button" className={btn} onClick={() => void copy(toTsv(table), "Table copied: paste it into a spreadsheet")} title="Tab-separated, so it pastes into cells">Copy table</button>}
+      <button type="button" className={btn} onClick={keep}>Save to notes</button>
+      <button type="button" className={btn} onClick={download}>Download</button>
+      {done && <span role="status" className="text-[10.5px] text-pos">{done}</span>}
+    </div>
+  );
+}
 
 export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, question }: { ticker: string; company?: CompanyData; ai: AiStatus | null; openPanels: OpenPanel[]; onRun?: (c: Command) => void; subject?: string; prompts?: string[]; /** A question handed over from another screen ("Ask AI"), ready to send. */ question?: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -25,6 +69,25 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
   const suggestions = question ? [question, ...base.filter((p) => p !== question)] : base;
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages]);
+
+  // The last conversation about this ticker (or subject), kept in this browser (src/lib/client/ai-history.ts):
+  // loaded after hydration, saved whenever nothing is streaming.
+  const scope = subject || ticker;
+  const loaded = useRef(false);
+  useEffect(() => {
+    loaded.current = false;
+    const t = window.setTimeout(() => {
+      const kept = loadAiHistory(scope);
+      if (kept.length) setMessages((cur) => (cur.length ? cur : kept.map((m) => ({ ...m, figures: m.figures as FigureReport | undefined }))));
+      loaded.current = true;
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [scope]);
+  useEffect(() => {
+    if (!loaded.current || messages.some((m) => m.streaming)) return;
+    saveAiHistory(scope, keepable(messages));
+  }, [messages, scope]);
+  const newChat = () => { setMessages([]); saveAiHistory(scope, []); };
 
   const patchLast = (f: (m: Msg) => Msg) => setMessages((ms) => ms.map((m, i) => (i === ms.length - 1 ? f(m) : m)));
 
@@ -64,6 +127,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               return { ...m, tools };
             });
             else if (ev.type === "sources") patchLast((m) => ({ ...m, sources: ev.sources }));
+            else if (ev.type === "figures") patchLast((m) => ({ ...m, figures: ev.report }));
             else if (ev.type === "error") patchLast((m) => ({ ...m, error: safeText(ev.message) }));
           }
         }
@@ -83,7 +147,8 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
   return (
     <div className="flex h-full min-w-0 flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-[11px]">
-        <span className="flex min-w-0 items-center gap-2"><span className="text-accent">✦</span> <span className="shrink-0 max-md:hidden">YouBank AI · scope</span> <span className="num truncate text-fg">{subject || ticker}</span>{company ? <span className="truncate text-muted">· {company.name}</span> : null}</span>
+        <span className="flex min-w-0 items-center gap-2"><span className="text-accent">✦</span> <span className="shrink-0 max-md:hidden">YouBank AI · scope</span> <span className="num truncate text-fg">{subject || ticker}</span>{company ? <span className="truncate text-muted">· {company.name}</span> : null}
+          {messages.length > 0 && !busy && <button type="button" onClick={newChat} title="Start over (this conversation is kept in this browser until then)" className="shrink-0 rounded border border-line px-1.5 py-px text-[10px] text-muted hover:text-fg">New chat</button>}</span>
         <span title={ai && !online ? ai.reason : undefined} className={`flex min-w-0 max-w-[55%] items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[10px] ${online ? "text-muted" : "text-neg"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-pos" : "bg-neg"}`} />
           <span className="truncate">{ai ? (online ? `${ai.provider} · ${ai.model}` : `Offline · ${ai.reason ?? "no key"}`) : "checking…"}</span>
@@ -98,7 +163,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               <div className="min-w-0 max-w-[560px] rounded-md border border-line bg-elevated/60 px-3 py-2 text-[12px] leading-relaxed">
                 {subject
                   ? "I can search the startup directory, SEC Form D private-offering filings, public company financials, and the web. Ask about a company's funding history, how to reach its founders, competitors, or which companies in a space look fundable. Every claim cites its source."
-                  : "I read the same SEC filings and XBRL facts this terminal runs on, plus FMP prices. Ask for a peer set, a footnote, an outlier explanation, or a number from a 10-K. Every figure cites its source, and I can search filing text for items outside XBRL such as net retention or customer counts."}
+                  : "I read the same SEC filings and XBRL facts this terminal runs on, plus FMP prices. Ask for a peer set, a footnote, an outlier explanation, or a number from a 10-K. Figures cite their source, and figures from filed data are checked against it; I can also search filing text for items outside XBRL such as net retention or customer counts."}
               </div>
             </div>
             <div className="pl-8 max-md:pl-0">
@@ -127,11 +192,22 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
               )}
               {m.role === "user" ? <span>{m.content}</span> : <Markdown text={m.content || (m.streaming ? "…" : "")} sources={m.sources ?? []} />}
               {m.error && <PlanNotice error={m.error} className="mt-1 text-[11px]" />}
+              {m.figures && !m.streaming && <FigureCheck r={m.figures} />}
               {m.sources && m.sources.length > 0 && (
                 <div className="mt-2 border-t border-line pt-1.5 text-[10.5px] text-muted">
                   <div className="mb-0.5 uppercase tracking-wider">Sources</div>
                   {m.sources.map((s) => (
                     <div key={s.id} className="flex gap-1.5"><span className="num text-accent">{s.id}</span><a href={s.url} target="_blank" rel="noreferrer" className="truncate hover:text-info hover:underline">{s.label}</a></div>
+                  ))}
+                </div>
+              )}
+              {m.role === "assistant" && !m.streaming && !m.error && m.content.trim() && <AnswerActions m={m} question={messages[i - 1]?.content ?? ""} />}
+              {/* What to ask next, under the latest answer only. */}
+              {m.role === "assistant" && i === messages.length - 1 && !m.streaming && !m.error && m.content.trim() && online && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {followUps(messages[i - 1]?.content ?? "", (m.tools ?? []).map((t) => t.name), subject ? "" : ticker).map((f) => (
+                    <button key={f} type="button" disabled={busy} onClick={() => void send(f)}
+                      className="max-w-full rounded-full border border-line bg-panel px-2.5 py-1 text-left text-[11px] text-fg/90 hover:border-accent/50 hover:text-accent disabled:opacity-50">↳ {f}</button>
                   ))}
                 </div>
               )}
@@ -155,6 +231,7 @@ export function AiScreen({ ticker, company, ai, openPanels, subject, prompts, qu
             <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} className="accent-[var(--accent)]" />Deep research <PremiumBadge feature="ai.deep-research" />
           </label>
         </div>
+        {deep && <CostLine feature="ai.deep-research" what="A deep research run" className="mt-1 px-1 text-right" />}
       </form>
     </div>
   );

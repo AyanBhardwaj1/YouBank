@@ -242,7 +242,7 @@ export function newMessageId(fromAddress: string): string {
 }
 
 /** RFC 2822 with UTF-8 subjects encoded, base64url for the Gmail API. With `html`, a multipart/alternative message. */
-export function buildRaw(msg: { to: string[]; subject: string; body: string; html?: string; inReplyTo?: string; references?: string[]; messageId?: string }): string {
+export function buildRaw(msg: { to: string[]; subject: string; body: string; html?: string; inReplyTo?: string; references?: string[]; messageId?: string; headers?: Record<string, string> }): string {
   const subject = /[^\x20-\x7E]/.test(msg.subject)
     ? `=?UTF-8?B?${Buffer.from(msg.subject, "utf8").toString("base64")}?=`
     : msg.subject;
@@ -257,6 +257,8 @@ export function buildRaw(msg: { to: string[]; subject: string; body: string; htm
     msg.html ? `Content-Type: multipart/alternative; boundary="${boundary}"` : 'Content-Type: text/plain; charset="UTF-8"',
     ...(msg.inReplyTo ? [`In-Reply-To: ${msg.inReplyTo}`] : []),
     ...(references.length ? [`References: ${references.join(" ")}`] : []),
+    // Header values are ours (List-Unsubscribe), never user text, but strip line breaks all the same.
+    ...Object.entries(msg.headers ?? {}).map(([k, v]) => `${k}: ${v.replace(/[\r\n]+/g, " ")}`),
     "",
     ...(msg.html
       ? [`--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64", "", b64(msg.body),
@@ -267,7 +269,7 @@ export function buildRaw(msg: { to: string[]; subject: string; body: string; htm
 }
 
 /** Send one message. Called only from sendDraft (which enforces who may send what) and the Newsroom's own-inbox delivery. */
-export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; html?: string; threadId?: string | null; inReplyTo?: string; references?: string[]; messageId?: string }) {
+export async function sendMessage(token: string, msg: { to: string[]; subject: string; body: string; html?: string; threadId?: string | null; inReplyTo?: string; references?: string[]; messageId?: string; headers?: Record<string, string> }) {
   return call<{ id: string; threadId: string }>(token, "/messages/send", {
     method: "POST",
     headers: { "content-type": "application/json" },

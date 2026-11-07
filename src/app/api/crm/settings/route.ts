@@ -26,7 +26,7 @@ export async function PUT(req: Request) {
     return NextResponse.json(await saveSettings(user.id, {
       instructions: body.instructions as string | undefined, knowledge: body.knowledge as string | undefined, voice: body.voice as string | undefined,
       followUpDays: body.followUpDays as number | undefined, staleDealDays: body.staleDealDays as number | undefined, nightly: body.nightly as boolean | undefined,
-      mode: body.mode as string | undefined, about: body.about as string | undefined, signature: body.signature as string | undefined,
+      mode: body.mode as string | undefined, about: body.about as string | undefined, signature: body.signature as string | undefined, postalAddress: body.postalAddress as string | undefined,
       internalDomains: body.internalDomains as string[] | undefined, autopilot: body.autopilot,
     }));
   });

@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "book" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -21,6 +21,10 @@ const tab = (path: string, param: string, value: string, label: string, isDefaul
 
 export const FEATURES: NavFeature[] = [
   { id: "home", href: "/app", label: "Home", icon: "Home", blurb: "Your brief, tools and watchlist" },
+  {
+    id: "book", href: "/app/book", label: "Book", icon: "Briefcase", blurb: "Your positions, each thesis checked against filings and the market, with a red team",
+    links: [{ label: "Positions", href: "/app/book" }, { label: "Printable report", href: "/report/book" }, { label: "The week in your book", href: "/report/week" }, { label: "LP letter", href: "/report/letter" }, { label: "Connect AI apps", href: "/app/settings?tab=connect" }, { label: "Research ledger", href: "/app/settings?tab=ledger" }, { label: "AI governance report", href: "/report/ledger" }, { label: "AI due-diligence answers", href: "/report/ddq" }],
+  },
   {
     id: "terminal", href: "/app/terminal", label: "Terminal", icon: "Terminal", blurb: "Markets, comps, filings and news",
     links: [fn("TOP", "Top news"), fn("WEI", "World indices"), fn("ECO", "Economy"), fn("MA", "M&A"), fn("EQS", "Screener"), fn("GC", "Treasury curve")],
@@ -74,13 +78,14 @@ export const FEATURES: NavFeature[] = [
     id: "settings", href: "/app/settings", label: "Settings", icon: "Settings", blurb: "Style, AI model, alerts and data",
     links: [
       tab("/app/settings", "tab", "style", "Style", true), tab("/app/settings", "tab", "ai", "AI model"), tab("/app/settings", "tab", "news", "News and alerts"),
-      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "plan", "Plan"), tab("/app/settings", "tab", "sources", "Data sources"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
+      tab("/app/settings", "tab", "desk", "My desk"), tab("/app/settings", "tab", "calendar", "Calendar"), tab("/app/settings", "tab", "plan", "Plan"), tab("/app/settings", "tab", "sources", "Data sources"), tab("/app/settings", "tab", "security", "Security"), tab("/app/settings", "tab", "connect", "Connect AI apps"), tab("/app/settings", "tab", "ledger", "Research ledger"), tab("/app/settings", "tab", "data", "Data and privacy"), tab("/app/settings", "tab", "labs", "Labs"),
       tab("/app/settings", "tab", "desktop", "Desktop app"),
     ],
   },
 ];
 
-export const featuresFor = (role: RoleId) => FEATURES.filter((f) => !f.roles || f.roles.includes(role));
+/** The features a person sees: their role's, less any they took out of the navigation (Settings → My desk). */
+export const featuresFor = (role: RoleId, hidden: readonly string[] = []) => FEATURES.filter((f) => (!f.roles || f.roles.includes(role)) && !hidden.includes(f.id));
 
 export type NavLabels = "full" | "icons";
 export type NavPrefs = {
@@ -92,17 +97,17 @@ export type NavPrefs = {
 };
 
 export function defaultPinned(role: RoleId): NavId[] {
-  return ["home", "terminal", "news", "tools", "studio", ...(role === "vc" || role === "pe" ? (["vc"] as NavId[]) : []), "crm"];
+  return ["home", ...(role === "markets" ? (["book"] as NavId[]) : []), "terminal", "news", "tools", "studio", ...(role === "vc" || role === "pe" ? (["vc"] as NavId[]) : []), "crm"];
 }
 
 export const defaultNavPrefs = (role: RoleId): NavPrefs => ({ pinned: defaultPinned(role), labels: "full", dock: false });
 
 /** Stored preferences, cleaned: unknown or role-gated features drop out; malformed values fall back. */
-export function normalizeNavPrefs(raw: unknown, role: RoleId): NavPrefs {
+export function normalizeNavPrefs(raw: unknown, role: RoleId, hidden: readonly string[] = []): NavPrefs {
   const d = defaultNavPrefs(role);
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const valid = new Set<string>(featuresFor(role).map((f) => f.id));
-  const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned;
+  const valid = new Set<string>(featuresFor(role, hidden).map((f) => f.id));
+  const pinned = Array.isArray(r.pinned) ? [...new Set(r.pinned.filter((x): x is NavId => typeof x === "string" && valid.has(x)))] : d.pinned.filter((id) => valid.has(id));
   return { pinned, labels: r.labels === "icons" ? "icons" : "full", dock: r.dock === true };
 }
 

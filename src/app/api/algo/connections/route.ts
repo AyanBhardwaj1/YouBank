@@ -3,6 +3,7 @@ import { guarded } from "@/lib/auth/user";
 import { CROSS_SITE, requestMeta, requireConsent, sameSiteJson } from "@/lib/algo/access";
 import { addConnection, brokerSetup, listConnections, removeConnection } from "@/lib/algo/connections";
 import { rateLimit } from "@/lib/locks";
+import { requireRecentTwoFactor } from "@/lib/auth/step-up";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,6 +18,8 @@ export async function POST(req: Request) {
   if (!sameSiteJson(req)) return NextResponse.json(CROSS_SITE, { status: 403 });
   return guarded(async (user) => {
     await rateLimit(`algo-connect:${user.id}`, 5, 60_000, "Too many connection attempts. Wait a moment and try again.");
+    // Saving broker API keys needs a fresh authenticator code (src/lib/auth/step-up).
+    await requireRecentTwoFactor(user);
     await requireConsent(user.id, "terms");
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
     return NextResponse.json(await addConnection(user, body, requestMeta(req)));

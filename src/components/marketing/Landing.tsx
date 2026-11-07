@@ -107,7 +107,7 @@ const FAQ = [
   { q: "Is it suitable for a FINRA-registered firm?", a: "Regulated mode is built for it: autopilot cannot be switched on, every email is sent by a person from their own mailbox (so the firm's archive captures it), and every AI draft can be exported for supervision. Your compliance team decides; we give them the controls and the log." },
   { q: "Can it build my models and decks?", a: "Yes, in Studio. Describe what you need, or start from a DCF, LBO, comps, merger or cap table template filled from SEC filings, and watch the agent build the workbook and the slides. Slides stay linked to the model, every run is audited and can be undone, and it all exports to Excel and PowerPoint. You can also upload your own workbook." },
   { q: "Does it work in my own Excel and PowerPoint?", a: "Yes. Install the YouBank add-in (Excel and PowerPoint on the web, Windows or Mac, with Microsoft 365 or Office 2021 and later) and connect it with a code. Link a workbook and the agent writes into it cell by cell while you watch; your edits sync back to YouBank; decks in PowerPoint refresh from the model. An IT admin can deploy it to a whole team." },
-  { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API, with the source link on every figure. Anything from the web is cited. If a number is derived, the method is stated next to it." },
+  { q: "Where do the numbers come from?", a: "SEC EDGAR and a price API. The assistant cites the filing or price feed behind its figures and links to it, anything from the web is cited too, and a derived number states its method. Check the figures that matter before they go out." },
   { q: "Is this a Bloomberg replacement?", a: "No. Bloomberg's edge is licensed real-time market data, chat and fixed-income depth. YouBank's edge is the free regulatory corpus plus an agent that produces the deliverable and does the follow-through." },
   { q: "What does it cost?", a: `There is a Free plan, Campus is free with a .edu address, and Pro is ${usd(PLANS.pro.monthlyUsd ?? 0)} a month (${usd(PLANS.pro.yearlyMonthlyUsd ?? 0)} billed yearly). Each plan includes a monthly AI allowance that resets on your billing date. When it runs out, an AI credit pack (from $10) keeps AI going; otherwise AI pauses until it resets and everything else keeps working. Beta accounts will be told well before anything is billed.` },
 ];
@@ -165,7 +165,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             </Reveal>
             <Reveal eager delay={120}>
               <p className="mt-4 max-w-[58ch] text-[14.5px] leading-relaxed text-muted">
-                Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and earns the right to send on its own. For boutique advisors, emerging managers, founders, and the students who will join them.
+                Cited analysis from SEC filings, and an agent that tracks every email, answers what it can, asks you what it cannot, and sends on its own only the kinds of email you put on autopilot, after a hold, with spot checks and a probation rule that hands it back to you when drafts slip. For boutique advisors, emerging managers, founders, and the students who will join them.
               </p>
             </Reveal>
             <Reveal eager delay={180}>
@@ -301,6 +301,32 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
         </div>
       </section>
 
+      {/* for funds: the Book, MCP, the research ledger */}
+      <section id="funds" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
+        <Reveal>
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">For funds</h2>
+          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Every thesis held to its numbers. Every AI answer on the record.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] leading-relaxed text-muted">Nearly every fund now uses AI; few can show what it did, or prove it. YouBank checks the book against primary sources after every close, works inside the AI apps your team already uses, and keeps a record your compliance desk can verify without trusting us.</p>
+        </Reveal>
+        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[
+            { icon: "Briefcase", t: "The Book", b: "Each position's thesis comes with the numbers that would prove it wrong. After every US close they are checked against SEC filings and the price, with the figure, its period and the source. You hear the day a thesis breaks, see the revenue the next report must show, and a red team argues the other side with citations." },
+            { icon: "Activity", t: "Risk before and after the trade", b: "Beta-adjusted net, value at risk, the names that are really one bet, and today's book replayed through COVID, 2022 and April 2025. Check a trade before you make it: what it does to the book, and what it moves with." },
+            { icon: "Bot", t: "In Claude, ChatGPT and your agents", b: "YouBank is an MCP server: fundamentals, filings and what changed in them, comps, insiders, your own book and its risk, called from the AI app you already use. Every figure comes back cited. Your agents can propose a position; nothing enters the book until you review it." },
+            { icon: "Users", t: "Decisions on the record, kept score", b: "Every change to a position is dated in a decision journal with your reason. YouBank notices when goalposts move, losers are held longer than winners, or a broken thesis sits untouched, and grades your process apart from your results. An AI committee (a bull, a bear and a chair) gives a second opinion whose forecasts are scored beside yours." },
+            { icon: "Newspaper", t: "Letters and DDQs, checked", b: "Draft the quarterly LP letter from the book and the track record, and answer an LP's AI questions from the ledger. A compliance pass reads every edit for promises, performance without a period and AI claims you can't back. A first read; your compliance officer signs off." },
+            { icon: "ScrollText", t: "A research ledger", b: "Every AI answer and AI-app call is kept with its prompt, model and sources, hash-chained so any edit shows, and can be anchored outside YouBank every day. Reviewers sign off on entries, and a one-page governance report answers the DDQ question about AI." },
+          ].map((x, i) => (
+            <Reveal key={x.t} delay={i * 60}>
+              <div className="h-full panel p-4">
+                <h3 className="flex items-center gap-2 text-[13.5px] font-semibold"><Icon name={x.icon} className="h-4 w-4 text-accent" />{x.t}</h3>
+                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{x.b}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* terminal */}
       <section id="terminal" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
@@ -394,7 +420,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
                   {[
                     "Chooses tools, not vibes: XBRL facts, the comps engine, filing text, full-text search, Form D, the web.",
                     "Computes with an exact calculator so multiples and IRRs are not guessed.",
-                    "Cites every figure with a source id you can click through to the filing.",
+                    "Cites its figures with a source id you can click through to the filing.",
                     "States the limits: fiscal-year mismatches, reported versus adjusted EBITDA, missing estimates.",
                   ].map((t, i) => (
                     <li key={i} className="flex gap-2"><span className="num grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-semibold text-accent">{i + 1}</span><span>{t}</span></li>
@@ -468,9 +494,24 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
       <section id="styles" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Make it yours</h2>
-          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">Fourteen styles, from amber-on-black terminal to soft daylight.</p>
-          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Density, corner radius, glass and glow all change with the style, not just the colors. Try one now: this page will change with you.</p>
+          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">A workspace that sets itself up for you, and stays yours to change.</p>
+          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Tell YouBank how you work and it picks your features, your Home and its widgets. Then change any of it: a quiet Focus page, a calm Home with cards, or a dense Desk; widgets you drag where you want; fourteen styles from amber-on-black terminal to soft daylight; any accent colour, typeface, size and wallpaper; looks you save and share with your team as a code. Try a style now: this page will change with you.</p>
         </Reveal>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { icon: "Wand2", t: "Set up for you", d: "From your survey, or from a sentence about how you work. Every choice stays switchable." },
+            { icon: "LayoutGrid", t: "Arrange Home on the page", d: "Focus, Home or Desk. Drag widgets, make them wide or narrow, add or remove them." },
+            { icon: "Command", t: "⌘K for everything", d: "Any page or tool, a ticker, your look, or a question for the AI, from one box." },
+            { icon: "Paintbrush", t: "Looks you can share", d: "Save a style and every setting as a look, follow your system's light and dark, share a code." },
+          ].map((x) => (
+            <Reveal key={x.t}>
+              <div className="panel h-full p-3.5">
+                <h3 className="flex items-center gap-2 text-[13px] font-semibold"><Icon name={x.icon} className="h-4 w-4 text-accent" />{x.t}</h3>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">{x.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
         <div className="mt-7"><ThemeShowcase /></div>
       </section>
 

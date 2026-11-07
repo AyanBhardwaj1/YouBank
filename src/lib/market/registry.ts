@@ -39,7 +39,7 @@ import { coinGeckoHistory, ecbPair } from "./free";
 import { fredSeries, MACRO_SERIES, type Obs } from "./fred";
 import { isCommodity, isCrypto, isFxPair, nyseSession, PROXIES } from "./kinds";
 import { beaCovers, beaSeries, blsCovers, blsDisplay, EIA_FOR_FRED, eiaCovers, eiaSeries, treasuryCovers, treasurySeries } from "./macro-sources";
-import { backupEnabled, nasdaqHistory, nasdaqQuote, nasdaqSummary } from "./nasdaq";
+import { backupEnabled, nasdaqEnabled, nasdaqHistory, nasdaqQuote, nasdaqSummary } from "./nasdaq";
 import { noteAdapter, noteFields, noteSkipped, noteSource, type AnsweredBy, type Provider, type Skipped, type SourceMeta } from "./provenance";
 import { quoteMeta } from "./quote-meta";
 import { secDeals, secDividendData, secEarnings, secProfile } from "./sec-sources";
@@ -408,12 +408,14 @@ export function resolveChain<D extends DatasetId>(dataset: D, opts: ChainOptions
 
 export const BACKUP_OFF = "Switched off on this server (unverified backups are off).";
 export const NOT_SET_UP = "Not set up on this server yet.";
+export const NASDAQ_OFF = "Switched off on this server (the Nasdaq.com backup is off).";
 
 /** Whether an adapter may answer here, and if not, why (in words people read). */
-export function eligibility(a: Pick<Adapter<unknown, unknown>, "licence" | "keyProvider" | "backup" | "requires" | "noAi">): { ok: true } | { ok: false; reason: string } {
+export function eligibility(a: Pick<Adapter<unknown, unknown>, "licence" | "keyProvider" | "backup" | "requires" | "noAi"> & { source?: string }): { ok: true } | { ok: false; reason: string } {
   if (a.licence === "user-key") return keyedEligibility(a.keyProvider!);
   if (a.noAi && inForModel()) return { ok: false, reason: NOT_FOR_AI };
   if (a.backup && !backupEnabled()) return { ok: false, reason: BACKUP_OFF };
+  if (a.source === "nasdaq" && !nasdaqEnabled()) return { ok: false, reason: NASDAQ_OFF };
   if (a.requires && !process.env[a.requires]?.trim()) return { ok: false, reason: NOT_SET_UP };
   return { ok: true };
 }

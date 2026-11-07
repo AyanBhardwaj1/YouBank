@@ -2,6 +2,7 @@
 
 import { THEMES, themeStyle, type ThemeDef, type ThemeId } from "@/lib/themes";
 import { useTheme } from "./ThemeProvider";
+import { useWorkspace } from "@/components/workspace/WorkspaceProvider";
 
 /** Miniature terminal rendered with a theme's variables. Pure CSS variables, so it previews any theme without switching. */
 export function ThemeThumb({ theme, active = false, size = "md" }: { theme: ThemeDef; active?: boolean; size?: "sm" | "md" | "lg" }) {
@@ -38,6 +39,8 @@ export function ThemeThumb({ theme, active = false, size = "md" }: { theme: Them
 /** Theme gallery. Hover previews live, click applies (and persists when signed in). */
 export function ThemePicker({ compact = false, onPick }: { compact?: boolean; onPick?: (id: ThemeId) => void }) {
   const { themeId, setTheme, preview } = useTheme();
+  // Choosing a style by hand ends "match my system" (Settings → Style).
+  const { look, setLook } = useWorkspace();
   const families = [...new Set(THEMES.map((t) => t.family))];
   return (
     <div className="space-y-4" onMouseLeave={() => preview(null)}>
@@ -49,7 +52,7 @@ export function ThemePicker({ compact = false, onPick }: { compact?: boolean; on
               const active = t.id === themeId;
               return (
                 <button key={t.id} type="button" onMouseEnter={() => preview(t.id)} onFocus={() => preview(t.id)} onBlur={() => preview(null)}
-                  onClick={() => { setTheme(t.id); onPick?.(t.id); }}
+                  onClick={() => { setTheme(t.id); if (look.system) setLook({ system: false }); onPick?.(t.id); }}
                   className={`lift group text-left transition ${active ? "" : ""}`} aria-pressed={active} title={t.tagline}>
                   <div className={`overflow-hidden rounded-[var(--radius)] border p-1.5 ${active ? "border-accent bg-accent-soft" : "border-line bg-panel"}`}>
                     <ThemeThumb theme={t} active={active} size={compact ? "sm" : "md"} />

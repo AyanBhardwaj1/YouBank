@@ -502,6 +502,24 @@ names the model behind each number and gives a range. The crypto tools read free
 (CoinGecko, DefiLlama, mempool.space, SEC XBRL, public nodes) and return source ids for every figure;
 `token_valuation` does fee-multiple, discounted token cash flow and staking-yield arithmetic exactly.
 
+**Figures checked against their source** (`src/lib/ai/figures.ts`).
+- Every tool call in a chat run is kept with its raw output and the source ids it issued.
+- After the answer, each figure is checked only against the values of the source it cites, typed by unit from
+  the payload's field names. There is no free arithmetic between payload numbers.
+- A derived figure counts only when `calc` produced it. `calc` takes source references
+  (`S1.ltm_usd_mm.revenue`), so inputs are never retyped.
+- The terminal's AI screen shows how many figures from data match their cited source, with the field and period
+  each matched, and lists the ones not found, the ones cited only to text and the uncited ones. It says
+  "matches the source", never "correct": choosing the right field is still the model's job.
+- `scripts/test-figures.ts` checks the matcher on generated payloads with injected errors. It is a synthetic
+  test, not a measure of live answers.
+
+**Measuring answers.**
+- `scripts/eval-agent.mts` runs a frozen, period-pinned question set from SEC XBRL k times and reports pass@1
+  and pass^k.
+- `scripts/audit-answers.mts` writes a worksheet for labelling real answers figure by figure.
+- How to run both: `scripts/fixtures/eval-agent/README.md`.
+
 **Cost.** Classification, extraction and summaries route to a small model (GPT-5.6 Luna or Claude Haiku
 4.5) and drafting to a mid-sized one, which costs a fraction of the flagship; system prompts are kept
 stable so the providers' prompt caches apply; read-only tools run in parallel; and every call's tokens and
@@ -1626,6 +1644,10 @@ All tables are in `src/db/schema.ts`.
   - `0023_copytrade`
   - `0024_seat_cooldown`
   - `0026_quant`
+  - `0030_mail_compliance`
+  - `0031_two_factor` (`auth_users.two_factor_enabled` and `auth_two_factor`). Apply it **before** the
+    deploy that ships two-factor: Better Auth reads the new column with every session, so sign-in fails
+    until it exists.
 - After applying them, `drizzle-kit push --strict` should propose nothing (answer "No" to anything it
   proposes). Never run `drizzle-kit push` without `--strict` (or with `--force`) against an existing
   database: indexes the SQL files create are not all in `schema.ts`, and push would drop them.
@@ -1640,7 +1662,7 @@ All tables are in `src/db/schema.ts`.
 | Styling | Tailwind CSS v4 with design tokens, 14 generated themes, motion, lucide-react icons |
 | Database | Neon Postgres (free plan) through `postgres` (postgres.js) and the pooler; portable to Supabase (`scripts/db-setup.mts`) |
 | ORM | Drizzle ORM 0.45, drizzle-kit |
-| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications` |
+| Auth | Better Auth 1.6 (self-hosted): email and password, plus Google when configured; two-factor with an authenticator app (see Security); no emailed reset yet (an admin resets); tables `auth_users`, `auth_sessions`, `auth_accounts`, `auth_verifications`, `auth_two_factor` |
 | AI | OpenAI Responses API (`openai` 7), Anthropic Messages API (`@anthropic-ai/sdk`), zod 4 for structured output |
 | Mail | imapflow (IMAP), nodemailer (SMTP), mailparser (MIME), Gmail REST API |
 | Data | SEC EDGAR (submissions, XBRL company facts, full-text search), Financial Modeling Prep, Y Combinator, a16z, Thiel Fellows, Show HN |
@@ -1684,7 +1706,7 @@ bash scripts/preflight.sh                                         # everything t
 |---|---|---|
 | `DATABASE_URL` | yes | Pooled connection string (Neon's `-pooler` host, or Supabase's transaction pooler); no `channel_binding` parameter |
 | `DATABASE_URL_UNPOOLED` | for schema pushes | Direct connection (Neon) or Supabase's session pooler; `drizzle-kit push` and `scripts/db-setup.mts` need it |
-| `BETTER_AUTH_SECRET` | yes | Signs session cookies and encrypts stored OAuth tokens (`openssl rand -base64 48`) |
+| `BETTER_AUTH_SECRET` | yes | Signs session cookies, encrypts stored OAuth tokens and two-factor secrets, and keys the step-up cookie (`openssl rand -base64 48`). Changing it makes every stored authenticator secret and backup code unreadable: people with two-factor on then need an admin to clear it (`auth_users.two_factor_enabled`, `auth_two_factor`) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `NEXT_PUBLIC_GOOGLE_SIGNIN=1` | no | Google sign-in alongside email and password: an OAuth client (Web) with redirect URI `<site>/api/auth/callback/google`; all three or none |
 | `BETTER_AUTH_URL` | no | Sign-in's base address when it is not `NEXT_PUBLIC_SITE_URL` (local development) |
 | `AUTH_SESSION_DATA_TTL` | no | Seconds the session cookie is trusted before a database read (default 900) |
@@ -1693,10 +1715,11 @@ bash scripts/preflight.sh                                         # everything t
 | `OPENAI_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_REASONING_EFFORT`, `ANTHROPIC_MODEL` | no | Defaults: `gpt-6-astra`, `gpt-5.4-mini`, `medium`, `claude-opus-5` |
 | `FMP_API_KEY` | yes | Prices and market caps |
 | `MARKET_BACKUP` | no | `off` turns off the market-data backups (Nasdaq, the ECB rates, CoinGecko, AI research); on by default |
+| `MARKET_NASDAQ` | no | `off` turns off only the Nasdaq.com scrape (not a licensed feed), keeping the other backups and the earnings calendar's fallbacks as they are; on by default. Set it to `off` once a licensed price plan (FMP Starter with its display licence) covers every ticker |
 | `MARKET_RESEARCH_MODEL`, `MARKET_RESEARCH_ESCALATION_MODEL` | no | The models AI research uses; defaults `gpt-5.6-luna`, retrying with `gpt-5.4-mini` |
 | `EDGAR_USER_AGENT` | yes | The SEC asks for a descriptive User-Agent with a contact email |
 | `CRON_SECRET` | yes | Bearer token for Vercel Cron (`/api/cron/sync`, `/api/cron/agent`) |
-| `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`) |
+| `EMAIL_TOKEN_SECRET` | to connect mail | Encrypts mailbox passwords and tokens (`openssl rand -base64 32`), and signs the unsubscribe links in campaign mail. Do not rotate it casually: stored mailbox credentials stop decrypting, and unsubscribe links already sent stop working (the law expects them to work for 30 days) |
 | `AUTOPILOT_SECRET` | for autopilot | Bearer token the heartbeat sends to `/api/cron/autopilot` (`CRON_SECRET` is also accepted) |
 | `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI` | no | Google Calendar via OAuth; without them the Gmail client below is used. The redirect defaults to `<site>/api/calendar/oauth/google/callback` |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT`, `MICROSOFT_REDIRECT_URI` | no | Microsoft 365 and Outlook.com calendars via Graph; tenant `common` by default |
@@ -1816,6 +1839,7 @@ limits.
 The Vercel project is connected to this repository: every push to `main` (a merged pull request) deploys
 to production, and pull requests get preview deployments. Apply new migrations before or right after the
 deploy that needs them (`pnpm exec tsx scripts/db-setup.mts finish` replays every `drizzle/*.sql`).
+`drizzle/0031_two_factor.sql` must go first: sign-in reads its column, so it fails until it is applied.
 
 1. **Environment.** Set the variables above in the Vercel project, not in `.env.local`.
 2. **Database.** Apply any new migration to production, then check for drift:
@@ -1928,6 +1952,24 @@ production.
 
 ## Security, privacy and compliance
 
+**Two-factor.**
+- Settings → Security turns on an authenticator app (TOTP, Better Auth's `twoFactor` plugin): an
+  `otpauth://` link and the same key to type by hand (no QR code), the first code to finish, and ten
+  backup codes shown once. The secret and backup codes are encrypted with `BETTER_AUTH_SECRET`
+  (`drizzle/0031_two_factor.sql`).
+- Password sign-in with it on stops at `/sign-in/two-factor` for a code or a backup code, with "trust this
+  device for 30 days". The plugin locks that step after 10 wrong codes for 15 minutes.
+- Google sign-in is not challenged by the plugin, so risky actions ask for a fresh code themselves
+  (`src/lib/auth/step-up.ts`), whatever the sign-in: saving broker API keys and connecting Alpaca, live
+  trading consent, the SnapTrade connection and real-money copy consent, and connecting a mailbox (Gmail
+  or an app password). A code is checked at `POST /api/security/step-up` (8 tries per person per 15
+  minutes, as the plugin counts nothing there) and unlocks these for ten minutes on that browser, in
+  `yb-stepup`: an httpOnly cookie with the person's id and expiry, HMAC-SHA256-signed under a key
+  derived from `BETTER_AUTH_SECRET`. Without it the routes answer 403 `two_factor_required`, and the
+  page asks for the code (or, with 2FA off, says to turn it on).
+- While 2FA is on, turning it off, reading the secret again, new backup codes or re-enrolling also need a
+  fresh code, so a stolen session cannot swap in its own authenticator.
+
 **Credentials.**
 - Mailbox passwords and refresh tokens are encrypted with AES-256-GCM before storage, and decrypted only to
   talk to the mail server.
@@ -1937,6 +1979,14 @@ production.
 - There is one sending function, `sendDraft()`.
 - A single-use claim means a draft cannot go twice.
 - The live thread is re-read before every automatic send.
+- If the earned-autonomy check itself fails (a database timeout, say), the draft waits for the person.
+- Campaign and nurture mail (`src/lib/crm/compliance.ts`):
+  - carries the sender's postal address and an unsubscribe line;
+  - sends RFC 8058 one-click `List-Unsubscribe` headers; the link is signed per sender and recipient and
+    opts out at once (`/api/unsubscribe/[token]`: GET only asks, POST unsubscribes);
+  - is refused, or held by autopilot, until a postal address is set (`drizzle/0030_mail_compliance.sql`);
+  - cannot launch from a domain with neither SPF nor a findable DKIM key, and a missing DMARC record is
+    flagged at launch.
 
 **Prompt injection.**
 - The security veto holds any automatic email containing a link, address or account number the person did
@@ -2096,10 +2146,6 @@ Three earlier research reports are behind the adaptive engine, the website and t
 
 ## Roadmap
 
-- **Compliance for cold email:**
-  - a postal address and an unsubscribe line in campaign emails;
-  - a `List-Unsubscribe` one-click header;
-  - opt-outs honoured within 48 hours.
 - **A YouBank connector inside Claude and ChatGPT:** a remote MCP server exposing Form D × directory × XBRL.
   - It would follow the stateless 2026-07-28 MCP specification, with MCP Apps for rendered results.
   - On Vercel it would use `mcp-handler`, which needs its own OAuth 2.1 authorisation server.

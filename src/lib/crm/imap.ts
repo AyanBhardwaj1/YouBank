@@ -280,6 +280,8 @@ export async function imapThread(client: ImapFlow, self: string, key: string, kn
 export type ImapSend = {
   from: EmailAddress; to: EmailAddress[]; subject: string; body: string;
   inReplyTo?: string; references?: string[]; providerThreadId?: string | null;
+  /** Extra headers, e.g. List-Unsubscribe on commercial mail. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -292,6 +294,7 @@ export async function smtpSend(s: ImapSettings, password: string, client: ImapFl
     from: mail.from, to: mail.to, subject: mail.subject, text: mail.body, messageId,
     ...(mail.inReplyTo ? { inReplyTo: mail.inReplyTo } : {}),
     ...(mail.references?.length ? { references: mail.references } : {}),
+    ...(mail.headers ? { headers: mail.headers } : {}),
   };
   const smtp = await smtpTransport(s, password);
   try { await smtp.sendMail(message); } catch (e) { throw friendlyMailError(e, "SMTP"); }

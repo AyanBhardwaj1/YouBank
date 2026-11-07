@@ -15,7 +15,7 @@ type Detail = {
   meeting: {
     id: number; title: string; platform: string; source: string; status: string; meetingUrl: string; bot: { status: string | null; error: string | null };
     participants: { name: string; email?: string; contactId?: number | null; how?: string; self?: boolean }[];
-    consent: { at?: string; noticeCopied?: boolean; auto?: boolean }; live: { on: boolean; minutes: number };
+    consent: { at?: string; attested?: boolean; noticeCopied?: boolean; noticePosted?: boolean; auto?: boolean }; live: { on: boolean; minutes: number };
     notes: MeetingNotes | null; notesAt: string | null; transcriber: string; durationSec: number; error: string; startedAt: string; purgedAt: string | null;
   };
   transcript: Segment[];
@@ -111,7 +111,7 @@ export function MeetingDetail({ ctx, id, access, onBack, onDrafted }: { ctx: Pan
           <p className="mt-0.5 text-[11.5px] text-muted">
             {[isPlatform(m.platform) ? PLATFORM_LABEL[m.platform] : "", new Date(m.startedAt).toLocaleString(), m.durationSec ? durationLabel(m.durationSec) : "", m.source === "bot" ? "notetaker" : "desktop app", m.transcriber ? `transcribed by ${m.transcriber}` : ""].filter(Boolean).join(" · ")}
           </p>
-          {m.consent.at && <p className="mt-0.5 text-[10.5px] text-muted">Recording agreed {new Date(m.consent.at).toLocaleTimeString()}{m.consent.auto ? " (auto-start)" : ""}{m.consent.noticeCopied ? "; notice copied for the chat" : ""}.</p>}
+          {m.consent.at && <p className="mt-0.5 text-[10.5px] text-muted">Recording agreed {new Date(m.consent.at).toLocaleTimeString()}{m.consent.attested ? "; you confirmed everyone knew it was recorded" : m.consent.auto ? " (auto-start)" : ""}{m.consent.noticeCopied ? "; notice copied for the chat" : ""}{m.consent.noticePosted ? "; the notetaker posted the notice in the chat" : ""}.</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="ctl bg-elevated px-1.5 py-0.5 text-[10.5px]">{STATUS_LABEL[m.status as MeetingStatus] ?? m.status}</span>

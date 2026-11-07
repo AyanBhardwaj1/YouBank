@@ -10,8 +10,10 @@ export const maxDuration = 60;
 
 /**
  * GET ?code&state — Alpaca sends the person back here. A top-level navigation from Alpaca, so it is not a
- * JSON request; it is protected by the signed state (this person, ten minutes) instead. Back to the page
- * either way, with a plain message on failure.
+ * JSON request; it is protected by the signed state (this person, ten minutes) instead. The start route
+ * issues that state only after a fresh authenticator code, so the code is not asked again here: the person
+ * may well spend minutes at Alpaca, and a refusal would waste their authorization. Back to the page either
+ * way, with a plain message on failure.
  */
 export async function GET(req: Request) {
   const u = new URL(req.url);
