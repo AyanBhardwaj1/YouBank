@@ -2,11 +2,12 @@
  * What changed, for the "New in YouBank" card (src/components/workspace/WhatsNew.tsx). Newest first.
  * Bump RELEASE when adding entries: the card shows once per release per browser.
  */
-export const RELEASE = "2026-11-06e";
+export const RELEASE = "2026-11-07a";
 
 export type NewThing = { title: string; body: string; href?: string; action?: "palette" | "arrange" | "shortcuts"; cta: string };
 
 export const WHATS_NEW: NewThing[] = [
+  { title: "Process health", body: "Goalposts moved, losers held longer than winners, theses nobody has reviewed in 90 days, and four more habits, read from your own records and graded on one panel.", href: "/report/book", cta: "See yours" },
   { title: "A decision journal", body: "Every change to a position is dated as it happens; add a line on why. The week shows changes still without a reason, and broken theses with nothing done since.", href: "/app/book", cta: "Open the Book" },
   { title: "The week in your book", body: "What changed, which forecasts resolved, what the committee said and what is coming, on one page, and in the bell after Friday's close.", href: "/report/week", cta: "Open it" },
   { title: "A base rate for your forecasts", body: "Beside a forecast on a position with a price line, the chance the price holds from volatility alone. Start there, then adjust.", href: "/app/book", cta: "Open the Book" },
