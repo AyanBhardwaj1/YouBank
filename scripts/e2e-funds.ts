@@ -172,6 +172,11 @@ async function main() {
       check("a new forecast on a thesis that reads broken is refused", bf.status === 400 && /reads broken/.test(bf.body?.error ?? ""), bf.body);
       const keep = await j("/api/book", { method: "POST", body: JSON.stringify(broke) });
       check("an edit that leaves the forecast as it is still saves on a broken thesis", keep.status === 200, keep.body);
+      const { id: _bid, log: _blog, conviction: _bc, ...copy } = broke as Record<string, unknown>;
+      void _bid; void _blog; void _bc;
+      const nf = await j("/api/book", { method: "POST", body: JSON.stringify({ ...copy, conviction: { p: 1, by: later } }) });
+      check("a new position whose criteria already fail takes no forecast (judged live, not by history)", nf.status === 400 && /reads broken/.test(nf.body?.error ?? ""), nf.body);
+      if (nf.body?.position?.id) await j(`/api/book?id=${nf.body.position.id}`, { method: "DELETE" });
     } else console.log("  skip  no position reads broken");
     // Catalyst reviews: a passed catalyst, said once, in a fixed form; anything else is refused.
     const catDay = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);

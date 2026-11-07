@@ -23,6 +23,8 @@ export type Committee = {
   samples?: { decision: Decision; p: number }[];
   /** The price base rate the chairs were given to start from, when there was one (./baserate.ts). */
   baseRate?: number;
+  /** The thesis read broken when the committee sat, so no forecast was kept; `brokenP` is the chairs' pooled chance, for the record only. */
+  brokenAtSitting?: true; brokenP?: number;
 };
 
 const evidenceLines = (p: Position, ev: Evaluation | null) => [
@@ -111,6 +113,7 @@ export function committeeFrom(chair: ChairAnswer, bull: RedTeam, bear: RedTeam, 
     rationale: clip(chair.rationale, 800), dissent: clip(chair.dissent, 400), watch: chair.watch.map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
     // A chance given as a fraction (0.72) is 72%, not 1%.
     forecast: broken ? null : normalizeConviction({ p: pctOf(chair.probability), by, at: today, source: AI_COMMITTEE }),
+    ...(broken ? { brokenAtSitting: true as const, brokenP: pctOf(chair.probability) / 100 } : {}),
     ...(samples && samples.length > 1 ? { samples: samples.slice(0, 5) } : {}),
     ...(typeof baseRate === "number" && baseRate >= 0 && baseRate <= 1 ? { baseRate: Math.round(baseRate * 100) / 100 } : {}),
   };
@@ -126,6 +129,7 @@ export function normalizeCommittee(raw: unknown): Committee | null {
     rationale: clip(r.rationale, 800), dissent: clip(r.dissent, 400),
     watch: (Array.isArray(r.watch) ? r.watch : []).map((w) => clip(w, 200)).filter(Boolean).slice(0, 3),
     forecast: r.forecast ? normalizeConviction({ ...(r.forecast as object), source: AI_COMMITTEE }) : null,
+    ...(r.brokenAtSitting === true ? { brokenAtSitting: true as const, ...(typeof r.brokenP === "number" && r.brokenP > 0 && r.brokenP < 1 ? { brokenP: r.brokenP } : {}) } : {}),
     ...(() => {
       const xs = (Array.isArray(r.samples) ? r.samples : []).flatMap((x) => {
         const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;

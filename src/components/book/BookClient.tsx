@@ -155,7 +155,7 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
           const warn = base && d.convP.trim() && pf >= 0.01 && pf <= 0.99 ? conjunctionCheck(pf, base, pos.criteria.length) : null;
           return base ? <span className="basis-full text-[11px] text-fg sm:basis-auto">Base rate from price alone: <span className="font-semibold">{Math.round(base.p * 100)}%</span> that the price line{base.lines === 1 ? " holds" : "s hold"} to that date. Start there, then adjust for the fundamentals.{warn && <span role="status" className="block text-neg">{warn}</span>}</span> : null;
         })()}
-        {verdict === "broken" && d.convP.trim() && (d.convP !== initial.convP || d.convBy !== initial.convBy) && <span role="status" className="basis-full text-[11px] text-neg">{BROKEN_FORECAST}</span>}
+        {verdict === "broken" && d.convP.trim() && (Math.round((Number(d.convP) >= 1 ? Number(d.convP) : Number(d.convP) * 100)) !== Number(initial.convP) || d.convBy !== initial.convBy) && <span role="status" className="basis-full text-[11px] text-neg">{BROKEN_FORECAST}</span>}
         <span className="basis-full text-[11px] sm:basis-auto">Optional. YouBank scores it when it resolves, so the track record shows how well calibrated the book&apos;s conviction is{d.convSource && d.convSource !== "You" ? ` (this one is ${d.convSource}'s)` : ""}.</span>
       </div>
       <div>
@@ -328,7 +328,7 @@ function CommitteePanel({ c, busy, onRun, direction }: { c: Committee | undefine
         <div className="space-y-1.5 text-[12px]">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`ctl px-2 py-0.5 text-[11px] font-semibold uppercase ${DECISION_CLS[c.decision]}`}>{DECISIONS[c.decision]}</span>
-            {!c.forecast && <span className="text-[11.5px] text-muted">The chair kept no forecast: the thesis read broken when the committee sat, and a forecast made then would be scored on a break already known.</span>}
+            {!c.forecast && c.brokenAtSitting && <span className="text-[11.5px] text-muted">The chair kept no forecast: the thesis read broken when the committee sat, and a forecast made then would be scored on a break already known.</span>}
             {c.forecast && <span className="text-[11.5px] text-muted">Chair&apos;s forecast: <span className="font-semibold text-fg">{Math.round(c.forecast.p * 100)}%</span> that no kill criterion fails before {c.forecast.by}{typeof c.baseRate === "number" ? `, starting from a ${Math.round(c.baseRate * 100)}% price base rate` : ""}. Scored in your track record beside your own.{typeof c.baseRate === "number" && c.forecast.p > c.baseRate + 0.02 && <span className="block text-accent">Above the volatility-only base rate for the price lines: weigh whether the briefs give a reason for that.</span>}</span>}
           </div>
           {c.samples && c.samples.length > 1 && <p className="text-[11px] text-muted" title="Each chair read the same briefs and decided alone; the forecast is their mean in log-odds, the decision the majority">{c.samples.length} chairs sat independently: {c.samples.map((x) => `${DECISIONS[x.decision]} ${Math.round(x.p * 100)}%`).join(" · ")}{new Set(c.samples.map((x) => x.decision)).size > 1 ? ". They split, so treat the call as close." : "."}</p>}

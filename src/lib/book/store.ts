@@ -28,15 +28,32 @@ import { healthLine, normalizeHealthHistory, processHealth, type HealthSnapshot 
 
 import { calibrationOf, closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
-import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
+import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews, type Verdict } from "./position";
 
 export async function loadBook(userId: string): Promise<Position[]> {
   const [row] = await requireDb().select({ extra: schema.profiles.extra }).from(schema.profiles).where(eq(schema.profiles.userId, userId));
   return normalizeBook((row?.extra as Record<string, unknown> | undefined)?.book);
 }
 
-/** Add or replace a position (by id). Returns it as stored, or null when it is not valid. */
-export async function savePosition(userId: string, raw: unknown): Promise<Position | null> {
+/**
+ * Where a posted position stands now, judged live from its own criteria and side, when it brings a new or
+ * changed forecast (else undefined, and nothing is fetched). The history alone misses a new position whose
+ * criteria already fail, a save that breaks its own thesis, and a flip of side.
+ */
+export async function liveVerdictFor(userId: string, raw: unknown): Promise<Verdict | undefined> {
+  const t = normalizePosition(raw, new Date().toISOString());
+  if (!t?.conviction) return undefined;
+  const prev = (await loadBook(userId)).find((x) => x.id === t.id);
+  if (prev?.conviction && prev.conviction.p === t.conviction.p && prev.conviction.by === t.conviction.by) return undefined;
+  const [ev] = await evaluateBook([t]);
+  return ev?.verdict;
+}
+
+/**
+ * Add or replace a position (by id). Returns it as stored, or null when it is not valid. `live` is the posted
+ * position's verdict now (liveVerdictFor), which a new or changed forecast is judged by when it is known.
+ */
+export async function savePosition(userId: string, raw: unknown, live?: Verdict): Promise<Position | null> {
   const now = new Date().toISOString();
   const t = normalizePosition(raw, now);
   if (!t) return null;
@@ -51,7 +68,8 @@ export async function savePosition(userId: string, raw: unknown): Promise<Positi
     void _ignored; void _past; void _log;
     // The thesis's verdict now (the latest daily check, if recent): judges both the forecast and the criteria change.
     const verdict = prev ? recentVerdict(normalizeBookState(extra.bookState).history[prev.id]) : undefined;
-    const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10), verdict === "broken");
+    const broken = live && live !== "unknown" ? live === "broken" : verdict === "broken";
+    const fresh = freshForecast(posted.conviction, prev?.conviction, now.slice(0, 10), broken);
     if (fresh.error) throw Object.assign(new Error(fresh.error), { status: 400 });
     const { conviction: _posted, ...rest } = posted;
     void _posted;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
 import { rateLimit, withinRate } from "@/lib/locks";
-import { bookAlertsOn, deletePosition, evaluateBook, loadBook, loadProposals, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
+import { bookAlertsOn, deletePosition, evaluateBook, liveVerdictFor, loadBook, loadProposals, noteHistory, savePosition, setBookAlerts, warmInsiders } from "@/lib/book/store";
 import { cachedInsiderFact } from "@/lib/book/insiders-store";
 import { cachedRisk, riskOf } from "@/lib/book/risk-store";
 import { inBackground } from "@/lib/cache";
@@ -41,7 +41,9 @@ export async function POST(req: Request) {
     if (body && typeof body === "object" && typeof (body as { note?: unknown }).note === "string" && (body as { note: string }).note.trim()) {
       await rateLimit(`book-note:${user.id}`, 30, 86_400_000, "That is many notes for one day. Save without the note, or try again tomorrow.");
     }
-    const saved = await savePosition(user.id, body);
+    // A new or changed forecast is judged by the position as posted, now (a failing thesis takes no new forecast).
+    const live = await liveVerdictFor(user.id, body).catch(() => undefined);
+    const saved = await savePosition(user.id, body, live);
     if (!saved) return NextResponse.json({ error: "A position needs a ticker and a one-line thesis." }, { status: 400 });
     // An insider-selling criterion: work the figure out now, after the answer, rather than at the next close.
     const p = saved as Position;
