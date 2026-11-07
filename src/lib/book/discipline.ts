@@ -6,7 +6,7 @@
  * this shows it was looked at, not whether the action was right. Pure; tested in scripts/test-book.ts.
  */
 import type { BookHistory } from "./alerts";
-import { isPmChange, type LogEntry } from "./decisions";
+import { catalystEntry, isCatalystReview, isPmChange, type LogEntry } from "./decisions";
 import type { Position } from "./position";
 
 export type BrokenAction = "cut" | "added to" | "flipped" | "resized";
@@ -78,11 +78,25 @@ export type Stale = { positionId: string; ticker: string; since: string; days: n
 export function staleTheses(open: Position[], now = new Date(), after = STALE_DAYS_REVIEW): Stale[] {
   const today = day(now.toISOString());
   return open.flatMap((p) => {
-    const touched = (p.log ?? []).filter((e) => !e.auto || isPmChange(e)).map((e) => e.at);
+    const touched = (p.log ?? []).filter((e) => !e.auto || isPmChange(e) || isCatalystReview(e)).map((e) => e.at);
     const last = [p.createdAt, ...touched].filter(Boolean).sort().pop();
     // Nothing to date it by (a teammate's position seen without its history): no judgement.
     if (!last) return [];
     const days = daysBetween(last, today);
     return days >= after ? [{ positionId: p.id, ticker: p.ticker, since: day(last), days }] : [];
   }).sort((a, b) => b.days - a.days || a.ticker.localeCompare(b.ticker));
+}
+
+/** How far back a passed catalyst still asks for a review. */
+export const CATALYST_REVIEW_DAYS = 60;
+
+/** Catalysts whose date has passed (within CATALYST_REVIEW_DAYS) with no review in the journal yet, oldest first. */
+export function catalystsDue(p: Position, now = new Date()): { id: string; label: string; date: string; daysAgo: number }[] {
+  const today = day(now.toISOString());
+  const reviewed = new Set((p.log ?? []).filter(isCatalystReview).map((e) => e.text));
+  return p.catalysts
+    .filter((c) => c.date < today && daysBetween(c.date, today) <= CATALYST_REVIEW_DAYS)
+    .filter((c) => !(Object.keys({ yes: 1, no: 1, mixed: 1 }) as ("yes" | "no" | "mixed")[]).some((o) => reviewed.has(catalystEntry(c.label, c.date, o))))
+    .map((c) => ({ id: c.id, label: c.label, date: c.date, daysAgo: daysBetween(c.date, today) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }

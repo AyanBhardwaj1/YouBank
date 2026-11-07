@@ -1,4 +1,4 @@
-import { actedText, brokenNow, STALE_DAYS_REVIEW, staleTheses } from "@/lib/book/discipline";
+import { actedText, brokenNow, catalystsDue, STALE_DAYS_REVIEW, staleTheses } from "@/lib/book/discipline";
 import { calibrationOf } from "@/lib/book/journal";
 import { processHealth } from "@/lib/book/process";
 import { ProcessHealth } from "@/components/book/ProcessHealth";
@@ -89,6 +89,14 @@ export default async function WeekPage() {
             <li key={k}><Link href={`/app/book?position=${encodeURIComponent(g.positionId)}`} className="font-semibold hover:underline">{g.ticker}</Link> <span className="num text-muted">{g.on}</span>: <span className="text-neg">{g.text}</span></li>
           ))}</ul>
         </>)}
+
+        {(() => {
+          const xs = book.flatMap((p) => catalystsDue(p, now).map((c) => ({ ...c, positionId: p.id, ticker: p.ticker })));
+          return xs.length ? (<>
+            <H>Did it play out?</H>
+            <ul className="mt-0.5 space-y-0.5">{xs.map((c) => <li key={`${c.positionId}-${c.id}`}><Link href={`/app/book?position=${encodeURIComponent(c.positionId)}`} className="font-semibold hover:underline">{c.ticker}</Link>: {c.label} <span className="num text-muted">{c.date}</span>. Say on the card whether it went as the thesis expected.</li>)}</ul>
+          </>) : null;
+        })()}
 
         {(() => {
           const xs = staleTheses(book, now);

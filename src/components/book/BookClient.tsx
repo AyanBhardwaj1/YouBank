@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
-import { actedText, brokenNow, staleTheses } from "@/lib/book/discipline";
+import { actedText, brokenNow, catalystsDue, staleTheses } from "@/lib/book/discipline";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
@@ -23,7 +23,7 @@ import { Sparkline } from "@/components/charts/Sparkline";
 import { sizingCheck } from "@/lib/book/sizing";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { isPmChange, loosened, recentVerdict, type LogEntry } from "@/lib/book/decisions";
+import { isPmChange, loosened, recentVerdict, type CatalystOutcome, type LogEntry } from "@/lib/book/decisions";
 import { processHealth } from "@/lib/book/process";
 import { ProcessHealth } from "@/components/book/ProcessHealth";
 import { DECISIONS, type Committee, type Decision } from "@/lib/book/committee";
@@ -207,6 +207,36 @@ function Editor({ initial, onSaved, onCancel, heading, market, proposal, verdict
 }
 
 /* ---------------- The decision journal ---------------- */
+
+/** Passed catalysts not yet reviewed: did each play out as the thesis expected? Written to the journal by the server. */
+function CatalystReviews({ position, onChanged }: { position: Position; onChanged?: () => void }) {
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+  const due = catalystsDue(position);
+  if (!due.length) return null;
+  const review = async (catalystId: string, outcome: CatalystOutcome) => {
+    setBusy(catalystId); setErr("");
+    try { await fetchJson("/api/book/catalyst", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: position.id, catalystId, outcome }) }); onChanged?.(); }
+    catch (x) { setErr(errorMessage(x)); } finally { setBusy(""); }
+  };
+  return (
+    <div className="rounded-md border border-accent/40 p-2.5" aria-label="Catalysts to review">
+      <h3 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">Did it play out?</h3>
+      <ul className="space-y-1 text-[12px]">
+        {due.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="min-w-0 flex-1"><span className="font-semibold">{c.label}</span> <span className="num text-muted">{c.date}</span><span className="text-muted"> ({c.daysAgo} day{c.daysAgo === 1 ? "" : "s"} ago)</span></span>
+            {(["yes", "mixed", "no"] as CatalystOutcome[]).map((o) => (
+              <button key={o} type="button" disabled={!!busy} onClick={() => review(c.id, o)} className="ctl border border-line px-2 py-0.5 text-[11.5px] text-muted hover:text-fg disabled:opacity-50">{o === "yes" ? "As expected" : o === "mixed" ? "Mixed" : "It didn't"}</button>
+            ))}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-1 text-[11px] text-muted">Your answer goes in the journal with today&apos;s date; the catalysts that played out become a hit rate in Process health.</p>
+      {err && <p role="alert" className="mt-1 text-[11.5px] text-neg">{err}</p>}
+    </div>
+  );
+}
 
 function DecisionJournal({ log, id, readOnly, onChanged }: { log: LogEntry[]; id: string; readOnly: boolean; onChanged?: () => void }) {
   const [text, setText] = useState("");
@@ -452,6 +482,7 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
               ? <div className="prose-sm text-[12px] leading-relaxed"><Markdown text={position.redTeam.text} sources={position.redTeam.sources} /></div>
               : owner ? <p className="text-[11.5px] text-muted">No red team has been run on this position yet.</p> : <p className="text-[11.5px] text-muted">An agent briefed as a {ev.direction === "long" ? "short seller" : "bull"} makes the strongest sourced case against this thesis, names its weakest pillar, and lists the signals that would prove it wrong. It works alone, so it argues rather than agrees.</p>}
           </div>
+          {position && !owner && <CatalystReviews position={position} onChanged={onChanged} />}
           <DecisionJournal log={position?.log ?? []} id={ev.positionId} readOnly={!!owner} onChanged={onChanged} />
           {!owner ? <CommitteePanel c={position?.committee} busy={busy} onRun={convene} direction={ev.direction} /> : position?.committee ? <CommitteePanel c={position.committee} busy="" direction={ev.direction} /> : null}
           {err && <p role="alert" className="text-neg">{err}</p>}

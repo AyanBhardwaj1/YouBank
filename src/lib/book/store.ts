@@ -21,7 +21,8 @@ import { normalizeProposals, withProposal, type Proposal } from "./proposals";
 import type { Committee } from "./committee";
 import { factsFrom, type FilingFact } from "./letter";
 import { freshForecast, standing, supersede } from "./forecast";
-import { changesOf, goalpostEntry, recentVerdict, withEntries } from "./decisions";
+import { catalystEntry, changesOf, goalpostEntry, recentVerdict, withEntries, type CatalystOutcome } from "./decisions";
+import { catalystsDue } from "./discipline";
 import { closedFrom, JOURNAL_MAX, normalizeJournal, type ClosedPosition, type CloseReason } from "./journal";
 import type { RiskHeadline } from "./risk";
 import { byUrgency, evaluate, normalizePosition, normalizeBook, POSITIONS_MAX, summarize, type Evaluation, type NextEarnings, type Position, type PositionNews } from "./position";
@@ -130,6 +131,28 @@ export async function addNote(userId: string, id: string, text: string): Promise
     }),
   }));
   return saved;
+}
+
+/**
+ * Record whether a passed catalyst played out (decisions.ts catalystEntry), once per catalyst. Returns the
+ * position, or a reason it could not be recorded.
+ */
+export async function reviewCatalyst(userId: string, id: string, catalystId: string, outcome: CatalystOutcome): Promise<{ position: Position } | { error: string; status: number }> {
+  let out: { position: Position } | { error: string; status: number } = { error: "That position was not found.", status: 404 };
+  const now = new Date();
+  await updateExtra(userId, (extra) => ({
+    ...extra,
+    book: normalizeBook(extra.book).map((t) => {
+      if (t.id !== id) return t;
+      const c = t.catalysts.find((x) => x.id === catalystId);
+      if (!c) { out = { error: "That catalyst is not on the position.", status: 404 }; return t; }
+      if (!catalystsDue(t, now).some((x) => x.id === catalystId)) { out = { error: "That catalyst has not passed yet, or was already reviewed.", status: 400 }; return t; }
+      const p = normalizePosition({ ...t, log: withEntries(t.log, [catalystEntry(c.label, c.date, outcome)], now.toISOString()) }) ?? t;
+      out = { position: p };
+      return p;
+    }),
+  }));
+  return out;
 }
 
 /** Remove a record from the track record (one closed by mistake), unless it holds forecasts on the record. */

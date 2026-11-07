@@ -13,9 +13,9 @@ import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
+import { brokenNow, brokenNowLine, catalystsDue, staleTheses } from "@/lib/book/discipline";
 import { healthLine, processHealth } from "@/lib/book/process";
-import { AUTO_MAX, changesOf, goalpostEntry, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
+import { AUTO_MAX, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
 import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
@@ -600,7 +600,7 @@ console.log("Decision journal");
 {
   // Process health: one panel from records already kept.
   const hNow = new Date("2026-11-20T12:00:00Z");
-  const a = normalizePosition({ ...t, id: "phx1", ticker: "AAA", createdAt: "2026-10-01T00:00:00Z", log: [
+  const a = normalizePosition({ ...t, catalysts: [], id: "phx1", ticker: "AAA", createdAt: "2026-10-01T00:00:00Z", log: [
     { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-11-02T10:00:00Z", text: "sized up after the call" },
     { at: "2026-11-10T10:00:00Z", text: "Weight 3% → 4% of NAV.", auto: true },
     { at: "2026-11-12T10:00:00Z", text: "Kill criteria loosened while the thesis read broken: gross margin at least 70 removed.", auto: true },
@@ -611,7 +611,7 @@ console.log("Decision journal");
   ok("process health: reasons counts the PM's changes with a note within a week (the goalposts entry is not a PM change)", [by("reasons").value, by("reasons").status], ["1 of 2", "watch"]);
   ok("process health: a broken thesis left alone more than five days is to fix", [by("broken").value, by("broken").status], ["0 of 1", "fix"]);
   ok("process health: goalposts moved once is to watch; no history yet is said", [by("goalposts").status, by("disposition").status, by("calibration").status, by("stale").status], ["watch", "none", "none", "good"]);
-  ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (2 not enough history yet).");
+  ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (3 not enough history yet).");
 }
 
 {
@@ -623,6 +623,19 @@ console.log("Decision journal");
   ok("a recent check counts; a stale or future one does not", [recentVerdict([{ d: "2026-11-18", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict([{ d: "2026-10-01", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict(undefined)], ["broken", undefined, undefined]);
   const team = { ...normalizePosition({ ...t, id: "rv82" })!, createdAt: "", log: [{ at: "2026-11-01T00:00:00Z", text: "AI committee: hold.", auto: true }] };
   ok("a teammate's position with nothing to date it by is not judged stale (and does not throw)", staleTheses([team], new Date("2026-11-20T12:00:00Z")), []);
+}
+
+{
+  // Catalyst reviews.
+  const cNow = new Date("2026-11-20T12:00:00Z");
+  const cp = normalizePosition({ ...t, id: "cat1", catalysts: [{ label: "Q3 earnings", date: "2026-11-10" }, { label: "Investor day", date: "2026-12-05" }, { label: "Old", date: "2026-08-01" }] })!;
+  const due = catalystsDue(cp, cNow);
+  ok("catalysts due: passed within 60 days and not yet reviewed (not future, not long gone)", due.map((x) => [x.label, x.daysAgo]), [["Q3 earnings", 10]]);
+  const reviewed = { ...cp, log: [{ at: "2026-11-12T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-11-10", "mixed"), auto: true }] };
+  ok("a reviewed catalyst is no longer due; its outcome reads back", [catalystsDue(reviewed, cNow).length, catalystOutcome(reviewed.log[0]), isPmChange(reviewed.log[0])], [0, "mixed", false]);
+  const ch = processHealth({ open: [cp], closed: [{ ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Launch", "2026-08-30", "yes"), auto: true }, { at: "2026-10-01T00:00:00Z", text: catalystEntry("Deal", "2026-09-30", "no"), auto: true }] }], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!;
+  ok("process health: the catalyst hit rate and the reviews still owed", [ch.value, ch.status, ch.detail], ["1 of 2 played out", "watch", "Of 2 catalysts reviewed, 1 played out as expected. 1 passed catalyst waits for a review."]);
+  ok("a catalyst review counts as looking at the thesis", staleTheses([{ ...reviewed, createdAt: "2026-01-01T00:00:00Z" }], cNow), []);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

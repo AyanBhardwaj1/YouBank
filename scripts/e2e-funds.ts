@@ -165,6 +165,15 @@ async function main() {
       check("loosening a kill criterion while the thesis fails is recorded as moving the goalposts", (gp.body.position?.log ?? []).some((x: { text: string; auto?: boolean }) => x.auto && x.text.startsWith("Kill criteria loosened while the thesis read")), gp.body.position?.log);
       await j("/api/book", { method: "POST", body: JSON.stringify(failing) });
     } else console.log("  skip  no failing position with two criteria to loosen");
+    // Catalyst reviews: a passed catalyst, said once, in a fixed form; anything else is refused.
+    const catDay = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+    const withCat = await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, catalysts: [...((target.catalysts ?? []) as { label: string; date: string }[]), { label: "e2e catalyst", date: catDay }] }) });
+    const cat = (withCat.body.position?.catalysts ?? []).find((c: { label: string }) => c.label === "e2e catalyst");
+    const bad = await j("/api/book/catalyst", { method: "POST", body: JSON.stringify({ id: target.id, catalystId: cat?.id, outcome: "maybe" }) });
+    const cr = await j("/api/book/catalyst", { method: "POST", body: JSON.stringify({ id: target.id, catalystId: cat?.id, outcome: "yes" }) });
+    const again = await j("/api/book/catalyst", { method: "POST", body: JSON.stringify({ id: target.id, catalystId: cat?.id, outcome: "no" }) });
+    check("a passed catalyst is reviewed once, into the journal; a bad outcome and a second review are refused", bad.status === 400 && cr.status === 200 && (cr.body.log ?? []).some((x: { text: string; auto?: boolean }) => x.auto && x.text === `Catalyst reviewed: "e2e catalyst" (${catDay}) played out.`) && again.status === 400, [bad.status, cr.status, again.status]);
+    await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, catalysts: target.catalysts ?? [] }) });
     const jn = await j("/api/book/note", { method: "POST", body: JSON.stringify({ id: target.id, text: "e2e: why we sized up" }) });
     check("a note is added to the decision journal, dated", jn.status === 200 && jn.body.log?.some((x: { text: string; at: string }) => x.text === "e2e: why we sized up" && x.at), jn.body);
     await j("/api/book", { method: "POST", body: JSON.stringify({ ...target, conviction: target.conviction ?? undefined }) });

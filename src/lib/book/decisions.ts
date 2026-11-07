@@ -57,7 +57,20 @@ export function changesOf(prev: Position | null, next: Position): string[] {
  * the goalposts flag, which annotates the criteria change written beside it):
  * the changes a note from the PM is expected to explain.
  */
-export const isPmChange = (e: LogEntry) => !!e.auto && !/^(AI committee:|Proposed by |Kill criteria loosened while)/.test(e.text);
+export const isPmChange = (e: LogEntry) => !!e.auto && !/^(AI committee:|Proposed by |Kill criteria loosened while|Catalyst reviewed:)/.test(e.text);
+
+/**
+ * Catalyst reviews: once a catalyst's date passes, the PM says whether it played out as the thesis expected.
+ * Written by the server in a fixed form, so the catalyst hit rate can be read back from the journal.
+ */
+export const CATALYST_OUTCOMES = { yes: "played out", no: "did not play out", mixed: "was mixed" } as const;
+export type CatalystOutcome = keyof typeof CATALYST_OUTCOMES;
+export const catalystEntry = (label: string, date: string, outcome: CatalystOutcome) => `Catalyst reviewed: "${label}" (${date}) ${CATALYST_OUTCOMES[outcome]}.`;
+export const isCatalystReview = (e: LogEntry) => !!e.auto && e.text.startsWith("Catalyst reviewed:");
+export function catalystOutcome(e: LogEntry): CatalystOutcome | null {
+  if (!isCatalystReview(e)) return null;
+  return (Object.keys(CATALYST_OUTCOMES) as CatalystOutcome[]).find((k) => e.text.endsWith(`${CATALYST_OUTCOMES[k]}.`)) ?? null;
+}
 
 /**
  * The PM's own notes, each with the changes it explains, so a quoted note keeps its context: "Sized up after

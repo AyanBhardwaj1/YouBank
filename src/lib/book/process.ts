@@ -8,19 +8,20 @@
  * - goalposts: kill criteria loosened while the thesis read broken or on watch, in the last 180 days;
  * - disposition: losers held much longer than winners (Shefrin and Statman 1985; Odean 1998);
  * - stale: positions with no note or change from the PM in 90 days;
+ * - catalysts: whether passed catalysts were reviewed, and how many played out as the thesis expected;
  * - calibration: the Brier score of resolved forecasts (0.25 is what always saying 50% scores).
  *
  * Pure; tested in scripts/test-book.ts; shown on the IC report, the week and over MCP.
  */
 import type { BookHistory } from "./alerts";
-import { isGoalposts, isPmChange, type LogEntry } from "./decisions";
-import { brokenNow, staleTheses } from "./discipline";
+import { catalystOutcome, isGoalposts, isPmChange, type LogEntry } from "./decisions";
+import { brokenNow, catalystsDue, staleTheses } from "./discipline";
 import type { Calibration } from "./forecast";
 import { scorecard, type ClosedPosition } from "./journal";
 import type { Position } from "./position";
 
 export type HealthStatus = "good" | "watch" | "fix" | "none";
-export type HealthItem = { key: "reasons" | "broken" | "goalposts" | "disposition" | "stale" | "calibration"; label: string; status: HealthStatus; value: string; detail: string };
+export type HealthItem = { key: "reasons" | "broken" | "goalposts" | "disposition" | "stale" | "catalysts" | "calibration"; label: string; status: HealthStatus; value: string; detail: string };
 
 const DAY = 86_400_000;
 const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
@@ -68,6 +69,14 @@ export function processHealth(i: { open: Position[]; closed: ClosedPosition[]; h
   items.push(i.open.length
     ? { key: "stale", label: "Theses not reviewed in 90 days", value: String(s.length), status: s.length === 0 ? "good" : s.length / i.open.length <= 0.25 ? "watch" : "fix", detail: s.length ? `No note or change from you on ${s.map((x) => x.ticker).join(", ")}.` : "Every position has a note or a change from you in the last 90 days." }
     : { key: "stale", label: "Theses not reviewed in 90 days", value: "—", status: "none", detail: "The book is empty." });
+
+  // Catalysts: did the ones the theses counted on play out, and are any passed ones still unreviewed?
+  const outcomes = logs.flat().map(catalystOutcome).filter((x) => x !== null);
+  const pending = i.open.reduce((n, p) => n + catalystsDue(p, now).length, 0);
+  const yes = outcomes.filter((x) => x === "yes").length, mixed = outcomes.filter((x) => x === "mixed").length;
+  items.push(outcomes.length || pending
+    ? { key: "catalysts", label: "Catalysts reviewed", value: outcomes.length ? `${yes} of ${outcomes.length} played out` : `${pending} to review`, status: pending ? "watch" : "good", detail: `${outcomes.length ? `Of ${outcomes.length} catalysts reviewed, ${yes} played out as expected${mixed ? ` and ${mixed} were mixed` : ""}.` : "No catalyst reviewed yet."}${pending ? ` ${pending} passed catalyst${pending === 1 ? " waits" : "s wait"} for a review.` : ""}` }
+    : { key: "catalysts", label: "Catalysts reviewed", value: "—", status: "none", detail: "No catalyst has passed yet." });
 
   const c = i.calibration;
   items.push(c && c.n >= 5 && c.brier !== null
