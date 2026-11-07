@@ -36,8 +36,17 @@ export function feedSince(raw: string | null, now = Date.now()): Date {
   return new Date(Math.min(Math.max(t, floor), now));
 }
 
-/** Only paths on our own site go back to the app, so a notification can never open somewhere else. Pure. */
-export const sitePath = (url: string, fallback: string) => (/^\/(?![/\\])/.test(url) && !url.includes("\\") ? url.slice(0, 500) : fallback);
+/**
+ * A notification's link as a path on our own site, so a notification can never open somewhere else. Pure. Some are stored as full links (the Book's alerts, which are also
+ * emailed): those keep their path and query, so the app opens the Book or the week rather than the fallback.
+ */
+export function sitePath(url: string, fallback: string): string {
+  let u = url;
+  if (/^https?:\/\//i.test(u)) {
+    try { const x = new URL(u); u = x.pathname + x.search; } catch { return fallback; }
+  }
+  return /^\/(?![/\\])/.test(u) && !u.includes("\\") ? u.slice(0, 500) : fallback;
+}
 
 export async function desktopFeed(userId: string, since: Date, kinds: { alerts: boolean; questions: boolean; deals: boolean; meetings?: boolean }): Promise<DesktopNotice[]> {
   const db = requireDb();

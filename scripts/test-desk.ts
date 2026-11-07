@@ -4,6 +4,7 @@ import { readSetupCode, setupCode } from "@/lib/desk/desk";
 import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS, lookCode, readLookCode, normalizePresets, PRESETS_MAX, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
+import { sitePath } from "@/lib/desktop/feed";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -133,5 +134,6 @@ console.log("sharing a setup");
   ok("junk, a look code or a bad style is refused", [readSetupCode("nope", "banker"), readSetupCode("yb1.abcd", "banker"), readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "home", w: [], t: "nope" })).toString("base64url")}`, "banker")], [null, null, null]);
   ok("a feature the role does not have stays out", readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "desk", w: ["brief"], h: ["home", "bogus"], t: "paper" })).toString("base64url")}`, "banker")?.desk.hidden, []);
 }
+ok("desktop notifications: a full link (the Book's alerts) opens its own page; anything off-site falls back", [sitePath("https://youbank.app/report/week", "/app/news"), sitePath("/app/book?x=1", "/f"), sitePath("//evil.com/x", "/f"), sitePath("https://a.com//evil", "/f"), sitePath("javascript:alert(1)", "/f")], ["/report/week", "/app/book?x=1", "/f", "/f", "/f"]);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
