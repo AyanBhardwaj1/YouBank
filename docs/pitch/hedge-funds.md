@@ -127,7 +127,8 @@ Three new capabilities, each a direct answer to a finding above, all live in the
 
 1. **Home.** A markets user sees the Book widget: "1 broken · 1 on watch · 7.5% of NAV at risk", and the alert that came in after yesterday's close.
 2. **The Book.**
-   - Paste three rows from a spreadsheet, or press "Try a sample book".
+   - Paste three rows from a spreadsheet, or press "Try a sample book". Point at "Needs you" at the top: the broken thesis with nothing done since, and the sample's Costco catalyst that just passed.
+   - On Costco, answer "Did it play out?". Say that the answers become a catalyst hit rate.
    - Add a position from the *High-growth software* template and watch it check against the filings at once.
    - Open the broken one and show the failed criterion, the figure, its period, the headroom (how far past the line), and the link to the XBRL facts.
    - Point at "By industry" (the book's real sector bet) and at any "New 10-Q" card: what changed in the risk factors, read the evening it was filed.
@@ -137,11 +138,12 @@ Three new capabilities, each a direct answer to a finding above, all live in the
    - On a name reporting soon, point at "What the next report must show": the revenue number to watch on the call.
    - Run the red team. While it works, point at the exposure strip.
    - Give the broken position a forecast ("70% that no kill criterion fails before February"), then press "Convene the committee". It takes two or three minutes, so start it early. A bull and a bear write alone, and the chair says trim, with the dissent and three signals to watch. Point out that its forecast will be scored against the PM's.
-   - Open "Track record": process against outcome (a lucky win counts as luck), and calibration by who forecast. If the biggest position carries the lowest conviction, the note under the exposure strip already says so.
+   - Edit the broken position and lower one of its kill criteria. Before you save, the editor warns that this loosens criteria while the thesis reads broken. Save with a reason: the journal records it as moving the goalposts.
+   - Open "Track record": Process health first (reasons recorded, broken theses acted on, goalposts moved, losers held longer than winners, stale theses, catalysts, calibration, each graded from the record), then process against outcome (a lucky win counts as luck) and calibration by who forecast. If the biggest position carries the lowest conviction, the note under the exposure strip already says so.
 3. **Writing for LPs.**
    - From "Share & export", open "LP letter". Type "We guarantee strong returns. Every AI output is reviewed by a person. Snowflake's gross margin reached 75%." and watch the compliance pass flag all three: the promise, the AI claim the ledger contradicts, and the figure the filing contradicts (with the filing's number).
    - Open "The week in your book": the Monday read. Point out that it also arrives in the bell after Friday's close.
-   - Open "AI due-diligence answers": nine LP questions answered from the ledger, with the firm-only facts left in brackets.
+   - Open "AI due-diligence answers": ten LP questions answered from the ledger, with the firm-only facts left in brackets.
 4. **Connect AI apps.**
    - In Claude, add a custom connector with the server URL, approve it on YouBank's consent page, and watch the new key appear in Settings. Or make a key and paste the Claude Code line.
    - In Claude, pick the *Review my book* prompt, or ask "Which of my positions is closest to breaking, and why?" Claude calls `book_status` and answers with the same figures and links.
