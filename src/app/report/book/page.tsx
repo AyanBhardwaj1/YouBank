@@ -17,7 +17,9 @@ import { governance, periodOf } from "@/lib/ledger/governance";
 import { riskOf } from "@/lib/book/risk-store";
 import { loadJournal } from "@/lib/book/store";
 import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
-import { scorecard, scorecardLine } from "@/lib/book/journal";
+import { calibrationOf, scorecard, scorecardLine } from "@/lib/book/journal";
+import { processHealth } from "@/lib/book/process";
+import { ProcessHealth } from "@/components/book/ProcessHealth";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Book report", robots: { index: false } };
@@ -93,6 +95,7 @@ export default async function BookReport() {
                 <p className="mt-0.5">{scorecardLine(record)}{record.counterfactual ? ` Closed on the day their thesis broke, the ${record.counterfactual.n} broken position${record.counterfactual.n === 1 ? "" : "s"} would have returned ${(record.counterfactual.onBreak * 100).toFixed(1)}% on average, against ${(record.counterfactual.taken * 100).toFixed(1)}% taken.` : ""}</p>
               </section>
             )}
+            <ProcessHealth items={processHealth({ open: book, closed, history, calibration: calibrationOf(book, history, closed, now), now })} />
             {risk && risk.betaNet !== null && (
               <section className="mt-4 break-inside-avoid-page" aria-label="Risk">
                 <h2 className="text-[10px] uppercase tracking-wider text-muted">Risk (historical, today&apos;s weights, % of NAV)</h2>

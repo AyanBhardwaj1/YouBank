@@ -53,10 +53,11 @@ export function changesOf(prev: Position | null, next: Position): string[] {
 }
 
 /**
- * An entry YouBank wrote for a change the PM made (not the AI committee's sitting, not an AI app's proposal):
+ * An entry YouBank wrote for a change the PM made (not the AI committee's sitting, not an AI app's proposal, not
+ * the goalposts flag, which annotates the criteria change written beside it):
  * the changes a note from the PM is expected to explain.
  */
-export const isPmChange = (e: LogEntry) => !!e.auto && !/^(AI committee:|Proposed by )/.test(e.text);
+export const isPmChange = (e: LogEntry) => !!e.auto && !/^(AI committee:|Proposed by |Kill criteria loosened while)/.test(e.text);
 
 /**
  * The PM's own notes, each with the changes it explains, so a quoted note keeps its context: "Sized up after

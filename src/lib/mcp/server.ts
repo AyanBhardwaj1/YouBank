@@ -21,6 +21,7 @@ import { addProposal, evaluateBook, holdingFacts, loadBook, loadBookHistory, loa
 import { weekBrief } from "@/lib/book/week";
 import { priceBaseRate } from "@/lib/book/baserate";
 import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
+import { healthLine, processHealth } from "@/lib/book/process";
 import { isGoalposts } from "@/lib/book/decisions";
 import { toothless } from "@/lib/book/quality";
 import { lintLetter } from "@/lib/book/letter";
@@ -172,7 +173,7 @@ function riskTool(userId: string) {
 function trackRecordTool(userId: string) {
   return def({
     name: "book_track_record",
-    description: "The signed-in person's track record in YouBank: closed positions with their reason, return and how the thesis stood; the scorecard (hit rate, payoff, how quickly broken theses were exited, what holding past the break cost); process against outcome (wins earned by the process against lucky ones); and the calibration of every forecast on a position, scored with the Brier score, by who made it (the PM, an AI app or the AI investment committee). Returns are unweighted price moves before costs, not fund performance.",
+    description: "The signed-in person's track record in YouBank: closed positions with their reason, return and how the thesis stood; the scorecard (hit rate, payoff, how quickly broken theses were exited, what holding past the break cost); process against outcome (wins earned by the process against lucky ones); and the calibration of every forecast on a position, scored with the Brier score, by who made it (the PM, an AI app or the AI investment committee). Returns are unweighted price moves before costs, not fund performance. Also process health: whether changes carry a reason, broken theses were acted on, goalposts were moved, losers were held longer than winners, theses went unreviewed, and how calibrated the forecasts are.",
     schema: z.object({}),
     run: async (_args, ctx) => {
       const [book, closed, history] = await Promise.all([loadBook(userId), loadJournal(userId).catch(() => []), loadBookHistory(userId).catch(() => ({}))]);
@@ -183,6 +184,9 @@ function trackRecordTool(userId: string) {
         summary: scorecardLine(s), calibration_line: calibrationLine(cal), source: src, link: siteLink("/app/book"),
         scorecard: { closed: s.closed, hit_rate: s.hitRate, avg_return: s.avgReturn, avg_win: s.avgWin, avg_loss: s.avgLoss, payoff: s.payoff, still_broken_at_close: s.broke, exited_within_5_days_of_break: s.exitedOnBreak, median_days_to_exit: s.medianDaysToExit, closed_on_break_instead: s.counterfactual, by_reason: s.byReason },
         process_vs_outcome: s.process,
+        // The process-health panel (process.ts): reasons recorded, broken theses acted on, goalposts, disposition, stale theses, calibration.
+        process_health: (() => { const h = processHealth({ open: book, closed, history, calibration: cal }); return { line: healthLine(h), items: h.map((x) => ({ item: x.label, status: x.status, value: x.value, detail: x.detail })) }; })(),
+        disposition: s.holding,
         returns_by_ai_committee_call: s.byCommittee,
         calibration: { resolved: cal.n, open: cal.open, brier: cal.brier, overconfidence: cal.bias, buckets: cal.buckets, by_source: cal.bySource },
         recent_closes: closed.slice(0, 15).map((c) => ({ ticker: c.ticker, direction: c.direction, opened: c.openedAt.slice(0, 10), closed: c.closedAt.slice(0, 10), reason: CLOSE_REASONS[c.reason], return: closedReturn(c), thesis_broke_on: c.brokeOn, note: c.note || undefined })),

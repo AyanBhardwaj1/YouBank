@@ -14,6 +14,7 @@ import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
 import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
+import { healthLine, processHealth } from "@/lib/book/process";
 import { AUTO_MAX, changesOf, goalpostEntry, loosened, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -594,6 +595,23 @@ console.log("Decision journal");
   const kept = normalizePosition({ ...t, id: "st2", ticker: "KPT", createdAt: "2026-05-01T00:00:00Z", log: [{ at: "2026-10-15T00:00:00Z", text: "still fine after the print" }] })!;
   const fresh = normalizePosition({ ...t, id: "st3", ticker: "NEW", createdAt: "2026-11-01T00:00:00Z" })!;
   ok("stale: no note or PM change for 90 days (a committee sitting does not count); a recent note or a new position is not stale", staleTheses([old, kept, fresh], sNow).map((x) => [x.ticker, x.since, x.days]), [["OLD", "2026-06-01", 172]]);
+}
+
+{
+  // Process health: one panel from records already kept.
+  const hNow = new Date("2026-11-20T12:00:00Z");
+  const a = normalizePosition({ ...t, id: "phx1", ticker: "AAA", createdAt: "2026-10-01T00:00:00Z", log: [
+    { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-11-02T10:00:00Z", text: "sized up after the call" },
+    { at: "2026-11-10T10:00:00Z", text: "Weight 3% → 4% of NAV.", auto: true },
+    { at: "2026-11-12T10:00:00Z", text: "Kill criteria loosened while the thesis read broken: gross margin at least 70 removed.", auto: true },
+  ] })!;
+  const hist = { phx1: [{ d: "2026-11-12", v: "broken" as const, s: null }, { d: "2026-11-19", v: "broken" as const, s: null }] };
+  const hx = processHealth({ open: [a], closed: [], history: hist, calibration: null, now: hNow });
+  const by = (k: string) => hx.find((x) => x.key === k)!;
+  ok("process health: reasons counts the PM's changes with a note within a week (the goalposts entry is not a PM change)", [by("reasons").value, by("reasons").status], ["1 of 2", "watch"]);
+  ok("process health: a broken thesis left alone more than five days is to fix", [by("broken").value, by("broken").status], ["0 of 1", "fix"]);
+  ok("process health: goalposts moved once is to watch; no history yet is said", [by("goalposts").status, by("disposition").status, by("calibration").status, by("stale").status], ["watch", "none", "none", "good"]);
+  ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (2 not enough history yet).");
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
