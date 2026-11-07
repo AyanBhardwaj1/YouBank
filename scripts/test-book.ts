@@ -662,5 +662,11 @@ console.log("Decision journal");
   ok("journal CSV: a note that looks like a formula is neutralised", csvRow(rows[3]).endsWith(",'=HYPERLINK(1)"), true);
 }
 
+{
+  const fri = new Date("2026-11-20T22:00:00Z");
+  const stale = normalizePosition({ ...t, id: "wka9", ticker: "STL", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
+  ok("the Friday alert says how many things need the PM", weekAlert({ now: fri, book: [stale], evals: [], history: {}, closed: [], proposals: [] }, "https://x")?.reasons, ["2026-11-13 to 2026-11-20", "1 thing in the Book needs you"]);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
