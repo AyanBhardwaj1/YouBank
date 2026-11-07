@@ -18,7 +18,10 @@ export async function POST(req: Request) {
     const b = ((await req.json().catch(() => ({}))) ?? {}) as { text?: unknown; template?: unknown; sample?: unknown };
     if (b.sample === true) {
       const by = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
-      const r = await addPositions(user.id, SAMPLE_BOOK.map((p) => (SAMPLE_CONVICTION[p.ticker] ? { ...p, conviction: { p: SAMPLE_CONVICTION[p.ticker], by, source: SAMPLE_SOURCE } } : p)));
+      // Catalysts dated from today, so a demo shows one that just passed (asking whether it played out) and one ahead.
+      const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+      const SAMPLE_CATALYSTS: Record<string, { label: string; date: string }[]> = { COST: [{ label: "Sample: monthly sales report", date: day(-5) }], NVDA: [{ label: "Sample: next earnings", date: day(20) }] };
+      const r = await addPositions(user.id, SAMPLE_BOOK.map((p) => ({ ...p, ...(SAMPLE_CATALYSTS[p.ticker] ? { catalysts: SAMPLE_CATALYSTS[p.ticker] } : {}), ...(SAMPLE_CONVICTION[p.ticker] ? { conviction: { p: SAMPLE_CONVICTION[p.ticker], by, source: SAMPLE_SOURCE } } : {}) })));
       return NextResponse.json({ ...r, problems: [] });
     }
     if (typeof b.text !== "string" || !b.text.trim()) return NextResponse.json({ error: "Paste at least one line with a ticker." }, { status: 400 });
