@@ -14,7 +14,7 @@ import { openPalette } from "./CommandPalette";
 
 /** The letter after G for each feature. */
 export const GO_KEYS: Partial<Record<NavId, string>> = {
-  home: "h", terminal: "t", news: "n", tools: "o", studio: "s", edge: "e", vc: "v", crypto: "x", copy: "f", algo: "a", quant: "q", crm: "r", calendar: "c", collab: "b", library: "l", team: "m", settings: "p",
+  home: "h", book: "k", terminal: "t", news: "n", tools: "o", studio: "s", edge: "e", vc: "v", crypto: "x", copy: "f", algo: "a", quant: "q", crm: "r", calendar: "c", collab: "b", library: "l", team: "m", settings: "p",
 };
 
 /**

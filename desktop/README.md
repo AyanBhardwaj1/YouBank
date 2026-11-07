@@ -185,8 +185,8 @@ Closing the main window keeps the app in the tray (unless switched off), so aler
 running; Quit in the tray menu ends it. "Start when I sign in" starts it hidden in the tray.
 
 **Links.** `youbank://ticker/AAPL`, `youbank://deal/42`, `youbank://studio/17`, `youbank://edge`,
-`news`, `crm`, `settings`, `youbank://ask?q=…`, `youbank://agent/files` and
-`youbank://open?path=/app/…`. A link only ever becomes a page under `/app` on the configured site, a
+`book`, `week` (the week in your book), `news`, `crm`, `settings`, `youbank://ask?q=…`, `youbank://agent/files` and
+`youbank://open?path=/app/…`. A link only ever becomes a page under `/app` (or `/report/week`) on the configured site, a
 quick ask question, or a section of the agent window. A second launch (or a link opened while the app
 runs) goes to the running app.
 

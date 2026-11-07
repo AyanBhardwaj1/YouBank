@@ -53,11 +53,11 @@ export const ROLES: Record<RoleId, RoleDef> = {
   },
   markets: {
     id: "markets", label: "Public markets investor", short: "Markets", blurb: "Equity research, hedge funds, credit, and asset management.",
-    pitch: "Earnings previews and recaps from filings, thesis and variant-perception drafting, insider and 13D activity, capital structure and relative value for credit, catalyst calendars, and position notes with cited numbers.",
+    pitch: "Your book with every thesis checked against filings and the price after each close, kill-criterion alerts and a red team; YouBank's cited research inside Claude, ChatGPT and your own agents; a tamper-evident record of every AI answer for compliance. Plus earnings previews and recaps from filings, insider and 13D activity, credit relative value and catalyst calendars.",
     specialtyLabel: "Seat",
     specialties: ["Equity research (sell-side)", "Long/short equity", "Event-driven / merger arbitrage", "Distressed & credit", "Multi-manager pod", "Long-only / asset management", "Quant / systematic"],
     seniorities: ["Associate", "Analyst", "Senior analyst", "Portfolio manager", "Partner / CIO"], firmTypes: ["Bulge bracket research", "Boutique research", "Multi-manager", "Single-manager fund", "Asset manager", "Family office"], askSectors: true, defaultTheme: "midnight",
-    jobs: ["Earnings preview with what matters and where consensus is wrong", "Initiation-style company teardown", "Merger arb spread and timeline", "Credit relative value across the capital structure"],
+    jobs: ["Know the day a position's thesis breaks, with the filing that broke it", "Earnings preview with what matters and where consensus is wrong", "Merger arb spread and timeline", "Credit relative value across the capital structure"],
   },
   corpfin: {
     id: "corpfin", label: "Corporate finance", short: "Corp fin", blurb: "FP&A, corporate development, treasury, and investor relations inside a company.",

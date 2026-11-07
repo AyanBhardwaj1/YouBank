@@ -4,6 +4,7 @@ import { readSetupCode, setupCode } from "@/lib/desk/desk";
 import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS, lookCode, readLookCode, normalizePresets, PRESETS_MAX, type WidgetPref } from "@/lib/desk/desk";
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
+import { sitePath } from "@/lib/desktop/feed";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -112,6 +113,8 @@ console.log("getting started");
   ok("nothing done: the first step is next", [checklist(none).done, checklist(none).next?.id], [0, "asked"]);
   ok("the next step skips what is done", checklist({ ...none, asked: true, ranTool: true }).next?.id, "mail");
   ok("all done: no next step", checklist(Object.fromEntries(STEPS.map((s) => [s.id, true])) as typeof none).next, null);
+  ok("a fund (markets, PE) starts with the Book, a forecast, a reason and an AI app; other roles do not see them", [checklist(none, "markets").steps.slice(0, 4).map((x) => x.id), checklist(none, "pe").total, checklist(none, "banker").steps.some((x) => x.id === "book"), checklist(none).total], [["book", "forecast", "reason", "aiApp"], STEPS.length + 4, false, STEPS.length]);
+  ok("for a fund, the Book is next until it holds a position, then a forecast, then a reason, then the AI app", [checklist(none, "markets").next?.id, checklist({ ...none, book: true }, "markets").next?.id, checklist({ ...none, book: true, forecast: true }, "markets").next?.id, checklist({ ...none, book: true, forecast: true, reason: true }, "markets").next?.id], ["book", "forecast", "reason", "aiApp"]);
   ok("every step links inside the app", STEPS.every((s) => s.href.startsWith("/") && !s.href.startsWith("//")), true);
   ok("a fresh profile has not styled anything", hasStyled({ nav: { pinned: [] }, desk: { source: "auto" } }), false);
   ok("a theme, a look, an arranged desk or a saved look counts", [hasStyled({ theme: "paper" }), hasStyled({ look: { font: "mono" } }), hasStyled({ desk: { source: "you" } }), hasStyled({ looks: [{}] })], [true, true, true, true]);
@@ -131,5 +134,6 @@ console.log("sharing a setup");
   ok("junk, a look code or a bad style is refused", [readSetupCode("nope", "banker"), readSetupCode("yb1.abcd", "banker"), readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "home", w: [], t: "nope" })).toString("base64url")}`, "banker")], [null, null, null]);
   ok("a feature the role does not have stays out", readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "desk", w: ["brief"], h: ["home", "bogus"], t: "paper" })).toString("base64url")}`, "banker")?.desk.hidden, []);
 }
+ok("desktop notifications: a full link (the Book's alerts) opens its own page; anything off-site falls back", [sitePath("https://youbank.app/report/week", "/app/news"), sitePath("/app/book?x=1", "/f"), sitePath("//evil.com/x", "/f"), sitePath("https://a.com//evil", "/f"), sitePath("javascript:alert(1)", "/f")], ["/report/week", "/app/book?x=1", "/f", "/f", "/f"]);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -2468,3 +2468,24 @@ export const quantBaseRates = pgTable("quant_base_rates", {
   body: jsonb("body").$type<Record<string, unknown>>().notNull(),
   computedAt: ts("computed_at").notNull().defaultNow(),
 });
+
+/**
+ * The research ledger (src/lib/ledger, migration 0033): an append-only, hash-chained record of what the
+ * AI was asked and answered for a person, with sources, model and sign-offs, kept when they turn it on.
+ * Each row's hash covers its content and the previous row's hash, so any later change shows.
+ */
+export const researchLedger = pgTable("research_ledger", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  at: timestamp("at", { withTimezone: true }).notNull(),
+  kind: text("kind").notNull(),
+  subject: text("subject").notNull().default(""),
+  model: text("model").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  output: text("output").notNull().default(""),
+  sources: jsonb("sources").$type<{ id: string; label: string; url: string }[]>().notNull().default([]),
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  prev: text("prev").notNull().default(""),
+  hash: text("hash").notNull(),
+}, (t) => [uniqueIndex("research_ledger_user_seq_uidx").on(t.userId, t.seq)]);

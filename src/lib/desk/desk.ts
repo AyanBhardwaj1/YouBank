@@ -18,19 +18,19 @@ import { isThemeId, type ThemeId } from "@/lib/themes";
 export const LAYOUTS = ["focus", "home", "desk"] as const;
 export type HomeLayout = (typeof LAYOUTS)[number];
 
-export const WIDGETS = ["checklist", "brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved", "markets", "calc", "recent"] as const;
+export const WIDGETS = ["checklist", "brief", "agenda", "waiting", "watchlist", "movers", "start", "ask", "runs", "notes", "private", "saved", "markets", "calc", "recent", "book"] as const;
 export type WidgetId = (typeof WIDGETS)[number];
 
 export const WIDGET_LABEL: Record<WidgetId, string> = {
   checklist: "Getting started", brief: "Today's brief", agenda: "Coming up", waiting: "Waiting for you", watchlist: "Watchlist", movers: "Movers",
-  start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work", markets: "World markets", calc: "Quick calc", recent: "Jump back in",
+  start: "Tools to start with", ask: "Ask the assistant", runs: "Recent runs", notes: "Notes", private: "Private markets", saved: "Saved work", markets: "World markets", calc: "Quick calc", recent: "Jump back in", book: "The Book",
 };
 export const WIDGET_HINT: Record<WidgetId, string> = {
   checklist: "The steps that make YouBank yours, ticked as you do them", brief: "The morning brief for your desk", agenda: "Meetings in the next day, with prep briefs", waiting: "Drafts, questions and suggestions the agents left for you",
   watchlist: "Prices, multiples and trends for your names", movers: "The names that moved most today", start: "Tools picked for your role",
   ask: "Suggested questions for the assistant", runs: "Your latest tool runs", notes: "A scratchpad kept on your account",
   private: "The startup directory and new private raises", saved: "Comps sheets and peer groups",
-  markets: "Which exchanges trade now, and when they open or close in your time", calc: "Arithmetic with k, m, b and %, plus npv, irr and pmt", recent: "The pages, tools and tickers you opened last, on this device",
+  markets: "Which exchanges trade now, and when they open or close in your time", calc: "Arithmetic with k, m, b and %, plus npv, irr and pmt", recent: "The pages, tools and tickers you opened last, on this device", book: "Which positions' theses hold, are close to a kill criterion, or broke",
 };
 
 /** Widgets that take the full width of the page (or the Desk layout's main column) unless the person says otherwise. */
@@ -111,7 +111,7 @@ function completeWidgets(list: WidgetPref[]): WidgetPref[] {
 }
 
 export const widgetsFor = (layout: HomeLayout, role?: RoleId): WidgetPref[] => {
-  const on = [...LAYOUT_WIDGETS[layout], ...(layout === "desk" && (role === "vc" || role === "pe") ? (["private"] as WidgetId[]) : []), ...(layout !== "focus" && role === "markets" ? (["markets"] as WidgetId[]) : [])];
+  const on = [...LAYOUT_WIDGETS[layout], ...(layout === "desk" && (role === "vc" || role === "pe") ? (["private"] as WidgetId[]) : []), ...(layout !== "focus" && role === "markets" ? (["markets"] as WidgetId[]) : []), ...(role === "markets" ? (["book"] as WidgetId[]) : [])];
   return completeWidgets(on.map((id) => ({ id, on: true })));
 };
 
@@ -137,14 +137,14 @@ export function normalizeDesk(raw: unknown, role: RoleId): DeskPrefs {
 /* ---------------- Setting it up for the person ---------------- */
 
 /** Every optional feature, so a recommendation can say what it hid and why. */
-const OPTIONAL: NavId[] = ["terminal", "news", "tools", "studio", "edge", "vc", "crypto", "copy", "algo", "quant", "crm", "calendar", "collab", "library", "team"];
+const OPTIONAL: NavId[] = ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crypto", "copy", "algo", "quant", "crm", "calendar", "collab", "library", "team"];
 
 /** What each role starts with: features shown, the Home layout, and what goes in the top bar. */
 const ROLE_SETUP: Record<RoleId, { show: NavId[]; layout: HomeLayout; pinned?: NavId[] }> = {
   banker: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "crm", "news"] },
-  pe: { show: ["terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team", "quant"], layout: "desk", pinned: ["home", "terminal", "vc", "studio", "crm"] },
+  pe: { show: ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team", "quant"], layout: "desk", pinned: ["home", "terminal", "vc", "studio", "crm"] },
   vc: { show: ["terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "vc", "crm", "news", "tools"] },
-  markets: { show: ["terminal", "news", "tools", "studio", "edge", "quant", "copy", "algo", "calendar", "library", "team"], layout: "desk", pinned: ["home", "terminal", "news", "quant", "edge"] },
+  markets: { show: ["book", "terminal", "news", "tools", "studio", "edge", "quant", "copy", "algo", "calendar", "library", "team"], layout: "desk", pinned: ["home", "book", "terminal", "news", "quant", "edge"] },
   corpfin: { show: ["terminal", "news", "tools", "studio", "edge", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "tools", "news"] },
   consultant: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "tools", "studio", "news", "crm"] },
   accountant: { show: ["terminal", "news", "tools", "studio", "calendar", "collab", "library", "team"], layout: "focus", pinned: ["home", "tools", "terminal", "studio"] },
@@ -153,6 +153,7 @@ const ROLE_SETUP: Record<RoleId, { show: NavId[]; layout: HomeLayout; pinned?: N
 
 /** Words in a person's goals (or their own description) that switch features on. */
 const KEYWORDS: [RegExp, NavId[]][] = [
+  [/\b(positions?|long[/ -]short|portfolio managers?|pms?|my book|the book|kill criteria|red team)\b/i, ["book"]],
   [/\b(crypto|bitcoin|btc|ethereum|eth|defi|token|stablecoin|on-?chain|web3)\b/i, ["crypto"]],
   [/\b(algo|algorithmic|systematic|backtest|trading bot|quant|factor|alpha|signals?)\b/i, ["algo", "quant"]],
   [/\b(13f|hedge funds?|copy (trading|portfolios?)|clone)\b/i, ["copy"]],

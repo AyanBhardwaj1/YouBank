@@ -49,16 +49,16 @@ export function WhatsNew() {
         <h2 className="text-[13.5px] font-semibold">New in YouBank</h2>
         <button type="button" onClick={close} aria-label="Close" className="ml-auto grid h-6 w-6 place-items-center ctl text-muted hover:bg-elevated hover:text-fg"><Icon name="X" className="h-3.5 w-3.5" /></button>
       </div>
-      <ul className="mt-2 max-h-[min(420px,60vh)] space-y-2 overflow-y-auto pr-1">
+      <ul className="mt-2 max-h-[min(420px,60vh)] space-y-2 overflow-y-auto overscroll-contain pr-1 max-md:max-h-[36vh]">
         {WHATS_NEW.map((n) => (
-          <li key={n.title} className="flex items-start gap-2">
+          <li key={n.title} className="flex items-start gap-2 max-md:flex-col max-md:gap-0.5">
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px] font-medium text-fg">{n.title}</div>
-              <div className="text-[11.5px] leading-snug text-muted">{n.body}</div>
+              <div className="text-[11.5px] leading-snug text-muted max-md:line-clamp-2">{n.body}</div>
             </div>
             {n.href
-              ? <Link href={n.href} onClick={close} className="ctl mt-0.5 shrink-0 border border-line px-2 py-1 text-[11px] text-muted hover:border-accent/50 hover:text-fg">{n.cta}</Link>
-              : <button type="button" onClick={() => run(n)} className="ctl mt-0.5 shrink-0 border border-line px-2 py-1 text-[11px] text-muted hover:border-accent/50 hover:text-fg">{n.cta}</button>}
+              ? <Link href={n.href} onClick={close} className="ctl mt-0.5 shrink-0 border border-line px-2 py-1 text-[11px] text-muted hover:border-accent/50 hover:text-fg max-md:border-0 max-md:p-0 max-md:text-accent">{n.cta}</Link>
+              : <button type="button" onClick={() => run(n)} className="ctl mt-0.5 shrink-0 border border-line px-2 py-1 text-[11px] text-muted hover:border-accent/50 hover:text-fg max-md:border-0 max-md:p-0 max-md:text-accent">{n.cta}</button>}
           </li>
         ))}
       </ul>

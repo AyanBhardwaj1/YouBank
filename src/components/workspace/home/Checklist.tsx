@@ -17,17 +17,17 @@ import { WIDGET_LABEL, toggleWidget } from "@/lib/desk/desk";
 
 export function ChecklistWidget({ roomy }: { roomy?: boolean }) {
   const { desk, setDesk } = useWorkspace();
-  const [facts, setFacts] = useState<(Omit<ChecklistFacts, "installed"> & { desktop?: boolean }) | null>(null);
+  const [facts, setFacts] = useState<(Omit<ChecklistFacts, "installed"> & { desktop?: boolean; role?: string }) | null>(null);
   const [installed, setInstalled] = useState(false);
   const [offer, setOffer] = useState(false);
   useEffect(() => {
-    fetchJson<Omit<ChecklistFacts, "installed"> & { desktop?: boolean }>("/api/desk/checklist").then(setFacts).catch(() => setFacts(null));
+    fetchJson<Omit<ChecklistFacts, "installed"> & { desktop?: boolean; role?: string }>("/api/desk/checklist").then(setFacts).catch(() => setFacts(null));
     const sync = () => { setInstalled(isInstalled()); setOffer(canInstall()); };
     sync();
     return onInstallChange(sync);
   }, []);
   if (!facts) return null;
-  const c = checklist({ ...facts, installed: installed || !!facts.desktop });
+  const c = checklist({ ...facts, installed: installed || !!facts.desktop }, facts.role);
   if (c.done === c.total) return null;
   const pct = Math.round((c.done / c.total) * 100);
   return (

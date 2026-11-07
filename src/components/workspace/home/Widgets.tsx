@@ -5,6 +5,10 @@
  * plainly when there is nothing or it could not load, and takes a `roomy` flag for the Home layout's larger
  * type and spacing. HomeDashboard decides which are on and in what order.
  */
+import { brokenNow } from "@/lib/book/discipline";
+import { bookTodos } from "@/lib/book/todo";
+import type { BookHistory } from "@/lib/book/alerts";
+import type { Position } from "@/lib/book/position";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useWorkspace } from "../WorkspaceProvider";
@@ -292,6 +296,58 @@ export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
   );
 }
 
+/* ---------------- The Book: which theses hold (src/lib/book) ---------------- */
+
+type BookEval = { positionId: string; ticker: string; verdict: "intact" | "watch" | "broken" | "unknown"; summary: string; earnings?: { date: string; inDays: number; estimated: boolean } | null };
+type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[]; positions?: { ticker: string; conviction?: { p: number; by: string; source: string } }[]; history?: BookHistory };
+const VERDICT_TONE: Record<BookEval["verdict"], string> = { broken: "bg-neg/15 text-neg", watch: "bg-accent-soft text-accent", unknown: "bg-elevated text-muted", intact: "bg-pos/15 text-pos" };
+export function BookWidget({ roomy }: Props) {
+  const [b, setB] = useState<BookRes | null | "error">(null);
+  useEffect(() => { fetch("/api/book").then((r) => (r.ok ? r.json() : Promise.reject(r))).then(setB).catch(() => setB("error")); }, []);
+  const t = roomy ? "text-[13px]" : "text-[11.5px]";
+  return (
+    <section className={box(roomy)}>
+      <H roomy={roomy} right={<Link href="/app/book" className="text-[11px] text-muted hover:text-fg">book →</Link>}>The Book</H>
+      {b === null && <div className="shimmer h-16 ctl" />}
+      {b === "error" && <div className={`${t} text-muted`}>The book could not be checked just now.</div>}
+      {b && b !== "error" && !!b.proposals?.length && (
+        <Link href={`/app/book?proposal=${b.proposals[0].id}`} className={`mb-1.5 flex items-baseline gap-1.5 ctl border border-accent/40 px-1.5 py-1 hover:bg-elevated ${t}`}>
+          <span className="font-semibold text-accent">{b.proposals.length} proposed</span>
+          <span className="min-w-0 flex-1 truncate text-muted">by your AI apps: {b.proposals.slice(0, 3).map((p) => `${p.position.direction} ${p.position.ticker}`).join(", ")}. Review →</span>
+        </Link>
+      )}
+      {b && b !== "error" && b.evaluations.length === 0 && <div className={`${t} text-muted`}>No positions yet. <Link href="/app/book" className="text-accent">Add one</Link> with the numbers that would prove its thesis wrong, and YouBank checks them against filings and the market.</div>}
+      {b && b !== "error" && b.evaluations.length > 0 && (
+        <>
+          <div className={`mb-1.5 ${t} text-muted`}>{b.summary.verdicts.broken ? <span className="text-neg">{b.summary.verdicts.broken} broken{(() => { const idle = brokenNow((b.positions ?? []) as Position[], b.history ?? {}).filter((x) => x.actedAfter === null).length; return idle ? `, ${idle} with nothing done since` : ""; })()}</span> : "None broken"}{(() => { const n = new Set(bookTodos((b.positions ?? []) as Position[], b.history ?? {}).map((x) => x.positionId)).size; return n ? <> · <Link href="/app/book" className="text-accent hover:underline">{n} position{n === 1 ? "" : "s"} need{n === 1 ? "s" : ""} you</Link></> : null; })()}{b.summary.verdicts.watch ? ` · ${b.summary.verdicts.watch} on watch` : ""}{b.summary.atRiskWeight ? ` · ${b.summary.atRiskWeight}% of NAV at risk` : ""}</div>
+          {(() => {
+            const soon = b.evaluations.filter((e) => e.earnings && e.earnings.inDays >= 0 && e.earnings.inDays <= 7).sort((x, y) => x.earnings!.inDays - y.earnings!.inDays);
+            return soon.length ? <div className={`mb-1.5 ${t}`}><span className="text-muted">Reporting this week: </span>{soon.slice(0, 4).map((e) => `${e.ticker} ${e.earnings!.inDays === 0 ? "today" : e.earnings!.inDays === 1 ? "tomorrow" : `in ${e.earnings!.inDays}d`}`).join(" · ")}</div> : null;
+          })()}
+          {(() => {
+            // Forecast coverage and the next one to be scored (sample forecasts are illustrative, not counted).
+            const today = new Date().toISOString().slice(0, 10);
+            const fs = (b.positions ?? []).filter((p) => p.conviction && p.conviction.source !== "Sample");
+            const next = fs.filter((p) => p.conviction!.by >= today).sort((x, y) => x.conviction!.by.localeCompare(y.conviction!.by))[0];
+            return (b.positions?.length ?? 0) > 0 ? <div className={`mb-1.5 ${t} text-muted`}>Forecasts on {fs.length} of {b.positions!.length}{next ? ` · next scored: ${next.ticker} on ${next.conviction!.by}` : ""} · <Link href="/report/week" className="hover:text-fg hover:underline">the week →</Link></div> : null;
+          })()}
+          <ul className="space-y-1">
+            {b.evaluations.slice(0, 5).map((e) => (
+              <li key={e.positionId}>
+                <Link href="/app/book" className={`flex items-baseline gap-2 ctl px-1.5 py-1 hover:bg-elevated ${t}`}>
+                  <span className="num w-12 shrink-0 font-semibold">{e.ticker}</span>
+                  <span className={`ctl shrink-0 px-1 text-[10px] font-semibold uppercase ${VERDICT_TONE[e.verdict]}`}>{e.verdict === "unknown" ? "no data" : e.verdict}</span>
+                  <span className="min-w-0 flex-1 truncate text-muted">{e.summary}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 /** One widget by id. */
 export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: boolean; facts: HomeFacts; brief?: BriefSeed }) {
   switch (id) {
@@ -310,5 +366,6 @@ export function Widget({ id, roomy, facts, brief }: { id: WidgetId; roomy?: bool
     case "notes": return <NotesWidget roomy={roomy} />;
     case "private": return <PrivateWidget roomy={roomy} facts={facts} />;
     case "saved": return <SavedWidget roomy={roomy} facts={facts} />;
+    case "book": return <BookWidget roomy={roomy} />;
   }
 }
