@@ -253,7 +253,7 @@ ok("hit rate, average, payoff, by reason", [sc.closed, sc.hitRate, sc.avgReturn,
 ok("discipline: broken theses, exits within five days, median days to exit", [sc.broke, sc.exitedOnBreak, sc.medianDaysToExit], [2, 1, 26]);
 ok("the counterfactual: out on the break against the exit taken", sc.counterfactual, { n: 2, onBreak: -0.035, taken: -0.15 });
 ok("a thesis that broke and recovered before the close is not counted as broken at the close", scorecard([{ ...mk2("r1", 100, 120, "target", "2026-06-01"), verdictAtClose: "intact" }]).broke, 0);
-ok("one line for a person", scorecardLine(sc), "4 closed; 50% winners; average +2.5%; payoff 1.33x; 1 of 2 broken theses exited within 5 days (median 26 days).");
+ok("one line for a person", scorecardLine(sc), "4 closed; 50% winners; average +2.5%; payoff 1.33x; 1 of 2 broken theses exited within 5 days (median 26 days); median hold 141 days for winners, 141 for losers.");
 ok("an empty record says so", [scorecard([]).hitRate, scorecardLine(scorecard([]))], [null, "No closed positions yet."]);
 ok("stored records are cleaned: junk dropped, duplicates once, unknown reason is other", normalizeJournal([c1, c1, { id: "x" }, { ...c1, id: "trk2", reason: "vibes", exit: -5 }]).map((x) => [x.id, x.reason, x.exit]), [["trk1", "thesis_broke", 140], ["trk2", "other", null]]);
 
@@ -575,6 +575,16 @@ console.log("Decision journal");
   const gc = { ...c1, ticker: "GPC", log: g.log };
   const sc = scorecard([gc, { ...c1, ticker: "CLN", log: [] }]);
   ok("the track record counts closes whose criteria were loosened while failing", [sc.goalposts, scorecardLine(sc).includes("kill criteria loosened while failing on 1 of 2")], [["GPC"], true]);
+}
+
+{
+  // The disposition effect: losers held longer than winners.
+  const mk = (ticker: string, exit: number, days: number) => ({ ...c1, ticker, entry: 100, exit, direction: "long" as const, openedAt: "2026-01-01T00:00:00Z", closedAt: new Date(Date.parse("2026-01-01T00:00:00Z") + days * 86_400_000).toISOString(), log: [] });
+  const d1 = scorecard([mk("W1", 120, 10), mk("W2", 110, 20), mk("L1", 90, 60), mk("L2", 80, 80)]);
+  ok("disposition: median hold for winners and losers, flagged when losers are held 1.5x longer", d1.holding, { winners: 15, losers: 70, n: 4, disposition: true });
+  ok("disposition: said in the line", scorecardLine(d1).includes("median hold 15 days for winners, 70 for losers (losers held longer: the disposition effect)"), true);
+  ok("disposition: not judged on fewer than two of each", scorecard([mk("W1", 120, 10), mk("L1", 90, 60)]).holding, null);
+  ok("disposition: even holding is not flagged", scorecard([mk("W1", 120, 30), mk("W2", 110, 40), mk("L1", 90, 35), mk("L2", 80, 45)]).holding?.disposition, false);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -119,6 +119,12 @@ export type Scorecard = {
   byCommittee: { decision: "add" | "hold" | "trim" | "exit"; n: number; avgReturn: number | null }[];
   /** Closed positions whose kill criteria were loosened while the thesis read broken or on watch. */
   goalposts: string[];
+  /**
+   * The disposition effect: median days held for winners and for losers (two of each at least). Holding losers
+   * much longer than winners, cutting gains early and waiting for losses to come back, is the most documented
+   * bias in trading (Shefrin and Statman 1985; Odean 1998).
+   */
+  holding: { winners: number; losers: number; n: number; disposition: boolean } | null;
 };
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -146,6 +152,13 @@ export function scorecard(list: ClosedPosition[]): Scorecard {
     broke: broke.length, exitedOnBreak: lags.filter((d) => d <= 5).length, medianDaysToExit: median(lags),
     counterfactual: cf.length ? { n: cf.length, onBreak: r4(mean(cf.map((x) => x.onBreak)))!, taken: r4(mean(cf.map((x) => x.taken)))! } : null,
     goalposts: list.filter((c) => (c.log ?? []).some(isGoalposts)).map((c) => c.ticker),
+    holding: (() => {
+      const held = (c: ClosedPosition) => days(c.openedAt, c.closedAt);
+      const w = rets.filter((x) => x.r > 0).map((x) => held(x.c)), l = rets.filter((x) => x.r < 0).map((x) => held(x.c));
+      if (w.length < 2 || l.length < 2) return null;
+      const mw = median(w)!, ml = median(l)!;
+      return { winners: mw, losers: ml, n: w.length + l.length, disposition: ml >= 1.5 * Math.max(mw, 1) };
+    })(),
     byCommittee: (["add", "hold", "trim", "exit"] as const).map((decision) => {
       const xs = rets.filter((x) => x.c.aiDecision === decision).map((x) => x.r);
       return { decision, n: xs.length, avgReturn: r4(mean(xs)) };
@@ -174,6 +187,7 @@ export function scorecardLine(s: Scorecard): string {
   if (s.avgReturn !== null) parts.push(`average ${pct(s.avgReturn)}`);
   if (s.payoff !== null) parts.push(`payoff ${s.payoff.toFixed(2)}x`);
   if (s.broke) parts.push(`${s.exitedOnBreak} of ${s.broke} broken theses exited within 5 days${s.medianDaysToExit !== null ? ` (median ${s.medianDaysToExit} days)` : ""}`);
+  if (s.holding) parts.push(`median hold ${s.holding.winners} days for winners, ${s.holding.losers} for losers${s.holding.disposition ? " (losers held longer: the disposition effect)" : ""}`);
   if (s.goalposts.length) parts.push(`kill criteria loosened while failing on ${s.goalposts.length} of ${s.closed}`);
   return `${parts.join("; ")}.`;
 }

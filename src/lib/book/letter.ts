@@ -57,7 +57,7 @@ export function draftLetter(i: LetterInput): string {
     lines.push(`[Pick the ones that show how we think; each is from the position's dated decision journal.]`);
   }
   lines.push(``, `## Our process, measured`);
-  lines.push(i.record.closed ? `Track record since we began keeping it: ${scorecardLine({ ...i.record, goalposts: [] })} These are unweighted price moves on individual positions, before fees and costs, not fund performance.` : `We began keeping a track record of every closed position this quarter; it will appear here as positions close.`);
+  lines.push(i.record.closed ? `Track record since we began keeping it: ${scorecardLine({ ...i.record, goalposts: [], holding: null })} These are unweighted price moves on individual positions, before fees and costs, not fund performance.` : `We began keeping a track record of every closed position this quarter; it will appear here as positions close.`);
   const pr = i.record.process;
   if (pr) {
     const sound = pr.earned.length + pr.unlucky.length, all = sound + pr.lucky.length + pr.deserved.length;
