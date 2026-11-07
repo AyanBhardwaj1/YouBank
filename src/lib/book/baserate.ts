@@ -65,15 +65,17 @@ export function priceBaseRate(p: Pick<Position, "criteria" | "entry" | "directio
 }
 
 /**
- * A forecast that no kill criterion fails cannot be more likely than the price lines alone holding: every other
- * criterion is one more thing that must hold too (the conjunction rule; Tversky and Kahneman 1983). A forecast
- * above the price base rate (by more than rounding) is incoherent, whatever the fundamentals. Returns the
- * warning, or null. Both are chances in 0..1, the base rate to the forecast's own date.
+ * A forecast above the volatility-only base rate needs a reason. The base rate is a model (a driftless random
+ * walk at trailing volatility), not a fact, so a forecast above it can be right: the PM may expect drift in
+ * their favour or calmer volatility. But with other kill criteria that must also hold, the chance none fails
+ * is at most the chance the price lines hold under the same view (the conjunction rule; Tversky and Kahneman
+ * 1983), so a number well above the base rate should say what it expects that the model does not. `stale`:
+ * the forecast was set on an earlier day, when the base rate may have been higher. Returns the note, or null.
  */
-export function conjunctionCheck(forecast: number, base: { p: number; lines: number } | null, criteria: number): string | null {
+export function conjunctionCheck(forecast: number, base: { p: number; lines: number } | null, criteria: number, stale = false): string | null {
   if (!base || forecast <= base.p + 0.02) return null;
   const pct = (x: number) => `${Math.round(x * 100)}%`;
-  return criteria > base.lines
-    ? `${pct(forecast)} is above the ${pct(base.p)} chance the price line${base.lines === 1 ? "" : "s"} alone hold${base.lines === 1 ? "s" : ""}; with the other kill criteria also needing to hold, the chance none fails can only be lower.`
-    : `${pct(forecast)} is above the ${pct(base.p)} chance the price line${base.lines === 1 ? "" : "s"} hold${base.lines === 1 ? "s" : ""} from volatility alone: say what you know that the price does not.`;
+  const lines = `the ${pct(base.p)} volatility-only chance the price line${base.lines === 1 ? "" : "s"} hold${base.lines === 1 ? "s" : ""}`;
+  const why = criteria > base.lines ? "With the other kill criteria also needing to hold, what do you expect that the model does not (drift in your favour, calmer volatility)?" : "What do you expect that the model does not (drift in your favour, calmer volatility)?";
+  return stale ? `${pct(forecast)} is now above ${lines}; consider updating it. ${why}` : `${pct(forecast)} is above ${lines}. ${why}`;
 }

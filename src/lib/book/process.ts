@@ -58,7 +58,7 @@ export function processHealth(i: { open: Position[]; closed: ClosedPosition[]; h
     : { key: "broken", label: "Broken theses acted on", value: "—", status: "none", detail: "No thesis reads broken now." });
 
   const g = logs.flat().filter((e) => isGoalposts(e) && Date.parse(e.at) >= now.getTime() - 180 * DAY).length;
-  items.push({ key: "goalposts", label: "Goalposts moved", value: String(g), status: g === 0 ? "good" : g === 1 ? "watch" : "fix", detail: g ? `Kill criteria were loosened while the thesis read broken or on watch ${g === 1 ? "once" : `${g} times`} in the last 180 days.` : "No kill criterion was loosened while its thesis was failing in the last 180 days." });
+  items.push(!logs.some((l) => l.length) ? { key: "goalposts", label: "Goalposts moved", value: "—", status: "none", detail: "Nothing in the journal yet." } : { key: "goalposts", label: "Goalposts moved", value: String(g), status: g === 0 ? "good" : g === 1 ? "watch" : "fix", detail: g ? `Kill criteria were loosened while the thesis read broken or on watch ${g === 1 ? "once" : `${g} times`} in the last 180 days.` : "No kill criterion was loosened while its thesis was failing in the last 180 days." });
 
   const h = scorecard(i.closed).holding;
   items.push(h

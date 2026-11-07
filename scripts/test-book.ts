@@ -613,6 +613,7 @@ console.log("Decision journal");
   ok("process health: reasons counts the PM's changes with a note within a week (the goalposts entry is not a PM change)", [by("reasons").value, by("reasons").status], ["1 of 2", "watch"]);
   ok("process health: a broken thesis left alone more than five days is to fix", [by("broken").value, by("broken").status], ["0 of 1", "fix"]);
   ok("process health: goalposts moved once is to watch; no history yet is said", [by("goalposts").status, by("disposition").status, by("calibration").status, by("stale").status], ["watch", "none", "none", "good"]);
+  ok("process health: an empty journal does not grade goalposts as good", processHealth({ open: [], closed: [], history: {}, calibration: null, now: hNow }).find((x) => x.key === "goalposts")!.status, "none");
   ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (3 not enough history yet).");
 }
 
@@ -682,8 +683,8 @@ console.log("Decision journal");
 
 {
   // The conjunction rule: the chance no criterion fails cannot beat the chance the price lines alone hold.
-  ok("conjunction: a forecast above the price base rate with more criteria to hold is incoherent", conjunctionCheck(0.8, { p: 0.6, lines: 1 }, 3), "80% is above the 60% chance the price line alone holds; with the other kill criteria also needing to hold, the chance none fails can only be lower.");
-  ok("conjunction: price lines only, asks what the PM knows; at or under the base rate (or within rounding) is fine", [conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2), conjunctionCheck(0.61, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.5, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.9, null, 3)], ["90% is above the 70% chance the price lines hold from volatility alone: say what you know that the price does not.", null, null, null]);
+  ok("above the base rate: asks for a reason, naming the other criteria when there are some", conjunctionCheck(0.8, { p: 0.6, lines: 1 }, 3), "80% is above the 60% volatility-only chance the price line holds. With the other kill criteria also needing to hold, what do you expect that the model does not (drift in your favour, calmer volatility)?");
+  ok("above the base rate: price lines only; an older forecast is asked to be updated; at or under (or within rounding) is fine", [conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2), conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2, true), conjunctionCheck(0.61, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.5, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.9, null, 3)], ["90% is above the 70% volatility-only chance the price lines hold. What do you expect that the model does not (drift in your favour, calmer volatility)?", "90% is now above the 70% volatility-only chance the price lines hold; consider updating it. What do you expect that the model does not (drift in your favour, calmer volatility)?", null, null, null]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

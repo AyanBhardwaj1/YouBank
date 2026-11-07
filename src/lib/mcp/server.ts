@@ -126,8 +126,8 @@ function bookTool(userId: string) {
                 const vol = risk?.positions.find((x) => x.ticker === e.ticker)?.vol ?? null;
                 const by = p?.conviction?.by ?? new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
                 const b = p ? priceBaseRate(p, e.price, vol, by, new Date()) : null;
-                const warn = b && p?.conviction ? conjunctionCheck(p.conviction.p, b, p.criteria.length) : null;
-                return b ? { price_base_rate: { price_lines_hold_pct: Math.round(b.p * 100), by, volatility_pct: vol, note: "From price volatility alone (driftless random walk); fundamental criteria not included.", ...(warn ? { pm_forecast_incoherent: warn } : {}) } } : {};
+                const warn = b && p?.conviction ? conjunctionCheck(p.conviction.p, b, p.criteria.length, p.conviction.at < new Date().toISOString().slice(0, 10)) : null;
+                return b ? { price_base_rate: { price_lines_hold_pct: Math.round(b.p * 100), by, volatility_pct: vol, note: "From price volatility alone (driftless random walk); fundamental criteria not included.", ...(warn ? { pm_forecast_above_base_rate: warn } : {}) } } : {};
               })(),
               ...(p?.committee ? { ai_committee: { decision: p.committee.decision, on: p.committee.at.slice(0, 10), rationale: p.committee.rationale, dissent: p.committee.dissent, watch: p.committee.watch, ...(p.committee.forecast ? { no_kill_criterion_fails_pct: Math.round(p.committee.forecast.p * 100), by: p.committee.forecast.by } : {}) } } : {}),
             };
@@ -298,7 +298,7 @@ export const PROMPTS: McpPrompt[] = [
     arguments: [],
     build: () => [
       "Review my book in YouBank.",
-      "1. Call book_status. Lead with its needs_you list (what the book needs from me now), then the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk. Flag any pm_forecast_incoherent.",
+      "1. Call book_status. Lead with its needs_you list (what the book needs from me now), then the positions whose thesis is broken, then those on watch, with the kill criterion, the figure and its source for each, and the % of NAV at risk. Flag any pm_forecast_above_base_rate.",
       "2. For each broken or on-watch name, call ticker_news and filing_changes (10-Q, section mdna) to find what moved it.",
       "3. Then the intact names in one line each, and any catalyst in the next two weeks.",
       "4. Call book_risk: the beta-adjusted net, the one-day VaR, any stacked bets, and the worst stress replay, in three lines.",

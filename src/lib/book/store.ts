@@ -369,11 +369,12 @@ export async function teamBook(teamId: number, members: { userId: string; name: 
     const m = members.find((x) => x.userId === r.userId)!;
     const book = normalizeBook(extra.book);
     const evals = await evaluateBook(book, now);
-    const history = normalizeBookState(extra.bookState).history, closed = normalizeJournal(extra.bookClosed);
+    const history = normalizeBookState(extra.bookState).history;
     out.push({
       userId: m.userId, name: m.name || m.email, email: m.email, positions: book.length, summary: summarize(evals),
       needs: new Set(bookTodos(book, history, now).map((x) => x.positionId)).size,
-      health: healthLine(processHealth({ open: book, closed, history, calibration: calibrationOf(book, history, closed, now), now })),
+      // From what the member shares (open positions); their closed record and its calibration stay theirs.
+      health: healthLine(processHealth({ open: book, closed: [], history, calibration: calibrationOf(book, history, [], now), now })),
     });
     for (const e of evals) {
       const p = book.find((x) => x.id === e.positionId);
