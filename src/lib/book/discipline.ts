@@ -6,7 +6,7 @@
  * this shows it was looked at, not whether the action was right. Pure; tested in scripts/test-book.ts.
  */
 import type { BookHistory } from "./alerts";
-import type { LogEntry } from "./decisions";
+import { isPmChange, type LogEntry } from "./decisions";
 import type { Position } from "./position";
 
 export type BrokenAction = "cut" | "added to" | "flipped" | "resized";
@@ -63,4 +63,24 @@ export function brokenNowLine(xs: BrokenNow[]): string {
   if (idle.length) parts.push(`nothing done since the break on ${idle.map((x) => `${x.ticker} (${x.days ? dd(x.days) : "broke today"})`).join(", ")}`);
   if (acted.length) parts.push(acted.map((x) => `${x.ticker} ${actedText(x)}`).join(", "));
   return `Broken now: ${parts.join("; ")}.`;
+}
+
+/** A thesis left alone this long without a note or a change from the PM is due for a review. */
+export const STALE_DAYS_REVIEW = 90;
+
+export type Stale = { positionId: string; ticker: string; since: string; days: number };
+
+/**
+ * Positions the PM has not looked at for STALE_DAYS_REVIEW days: no note and no change of their own (the AI
+ * committee's sittings and YouBank's checks do not count) since then, or since it was opened. A thesis that
+ * was right a quarter ago may not be now; the check is whether someone still owns it. Oldest first.
+ */
+export function staleTheses(open: Position[], now = new Date(), after = STALE_DAYS_REVIEW): Stale[] {
+  const today = day(now.toISOString());
+  return open.flatMap((p) => {
+    const touched = (p.log ?? []).filter((e) => !e.auto || isPmChange(e)).map((e) => e.at);
+    const last = [p.createdAt, ...touched].filter(Boolean).sort().pop()!;
+    const days = daysBetween(last, today);
+    return days >= after ? [{ positionId: p.id, ticker: p.ticker, since: day(last), days }] : [];
+  }).sort((a, b) => b.days - a.days || a.ticker.localeCompare(b.ticker));
 }

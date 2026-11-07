@@ -1,4 +1,4 @@
-import { actedText, brokenNow } from "@/lib/book/discipline";
+import { actedText, brokenNow, STALE_DAYS_REVIEW, staleTheses } from "@/lib/book/discipline";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PrintButton } from "@/components/book/PrintButton";
@@ -86,6 +86,15 @@ export default async function WeekPage() {
             <li key={k}><Link href={`/app/book?position=${encodeURIComponent(g.positionId)}`} className="font-semibold hover:underline">{g.ticker}</Link> <span className="num text-muted">{g.on}</span>: <span className="text-neg">{g.text}</span></li>
           ))}</ul>
         </>)}
+
+        {(() => {
+          const xs = staleTheses(book, now);
+          return xs.length ? (<>
+            <H>Due for a review</H>
+            <p className="mt-0.5 text-muted">No note or change from you in {STALE_DAYS_REVIEW} days or more. A line saying the thesis still holds, or why it changed, keeps it owned.</p>
+            <ul className="mt-0.5 space-y-0.5">{xs.map((x) => <li key={x.positionId}><Link href={`/app/book?position=${encodeURIComponent(x.positionId)}`} className="font-semibold hover:underline">{x.ticker}</Link>: last looked at {x.since} ({x.days} days).</li>)}</ul>
+          </>) : null;
+        })()}
 
         {w.unexplained.length > 0 && (<>
           <H>Changes without a reason</H>

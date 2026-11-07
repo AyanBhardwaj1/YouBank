@@ -20,7 +20,7 @@ import { filingChangesTool } from "@/lib/ai/filing-changes-tool";
 import { addProposal, evaluateBook, holdingFacts, loadBook, loadBookHistory, loadJournal, loadProposals, newsFor, noteProposal } from "@/lib/book/store";
 import { weekBrief } from "@/lib/book/week";
 import { priceBaseRate } from "@/lib/book/baserate";
-import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
+import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
 import { isGoalposts } from "@/lib/book/decisions";
 import { toothless } from "@/lib/book/quality";
 import { lintLetter } from "@/lib/book/letter";
@@ -129,6 +129,7 @@ function bookTool(userId: string) {
           })(),
           kill_criteria: e.checks.map((c) => ({ criterion: `${c.label} ${c.target}`, now: c.shown, headroom: c.headroom?.shown ?? null, state: c.state, source: c.evidence ? ctx.addSource(`${e.ticker} ${c.label}: ${c.evidence.source}, ${c.evidence.period}`, c.evidence.url) : null })),
           ...(() => { const lg = positions.find((x) => x.id === e.positionId)?.log; return lg?.length ? { decision_journal: lg.slice(-5).map((x) => ({ on: x.at.slice(0, 10), entry: x.text, by: x.auto ? "YouBank (a change)" : "the PM" })) } : {}; })(),
+          ...(() => { const p = positions.find((x) => x.id === e.positionId); const st = p ? staleTheses([p])[0] : undefined; return st ? { not_reviewed: { since: st.since, days: st.days, note: "No note or change from the PM in this time." } } : {}; })(),
           ...(() => { const g = (positions.find((x) => x.id === e.positionId)?.log ?? []).filter(isGoalposts); return g.length ? { criteria_loosened_while_failing: g.map((x) => ({ on: x.at.slice(0, 10), entry: x.text })) } : {}; })(),
           ...(toothless(e.checks).length ? { criteria_unlikely_to_fire: toothless(e.checks).map((x) => `${x.label}: ${x.room} of room`) } : {}),
           catalysts: e.catalysts.map((c) => ({ label: c.label, date: c.date, in_days: c.inDays })),

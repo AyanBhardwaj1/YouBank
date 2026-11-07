@@ -13,7 +13,7 @@ import { sizingCheck, spearman } from "@/lib/book/sizing";
 import { weekAlert, weekBrief } from "@/lib/book/week";
 import { noTouch, phi, priceBaseRate, priceLines } from "@/lib/book/baserate";
 import { toothless } from "@/lib/book/quality";
-import { brokenNow, brokenNowLine } from "@/lib/book/discipline";
+import { brokenNow, brokenNowLine, staleTheses } from "@/lib/book/discipline";
 import { AUTO_MAX, changesOf, goalpostEntry, loosened, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
 import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
 import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
@@ -585,6 +585,15 @@ console.log("Decision journal");
   ok("disposition: said in the line", scorecardLine(d1).includes("median hold 15 days for winners, 70 for losers (losers held longer: the disposition effect)"), true);
   ok("disposition: not judged on fewer than two of each", scorecard([mk("W1", 120, 10), mk("L1", 90, 60)]).holding, null);
   ok("disposition: even holding is not flagged", scorecard([mk("W1", 120, 30), mk("W2", 110, 40), mk("L1", 90, 35), mk("L2", 80, 45)]).holding?.disposition, false);
+}
+
+{
+  // Stale theses: no note or change from the PM in 90 days.
+  const sNow = new Date("2026-11-20T12:00:00Z");
+  const old = normalizePosition({ ...t, id: "st1", ticker: "OLD", createdAt: "2026-05-01T00:00:00Z", log: [{ at: "2026-06-01T00:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-10-01T00:00:00Z", text: "AI committee: hold.", auto: true }] })!;
+  const kept = normalizePosition({ ...t, id: "st2", ticker: "KPT", createdAt: "2026-05-01T00:00:00Z", log: [{ at: "2026-10-15T00:00:00Z", text: "still fine after the print" }] })!;
+  const fresh = normalizePosition({ ...t, id: "st3", ticker: "NEW", createdAt: "2026-11-01T00:00:00Z" })!;
+  ok("stale: no note or PM change for 90 days (a committee sitting does not count); a recent note or a new position is not stale", staleTheses([old, kept, fresh], sNow).map((x) => [x.ticker, x.since, x.days]), [["OLD", "2026-06-01", 172]]);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

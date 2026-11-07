@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Markdown } from "@/components/terminal/Markdown";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
-import { actedText, brokenNow } from "@/lib/book/discipline";
+import { actedText, brokenNow, staleTheses } from "@/lib/book/discipline";
 import { streakOf, type BookHistory, type HistoryPoint } from "@/lib/book/alerts";
 import { filingLine } from "@/lib/book/filings";
 import type { RiskHeadline, SourcedRisk, WhatIf } from "@/lib/book/risk";
@@ -374,6 +374,10 @@ function PositionCard({ ev, position, history = [], vol = null, focused, owner, 
                   })()}
                 </div>
               );
+            })()}
+            {(() => {
+              const st = position ? staleTheses([position])[0] : undefined;
+              return st ? <p className="mt-1 text-[11.5px] text-accent">Not reviewed {owner ? `by ${owner} ` : ""}since {st.since} ({st.days} days).{owner ? "" : " A note saying the thesis still holds, or why it changed, keeps it owned."}</p> : null;
             })()}
             {!!position?.pillars.length && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">{position.pillars.map((p) => <li key={p}>{p}</li>)}</ul>}
           </div>
