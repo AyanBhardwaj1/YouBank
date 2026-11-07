@@ -5,6 +5,9 @@
  * plainly when there is nothing or it could not load, and takes a `roomy` flag for the Home layout's larger
  * type and spacing. HomeDashboard decides which are on and in what order.
  */
+import { brokenNow } from "@/lib/book/discipline";
+import type { BookHistory } from "@/lib/book/alerts";
+import type { Position } from "@/lib/book/position";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useWorkspace } from "../WorkspaceProvider";
@@ -295,7 +298,7 @@ export function SavedWidget({ roomy, facts }: Props & { facts: HomeFacts }) {
 /* ---------------- The Book: which theses hold (src/lib/book) ---------------- */
 
 type BookEval = { positionId: string; ticker: string; verdict: "intact" | "watch" | "broken" | "unknown"; summary: string; earnings?: { date: string; inDays: number; estimated: boolean } | null };
-type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[]; positions?: { ticker: string; conviction?: { p: number; by: string; source: string } }[] };
+type BookRes = { evaluations: BookEval[]; summary: { positions: number; atRiskWeight: number; verdicts: Record<string, number> }; proposals?: { id: string; from: string; position: { ticker: string; direction: string } }[]; positions?: { ticker: string; conviction?: { p: number; by: string; source: string } }[]; history?: BookHistory };
 const VERDICT_TONE: Record<BookEval["verdict"], string> = { broken: "bg-neg/15 text-neg", watch: "bg-accent-soft text-accent", unknown: "bg-elevated text-muted", intact: "bg-pos/15 text-pos" };
 export function BookWidget({ roomy }: Props) {
   const [b, setB] = useState<BookRes | null | "error">(null);
@@ -315,7 +318,7 @@ export function BookWidget({ roomy }: Props) {
       {b && b !== "error" && b.evaluations.length === 0 && <div className={`${t} text-muted`}>No positions yet. <Link href="/app/book" className="text-accent">Add one</Link> with the numbers that would prove its thesis wrong, and YouBank checks them against filings and the market.</div>}
       {b && b !== "error" && b.evaluations.length > 0 && (
         <>
-          <div className={`mb-1.5 ${t} text-muted`}>{b.summary.verdicts.broken ? <span className="text-neg">{b.summary.verdicts.broken} broken</span> : "None broken"}{b.summary.verdicts.watch ? ` · ${b.summary.verdicts.watch} on watch` : ""}{b.summary.atRiskWeight ? ` · ${b.summary.atRiskWeight}% of NAV at risk` : ""}</div>
+          <div className={`mb-1.5 ${t} text-muted`}>{b.summary.verdicts.broken ? <span className="text-neg">{b.summary.verdicts.broken} broken{(() => { const idle = brokenNow((b.positions ?? []) as Position[], b.history ?? {}).filter((x) => x.actedAfter === null).length; return idle ? `, ${idle} with nothing done since` : ""; })()}</span> : "None broken"}{b.summary.verdicts.watch ? ` · ${b.summary.verdicts.watch} on watch` : ""}{b.summary.atRiskWeight ? ` · ${b.summary.atRiskWeight}% of NAV at risk` : ""}</div>
           {(() => {
             const soon = b.evaluations.filter((e) => e.earnings && e.earnings.inDays >= 0 && e.earnings.inDays <= 7).sort((x, y) => x.earnings!.inDays - y.earnings!.inDays);
             return soon.length ? <div className={`mb-1.5 ${t}`}><span className="text-muted">Reporting this week: </span>{soon.slice(0, 4).map((e) => `${e.ticker} ${e.earnings!.inDays === 0 ? "today" : e.earnings!.inDays === 1 ? "tomorrow" : `in ${e.earnings!.inDays}d`}`).join(" · ")}</div> : null;
