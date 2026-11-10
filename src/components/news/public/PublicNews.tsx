@@ -12,7 +12,6 @@ import { motion } from "motion/react";
 import type { PublicCard, PublicStory } from "@/lib/news/public";
 import { figureBars } from "@/lib/news/storyviz";
 import { Logo } from "@/components/brand/Logo";
-import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { Icon } from "@/components/ui/Icon";
 import { ago, fmtPct, fmtUsd, MotionContext, useEffectiveMotion, type Spark } from "../client";
 import { ArtThumb, hueOf } from "../DataArt";
@@ -33,7 +32,6 @@ function Shell({ children }: { children: React.ReactNode }) {
             <Link href="/" className="flex items-center gap-2" aria-label="YouBank home"><Logo size={24} id="news-lock" /></Link>
             <Link href="/news" className="hidden text-[12px] font-semibold uppercase tracking-[0.14em] text-accent sm:inline">Newsroom</Link>
             <div className="ml-auto flex items-center gap-2">
-              <ThemeMenu nameClass="hidden" />
               <Link href="/sign-in" className="ctl hidden px-3 py-1.5 text-[12.5px] text-muted hover:text-fg sm:inline-block">Sign in</Link>
               <Link href="/sign-in?next=/app/news" className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-accent-fg hover:opacity-90">Get started free</Link>
             </div>

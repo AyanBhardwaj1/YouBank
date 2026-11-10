@@ -17,20 +17,20 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const display = Instrument_Serif({ variable: "--font-display-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
-  title: { default: "YouBank · A hedge fund in your pocket", template: "%s · YouBank" },
+  title: { default: "YouBank · Hedge-fund grade, pocket-sized", template: "%s · YouBank" },
   description: "Theses checked against SEC filings after every close, satellite and alternative data on what you own, calibrated forecasts, and a tamper-evident record of every AI answer, in the browser, on your phone and inside Claude and ChatGPT. For small funds and serious investors, at a fraction of a terminal's price.",
   metadataBase: new URL(siteUrl()),
   applicationName: "YouBank",
   // Installed to a phone's home screen, it opens full screen with the status bar over the theme (manifest.ts).
   appleWebApp: { capable: true, title: "YouBank", statusBarStyle: "black-translucent" },
   openGraph: {
-    title: "YouBank · A hedge fund in your pocket",
+    title: "YouBank · Hedge-fund grade, pocket-sized",
     description: "Every thesis checked against its numbers, satellites over the assets, calibrated odds, and proof of process. Built for small funds and serious investors.",
     type: "website",
     url: siteUrl(),
     images: [{ url: "/brand/og.png", width: 1200, height: 630, alt: "YouBank" }],
   },
-  twitter: { card: "summary_large_image", title: "YouBank", description: "A hedge fund in your pocket.", images: ["/brand/og.png"] },
+  twitter: { card: "summary_large_image", title: "YouBank", description: "Hedge-fund grade, pocket-sized.", images: ["/brand/og.png"] },
 };
 
 /**

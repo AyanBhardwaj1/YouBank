@@ -11,7 +11,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/app",
     name: "YouBank",
     short_name: "YouBank",
-    description: "A hedge fund in your pocket: your book checked against SEC filings, alternative data, calibrated forecasts and a terminal, on any device.",
+    description: "Hedge-fund grade, pocket-sized: your book checked against SEC filings, alternative data, calibrated forecasts and a terminal, on any device.",
     start_url: "/app?source=pwa",
     scope: "/",
     display: "standalone",

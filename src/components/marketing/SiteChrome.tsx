@@ -3,7 +3,6 @@
 /** The header and footer of the public pages that are not the landing page: pricing and the legal pages. */
 import Link from "next/link";
 import { Logo, LogoMark } from "@/components/brand/Logo";
-import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { LEGAL } from "@/lib/site";
 
 export function SiteHeader() {
@@ -16,7 +15,6 @@ export function SiteHeader() {
           <Link href="/pricing" className="hover:text-fg">Pricing</Link>
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <ThemeMenu />
           <Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted transition hover:border-accent/50 hover:text-fg">Sign in</Link>
         </div>
       </div>

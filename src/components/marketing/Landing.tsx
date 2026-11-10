@@ -9,12 +9,10 @@ import { DemoTerminal } from "./DemoTerminal";
 import { DemoComps } from "./DemoComps";
 import { DemoAi } from "./DemoAi";
 import { DemoDirectory } from "./DemoDirectory";
-import { ThemeShowcase } from "./ThemeShowcase";
 import { PLANS, usd, type PlanId } from "@/lib/billing/plans";
 import { CREDIT_PACKS } from "@/lib/billing/packs";
 import { Reveal, CountUp } from "@/components/motion/Reveal";
 import { Icon } from "@/components/ui/Icon";
-import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { Logo, LogoMark } from "@/components/brand/Logo";
 import { LegalLinks } from "./SiteChrome";
 
@@ -123,7 +121,6 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             {sections.map(([href, label]) => href === "#pricing" ? <Link key={href} href="/pricing" className="hover:text-fg">{label}</Link> : <a key={href} href={href} className="hover:text-fg">{label}</a>)}
           </nav>
           <div className="ml-auto flex items-center gap-2">
-            <ThemeMenu />
             <Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted transition hover:border-accent/50 hover:text-fg max-md:flex max-md:min-h-10 max-md:items-center">Sign in</Link>
           </div>
         </div>
@@ -146,7 +143,7 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
             </Reveal>
             <Reveal eager delay={60}>
               <h1 className="mt-4 text-[40px] font-semibold leading-[1.04] tracking-tight sm:text-[52px]">
-                A hedge fund <span className="gradient-text">in your pocket</span>.
+                Hedge-fund grade. <span className="gradient-text">Pocket-sized.</span>
               </h1>
             </Reveal>
             <Reveal eager delay={120}>
@@ -370,13 +367,14 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
       <section id="more" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
         <Reveal>
           <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">The rest of the desk</h2>
-          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Models, news and meetings, wired into the same book.</p>
+          <p className="mt-2 max-w-[70ch] text-[22px] font-semibold leading-snug tracking-tight">Models, news, meetings and your inbox, wired into the same book.</p>
         </Reveal>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { icon: "FileSpreadsheet", t: "Studio", b: "DCF, LBO, comps and decks built live from SEC data while you watch, linked so a change in the model moves every slide, audited like a reviewer would, and synced with Excel and PowerPoint." },
             { icon: "Newspaper", t: "Newsroom", b: "Market news read for what it means to your positions, with the filings behind each story, audio briefs and a weekly read of your book." },
             { icon: "Headphones", t: "Meeting copilot", b: "Management calls and expert calls transcribed with the host's consent, notes and follow-ups filed against the company, suggestions live during the call." },
+            { icon: "Mail", t: "Relationships agent", b: "Your inbox for LPs, brokers and counterparties: who wrote and what they want, replies drafted for you to send, and follow-ups that don't slip." },
             { icon: "Smartphone", t: "Phone and desktop", b: "Install the web app on your phone for the Book, alerts and the Edge feed. The desktop app adds a tray, native alerts, a quick-ask hotkey and a local agent for your own files." },
           ].map((x, i) => (
             <Reveal key={x.t} delay={i * 60}>
@@ -484,16 +482,6 @@ export function Landing({ toolCounts }: { toolCounts: { total: number; ai: numbe
           ))}
         </div>
         <p className="mt-4 text-[12px] text-muted">AI credit packs from {usd(CREDIT_PACKS[0].priceUsd)} top up any plan. <Link href="/pricing" className="text-accent hover:underline">Compare every plan, the packs and the FAQ →</Link></p>
-      </section>
-
-      {/* styles */}
-      <section id="styles" className="mx-auto max-w-[1240px] scroll-mt-20 px-5 py-14">
-        <Reveal>
-          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-accent">Make it yours</h2>
-          <p className="mt-2 max-w-[62ch] text-[22px] font-semibold leading-snug tracking-tight">A desk that sets itself up for you, and stays yours to change.</p>
-          <p className="mt-2 max-w-[80ch] text-[12.5px] text-muted">Tell YouBank how you invest and it picks your features, your Home and its widgets. Then change any of it: a quiet Focus page or a dense Desk, ⌘K for everything, fourteen styles from amber-on-black terminal to soft daylight, and looks you share with your team as a code. Try a style now: this page changes with you.</p>
-        </Reveal>
-        <div className="mt-7"><ThemeShowcase /></div>
       </section>
 
       {/* data & method */}
