@@ -3,7 +3,7 @@
 A Tauri v2 app for Windows, macOS and Linux. It is two things in one window:
 
 1. **The YouBank site, with native extras.** The main window loads the live site
-   (`https://youbank-nu.vercel.app`), with a tray icon and quick actions, native notifications,
+   (`https://youbank.dev`), with a tray icon and quick actions, native notifications,
    `youbank://` links, one instance at a time, a remembered window size and place, an offline screen that
    retries, updates from GitHub Releases, and a global hotkey for quick ask.
 2. **A local agent.** With the person's consent, part by part: it indexes folders of PDFs, Word, Excel and

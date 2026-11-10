@@ -20,7 +20,7 @@ parts:
   and it all exports to Excel and PowerPoint. With the add-in it runs inside Excel and PowerPoint too:
   the agent writes into your own workbook live, and decks refresh from the model.
 
-Production: **https://youbank-nu.vercel.app** until the custom domain is set (`NEXT_PUBLIC_SITE_URL`; see [docs/launch-billing.md](docs/launch-billing.md)) · Free while in beta.
+Production: **https://youbank.dev** (also served at https://youbank-nu.vercel.app; the address comes from `NEXT_PUBLIC_SITE_URL`, see [docs/production.md](docs/production.md#switching-to-a-custom-domain)) · Free while in beta.
 
 ## Contents
 

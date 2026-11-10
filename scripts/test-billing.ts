@@ -362,7 +362,7 @@ async function main() {
   console.log("domain and Stripe setup");
   {
     check("NEXT_PUBLIC_SITE_URL wins, then YOUBANK_URL, then Vercel's production domain", resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://youbank.com/", YOUBANK_URL: "https://a.vercel.app" }) === "https://youbank.com" && resolveSiteUrl({ YOUBANK_URL: "https://a.example.com" }) === "https://a.example.com" && resolveSiteUrl({ VERCEL_PROJECT_PRODUCTION_URL: "youbank.com" }) === "https://youbank.com");
-    check("with nothing set it is the original address", resolveSiteUrl({}) === DEFAULT_SITE_URL);
+    check("with nothing set it is the main site, youbank.dev", resolveSiteUrl({}) === DEFAULT_SITE_URL && DEFAULT_SITE_URL === "https://youbank.dev");
     check("addresses are cleaned: scheme added, path and slash dropped, junk refused", normaliseSiteUrl("youbank.com/app/") === "https://youbank.com" && normaliseSiteUrl("http://localhost:3000") === "http://localhost:3000" && normaliseSiteUrl("not a url") === null && normaliseSiteUrl("") === null);
     check("the webhook lives at <domain>/api/billing/webhook", webhookUrl("https://youbank.com/") === "https://youbank.com/api/billing/webhook");
     check("the webhook listens for exactly the events handled", webhookEvents().join() === [...WEBHOOK_EVENTS].join() && new Set(webhookEvents()).size === webhookEvents().length);

@@ -53,7 +53,7 @@ get its own value, not production's.
 
 | Variable | Where to get it | P | V | Notes |
 |---|---|---|---|---|
-| `NEXT_PUBLIC_SITE_URL` | Your address, e.g. `https://youbank-nu.vercel.app` | yes | no | Inlined at build time. Links in emails, Stripe return pages, the sitemap, OAuth redirect defaults. |
+| `NEXT_PUBLIC_SITE_URL` | The site's address: `https://youbank.dev` | yes | no | Inlined at build time. Links in emails, Stripe return pages, the sitemap, OAuth redirect defaults. |
 | `CRON_SECRET` | `openssl rand -hex 32` | yes | no | Vercel Cron sends it as a bearer token; `/api/health` operators use it too. |
 | `AUTOPILOT_SECRET` | `openssl rand -hex 32` | yes | no | The Neon Functions heartbeats send it. |
 | `EDGAR_USER_AGENT` | `YouBank you@yourdomain.com` | yes | yes | SEC asks for a contact email; without one it may block our addresses. |
@@ -164,27 +164,27 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 Do these in order, the same hour. The old `youbank-nu.vercel.app` keeps working throughout (sign-in trusts
 it), so nothing breaks for people mid-switch.
 
-1. **Vercel** → Settings → Domains: add `youbank.com` (and `www`, redirecting to the apex). Wait for the
+1. **Vercel** → Settings → Domains: add `youbank.dev` (and `www.youbank.dev`, redirecting to the apex). Wait for the
    certificate.
-2. **Variables** (Production): `NEXT_PUBLIC_SITE_URL=https://youbank.com`. If `BETTER_AUTH_URL` is set,
+2. **Variables** (Production): `NEXT_PUBLIC_SITE_URL=https://youbank.dev`. If `BETTER_AUTH_URL` is set,
    set it to the same address or delete it (health flags a mismatch). `YOUBANK_URL`, if set, the same.
 3. **Redeploy** (`NEXT_PUBLIC_SITE_URL` is inlined at build time).
 4. **Google Cloud** → Credentials → the OAuth client: add these authorised redirect URIs (keep the old ones
    until the switch is done):
-   - `https://youbank.com/api/auth/callback/google` (sign-in)
-   - `https://youbank.com/api/crm/gmail/callback` (Gmail)
-   - `https://youbank.com/api/calendar/oauth/google/callback` (Calendar)
-   and add `youbank.com` to the consent screen's authorised domains.
+   - `https://youbank.dev/api/auth/callback/google` (sign-in)
+   - `https://youbank.dev/api/crm/gmail/callback` (Gmail)
+   - `https://youbank.dev/api/calendar/oauth/google/callback` (Calendar)
+   and add `youbank.dev` to the consent screen's authorised domains.
 5. **Microsoft Entra** → App registrations → Authentication: add
-   `https://youbank.com/api/calendar/oauth/microsoft/callback`.
-6. **Alpaca Connect**: add `https://youbank.com/api/algo/connections/alpaca/callback`.
-7. **Stripe** → Developers → Webhooks: add an endpoint `https://youbank.com/api/billing/webhook` with the
+   `https://youbank.dev/api/calendar/oauth/microsoft/callback`.
+6. **Alpaca Connect**: add `https://youbank.dev/api/algo/connections/alpaca/callback`.
+7. **Stripe** → Developers → Webhooks: add an endpoint `https://youbank.dev/api/billing/webhook` with the
    same events as the old one, copy its signing secret into `STRIPE_WEBHOOK_SECRET`, redeploy, then disable
    the old endpoint. In Settings → Billing → Customer portal, update the business links.
-8. **Recall.ai**: point the webhook at `https://youbank.com/api/meetings/webhook`.
+8. **Recall.ai**: point the webhook at `https://youbank.dev/api/meetings/webhook`.
 9. **Inngest**: with the integration, the next deploy re-syncs; otherwise Apps → the app → change the URL
-   to `https://youbank.com/api/inngest` and resync.
-10. **Neon Functions**: redeploy each heartbeat with `YOUBANK_URL=https://youbank.com`.
+   to `https://youbank.dev/api/inngest` and resync.
+10. **Neon Functions**: redeploy each heartbeat with `YOUBANK_URL=https://youbank.dev`.
 11. **Calendar push**: channels renew within a day against the new address on their own.
 12. **Check**: sign in with email and with Google; `/api/health` is `ok`; a test Checkout in Stripe test
     mode reaches the webhook (Stripe → Webhooks → the endpoint → recent deliveries all 2xx).

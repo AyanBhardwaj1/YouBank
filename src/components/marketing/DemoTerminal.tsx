@@ -147,7 +147,7 @@ export function DemoTerminal() {
     <div className="float overflow-hidden panel">
       <div className="flex items-center gap-2 border-b border-line bg-elevated/60 px-3 py-1.5">
         <span className="flex gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-neg/70" /><span className="h-2.5 w-2.5 rounded-full bg-accent/70" /><span className="h-2.5 w-2.5 rounded-full bg-pos/70" /></span>
-        <span className="num ml-2 text-[10.5px] text-muted">youbank.app/app/terminal</span>
+        <span className="num ml-2 text-[10.5px] text-muted">youbank.dev/app/terminal</span>
         <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted"><span className="pulse-ring h-1.5 w-1.5 rounded-full bg-pos" /> live</span>
       </div>
       <div className="grid grid-cols-[132px_1fr] sm:grid-cols-[168px_1fr]">
