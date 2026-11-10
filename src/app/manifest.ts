@@ -11,7 +11,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/app",
     name: "YouBank",
     short_name: "YouBank",
-    description: "The AI deal desk that learns how you work: cited research from filings, your pipeline and your mail in one place.",
+    description: "A hedge fund in your pocket: your book checked against SEC filings, alternative data, calibrated forecasts and a terminal, on any device.",
     start_url: "/app?source=pwa",
     scope: "/",
     display: "standalone",

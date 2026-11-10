@@ -44,25 +44,25 @@ export const PLANS: Record<PlanId, Plan> = {
   free: {
     id: "free", name: "Free", monthlyUsd: 0, yearlyMonthlyUsd: 0, minSeats: 1, selfServe: false,
     blurb: "The terminal and public data, with a small AI allowance to try the assistant.",
-    points: ["The terminal, filings, comps and the Newsroom", "Calculators and the tool gallery", "Edge's free core: precedents, Deal Radar, the Pulse, Call Desk, the LBO lab and one thesis", "A small AI allowance to try the assistant"],
+    points: ["The Book, the MCP server for Claude and ChatGPT, and the research ledger", "The terminal, filings, comps and the Newsroom", "Calculators and the tool gallery", "Edge's free core: precedents, Deal Radar, the Pulse, Call Desk, the LBO lab and one thesis", "A small AI allowance to try the assistant"],
     ai: { dailyUsd: 0.75, monthlyUsd: 3 },
   },
   campus: {
     id: "campus", name: "Campus", monthlyUsd: 0, yearlyMonthlyUsd: 0, minSeats: 1, selfServe: false,
     blurb: "Students with a .edu address: the full terminal, a monthly AI allowance and a recruiting pack.",
-    points: ["The full terminal and data", "AI workflows with a monthly allowance", "Recruiting pack: practice comps, deal walk-throughs"],
+    points: ["The Book, the MCP server and the research ledger", "The full terminal and data", "AI workflows with a monthly allowance", "Recruiting pack: practice comps, deal walk-throughs"],
     ai: { dailyUsd: 2, monthlyUsd: 10 },
   },
   pro: {
     id: "pro", name: "Pro", monthlyUsd: 59, yearlyMonthlyUsd: 49, minSeats: 1, selfServe: true,
-    blurb: "Individuals: a working AI allowance, the relationships agent and one mailbox.",
-    points: ["Everything in Campus, with a larger AI allowance", "Relationships agent and one mailbox", "Nurture, signals, compose and AI meeting briefs", "Edge's premium layers: deal re-reads, claim cross-checks, the daily Pulse, the Radar screener, five theses, live voice", "Top up with AI credit packs when you need more"],
+    blurb: "Individuals: a working AI allowance, Edge's premium layers, the relationships agent and one mailbox.",
+    points: ["Everything in Campus, with a larger AI allowance", "Edge's premium layers: deal re-reads, claim cross-checks, the daily Pulse, the Radar screener, five theses, live voice", "Relationships agent and one mailbox", "Nurture, signals, compose and AI meeting briefs", "Top up with AI credit packs when you need more"],
     ai: { dailyUsd: 6, monthlyUsd: 25 },
   },
   team: {
     id: "team", name: "Deal Team", monthlyUsd: 149, yearlyMonthlyUsd: 125, minSeats: 3, selfServe: true,
-    blurb: "Teams: autopilot and campaigns, the adaptive engine across the team, shared workspaces.",
-    points: ["Autopilot and campaigns", "The adaptive engine across the team", "Shared workspaces, team theses and live collaboration", "The meeting notetaker, Planet imagery in 3D, Dune queries and Eva-4B on calls", "Assign seats to people on your team"],
+    blurb: "Teams: shared workspaces and theses, the meeting notetaker and premium imagery, autopilot and campaigns.",
+    points: ["Shared workspaces, team theses and live collaboration", "The meeting notetaker, Planet imagery in 3D, Dune queries and Eva-4B on calls", "Autopilot and campaigns", "The adaptive engine across the team", "Assign seats to people on your team"],
     ai: { dailyUsd: 12, monthlyUsd: 60 },
   },
   enterprise: {
