@@ -69,6 +69,7 @@
     "updater": {
       "pubkey": "",
       "endpoints": [
+        "https://youbank.dev/api/desktop/update",
         "https://youbank-nu.vercel.app/api/desktop/update",
         "https://github.com/AyanBhardwaj1/YouBank/releases/latest/download/latest.json"
       ],

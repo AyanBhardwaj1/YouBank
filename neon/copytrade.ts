@@ -8,7 +8,7 @@
  * Only a real trigger delivery is relayed. Neon's proxy strips any x-neon-* header a caller sends, so a
  * present x-neon-trigger-invocation-id that matches the body's invocation_id can only come from a trigger.
  *
- * Deploy:   neon functions deploy copytrade --src neon/copytrade.ts --env YOUBANK_URL=https://youbank-nu.vercel.app --env AUTOPILOT_SECRET=...
+ * Deploy:   neon functions deploy copytrade --src neon/copytrade.ts --env YOUBANK_URL=https://youbank.dev --env AUTOPILOT_SECRET=...
  * Schedule: neon triggers create --function-slug copytrade --name copytrade-heartbeat --cron '*\/15 * * * *'
  */
 const relay = {

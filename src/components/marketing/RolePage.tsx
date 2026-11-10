@@ -8,7 +8,6 @@ import { DemoTerminal } from "./DemoTerminal";
 import { DemoAi } from "./DemoAi";
 import { Reveal } from "@/components/motion/Reveal";
 import { Icon } from "@/components/ui/Icon";
-import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { Logo } from "@/components/brand/Logo";
 
 export type ToolSummary = { id: string; title: string; tagline: string; kind: "ai" | "calc"; category: string; icon: string; specialties: string[] | null; savesMinutes: number | null };
@@ -162,7 +161,7 @@ export function RolePage({ role, tools }: { role: RoleId; tools: ToolSummary[] }
               <Link key={id} href={`/for/${id}`} className={`ctl px-2 py-1 ${id === role ? "bg-accent-soft text-accent" : "text-muted hover:text-fg"}`}>{ROLES[id].short}</Link>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2"><ThemeMenu /><Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg max-md:flex max-md:min-h-10 max-md:items-center">Sign in</Link></div>
+          <div className="ml-auto flex items-center gap-2"><Link href="/sign-in" className="ctl border border-line px-3 py-1.5 text-[12.5px] text-muted hover:border-accent/50 hover:text-fg max-md:flex max-md:min-h-10 max-md:items-center">Sign in</Link></div>
         </div>
         {/* Phones: the other roles as one sideways-scrolling row under the bar, rather than hidden. */}
         <nav aria-label="Roles" className="no-scrollbar flex gap-1.5 overflow-x-auto px-5 pb-2.5 text-[12.5px] md:hidden">

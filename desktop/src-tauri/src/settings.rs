@@ -9,7 +9,7 @@ use std::path::Path;
 use url::Url;
 
 /// Production. Overridden by `YOUBANK_URL` (staging, local development) or the setting.
-pub const DEFAULT_SITE: &str = "https://youbank-nu.vercel.app";
+pub const DEFAULT_SITE: &str = "https://youbank.dev";
 /// Quick ask, from anywhere. Empty turns it off.
 pub const DEFAULT_HOTKEY: &str = "CommandOrControl+Shift+Space";
 

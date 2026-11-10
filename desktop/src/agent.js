@@ -423,7 +423,7 @@ function app() {
     h("div", { class: "panel" },
       h("p", { class: "small muted" }, `This app opens ${st.site}${st.customSite ? " (not the usual address)" : ""}. Change it only to test a staging or local copy of YouBank; it takes effect the next time the app starts. The YOUBANK_URL environment variable overrides it.`),
       h("div", { class: "row" },
-        h("input", { type: "text", class: "grow", value: s.siteUrl, placeholder: "https://youbank-nu.vercel.app", oninput: (e) => { site = e.target.value; } }),
+        h("input", { type: "text", class: "grow", value: s.siteUrl, placeholder: "https://youbank.dev", oninput: (e) => { site = e.target.value; } }),
         h("button", { class: "btn", onclick: () => save((n) => { n.siteUrl = site.trim(); }).then(() => toast("Saved. Quit and reopen YouBank to use it.")) }, "Save"))),
   ];
 }

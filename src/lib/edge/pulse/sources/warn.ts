@@ -107,7 +107,7 @@ async function xlsxRows(buf: ArrayBuffer): Promise<Record<string, unknown>[]> {
 export async function readWarn(src: WarnSource): Promise<WarnNotice[]> {
   const url = sourceUrl(src);
   if (src.format === "xlsx") {
-    const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 30_000, headers: { "User-Agent": "YouBank research (Edge; +https://youbank-nu.vercel.app)" } });
+    const res = await fetchRetry(url, { cache: "no-store", timeoutMs: 30_000, headers: { "User-Agent": "YouBank research (Edge; +https://youbank.dev)" } });
     if (!res.ok) throw Object.assign(new Error(`${src.name} answered ${res.status}`), { status: 502 });
     return rowsToNotices(await xlsxRows(await res.arrayBuffer()), src);
   }

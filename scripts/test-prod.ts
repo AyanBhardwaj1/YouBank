@@ -264,7 +264,7 @@ async function testAuthAndHeaders() {
   const prod = { VERCEL_ENV: "production", NEXT_PUBLIC_SITE_URL: "https://youbank.com", VERCEL_PROJECT_PRODUCTION_URL: "youbank.com", VERCEL_URL: "youbank-abc123.vercel.app" };
   check("production signs in on the site's address", authBaseUrl(prod) === "https://youbank.com");
   check("BETTER_AUTH_URL wins in production", authBaseUrl({ ...prod, BETTER_AUTH_URL: "https://auth.youbank.com" }) === "https://auth.youbank.com");
-  check("the vercel.app address keeps working after the custom domain", authTrustedOrigins(prod).includes("https://youbank-nu.vercel.app") && authTrustedOrigins(prod).includes("https://youbank.com"));
+  check("the vercel.app address keeps working after the custom domain", authTrustedOrigins(prod).includes("https://youbank-nu.vercel.app") && authTrustedOrigins(prod).includes("https://youbank.com") && authTrustedOrigins(prod).includes("https://youbank.dev"));
   const pv = { VERCEL_ENV: "preview", NEXT_PUBLIC_SITE_URL: "https://youbank.com", VERCEL_PROJECT_PRODUCTION_URL: "youbank.com", VERCEL_URL: "youbank-git-x-me.vercel.app", VERCEL_BRANCH_URL: "youbank-git-feature-me.vercel.app" };
   check("a preview signs in on its own address", authBaseUrl(pv) === "https://youbank-git-feature-me.vercel.app", authBaseUrl(pv));
   check("a production BETTER_AUTH_URL copied to previews is ignored there", authBaseUrl({ ...pv, BETTER_AUTH_URL: "https://youbank.com" }) === "https://youbank-git-feature-me.vercel.app");

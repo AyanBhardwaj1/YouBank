@@ -29,7 +29,7 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<R
           <Logo size={26} />
         </Link>
         <h1 className="mt-5 text-[20px] font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-1 text-[12.5px] text-muted">Your watchlists, sheets, saved runs, model and style preferences are kept on your account.</p>
+        <p className="mt-1 text-[12.5px] text-muted">Your book, watchlists, sheets, saved runs and style preferences are kept on your account.</p>
         {GOOGLE_SIGNIN && <SignInButton next={next} newUser={next === "/app" ? "/onboarding" : `/onboarding?next=${encodeURIComponent(next)}`} className="mt-5" />}
         {GOOGLE_SIGNIN && <div className="mt-4 text-center text-[10.5px] uppercase tracking-wider text-muted">or with email</div>}
         <EmailSignIn next={next} className={GOOGLE_SIGNIN ? "mt-3" : "mt-5"} />

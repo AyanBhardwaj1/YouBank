@@ -20,7 +20,6 @@ import { featureOf, type NavFeature } from "@/lib/nav";
 import { useWorkspace } from "./WorkspaceProvider";
 import { useNav } from "./NavContext";
 import { ROLES } from "@/lib/roles";
-import { ThemeMenu } from "@/components/theme/ThemeMenu";
 import { useAiSettings } from "@/components/ai/ModelPicker";
 import { openPalette, preloadPalette } from "./CommandPalette";
 import { useWaiting } from "@/lib/client/waiting";
@@ -125,7 +124,6 @@ export function AppNav({ email }: { email: string }) {
           <kbd className="hidden rounded border border-line px-1 font-mono text-[9.5px] text-faint lg:inline">⌘K</kbd>
         </button>
         <NotificationBell />
-        <ThemeMenu nameClass="hidden 2xl:inline" />
         <div className="relative">
           <button type="button" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-haspopup="menu" title={email} aria-label="Account"
             className="ctl flex items-center gap-1.5 border border-line px-1.5 py-1 text-muted hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">

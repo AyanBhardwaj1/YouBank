@@ -6,7 +6,7 @@
  * /api/cron/calendar-briefs (morning briefs, only for people who switched them on) with
  * AUTOPILOT_SECRET. Only a real trigger delivery is relayed, as in neon/autopilot.ts.
  *
- * Deploy:   neon functions deploy calendar --src neon/calendar.ts --env YOUBANK_URL=https://youbank-nu.vercel.app --env AUTOPILOT_SECRET=...
+ * Deploy:   neon functions deploy calendar --src neon/calendar.ts --env YOUBANK_URL=https://youbank.dev --env AUTOPILOT_SECRET=...
  * Schedule: neon triggers create --function-slug calendar --name calendar-heartbeat --cron '*\/15 * * * *'
  */
 const relay = {

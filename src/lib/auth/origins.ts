@@ -15,7 +15,7 @@
  *   VERCEL_URL and VERCEL_BRANCH_URL, and AUTH_TRUSTED_ORIGINS (comma-separated, exact origins; a
  *   wildcard entry is ignored) for anything else.
  */
-import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
+import { DEFAULT_SITE_URL, VERCEL_APP_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 
 type Env = Record<string, string | undefined>;
 
@@ -25,7 +25,7 @@ export function authBaseUrl(env: Env): string {
   const explicit = normaliseSiteUrl(env.BETTER_AUTH_URL);
   if (env.VERCEL_ENV === "preview") {
     const own = normaliseSiteUrl(env.VERCEL_BRANCH_URL) ?? normaliseSiteUrl(env.VERCEL_URL);
-    const production = new Set([site, normaliseSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL), DEFAULT_SITE_URL]);
+    const production = new Set([site, normaliseSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL), DEFAULT_SITE_URL, VERCEL_APP_URL]);
     if (explicit && !production.has(explicit)) return explicit;
     return own ?? explicit ?? site;
   }
@@ -40,6 +40,7 @@ export function authTrustedOrigins(env: Env): string[] {
     normaliseSiteUrl(env.BETTER_AUTH_URL),
     normaliseSiteUrl(env.VERCEL_PROJECT_PRODUCTION_URL),
     DEFAULT_SITE_URL,
+    VERCEL_APP_URL,
     normaliseSiteUrl(env.VERCEL_URL),
     normaliseSiteUrl(env.VERCEL_BRANCH_URL),
     // Exact origins only: Better Auth reads "*" as a wildcard, and "https://*.vercel.app" would trust

@@ -13,7 +13,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fetchRetry } from "@/lib/net";
 
-const UA = "YouBank research (Edge; +https://youbank-nu.vercel.app)";
+const UA = "YouBank research (Edge; +https://youbank.dev)";
 const MAX_BYTES = 4_000_000;
 const lastAt = new Map<string, number>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

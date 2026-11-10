@@ -3,14 +3,16 @@
  * return pages, the billing portal's return link, links in emails and Slack, team invitations, Open Graph
  * and canonical URLs, the sitemap, robots.txt, and the webhook URL scripts/stripe-setup.ts registers).
  *
- * Set NEXT_PUBLIC_SITE_URL to the custom domain (https://youbank.com) in Vercel, for Production, and
+ * The main site is https://youbank.dev. Set NEXT_PUBLIC_SITE_URL to it in Vercel, for Production, and
  * redeploy: it is inlined at build time, so the client sees it too. Until it is set the address falls back
  * to YOUBANK_URL (the older server-only setting), then to the project's production domain that Vercel
- * provides (VERCEL_PROJECT_PRODUCTION_URL, which becomes the custom domain once it is added), then to
- * the original vercel.app address. Safe to import on the client.
+ * provides (VERCEL_PROJECT_PRODUCTION_URL, the custom domain once it is added), then to youbank.dev.
+ * The original vercel.app address keeps working (it stays a trusted sign-in origin). Safe to import on the client.
  */
 
-export const DEFAULT_SITE_URL = "https://youbank-nu.vercel.app";
+export const DEFAULT_SITE_URL = "https://youbank.dev";
+/** The project's original vercel.app address: still served by Vercel, so still trusted for sign-in. */
+export const VERCEL_APP_URL = "https://youbank-nu.vercel.app";
 
 /** Normalise an address: https:// when no scheme is given, no trailing slash, nothing after the host. Null when it is not a URL. */
 export function normaliseSiteUrl(raw: string | undefined | null): string | null {

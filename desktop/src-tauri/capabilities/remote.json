@@ -8,6 +8,7 @@
   "local": false,
   "remote": {
     "urls": [
+      "https://youbank.dev/*",
       "https://youbank-nu.vercel.app/*"
     ]
   },

@@ -3,7 +3,7 @@
  * Safe to run again: everything is found by a fixed id, lookup key or metadata and updated in place.
  *
  *   STRIPE_SECRET_KEY=sk_test_... pnpm exec tsx scripts/stripe-setup.ts --webhook --domain https://<preview or tunnel>
- *   STRIPE_SECRET_KEY=sk_live_... NEXT_PUBLIC_SITE_URL=https://youbank.com pnpm exec tsx scripts/stripe-setup.ts --live --webhook [--tax]
+ *   STRIPE_SECRET_KEY=sk_live_... NEXT_PUBLIC_SITE_URL=https://youbank.dev pnpm exec tsx scripts/stripe-setup.ts --live --webhook [--tax]
  *   pnpm exec tsx scripts/stripe-setup.ts --dry-run        (no key needed: prints what it would do)
  *
  * What it does:
@@ -26,7 +26,7 @@
 import Stripe from "stripe";
 import { packPrices, packProductId, planPrices, portalConfig, PORTAL_MARK, productId, SAAS_TAX_CODE, webhookEvents, webhookUrl, envLines } from "@/lib/billing/setup";
 import { PLANS } from "@/lib/billing/plans";
-import { DEFAULT_SITE_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
+import { VERCEL_APP_URL, normaliseSiteUrl, resolveSiteUrl } from "@/lib/site";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(`--${name}`);
@@ -110,7 +110,7 @@ async function main() {
     const liveKey = /^(sk|rk)_live_/.test(key);
     if (liveKey && !live) { console.error("That is a live key. Run again with --live to set up real billing."); process.exit(1); }
     if (live && !liveKey) { console.error("--live needs a live key (sk_live_... or rk_live_...). Copy it from the Stripe dashboard once the account is activated."); process.exit(1); }
-    if (live && (site === DEFAULT_SITE_URL || !normaliseSiteUrl(siteRaw))) { console.error(`Set NEXT_PUBLIC_SITE_URL (or pass --domain https://<your domain>) for a live run; it would otherwise use ${site}.`); process.exit(1); }
+    if (live && (site === VERCEL_APP_URL || !normaliseSiteUrl(siteRaw))) { console.error(`Set NEXT_PUBLIC_SITE_URL (or pass --domain https://<your domain>) for a live run; it would otherwise use ${site}.`); process.exit(1); }
   }
   const hook = flag("webhook") ? value("webhook") ?? webhookUrl(site) : null;
   console.log(`${dry ? "Dry run: what would be set up" : `Setting up ${live ? "LIVE" : "test"} billing`} for ${site}`);

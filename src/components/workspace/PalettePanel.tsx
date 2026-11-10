@@ -4,13 +4,11 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
-import { useTheme } from "@/components/theme/ThemeProvider";
-import { THEMES } from "@/lib/themes";
 import { FEATURES } from "@/lib/nav";
 import { emitSubNav } from "@/lib/subnav";
 import { requestCrmSearch } from "@/lib/client/crm-query";
 import { asComparison, asTicker, pushRecent, rank, score, type PaletteItem } from "@/lib/palette";
-import { BACKGROUNDS, BUILTIN_LOOKS, CORE_FEATURES, FONTS, LAYOUTS, SCALES, WALLPAPERS } from "@/lib/desk/desk";
+import { CORE_FEATURES, LAYOUTS } from "@/lib/desk/desk";
 import { useNav } from "./NavContext";
 import { useWorkspace } from "./WorkspaceProvider";
 
@@ -34,16 +32,12 @@ const SETTINGS: { id: string; label: string; icon: string; keywords: string }[] 
   { id: "desktop", label: "Desktop app", icon: "Download", keywords: "mac windows install" },
 ];
 const LAYOUT_NAME = { focus: "Focus", home: "Home", desk: "Desk" } as const;
-const SCALE_NAME: Record<number, string> = { 0.9: "Compact", 1: "Standard", 1.1: "Large", 1.25: "Larger" };
-const FONT_NAME: Record<string, string> = { sans: "Sans", serif: "Serif", mono: "Mono", system: "System" };
-const BG_NAME: Record<string, string> = { theme: "the style's own", plain: "Plain", mesh: "Glow", grid: "Grid", dots: "Dots" };
 
 export function Palette({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const path = usePathname();
   const nav = useNav();
-  const { tools, desk, setDesk, look, setLook, looks, config, profile, setWatchlist } = useWorkspace();
-  const { themeId, setTheme } = useTheme();
+  const { tools, desk, setDesk, config, profile, setWatchlist } = useWorkspace();
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
   const [recent, setRecent] = useState<string[]>(readRecent);
@@ -81,15 +75,6 @@ export function Palette({ onClose }: { onClose: () => void }) {
     }
     for (const t of tools) c.push({ id: `tool:${t.id}`, label: t.title, group: "Tools", icon: t.icon, hint: t.kind === "ai" ? "AI workflow" : "Calculator", keywords: `${t.tagline} ${(t.tags ?? []).join(" ")} ${t.category}`, href: `/app/tools/${t.id}` });
     for (const l of LAYOUTS) c.push({ id: `layout:${l}`, label: `Home layout: ${LAYOUT_NAME[l]}`, group: "Home", icon: l === "focus" ? "Focus" : l === "home" ? "Sofa" : "LayoutGrid", on: desk.layout === l, keywords: "dashboard view switch", run: () => { setDesk({ layout: l }); if (path !== "/app") router.push("/app"); } });
-    for (const p of [...looks, ...BUILTIN_LOOKS]) c.push({ id: `look:${p.name}`, label: `Look: ${p.name}`, group: "Style", icon: "Paintbrush", hint: looks.includes(p) ? "yours" : "built in", keywords: `preset ${p.theme}`, run: () => { setTheme(p.theme); setLook(p.look); } });
-    for (const t of THEMES) c.push({ id: `theme:${t.id}`, label: `Style: ${t.name}`, group: "Style", icon: "Palette", hint: t.mode, keywords: `theme ${t.tagline} ${t.family}`, on: themeId === t.id, run: () => { setTheme(t.id); if (look.system) setLook({ system: false }); } });
-    for (const s of SCALES) c.push({ id: `scale:${s}`, label: `Size: ${SCALE_NAME[s]}`, group: "Look", icon: "Maximize2", keywords: "zoom text bigger smaller scale", on: look.scale === s, run: () => setLook({ scale: s }) });
-    for (const f of FONTS) c.push({ id: `font:${f}`, label: `Typeface: ${FONT_NAME[f]}`, group: "Look", icon: "Type", keywords: "font", on: look.font === f, run: () => setLook({ font: f }) });
-    for (const b of BACKGROUNDS) c.push({ id: `bg:${b}`, label: `Background: ${BG_NAME[b]}`, group: "Look", icon: "Image", keywords: "wallpaper", on: look.background === b, run: () => setLook({ background: b }) });
-    for (const w of WALLPAPERS) c.push({ id: `wall:${w}`, label: `Wallpaper: ${w === "none" ? "none" : w[0].toUpperCase() + w.slice(1)}`, group: "Look", icon: "Sofa", keywords: "home backdrop gradient cozy", on: look.wallpaper === w, run: () => setLook({ wallpaper: w }) });
-    c.push({ id: "look:system", label: look.system ? "Match my system's light and dark: off" : "Match my system's light and dark: on", group: "Look", icon: "Contrast", keywords: "auto dark mode light mode os appearance", run: () => setLook({ system: !look.system }) });
-    c.push({ id: "look:contrast", label: look.contrast === "high" ? "High contrast: off" : "High contrast: on", group: "Look", icon: "Contrast", keywords: "accessibility legibility", run: () => setLook({ contrast: look.contrast === "high" ? "normal" : "high" }) });
-    c.push({ id: "look:motion", label: look.motion === "reduced" ? "Reduced motion: off" : "Reduced motion: on", group: "Look", icon: "Move", keywords: "animation accessibility", run: () => setLook({ motion: look.motion === "reduced" ? "full" : "reduced" }) });
     for (const f of FEATURES) {
       if (CORE_FEATURES.includes(f.id) || (f.roles && !f.roles.includes(profile.role))) continue;
       const hidden = desk.hidden.includes(f.id);
@@ -102,7 +87,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
     c.push({ id: "app:bar", label: "Customize the top bar", group: "App", icon: "SlidersHorizontal", keywords: "pin reorder", run: () => nav.customize() });
     c.push({ id: "app:setup", label: "Set up my desk for me", group: "App", icon: "Wand2", keywords: "personalize auto recommend", href: "/app/settings?tab=desk", event: { path: "/app/settings", value: "desk" } });
     return c;
-  }, [nav, tools, desk, setDesk, look, setLook, looks, themeId, setTheme, path, router, profile.role]);
+  }, [nav, tools, desk, setDesk, path, router, profile.role]);
 
   const results = useMemo<Command[]>(() => {
     const query = q.trim();
