@@ -14,6 +14,12 @@ import { shared } from "./shared";
 /** Tables the schema push creates and every page needs. */
 export const CORE_TABLES = ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache"];
 
+/**
+ * Columns every signed-in request reads, from migrations: without them sign-in itself fails (Better Auth
+ * reads two_factor_enabled with every session), so a deploy ahead of them shows "being set up" instead.
+ */
+export const CORE_COLUMNS: [string, string][] = [["auth_users", "two_factor_enabled"], ["crm_settings", "postal_address"]];
+
 /** drizzle/NNNN_*.sql: the tables each creates and its last index ("" when it creates none). */
 export const MIGRATIONS: [string, string[], string][] = [
   ["0001_teams", ["teams", "team_members", "team_invites"], "team_invites_email_idx"],
@@ -45,10 +51,17 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0027_scale", ["ai_spend"], "ai_spend_day_idx"],
   ["0028_source_stats", ["source_stats"], "source_stats_minute_idx"],
   ["0029_data_sources", ["user_data_sources"], "user_data_sources_updated_idx"],
+  ["0030_mail_compliance", [], ""],
+  ["0031_two_factor", ["auth_two_factor"], "auth_two_factor_user_idx"],
+  ["0032_analytics", ["analytics_activity", "analytics_cohorts", "analytics_modules"], ""],
+  ["0033_research_ledger", ["research_ledger"], "research_ledger_user_seq_uidx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
-const COLUMNS: [string, string, string][] = [["0010_contact_knowledge", "crm_messages", "topics"]];
+const COLUMNS: [string, string, string][] = [
+  ["0010_contact_knowledge", "crm_messages", "topics"], ["0030_mail_compliance", "crm_settings", "postal_address"],
+  ["0031_two_factor", "auth_users", "two_factor_enabled"],
+];
 
 export type SchemaStatus = { core: string[]; migrations: { name: string; missing: string[] }[] };
 
@@ -101,6 +114,10 @@ export async function setupState(): Promise<SetupState> {
   try {
     const r = await db.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
     missing = r.rows.length;
+    if (!missing) {
+      const c = await db.execute<{ n: number }>(sql`select count(*)::int as n from information_schema.columns where table_schema = 'public' and (table_name, column_name) in (${sql.join(CORE_COLUMNS.map(([t, col]) => sql`(${t}, ${col})`), sql`, `)})`);
+      missing = CORE_COLUMNS.length - Number(c.rows[0]?.n ?? 0);
+    }
   } catch {
     // The check itself failed (a slow or unreachable database): serve the app, not "being set up". The
     // page's own queries then succeed or reach the error screen; nothing is remembered, so the next

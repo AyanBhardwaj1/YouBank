@@ -93,8 +93,9 @@ function threadStatus(t: Thread): { label: string; tone: string } | null {
   return null;
 }
 
-export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab, initialMeeting = null }: {
+export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthError, initialTab, initialMeeting = null, initialQuery = "" }: {
   needsMigration: boolean; aiConfigured: boolean; connected: string | null; oauthError: string | null; initialTab: string | null; initialMeeting?: number | null;
+  /** ?q=: the contacts search, filled in (the command palette's people results link here). */ initialQuery?: string;
 }) {
   const [tab, setTab] = useState<Tab>(TABS.find((t) => t.id === initialTab)?.id ?? "drafts");
   useIdlePreload([ContactsPanel, MeetingsPanel, InsightsPanel, NurturePanel, CampaignsPanel, AgentSettings]);
@@ -352,7 +353,7 @@ export function CrmWorkspace({ needsMigration, aiConfigured, connected, oauthErr
         </div>
       )}
 
-      {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} /></div>}
+      {tab === "contacts" && <div className="mt-5"><ContactsPanel ctx={ctx} initialQuery={initialQuery} /></div>}
       {tab === "meetings" && <div className="mt-5"><MeetingsPanel ctx={ctx} initialMeeting={initialMeeting} onDrafted={() => setTab("drafts")} /></div>}
       {tab === "insights" && <div className="mt-5"><InsightsPanel ctx={ctx} /></div>}
       {tab === "nurture" && <div className="mt-5"><NurturePanel ctx={ctx} onDrafted={() => setTab("drafts")} /></div>}

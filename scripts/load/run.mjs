@@ -15,6 +15,7 @@
  *   node scripts/load/run.mjs --base http://localhost:3301 --users /tmp/loadtest-users.json --db $DATABASE_URL \
  *     --vus 100 --streams 20 --duration 60 --stats /tmp/server-stats.json --label after --out /tmp/after.json
  */
+import { createHmac } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import postgres from "postgres";
 import { guardTarget, parseArgs, percentile } from "./common.mjs";
@@ -52,10 +53,16 @@ async function sampleConnections() {
   connSamples.push(c);
 }
 const results = new Map();
-const record = (name, ms, ok, status) => {
-  const r = results.get(name) ?? { lat: [], errors: 0, statuses: {} };
+/**
+ * Error text that must never reach a person: a stack frame, a JS or driver error name, SQL or a system
+ * error code. Any response body that matches counts as a raw error, whatever its status.
+ */
+const RAW_ERROR = /\bat [\w.<>]+ \(|\b(TypeError|ReferenceError|SyntaxError|RangeError)\b|\bECONN\w+|\bETIMEDOUT\b|\bsyntax error at\b|\brelation "[^"]+" does not exist|\bduplicate key value\b|\bCannot read propert|\bis not a function\b|\bundefined is not\b|\bnull value in column\b|\bPostgresError\b/;
+const record = (name, ms, ok, status, raw = false) => {
+  const r = results.get(name) ?? { lat: [], errors: 0, raw: 0, statuses: {} };
   r.lat.push(ms);
   if (!ok) r.errors++;
+  if (raw) r.raw++;
   r.statuses[status] = (r.statuses[status] ?? 0) + 1;
   results.set(name, r);
 };
@@ -78,6 +85,24 @@ async function as(u, path, init = {}) {
   return res;
 }
 const get = (path) => (u) => as(u, typeof path === "function" ? path(u) : path);
+
+/**
+ * Unsubscribe links as campaign mail carries them (src/lib/crm/compliance.ts): signed per sender and
+ * recipient with a key derived from EMAIL_TOKEN_SECRET. Needs --db to find each user's id; without the
+ * secret or the database the unsubscribe scenarios are skipped.
+ */
+const unsubKey = process.env.EMAIL_TOKEN_SECRET ? createHmac("sha256", process.env.EMAIL_TOKEN_SECRET).update("youbank:unsubscribe:v1").digest() : null;
+const unsubPath = (userId, email) => {
+  const payload = Buffer.from(JSON.stringify({ u: userId, e: email })).toString("base64url");
+  return `/api/unsubscribe/${payload}.${createHmac("sha256", unsubKey).update(payload).digest("base64url")}`;
+};
+const anon = (path, init = {}) => fetch(`${base}${path}`, { redirect: "manual", signal: AbortSignal.timeout(30_000), ...init });
+// Each user's unsubscribe link (to an address that is not one of their contacts, so opting out changes nothing).
+if (pg && unsubKey) {
+  const ids = new Map((await pg`select id, email from auth_users where email like 'loadtest+%'`).map((r) => [r.email, r.id]));
+  users.forEach((u, i) => { const id = ids.get(u.email); if (id) u.unsub = unsubPath(id, `nobody-${i}@youbank-loadtest.dev`); });
+}
+
 const MIX = [
   { name: "page /app", weight: 10, run: get("/app") },
   { name: "page /app/news", weight: 5, run: get("/app/news") },
@@ -96,6 +121,21 @@ const MIX = [
   { name: "algo hub", weight: 3, run: get("/api/algo/strategies") },
   { name: "quant status", weight: 2, run: get("/api/quant/status") },
   { name: "calendar upcoming", weight: 3, run: get("/api/calendar/upcoming?hours=72") },
+  { name: "page /app/crm", weight: 3, run: get("/app/crm") },
+  { name: "page settings security", weight: 2, run: get("/app/settings?tab=security") },
+  { name: "crm settings", weight: 3, run: get("/api/crm/settings") },
+  { name: "step-up state", weight: 3, run: get("/api/security/step-up") },
+  { name: "two-factor state", weight: 2, run: get("/api/security/two-factor") },
+  // Home's desk: the inbox and the checklist load with every Home view; layout and look saves are frequent clicks.
+  { name: "desk inbox", weight: 6, run: get("/api/desk/inbox") },
+  { name: "desk checklist", weight: 4, run: get("/api/desk/checklist") },
+  { name: "waiting badge", weight: 6, run: get("/api/desk/inbox?counts=1") },
+  { name: "palette crm search", weight: 3, run: get("/api/crm/search?q=acme") },
+  { name: "prefs save (look)", weight: 3, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ look: { scale: [0.9, 1, 1.1][Math.floor(Math.random() * 3)] } }) }) },
+  { name: "prefs save (desk layout)", weight: 2, run: (u) => as(u, "/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ desk: { layout: ["focus", "home", "desk"][Math.floor(Math.random() * 3)] } }) }) },
+  { name: "page settings style", weight: 2, run: get("/app/settings?tab=style") },
+  { name: "unsubscribe page", weight: 1, run: (u) => (u.unsub ? anon(u.unsub) : null) },
+  { name: "unsubscribe one-click", weight: 1, run: (u) => (u.unsub ? anon(u.unsub, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" }) : null) },
   { name: "ai chat (mock)", weight: 4, run: (u) => as(u, "/api/ai/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "What moved oil prices this week?" }], context: { ticker: "XOM", panels: [] } }) }) },
 ];
 const total = MIX.reduce((n, s) => n + s.weight, 0);
@@ -107,20 +147,21 @@ async function virtualUser(u, until) {
   while (Date.now() < until) {
     const s = pick();
     const t0 = performance.now();
-    let status = 0, ok = false;
+    let status = 0, ok = false, raw = false;
     try {
       const res = await s.run(u);
       if (!res) continue;
       status = res.status;
       const body = await res.arrayBuffer(); // the whole body, streamed chat included
       ok = status < 400;
+      raw = RAW_ERROR.test(new TextDecoder().decode(body));
       // A 200 can still carry per-ticker failures; count those as failures too.
       if (ok && s.name === "companies") {
         const data = JSON.parse(new TextDecoder().decode(body));
         if (Object.values(data).some((c) => c && typeof c === "object" && "error" in c)) { ok = false; status = "200 with ticker errors"; }
       }
     } catch { status = -1; }
-    record(s.name, performance.now() - t0, ok, status);
+    record(s.name, performance.now() - t0, ok, status, raw);
     await sleep(thinkMin + Math.random() * (thinkMax - thinkMin));
   }
 }
@@ -231,7 +272,7 @@ const seconds = (Date.now() - t0) / 1000;
 
 const scenarios = [...results.entries()].map(([name, r]) => {
   const lat = [...r.lat].sort((a, b) => a - b);
-  return { name, requests: lat.length, errors: r.errors, errorRate: lat.length ? r.errors / lat.length : 0, p50: percentile(lat, 50), p95: percentile(lat, 95), p99: percentile(lat, 99), statuses: r.statuses };
+  return { name, requests: lat.length, errors: r.errors, rawErrors: r.raw, errorRate: lat.length ? r.errors / lat.length : 0, p50: percentile(lat, 50), p95: percentile(lat, 95), p99: percentile(lat, 99), statuses: r.statuses };
 }).sort((a, b) => b.requests - a.requests);
 const all = [...results.values()].flatMap((r) => r.lat).sort((a, b) => a - b);
 // The mock AI chat streams for about a second by design and makes up ~4% of requests, so it sits right on
@@ -261,7 +302,9 @@ console.log(`\n\n${summary.label} (${summary.mode}, ${args.sessions} sessions): 
 console.log(`database: ${f(sql)} ${summary.db.counted} = ${f(summary.db.perSecond, 1)}/s, ${f(summary.db.perRequest, 2)} per request; connections open max ${conn.openMax}, active max ${conn.activeMax} (avg ${f(conn.activeAvg, 1)}), idle in transaction max ${conn.idleInTxMax}`);
 console.log(`server: CPU ${f(summary.server.cpuMsPerRequest, 1)} ms per request (${f((summary.server.cpuShare ?? 0) * 100)}% of a core); event loop delay p99 median ${f(summary.server.eventLoopP99Median, 1)} ms, worst p99 ${f(summary.server.eventLoopP99Max, 1)} ms, max ${f(summary.server.eventLoopMax, 1)} ms; heap ${f(summary.server.heapMB)} MB, rss ${f(summary.server.rssMB)} MB; blocked outbound ${f(summary.server.blocked)}`);
 console.log(`streams: ${streams.connections} connections, ${streams.events} events, ${streams.errors} errors; writes ${streams.writes} (${streams.writeErrors} failed); edit to screen p50 ${f(summary.streams.propagationP50)} ms, p95 ${f(summary.streams.propagationP95)} ms`);
-for (const s of scenarios) console.log(`  ${s.name.padEnd(22)} ${String(s.requests).padStart(5)} req  p50 ${f(s.p50).padStart(6)}  p95 ${f(s.p95).padStart(6)}  p99 ${f(s.p99).padStart(6)} ms  errors ${s.errors}`);
+for (const s of scenarios) console.log(`  ${s.name.padEnd(24)} ${String(s.requests).padStart(5)} req  p50 ${f(s.p50).padStart(6)}  p95 ${f(s.p95).padStart(6)}  p99 ${f(s.p99).padStart(6)} ms  errors ${s.errors}${s.rawErrors ? `  RAW ERROR TEXT ${s.rawErrors}` : ""}  ${JSON.stringify(s.statuses)}`);
+const rawTotal = scenarios.reduce((n, s) => n + s.rawErrors, 0);
+console.log(rawTotal ? `\nRaw error text in ${rawTotal} responses.` : "\nNo response carried raw error text.");
 if (topStatements.length) {
   console.log("slowest statements by total time:");
   for (const t of topStatements) console.log(`  ${String(t.total_ms).padStart(9)} ms total  ${String(t.calls).padStart(6)} calls  mean ${String(t.mean_ms).padStart(7)} ms  ${t.query.slice(0, 140)}`);

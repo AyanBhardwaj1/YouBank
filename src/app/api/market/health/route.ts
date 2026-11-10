@@ -4,7 +4,7 @@ import { cacheGet } from "@/lib/cache";
 import { UA as SEC_UA } from "@/lib/edgar/client";
 import { breakers } from "@/lib/market/breaker";
 import { budget } from "@/lib/market/budgets";
-import { BASE as NASDAQ, HEADERS as NASDAQ_HEADERS, backupEnabled } from "@/lib/market/nasdaq";
+import { BASE as NASDAQ, HEADERS as NASDAQ_HEADERS, backupEnabled, nasdaqEnabled } from "@/lib/market/nasdaq";
 import { REGISTRY } from "@/lib/market/registry";
 import { flushSourceStats, sourceHealth } from "@/lib/market/stats";
 
@@ -78,6 +78,7 @@ export async function GET(req: Request) {
   const b = budget("interactive");
   return NextResponse.json({
     backups: backupEnabled() ? "on" : "off (MARKET_BACKUP=off)",
+    nasdaq: nasdaqEnabled() ? "on" : "off",
     fmpDailyLimitHit: !!(await within(cacheGet("fmp:daily-limit"), DB_MS, null)),
     secUserAgentSet: !!process.env.EDGAR_USER_AGENT,
     research: { model: process.env.MARKET_RESEARCH_MODEL || "gpt-5.6-luna", escalation: process.env.MARKET_RESEARCH_ESCALATION_MODEL || "gpt-5.4-mini", openaiKey: !!process.env.OPENAI_API_KEY, budgetMs: b.researchMs },

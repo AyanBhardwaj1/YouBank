@@ -48,7 +48,7 @@ export function MeetingSettingsForm({ ctx, settings, botUnlocked, onSaved }: { c
           <Field label="Never record meetings that mention" hint="Words in the meeting's title or window, separated by commas: “board, HR, interview”.">
             <input value={keywords} onChange={(e) => setKeywords(e.target.value)} className={input} />
           </Field>
-          <Field label="Start without asking for these apps" hint="Off by default. The recording indicator still shows, and the Stop button works as always. Only use it where you always have consent.">
+          <Field label="Ask right away for these apps" hint="Skips the “call detected” offer and goes straight to the recording confirmation. Every recording still needs you to confirm that everyone on the call knows.">
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {APPS.filter((a) => !s.neverApps.includes(a)).map((a) => <label key={a} className="flex items-center gap-1 text-[12px]"><input type="checkbox" checked={s.autoStartApps.includes(a)} onChange={() => setS({ ...s, autoStartApps: toggleApp(s.autoStartApps, a) })} />{PLATFORM_LABEL[a]}</label>)}
             </div>

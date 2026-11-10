@@ -9,6 +9,8 @@ const root = document.getElementById("pill");
 let st = null; // meeting_state
 let step = null; // "consent" once Start was chosen on an offer, "stopping" while confirming Stop
 let copied = false;
+let attested = false; // "Everyone on this call knows it is being recorded", required to start
+let promptKey = ""; // the call the confirmation is for: a different call starts unticked
 let tick = null;
 
 const LABEL = { zoom: "Zoom", teams: "Microsoft Teams", meet: "Google Meet", webex: "Webex", slack: "Slack huddle" };
@@ -28,8 +30,9 @@ async function load() {
 
 async function start() {
   const p = st.prompt ?? { app: "other", title: "" };
-  const s = await invoke("meeting_start", { args: { platform: p.app, appTitle: p.title, noticeCopied: copied, auto: false } }).catch((e) => { toast(errorText(e), true); return null; });
-  if (s) { step = null; copied = false; await load(); }
+  if (!attested) return;
+  const s = await invoke("meeting_start", { args: { platform: p.app, appTitle: p.title, noticeCopied: copied, attested: true, auto: false } }).catch((e) => { toast(errorText(e), true); return null; });
+  if (s) { step = null; copied = false; attested = false; await load(); }
 }
 
 async function copyNotice() {
@@ -65,6 +68,8 @@ function recording(s) {
 function render() {
   if (!st) return;
   const p = st.prompt;
+  const key = p ? `${p.app}\u0000${p.title}` : "";
+  if (key !== promptKey) { promptKey = key; attested = false; copied = false; }
   let body;
   if (st.session) body = recording(st.session);
   else if (p && p.kind === "offer" && step !== "consent") {
@@ -77,11 +82,14 @@ function render() {
     ];
   } else if (p || step === "consent") {
     body = [
-      h("p", null, h("strong", null, "Record this meeting?"), " Some places require everyone's consent before a call is recorded. Let the others know, for example in the chat."),
+      h("p", null, h("strong", null, "Record this meeting?"), " Some places require everyone's consent before a call is recorded. Tell the others, for example by pasting the notice in the chat."),
+      h("label", { class: "row small" },
+        h("input", { type: "checkbox", checked: attested, onchange: (e) => { attested = e.target.checked; render(); } }),
+        "Everyone on this call knows it is being recorded"),
       h("div", { class: "row" },
-        h("button", { class: "btn primary", onclick: start }, "Start recording"),
+        h("button", { class: "btn primary", onclick: start, disabled: !attested }, "Start recording"),
         h("button", { class: "btn", onclick: copyNotice }, copied ? "Notice copied" : "Copy notice"),
-        h("button", { class: "btn link", onclick: () => { step = null; invoke("meeting_dismiss", { never: false }).then(load); } }, "Cancel")),
+        h("button", { class: "btn link", onclick: () => { step = null; attested = false; invoke("meeting_dismiss", { never: false }).then(load); } }, "Cancel")),
     ];
   } else {
     clearInterval(tick);

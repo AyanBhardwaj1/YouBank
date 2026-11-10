@@ -67,7 +67,7 @@ export async function deliverAlert(ctx: ReaderContext, n: { key: string; title: 
   const ch = ctx.prefs.alerts.channels;
   const attempt = async (name: string, f: () => Promise<unknown>) => { try { const r = await f(); out[name] = typeof r === "number" && r === 0 ? "no device" : new Date().toISOString(); } catch (e) { out[name] = `error: ${failureMessage(e, `news-alert-${name}`).slice(0, 160)}`; } };
   if (ch.includes("push") && !quiet) await attempt("push", () => pushToUser(ctx.userId, { title: n.title, body: n.body.slice(0, 180), url: n.url, tag: n.key, urgent: n.urgent }));
-  if (ch.includes("slack") && ctx.prefs.slack && !quiet) await attempt("slack", () => slackPost(ctx.prefs.slack!, `${n.urgent ? ":rotating_light: " : ""}*${n.title}*\n${n.reasons.join(" · ")}\n${n.body.slice(0, 300)}\n<${origin}${n.url}|Open in YouBank>`));
+  if (ch.includes("slack") && ctx.prefs.slack && !quiet) await attempt("slack", () => slackPost(ctx.prefs.slack!, `${n.urgent ? ":rotating_light: " : ""}*${n.title}*\n${n.reasons.join(" · ")}\n${n.body.slice(0, 300)}\n<${/^https?:\/\//.test(n.url) ? n.url : `${origin}${n.url}`}|Open in YouBank>`));
   if (ch.includes("email") && n.urgent) await attempt("email", () => emailSelf(ctx.userId, origin, alertEmail(n, origin)));
   return out;
 }

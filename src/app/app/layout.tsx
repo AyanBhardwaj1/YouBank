@@ -5,6 +5,7 @@ import { currentUser } from "@/lib/auth/user";
 import { WorkspaceProvider } from "@/components/workspace/WorkspaceProvider";
 import { AppShell } from "@/components/workspace/AppShell";
 import { normalizeNavPrefs } from "@/lib/nav";
+import { normalizeDesk } from "@/lib/desk/desk";
 import { catalogFor } from "@/lib/workflows/catalog";
 import { ThemeSync } from "@/components/theme/ThemeSync";
 import { SetupScreen } from "@/components/ui/SetupScreen";
@@ -33,9 +34,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const extra = (p.extra ?? {}) as Record<string, unknown>;
   const savedTheme = typeof extra.theme === "string" ? extra.theme : null;
   return (
-    <WorkspaceProvider profile={profile} edge tools={catalogFor(profile)}>
-      <ThemeSync theme={savedTheme} />
-      <AppShell email={user.email} initialNav={normalizeNavPrefs(extra.nav, profile.role)}>{children}</AppShell>
+    <WorkspaceProvider profile={profile} edge tools={catalogFor(profile)} desk={extra.desk} look={extra.look} looks={extra.looks} watchlist={extra.watchlist} starred={extra.starredTools}>
+      <ThemeSync theme={savedTheme} look={extra.look} />
+      <AppShell email={user.email} initialNav={normalizeNavPrefs(extra.nav, profile.role, normalizeDesk(extra.desk, profile.role).hidden)}>{children}</AppShell>
     </WorkspaceProvider>
   );
 }

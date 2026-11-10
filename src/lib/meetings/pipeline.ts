@@ -54,26 +54,34 @@ function zoneOf(input: { tz?: unknown; utcOffsetMin?: unknown }): { tz?: string;
 
 export type StartInput = {
   title?: string; platform?: string; appTitle?: string;
-  consent: { noticeCopied?: boolean; auto?: boolean };
+  /** `attested`: the person confirmed everyone on the call knows it is recorded. Required for every start. */
+  consent: { noticeCopied?: boolean; auto?: boolean; attested?: boolean };
   /** Where the person is: an IANA zone, or the computer's UTC offset in minutes (for due dates). */
   tz?: unknown; utcOffsetMin?: unknown;
   contactIds?: unknown; dealIds?: unknown;
 };
 
-/** A desktop meeting begins, once the person has agreed to the consent prompt (or set auto-start for this app). */
+export const CONSENT_NEEDED = "Confirm that everyone on the call knows it is being recorded, then start. If the app asked nothing, update the YouBank desktop app.";
+
+/** Why a desktop start is refused for consent, or null. Every start needs the confirmation; none starts on its own. Pure. */
+export const consentProblem = (c: StartInput["consent"]): string | null => (c.attested === true && !c.auto ? null : CONSENT_NEEDED);
+
+/**
+ * A desktop meeting begins, once the person has confirmed everyone on the call knows it is recorded.
+ * Desktop capture has no bot in the call to announce itself, so that confirmation (with the notice they
+ * can paste in the chat) is the consent record; an app set to "ask right away" still asks.
+ */
 export async function startDesktopMeeting(user: User, deviceId: number | null, input: StartInput): Promise<MeetingRow> {
   if (!pickTranscriber()) throw status(NO_TRANSCRIBER, 503);
   await rateLimit(`meetings-start:${user.id}`, 30, 86_400_000, "Many meetings today already. The copilot will be available again tomorrow.");
   const platform = isPlatform(input.platform) ? input.platform : "other";
-  // Starting without the consent prompt is only for an app the person set to start on its own; the
-  // app's copy of that setting can be minutes old, so the server's copy decides.
-  if (input.consent.auto && !(await getMeetingSettings(user.id)).autoStartApps.some((a) => a === platform)) {
-    throw status("This app is not set to start the copilot on its own. Agree to the recording prompt first.", 403);
-  }
+  // Every start needs the person's confirmation; older desktop apps that started without asking are refused.
+  const refused = consentProblem(input.consent);
+  if (refused) throw status(refused, 403);
   const ctx = await meetingContext(user.id, new Date(), { title: input.appTitle, platform, contactIds: ids(input.contactIds), dealIds: ids(input.dealIds) });
   return createMeeting(user.id, {
     source: "desktop", platform, title: (input.title ?? "").trim() || ctx.title, deviceId,
-    consent: { at: new Date().toISOString(), by: user.email, noticeCopied: !!input.consent.noticeCopied, auto: !!input.consent.auto },
+    consent: { at: new Date().toISOString(), by: user.email, attested: true, noticeCopied: !!input.consent.noticeCopied, auto: false },
     context: { ...ctx, appTitle: (input.appTitle ?? "").slice(0, 200), ...zoneOf(input) },
     participants: ctx.people.map((p) => ({ name: p.name, email: p.email })),
   });
@@ -226,11 +234,12 @@ export async function sendBot(user: User, input: { meetingUrl: string; title?: s
   const ctx = await meetingContext(user.id, new Date(), { meetingUrl: url, platform: platformOfUrl(url) ?? "other", contactIds: ids(input.contactIds), dealIds: ids(input.dealIds) });
   const m = await createMeeting(user.id, {
     source: "bot", status: "joining", platform: platformOfUrl(url) ?? "other", meetingUrl: url, title: (input.title ?? "").trim() || ctx.title,
-    consent: { at: new Date().toISOString(), by: user.email, auto: how === "auto" }, context: { ...ctx, ...zoneOf(input) },
+    // The bot joins under its own name and posts the notice in the meeting chat for everyone.
+    consent: { at: new Date().toISOString(), by: user.email, auto: how === "auto", noticePosted: true }, context: { ...ctx, ...zoneOf(input) },
     participants: ctx.people.map((p) => ({ name: p.name, email: p.email })),
   });
   try {
-    const bot = await provider.createBot({ meetingUrl: url, botName: settings.botName, meetingId: m.id });
+    const bot = await provider.createBot({ meetingUrl: url, botName: settings.botName, meetingId: m.id, notice: settings.noticeText });
     return updateMeeting(m.id, { botId: bot.botId, bot: { provider: provider.id, status: bot.code, statusAt: new Date().toISOString() } });
   } catch (e) {
     await updateMeeting(m.id, { status: "failed", error: describeFailure(e, 502, "meetings-bot").message });

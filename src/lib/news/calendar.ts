@@ -6,7 +6,7 @@
  */
 import { historyFrom } from "@/lib/market/data";
 import { publicOnly } from "@/lib/market/user-context";
-import { backupEnabled, nasdaqEarningsDate } from "@/lib/market/nasdaq";
+import { nasdaqEarningsDate, nasdaqEnabled } from "@/lib/market/nasdaq";
 import type { Desk } from "./desks";
 
 export type CalEvent = { at: string; label: string; kind: "data" | "earnings"; ticker?: string; estimated?: boolean };
@@ -45,7 +45,7 @@ export function recurringEvents(desk: Desk, now: Date, days = 7): CalEvent[] {
 
 /** Next earnings dates for watchlist companies within `days` days (Nasdaq's calendar, cached six hours). */
 export async function earningsEvents(tickers: string[], now: Date, days = 14): Promise<CalEvent[]> {
-  if (!backupEnabled()) return [];
+  if (!nasdaqEnabled()) return [];
   const until = now.getTime() + days * 86_400_000;
   const rows = await Promise.all(tickers.slice(0, 10).map(async (t) => ({ t, d: await nasdaqEarningsDate(t).catch(() => null) })));
   return rows.filter((r) => r.d?.date && Date.parse(r.d.date) >= now.getTime() - 86_400_000 && Date.parse(r.d.date) <= until)

@@ -64,7 +64,8 @@ export function evaluate(src: string, vars: Record<string, number> = {}): number
         const f = FN[t.v.toLowerCase()]; if (!f) throw new Error(`Unknown function ${t.v}`);
         return f(...args);
       }
-      if (t.v in vars) return vars[t.v];
+      // Own keys only: a name like constructor or __proto__ must not reach the object's prototype.
+      if (Object.hasOwn(vars, t.v)) return vars[t.v];
       if (t.v.toLowerCase() === "pi") return Math.PI; if (t.v.toLowerCase() === "e") return Math.E;
       throw new Error(`Unknown variable ${t.v}`);
     }

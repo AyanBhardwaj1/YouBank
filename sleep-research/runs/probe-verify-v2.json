@@ -1,0 +1,69 @@
+{
+  "probe": "P1 v2: verify-every-figure with realistic error types",
+  "evalType": "synthetic_proxy",
+  "seed": 20261031,
+  "companiesInContext": 5,
+  "trials": 300,
+  "results": {
+    "pool": {
+      "trueAccept": {
+        "rate": 0.99,
+        "n": 2100
+      },
+      "falseAccept": {
+        "perturb": {
+          "rate": 0.523,
+          "n": 2100
+        },
+        "wrong_field": {
+          "rate": 0.987,
+          "n": 1800
+        },
+        "wrong_scale": {
+          "rate": 0.526,
+          "n": 1200
+        }
+      }
+    },
+    "entity_typed": {
+      "trueAccept": {
+        "rate": 1,
+        "n": 2100
+      },
+      "falseAccept": {
+        "perturb": {
+          "rate": 0.037,
+          "n": 2100
+        },
+        "wrong_field": {
+          "rate": 1,
+          "n": 1800
+        },
+        "wrong_scale": {
+          "rate": 0.008,
+          "n": 1200
+        }
+      }
+    },
+    "field_bound": {
+      "trueAccept": {
+        "rate": 1,
+        "n": 2100
+      },
+      "falseAccept": {
+        "perturb": {
+          "rate": 0.023,
+          "n": 2100
+        },
+        "wrong_field": {
+          "rate": 0.031,
+          "n": 1800
+        },
+        "wrong_scale": {
+          "rate": 0.003,
+          "n": 1200
+        }
+      }
+    }
+  }
+}

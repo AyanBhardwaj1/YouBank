@@ -28,6 +28,9 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
         ? await client.signIn.email({ email: email.trim(), password })
         : await client.signUp.email({ name: name.trim() || email.trim().split("@")[0], email: email.trim(), password });
       if (res?.error) { setError(signInError(res.error)); setBusy(false); return; }
+      // Two-factor is on: the auth client is already taking the browser to the code page, and there is
+      // no session yet, so going to `next` here would only bounce back to sign-in.
+      if (res?.data && "twoFactorRedirect" in res.data && res.data.twoFactorRedirect) return;
       // A full load, so the server renders the signed-in app with the new session cookie.
       // A new account goes through onboarding first, then on to where it was headed (an invitation link).
       window.location.assign(mode === "in" ? next : next === "/app" ? "/onboarding" : `/onboarding?next=${encodeURIComponent(next)}`);

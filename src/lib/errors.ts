@@ -29,6 +29,19 @@ const statusOf = (e: unknown): number | null => {
 /** Our own fetch timeouts (AbortSignal.timeout) and aborted upstream calls. */
 export const isTimeout = (e: unknown) => ["TimeoutError", "AbortError"].includes((e as { name?: string } | null)?.name ?? "");
 
+const UNREACHABLE = "A data source we rely on is not answering right now. Try again shortly.";
+/**
+ * A network failure reaching an outside service (DNS, refused or reset connection): fetch's "fetch failed"
+ * with a system error as its cause. Not our bug and not the person's: a 503 they can retry.
+ */
+export function isUnreachable(e: unknown): boolean {
+  // Only fetch's own failure with a network cause: an invalid header or a bad certificate is our bug, and
+  // our own database's connection errors are not "a data source" to retry blindly.
+  if (!(e instanceof Error) || e.name !== "TypeError" || e.message !== "fetch failed") return false;
+  const code = (e as { cause?: { code?: unknown } }).cause?.code;
+  return typeof code === "string" && /^(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET)$/.test(code);
+}
+
 /** The message a person may see. `ref` points at the log line when the real message was withheld. */
 export function publicMessage(e: unknown, ref?: string): string {
   if (isTimeout(e)) return TOO_SLOW;
@@ -68,6 +81,10 @@ export function describeFailure(e: unknown, fallbackStatus = 500, where?: string
   if (isPendingMigration(e)) {
     const ref = logError(e, { status: 503, where: where ?? "pending-migration" });
     return { status: 503, message: `${SETTING_UP} (ref ${ref}). Try again later, and if it keeps happening, quote the reference.`, ref };
+  }
+  if (isUnreachable(e)) {
+    const ref = logError(e, { status: 503, where: where ?? "upstream" });
+    return { status: 503, message: `${UNREACHABLE} (ref ${ref})`, ref };
   }
   const raw = e instanceof Error ? e.message : String(e ?? "");
   const internal = looksInternal(raw, e instanceof Error ? e.name : "");
@@ -123,10 +140,20 @@ export function isPendingMigration(e: unknown): boolean {
   return false;
 }
 
+/**
+ * A machine-readable reason the browser may act on (`two_factor_required` opens the code dialog): only
+ * our own lower_snake codes on a refusal below 500, never a driver's or the system's ("42P01", "ECONNRESET").
+ */
+const publicCode = (e: unknown, status: number): string | null => {
+  const c = (e as { code?: unknown } | null)?.code;
+  return status < 500 && typeof c === "string" && /^[a-z][a-z0-9_]{2,40}$/.test(c) ? c : null;
+};
+
 /** The JSON response for an error (see describeFailure). */
 export function errorResponse(e: unknown, fallbackStatus = 500, extra: Record<string, unknown> = {}): Response {
   const f = describeFailure(e, fallbackStatus);
-  return Response.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), ...extra }, { status: f.status });
+  const code = publicCode(e, f.status);
+  return Response.json({ error: f.message, ...(f.ref ? { ref: f.ref } : {}), ...(code ? { code } : {}), ...extra }, { status: f.status });
 }
 
 /**

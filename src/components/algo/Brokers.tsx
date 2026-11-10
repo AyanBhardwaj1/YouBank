@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { confirmDialog } from "@/components/ui/Dialog";
 import { Icon } from "@/components/ui/Icon";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
+import { ensureStepUp } from "@/lib/client/step-up";
 import { useAlgoConsent } from "./AlgoConsent";
 import { call, json, when } from "./client";
 
@@ -27,15 +28,20 @@ export function Brokers({ connected, reason }: { connected?: string | null; reas
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => fetchJson<{ connections: Conn[]; setup: Setup }>("/api/algo/connections").then(setData).catch((e) => setError(errorMessage(e))), []);
   useEffect(() => { void load(); }, [load]);
+  // Saving keys and signing in with Alpaca each need a fresh authenticator code first (lib/client/step-up).
   const add = async () => {
     setBusy(true); setError(null);
-    try { await call("/api/algo/connections", json("POST", { broker: form, ...f }), ask); setForm(null); setF({ env: "paper" }); await load(); }
-    catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
+    try {
+      if (!(await ensureStepUp())) return;
+      await call("/api/algo/connections", json("POST", { broker: form, ...f }), ask); setForm(null); setF({ env: "paper" }); await load();
+    } catch (e) { setError(errorMessage(e)); } finally { setBusy(false); }
   };
   const oauth = async (env: "paper" | "live") => {
     setError(null);
-    try { const r = await call<{ url: string }>("/api/algo/connections/alpaca", json("POST", { env }), ask); window.location.href = r.url; }
-    catch (e) { setError(errorMessage(e)); }
+    try {
+      if (!(await ensureStepUp())) return;
+      const r = await call<{ url: string }>("/api/algo/connections/alpaca", json("POST", { env }), ask); window.location.href = r.url;
+    } catch (e) { setError(errorMessage(e)); }
   };
   if (!data) return error ? <p className="text-[12px] text-neg">{error}</p> : <div className="shimmer h-40 rounded-md" />;
   const s = data.setup;

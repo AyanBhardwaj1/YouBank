@@ -1,3 +1,4 @@
+import { questionNoticeKey, settleQuestionNotices } from "./question-notice";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { requireDb, schema } from "@/db";
@@ -75,12 +76,23 @@ export async function deletePlaybookEntry(userId: string, id: number): Promise<v
 export async function recordQuestions(userId: string, draftId: number, threadId: number | null, items: { question: string; context: string }[]): Promise<QuestionRow[]> {
   const db = requireDb();
   if (threadId) {
-    await db.update(schema.crmQuestions).set({ status: "dismissed" })
-      .where(and(eq(schema.crmQuestions.userId, userId), eq(schema.crmQuestions.threadId, threadId), eq(schema.crmQuestions.status, "open")));
+    const closed = await db.update(schema.crmQuestions).set({ status: "dismissed" })
+      .where(and(eq(schema.crmQuestions.userId, userId), eq(schema.crmQuestions.threadId, threadId), eq(schema.crmQuestions.status, "open")))
+      .returning({ draftId: schema.crmQuestions.draftId });
+    await settleQuestionNotices(userId, closed.map((c) => c.draftId).filter((d) => d !== draftId));
   }
   const clean = items.map((q) => ({ question: q.question.trim().slice(0, 500), context: q.context.trim().slice(0, 1000) })).filter((q) => q.question).slice(0, 5);
   if (clean.length === 0) return [];
-  return db.insert(schema.crmQuestions).values(clean.map((q) => ({ userId, draftId, threadId, ...q }))).returning();
+  const rows = await db.insert(schema.crmQuestions).values(clean.map((q) => ({ userId, draftId, threadId, ...q }))).returning();
+  // In the bell too, so a question is seen from any page, not only on Home (one per draft; best effort).
+  const notice = {
+    title: clean.length === 1 ? "The email agent has a question" : `The email agent has ${clean.length} questions`,
+    body: clean[0].question.slice(0, 600),
+  };
+  // New questions on a draft whose earlier ones were settled reopen its notice.
+  await db.insert(schema.newsNotifications).values({ userId, key: questionNoticeKey(draftId), kind: "agent", url: "/app", urgent: false, ...notice })
+    .onConflictDoUpdate({ target: [schema.newsNotifications.userId, schema.newsNotifications.key], set: { ...notice, readAt: null, createdAt: new Date() } }).catch(() => undefined);
+  return rows;
 }
 
 export async function listOpenQuestions(userId: string) {

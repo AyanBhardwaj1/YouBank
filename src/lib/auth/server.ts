@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { twoFactor } from "better-auth/plugins";
 import { requireDb, schema } from "@/db";
 import { authBaseUrl, authTrustedOrigins } from "./origins";
 import { AUTH_RATE_RULES, authRateStorage } from "./rate-limit";
@@ -30,7 +31,7 @@ function build() {
     secret,
     database: drizzleAdapter(requireDb(), {
       provider: "pg",
-      schema: { user: schema.authUsers, session: schema.authSessions, account: schema.authAccounts, verification: schema.authVerifications },
+      schema: { user: schema.authUsers, session: schema.authSessions, account: schema.authAccounts, verification: schema.authVerifications, twoFactor: schema.authTwoFactor },
     }),
     // Email and password always; Google when its OAuth client is set. With no mail sender yet there is
     // no emailed reset: an admin resets a forgotten password.
@@ -47,8 +48,16 @@ function build() {
       // Vercel sets x-real-ip to the caller's address; the limits are counted per address.
       ipAddress: { ipAddressHeaders: ["x-real-ip", "x-forwarded-for"] },
     },
-    // Lets server actions and route handlers set the refreshed session cookie through next/headers.
-    plugins: [nextCookies()],
+    plugins: [
+      // An authenticator app (TOTP) and backup codes. Password sign-in with it on stops at
+      // /sign-in/two-factor for a code; Google sign-in is not challenged by the plugin, so risky actions
+      // ask for a fresh code themselves (src/lib/auth/step-up). Google-only accounts have no password,
+      // so they enrol and disable without one (a password is still asked for when the account has one).
+      twoFactor({ issuer: "YouBank", allowPasswordless: true }),
+      // Lets server actions and route handlers set the refreshed session cookie through next/headers.
+      // Must stay last.
+      nextCookies(),
+    ],
   });
 }
 

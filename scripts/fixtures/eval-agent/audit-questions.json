@@ -1,0 +1,325 @@
+{
+  "about": "Typical analyst questions for the B0 real-answer audit (sleep-research/EXPERIMENT_PLAN.md). No expected figures: a person labels every figure in the answers.",
+  "questions": [
+    {
+      "id": "audit:AAPL:0",
+      "kind": "audit",
+      "ticker": "AAPL",
+      "question": "What were AAPL's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:AAPL:1",
+      "kind": "audit",
+      "ticker": "AAPL",
+      "question": "How fast is AAPL growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:MSFT:0",
+      "kind": "audit",
+      "ticker": "MSFT",
+      "question": "What were MSFT's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:MSFT:1",
+      "kind": "audit",
+      "ticker": "MSFT",
+      "question": "How fast is MSFT growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NVDA:0",
+      "kind": "audit",
+      "ticker": "NVDA",
+      "question": "What were NVDA's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NVDA:1",
+      "kind": "audit",
+      "ticker": "NVDA",
+      "question": "How fast is NVDA growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:SNOW:0",
+      "kind": "audit",
+      "ticker": "SNOW",
+      "question": "What were SNOW's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:SNOW:1",
+      "kind": "audit",
+      "ticker": "SNOW",
+      "question": "How fast is SNOW growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:DDOG:0",
+      "kind": "audit",
+      "ticker": "DDOG",
+      "question": "What were DDOG's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:DDOG:1",
+      "kind": "audit",
+      "ticker": "DDOG",
+      "question": "How fast is DDOG growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CRWD:0",
+      "kind": "audit",
+      "ticker": "CRWD",
+      "question": "What were CRWD's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CRWD:1",
+      "kind": "audit",
+      "ticker": "CRWD",
+      "question": "How fast is CRWD growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NET:0",
+      "kind": "audit",
+      "ticker": "NET",
+      "question": "What were NET's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NET:1",
+      "kind": "audit",
+      "ticker": "NET",
+      "question": "How fast is NET growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:MDB:0",
+      "kind": "audit",
+      "ticker": "MDB",
+      "question": "What were MDB's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:MDB:1",
+      "kind": "audit",
+      "ticker": "MDB",
+      "question": "How fast is MDB growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:JPM:0",
+      "kind": "audit",
+      "ticker": "JPM",
+      "question": "What were JPM's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:JPM:1",
+      "kind": "audit",
+      "ticker": "JPM",
+      "question": "How fast is JPM growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:XOM:0",
+      "kind": "audit",
+      "ticker": "XOM",
+      "question": "What were XOM's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:XOM:1",
+      "kind": "audit",
+      "ticker": "XOM",
+      "question": "How fast is XOM growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:UBER:0",
+      "kind": "audit",
+      "ticker": "UBER",
+      "question": "What were UBER's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:UBER:1",
+      "kind": "audit",
+      "ticker": "UBER",
+      "question": "How fast is UBER growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ABNB:0",
+      "kind": "audit",
+      "ticker": "ABNB",
+      "question": "What were ABNB's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ABNB:1",
+      "kind": "audit",
+      "ticker": "ABNB",
+      "question": "How fast is ABNB growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:SHOP:0",
+      "kind": "audit",
+      "ticker": "SHOP",
+      "question": "What were SHOP's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:SHOP:1",
+      "kind": "audit",
+      "ticker": "SHOP",
+      "question": "How fast is SHOP growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ZS:0",
+      "kind": "audit",
+      "ticker": "ZS",
+      "question": "What were ZS's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ZS:1",
+      "kind": "audit",
+      "ticker": "ZS",
+      "question": "How fast is ZS growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:TEAM:0",
+      "kind": "audit",
+      "ticker": "TEAM",
+      "question": "What were TEAM's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:TEAM:1",
+      "kind": "audit",
+      "ticker": "TEAM",
+      "question": "How fast is TEAM growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ORCL:0",
+      "kind": "audit",
+      "ticker": "ORCL",
+      "question": "What were ORCL's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ORCL:1",
+      "kind": "audit",
+      "ticker": "ORCL",
+      "question": "How fast is ORCL growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CRM:0",
+      "kind": "audit",
+      "ticker": "CRM",
+      "question": "What were CRM's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CRM:1",
+      "kind": "audit",
+      "ticker": "CRM",
+      "question": "How fast is CRM growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ADBE:0",
+      "kind": "audit",
+      "ticker": "ADBE",
+      "question": "What were ADBE's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:ADBE:1",
+      "kind": "audit",
+      "ticker": "ADBE",
+      "question": "How fast is ADBE growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NFLX:0",
+      "kind": "audit",
+      "ticker": "NFLX",
+      "question": "What were NFLX's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:NFLX:1",
+      "kind": "audit",
+      "ticker": "NFLX",
+      "question": "How fast is NFLX growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CAT:0",
+      "kind": "audit",
+      "ticker": "CAT",
+      "question": "What were CAT's LTM revenue, gross margin and operating margin? Cite each figure.",
+      "expected": [],
+      "provenance": "audit"
+    },
+    {
+      "id": "audit:CAT:1",
+      "kind": "audit",
+      "ticker": "CAT",
+      "question": "How fast is CAT growing, and what does it trade at on EV/revenue? Show the numbers with sources.",
+      "expected": [],
+      "provenance": "audit"
+    }
+  ]
+}

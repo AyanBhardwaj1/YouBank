@@ -14,6 +14,8 @@ export const authUsers = pgTable("auth_users", {
   image: text("image"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Set by Better Auth's twoFactor plugin once the first authenticator code is verified (drizzle/0031). */
+  twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
 });
 
 export const authSessions = pgTable("auth_sessions", {
@@ -53,6 +55,21 @@ export const authVerifications = pgTable("auth_verifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("auth_verifications_identifier_idx").on(t.identifier)]);
+
+/**
+ * Two-factor (Better Auth's twoFactor plugin, drizzle/0031): the authenticator (TOTP) secret and the
+ * backup codes, both encrypted with BETTER_AUTH_SECRET. `verified` is false until the first code is
+ * entered; the failure count and lock are the plugin's own sign-in lockout.
+ */
+export const authTwoFactor = pgTable("auth_two_factor", {
+  id: text("id").primaryKey(),
+  secret: text("secret").notNull(),
+  backupCodes: text("backup_codes").notNull(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  verified: boolean("verified").default(true),
+  failedVerificationCount: integer("failed_verification_count").default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+}, (t) => [index("auth_two_factor_user_idx").on(t.userId)]);
 
 /** Saved peer groups (user-created or saved from an AI proposal). */
 export const peerGroups = pgTable("peer_groups", {
@@ -615,6 +632,8 @@ export const crmSettings = pgTable("crm_settings", {
   about: text("about").notNull().default(""),
   /** Added to every email sent from YouBank. Mail sent through an API gets no client signature. */
   signature: text("signature").notNull().default(""),
+  /** The sender's postal address, required in campaign and nurture mail (drizzle/0030_mail_compliance.sql). */
+  postalAddress: text("postal_address").notNull().default(""),
   /** Email domains that count as coworkers. Empty means the connected mailbox's own domain. */
   internalDomains: jsonb("internal_domains").$type<string[]>().notNull().default([]),
   /** See AutopilotSettings. Normalized on every read. */
@@ -1896,7 +1915,7 @@ export const meetings = pgTable("meetings", {
   bot: jsonb("bot").$type<{ provider?: string; status?: string; statusAt?: string; joinedAt?: string; endedAt?: string; error?: string; polledAt?: string; hours?: number; costUsd?: number }>().notNull().default({}),
   context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
   participants: jsonb("participants").$type<MeetingParticipantJson[]>().notNull().default([]),
-  consent: jsonb("consent").$type<{ at?: string; by?: string; noticeCopied?: boolean; auto?: boolean }>().notNull().default({}),
+  consent: jsonb("consent").$type<{ at?: string; by?: string; attested?: boolean; noticeCopied?: boolean; noticePosted?: boolean; auto?: boolean }>().notNull().default({}),
   live: jsonb("live").$type<{ on?: boolean; since?: string; minutes?: number; lastAt?: string; brief?: unknown }>().notNull().default({}),
   notes: jsonb("notes").$type<Record<string, unknown>>(),
   notesAt: ts("notes_at"),
@@ -2449,3 +2468,24 @@ export const quantBaseRates = pgTable("quant_base_rates", {
   body: jsonb("body").$type<Record<string, unknown>>().notNull(),
   computedAt: ts("computed_at").notNull().defaultNow(),
 });
+
+/**
+ * The research ledger (src/lib/ledger, migration 0033): an append-only, hash-chained record of what the
+ * AI was asked and answered for a person, with sources, model and sign-offs, kept when they turn it on.
+ * Each row's hash covers its content and the previous row's hash, so any later change shows.
+ */
+export const researchLedger = pgTable("research_ledger", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  seq: integer("seq").notNull(),
+  at: timestamp("at", { withTimezone: true }).notNull(),
+  kind: text("kind").notNull(),
+  subject: text("subject").notNull().default(""),
+  model: text("model").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  output: text("output").notNull().default(""),
+  sources: jsonb("sources").$type<{ id: string; label: string; url: string }[]>().notNull().default([]),
+  meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+  prev: text("prev").notNull().default(""),
+  hash: text("hash").notNull(),
+}, (t) => [uniqueIndex("research_ledger_user_seq_uidx").on(t.userId, t.seq)]);

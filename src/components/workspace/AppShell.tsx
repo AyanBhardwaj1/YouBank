@@ -3,7 +3,8 @@
 /**
  * The signed-in frame: the top bar, the sidebar and the page. Holds how this person arranges the top
  * bar (which features are pinned, in what order, with or without labels) and the sidebar (open, and
- * docked beside the page or over it), and saves changes to their profile. Cmd/Ctrl+\ toggles the sidebar.
+ * docked beside the page or over it), and saves changes to their profile. Cmd/Ctrl+\ toggles the sidebar;
+ * Cmd/Ctrl+K opens the command palette.
  *
  * On a phone the same pieces rearrange: the top bar slims to the page's name and the account controls,
  * the pinned features become a tab bar along the bottom, and the sidebar opens as a "More" sheet.
@@ -18,15 +19,26 @@ import { Sidebar } from "./Sidebar";
 import { MobileTabBar } from "./MobileTabBar";
 import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
+import { StepUpHost } from "@/components/security/StepUpHost";
+import { CommandPalette } from "./CommandPalette";
+import { Shortcuts } from "./Shortcuts";
+import { WhatsNew } from "./WhatsNew";
+import { SystemTheme } from "@/components/theme/SystemTheme";
+import { listenForInstall } from "@/lib/client/install";
+import { recordVisit, visitFor } from "@/lib/client/recent";
+import { claimAiHistory } from "@/lib/client/ai-history";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const persist = (nav: NavPrefs) => {
   void fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nav }) }).catch(() => {});
 };
 
 export function AppShell({ email, initialNav, children }: { email: string; initialNav: NavPrefs; children: React.ReactNode }) {
-  const { profile } = useWorkspace();
-  const features = useMemo(() => featuresFor(profile.role), [profile.role]);
-  const [prefs, setPrefs] = useState(initialNav);
+  const { profile, desk } = useWorkspace();
+  const features = useMemo(() => featuresFor(profile.role, desk.hidden), [profile.role, desk.hidden]);
+  const [saved, setPrefs] = useState(initialNav);
+  // A feature taken out of the navigation in Settings leaves the top bar at once.
+  const prefs = useMemo(() => ({ ...saved, pinned: saved.pinned.filter((id) => !desk.hidden.includes(id)) }), [saved, desk.hidden]);
   const [open, setOpenState] = useState(initialNav.dock);
   const [customizing, setCustomizing] = useState(false);
   // On a phone the sidebar is the "More" sheet: it has its own open state, starts closed whatever the
@@ -36,6 +48,21 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
   const isOpen = phone ? sheet : open;
 
   const setOpen = (o: boolean) => { if (phone) setSheet(o); else setOpenState(o); if (!o) setCustomizing(false); };
+
+  // Home's "Jump back in": each page, tool or ticker opened, kept in this browser.
+  const path = usePathname();
+  const search = useSearchParams().toString();
+  const { tools } = useWorkspace();
+  useEffect(() => {
+    const v = visitFor(path, search ? `?${search}` : "", features, tools, Date.now());
+    if (v) recordVisit(v);
+  }, [path, search, features, tools]);
+
+  // Kept AI conversations belong to the account signed in here (src/lib/client/ai-history.ts).
+  useEffect(() => { if (email) claimAiHistory(email); }, [email]);
+
+  // The browser's offer to install the app can come before Home's checklist is there to show it.
+  useEffect(() => listenForInstall(), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,6 +93,16 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
           <div className="min-h-0 min-w-0 flex-1 px-safe">{children}</div>
         </div>
         <MobileTabBar />
+        {/* The authenticator-code dialog before risky actions (src/lib/client/step-up). */}
+        <StepUpHost />
+        {/* ⌘K: go anywhere, open a ticker, change the look, or ask (CommandPalette). */}
+        <CommandPalette />
+        {/* G then a letter to go to a feature, ? for the list (Shortcuts). */}
+        <Shortcuts />
+        {/* Style follows the device's light or dark setting when the person asked for that. */}
+        <SystemTheme />
+        {/* Once per release: what is new, each tried in one click. */}
+        <WhatsNew />
       </div>
     </NavCtx.Provider>
   );

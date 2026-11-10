@@ -324,6 +324,7 @@ async function testClient() {
   check("anything off the app or outside /app is the app's home", offsite.every((v) => safeNext(v) === "/app"), offsite.filter((v) => safeNext(v) !== "/app"));
   const climbs = ["/app/../api/auth/sign-out", "/app/%2e%2e/sign-in", "/app/%2E%2E/api/crm/deals", "/app/.%2e/api", "/app%2f..%2f..%2fapi", "/app/%0d%0aSet-Cookie:x=1"];
   check("dot segments, plain or encoded, cannot climb out to /api, auth or sign-in (no loop)", climbs.every((v) => safeNext(v) === "/app"), climbs.map((v) => [v, safeNext(v)]));
+  check("an OAuth consent link survives sign-in, its query intact", safeNext("/app/connect/authorize?client_id=ybc_x&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=a+b:c~d,e") === "/app/connect/authorize?client_id=ybc_x&redirect_uri=https%3A%2F%2Fclaude.ai%2Fcb&state=a+b:c~d,e");
   check("a path inside the app is returned resolved", safeNext("/app/a/../news") === "/app/news" && safeNext("/app//evil.example").startsWith("/app/"));
 
   console.log("the proxy");

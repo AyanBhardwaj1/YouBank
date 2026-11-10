@@ -2,10 +2,14 @@
 
 /** Shared helpers for the Algo trading screens: formatting (copy trading's), API calls with the consent step, and types. */
 import { ApiError, fetchJson } from "@/lib/client/errors";
+import { retryAfterStepUp } from "@/lib/client/step-up";
 
 export { json, newKey, num, pct, usd } from "@/components/copy/client";
 
-/** An API call; a 428 means a consent is missing, and `onConsent` is asked for it before one retry. */
+/**
+ * An API call; a 428 means a consent is missing, and `onConsent` is asked for it before one retry. A 403
+ * `two_factor_required` (an authenticator code is due) asks for the code before one retry.
+ */
 export async function call<T>(url: string, init: RequestInit | undefined, onConsent: (kind: "terms" | "live") => Promise<boolean>): Promise<T> {
   try {
     return await fetchJson<T>(url, init);
@@ -14,6 +18,7 @@ export async function call<T>(url: string, init: RequestInit | undefined, onCons
       const kind = /real orders/i.test(e.message) ? "live" : "terms";
       if (await onConsent(kind)) return fetchJson<T>(url, init);
     }
+    if (await retryAfterStepUp(e)) return fetchJson<T>(url, init);
     throw e;
   }
 }

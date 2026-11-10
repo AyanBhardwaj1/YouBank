@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { publicStories } from "@/lib/news/public";
 import { ROLE_IDS } from "@/lib/roles";
 import { LEGAL, siteUrl } from "@/lib/site";
+import { sitemapTickers } from "@/lib/public/company-page";
 
 /** Rebuilt at most hourly: the Newsroom's public stories change through the day. */
 export const revalidate = 3600;
@@ -20,6 +21,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...Object.values(LEGAL).map((path) => ({ url: `${BASE}${path}`, lastModified: now, changeFrequency: "monthly" as const, priority: 0.2 })),
     ...ROLE_IDS.map((r) => ({ url: `${BASE}/for/${r}`, lastModified: now, changeFrequency: "weekly" as const, priority: 0.8 })),
     { url: `${BASE}/news`, lastModified: now, changeFrequency: "hourly", priority: 0.9 },
+    { url: `${BASE}/c`, lastModified: now, changeFrequency: "weekly", priority: 0.6 },
+    // Public company pages (/c/TICKER): the saved peer groups' names and the default watchlist.
+    ...sitemapTickers().map((t) => ({ url: `${BASE}/c/${t}`, lastModified: now, changeFrequency: "daily" as const, priority: 0.6 })),
     ...stories.map((s) => ({ url: `${BASE}/news/${s.slug}`, lastModified: new Date(s.updatedAt), changeFrequency: "daily" as const, priority: Math.round((0.5 + 0.3 * Math.min(1, s.importance)) * 100) / 100 })),
   ];
 }

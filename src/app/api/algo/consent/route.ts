@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { guarded } from "@/lib/auth/user";
+import { requireRecentTwoFactor } from "@/lib/auth/step-up";
 import { CROSS_SITE, giveConsent, requestMeta, sameSiteJson } from "@/lib/algo/access";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export async function POST(req: Request) {
   return guarded(async (user) => {
     const body = (await req.json().catch(() => ({}))) as { kind?: unknown };
     if (body.kind !== "terms" && body.kind !== "live") return NextResponse.json({ error: "Choose which text you accept." }, { status: 400 });
+    // Agreeing to live trading needs a fresh authenticator code (src/lib/auth/step-up).
+    if (body.kind === "live") await requireRecentTwoFactor(user);
     await giveConsent(user, body.kind, 0, null, requestMeta(req));
     return NextResponse.json({ ok: true });
   });

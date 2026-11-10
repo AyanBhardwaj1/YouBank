@@ -1,12 +1,14 @@
 import { and, desc, eq, gte, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { settleQuestionNotices } from "./question-notice";
 import { requireDb, schema } from "@/db";
 import { listAccounts, type AccountRow } from "./accounts";
 import { approveAction, scanFollowUps } from "./actions";
 import {
-  audienceOf, autoSendVerdict, capReached, insideWindow, levelFor, nextSendTime,
+  audienceOf, autoSendVerdict, capReached, holdOnError, insideWindow, levelFor, nextSendTime,
   type AutonomyScope,
 } from "./autopilot-rules";
 import { prepareCampaign } from "./campaigns";
+import { isCommercial } from "./compliance";
 import { createDraft, ingestThreadDelta, mailboxAddresses, processThread, supersedeReplies, type DraftRow } from "./db";
 import { chooseArm, formatVariant, parseVariant, slotWindow, trustGate, unapprovedDetails } from "./engine";
 import { listPlaybook } from "./knowledge";
@@ -15,7 +17,7 @@ import { openMailbox, type Mailbox } from "./mailbox";
 import { sendDraft } from "./send";
 import { claimLock, getSettings, internalDomains, releaseLock, type SettingsRow } from "./settings";
 import { syncAccount, type SyncResult } from "./sync";
-import { describeFailure } from "@/lib/errors";
+import { describeFailure, logError } from "@/lib/errors";
 import { AUTOPILOT, CAMPAIGNS, planAllows } from "./plan";
 import { PLANS } from "@/lib/billing/plans";
 
@@ -86,6 +88,7 @@ async function checkDraft(draft: DraftRow, settings: SettingsRow) {
     openQuestions: draft.citations.length, needsInput: questions.length, body: draft.body, subject: draft.subject,
     recipients: draft.toAddresses.map((a) => a.address), recipientOptedOut: !!contact?.optedOutAt,
     replyingToAutomated: !!answering?.automated, autoSentInThread: autoSent,
+    postalAddressMissing: isCommercial(draft.kind) && !settings.postalAddress.trim(),
   });
   // The person switched Autopilot on, so "Autopilot is off" would mislead: say it is the plan.
   const verdict = settings.autopilot.enabled && !planOk
@@ -98,7 +101,7 @@ async function checkDraft(draft: DraftRow, settings: SettingsRow) {
     const foreign = unapprovedDetails(`${draft.subject}\n${draft.body}`, approved);
     if (foreign.length) return { level, ok: false, reasons: [`It contains ${foreign.length === 1 ? "a link or detail" : "links or details"} you have not approved (${foreign.slice(0, 2).join(", ")})`] };
     // Earned autonomy: probation, or a spot check that keeps the person's labels coming.
-    const hold = await trustGate(draft.userId, draft).catch(() => null);
+    const hold = await holdOnError(trustGate(draft.userId, draft), (e) => logError(e, { where: "autopilot-trust-gate" }));
     if (hold) return { level, ok: false, reasons: [hold] };
   }
   return { level, ...verdict };
@@ -180,6 +183,7 @@ export async function answerQuestion(userId: string, questionId: number, answer:
   if (!q.draftId) return { question: q, draft: null, scheduled: false, remaining: 0 };
   const remaining = await openQuestionsFor(q.draftId);
   if (remaining.length) return { question: q, draft: null, scheduled: false, remaining: remaining.length };
+  await settleQuestionNotices(userId, [q.draftId]);
 
   const [old] = await db.select().from(schema.crmDrafts).where(eq(schema.crmDrafts.id, q.draftId));
   if (!old || old.status !== "pending" || !old.threadId) return { question: q, draft: null, scheduled: false, remaining: 0 };
@@ -196,9 +200,11 @@ export async function answerQuestion(userId: string, questionId: number, answer:
 }
 
 export async function dismissQuestion(userId: string, questionId: number): Promise<void> {
-  await requireDb().update(schema.crmQuestions).set({ status: "dismissed" })
-    .where(and(eq(schema.crmQuestions.id, questionId), eq(schema.crmQuestions.userId, userId)));
+  const [q] = await requireDb().update(schema.crmQuestions).set({ status: "dismissed" })
+    .where(and(eq(schema.crmQuestions.id, questionId), eq(schema.crmQuestions.userId, userId))).returning({ draftId: schema.crmQuestions.draftId });
+  if (q?.draftId && !(await openQuestionsFor(q.draftId)).length) await settleQuestionNotices(userId, [q.draftId]);
 }
+
 
 /* ---------------- The send queue ---------------- */
 

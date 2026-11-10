@@ -53,3 +53,6 @@ next-env.d.ts
 ml/.venv/
 __pycache__/
 ml/__pycache__/
+
+# Agent worktrees (Claude Code)
+.claude/worktrees/

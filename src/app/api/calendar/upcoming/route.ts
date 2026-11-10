@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * For the meeting copilot (docs/calendar.md). Signed-in session only.
- * - `GET /api/calendar/upcoming?hours=24` → { meetings: Meeting[] } starting in the next N hours (max 168).
+ * - `GET /api/calendar/upcoming?hours=24` → { meetings: Meeting[] } starting in the next N hours (max 168);
+ *   `&ongoing=1` also returns meetings already under way.
  * - `GET /api/calendar/upcoming?at=<ISO>` → { meeting: Meeting | null }, the meeting happening then.
  */
 export async function GET(req: Request) {
@@ -19,6 +20,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ meeting: await getMeetingAt(user.id, t, { leadMinutes: Number(q.get("lead") ?? 10) || 10 }) });
     }
     const hours = Math.min(Math.max(Number(q.get("hours") ?? 24) || 24, 1), 168);
-    return NextResponse.json({ meetings: await getUpcomingMeetings(user.id, { hours, limit: Number(q.get("limit") ?? 50) || 50 }) });
+    return NextResponse.json({ meetings: await getUpcomingMeetings(user.id, { hours, limit: Number(q.get("limit") ?? 50) || 50, ongoing: q.get("ongoing") === "1" }) });
   });
 }

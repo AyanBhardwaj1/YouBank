@@ -16,18 +16,18 @@ export async function GET(req: Request) {
 }
 
 /**
- * Start capturing a meeting, after the person agreed to the consent prompt on this computer (or set
- * this app to start on its own): { platform, appTitle, title?, consent: { noticeCopied, auto }, contactIds?, dealIds? }.
+ * Start capturing a meeting, after the person confirmed on this computer that everyone on the call knows
+ * it is recorded: { platform, appTitle, title?, consent: { attested: true, noticeCopied }, contactIds?, dealIds? }.
  * Refused when the person's never-record settings cover it, or when no transcription is set up.
  */
 export async function POST(req: Request) {
   return guardedDesktop(req, async (user, device) => {
-    const body = (await req.json().catch(() => null)) as { platform?: unknown; appTitle?: unknown; title?: unknown; consent?: { noticeCopied?: unknown; auto?: unknown }; contactIds?: unknown; dealIds?: unknown; tz?: unknown; utcOffsetMin?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as { platform?: unknown; appTitle?: unknown; title?: unknown; consent?: { noticeCopied?: unknown; auto?: unknown; attested?: unknown }; contactIds?: unknown; dealIds?: unknown; tz?: unknown; utcOffsetMin?: unknown } | null;
     if (!body?.consent || typeof body.consent !== "object") return NextResponse.json({ error: "Agree to the recording notice first." }, { status: 400 });
     const m = await startDesktopMeeting(user, device?.id ?? null, {
       platform: typeof body.platform === "string" ? body.platform : "other",
       appTitle: typeof body.appTitle === "string" ? body.appTitle : "", title: typeof body.title === "string" ? body.title : "",
-      consent: { noticeCopied: body.consent.noticeCopied === true, auto: body.consent.auto === true },
+      consent: { noticeCopied: body.consent.noticeCopied === true, auto: body.consent.auto === true, attested: body.consent.attested === true },
       contactIds: body.contactIds, dealIds: body.dealIds, tz: body.tz, utcOffsetMin: body.utcOffsetMin,
     });
     return NextResponse.json({ meeting: publicMeeting(m) });

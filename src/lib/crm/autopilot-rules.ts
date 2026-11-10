@@ -201,6 +201,8 @@ export type SendCheck = {
   replyingToAutomated: boolean;
   /** How many emails autopilot already sent in this conversation in the last day. */
   autoSentInThread: number;
+  /** Commercial mail (campaign, nurture) with no postal address set to put in it. */
+  postalAddressMissing?: boolean;
 };
 
 /**
@@ -223,7 +225,19 @@ export function autoSendVerdict(c: SendCheck): { ok: boolean; reasons: string[] 
   if (c.recipientOptedOut && c.kind !== "reply") reasons.push("The recipient asked not to be contacted");
   if (c.replyingToAutomated) reasons.push("It answers an automated message");
   if (c.autoSentInThread >= 2) reasons.push("Autopilot already sent twice in this conversation today");
+  if (c.postalAddressMissing) reasons.push("Outreach needs your postal address, which is not set (Relationships settings)");
   return { ok: reasons.length === 0, reasons };
+}
+
+/** The hold reason when the earned-autonomy check itself cannot run. */
+export const TRUST_UNAVAILABLE = "Its track record could not be checked just now, so it waits for you";
+
+/**
+ * A gate that fails closed: if the check throws (a database timeout on a cron relay, say), the draft
+ * waits with a reason instead of going out as if the check had passed.
+ */
+export async function holdOnError(check: Promise<string | null>, onError?: (e: unknown) => void): Promise<string | null> {
+  try { return await check; } catch (e) { onError?.(e); return TRUST_UNAVAILABLE; }
 }
 
 /** Rolling-day count of automatic sends against the cap. */

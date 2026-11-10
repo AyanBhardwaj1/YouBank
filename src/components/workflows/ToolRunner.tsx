@@ -6,6 +6,16 @@ import type { ToolDef, WorkflowOutput, Inputs } from "@/lib/workflows/types";
 import { FieldsForm, defaultInputs } from "./FieldsForm";
 import { OutputBlocks, outputToMarkdown } from "./OutputBlocks";
 import { Icon } from "@/components/ui/Icon";
+import { StarButton } from "./ToolCard";
+import { FigureCheck } from "@/components/ai/FigureCheck";
+import { CostLine } from "@/components/ai/CostLine";
+import type { FigureReport } from "@/lib/ai/figures";
+
+/** A saved run's figure report, when it has a well-formed one. */
+const figuresOf = (o: unknown): FigureReport | null => {
+  const f = (o as { figures?: Partial<FigureReport> } | null)?.figures;
+  return f && Array.isArray(f.figures) && typeof f.checkable === "number" ? (f as FigureReport) : null;
+};
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { readSse, errorOf } from "@/lib/client/sse";
 import { errorMessage, safeText } from "@/lib/client/errors";
@@ -29,6 +39,8 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<WorkflowOutput | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
+  // This run's figures checked against their cited sources (saved with the run, under output.figures).
+  const [figures, setFigures] = useState<FigureReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ model?: string; durationMs?: number; runId?: number | null }>({});
   const [runs, setRuns] = useState<RunSummary[] | null>(null);
@@ -77,7 +89,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
       // The output schema (zod) loads only when a saved run is opened, not with every tool page.
       const { WorkflowOutput: OutputSchema } = await import("@/lib/workflows/schema");
       const parsed = OutputSchema.safeParse(row.output);
-      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
+      if (parsed.success) { setOutput(parsed.data); setSources(row.sources ?? []); setFigures(figuresOf(row.output)); setInputs((cur) => ({ ...cur, ...(row.inputs ?? {}) })); setMeta({ model: row.model, durationMs: row.durationMs, runId: row.id }); }
     } catch (e) { setError(errorMessage(e)); }
   }, []);
 
@@ -88,7 +100,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
 
   const run = async () => {
     if (tool.kind !== "ai" || busy) return;
-    setBusy(true); setEvents([]); setThinking(""); setProgress(0); setOutput(null); setSources([]); setError(null); setMeta({});
+    setBusy(true); setEvents([]); setThinking(""); setProgress(0); setOutput(null); setSources([]); setFigures(null); setError(null); setMeta({});
     try {
       const res = await fetch("/api/tools/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: tool.id, inputs, model: settings.model, effort: settings.effort }) });
       if (!res.ok) throw new Error(await errorOf(res));
@@ -102,7 +114,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
         else if (ev.type === "error") { ended = true; setError(safeText(ev.message)); }
         else if (ev.type === "output") {
           ended = true;
-          if (ev.output) { setOutput(ev.output as WorkflowOutput); setSources((ev.sources as Source[]) ?? []); }
+          if (ev.output) { setOutput(ev.output as WorkflowOutput); setSources((ev.sources as Source[]) ?? []); setFigures((ev.figures as FigureReport | undefined) ?? null); }
           if (ev.error) setError(safeText(ev.error));
           setMeta({ model: ev.model as string, durationMs: ev.durationMs as number, runId: ev.runId as number | null });
         }
@@ -134,7 +146,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
             <div className="flex items-center gap-2">
               <span className="grid h-8 w-8 place-items-center ctl bg-accent-soft text-accent"><Icon name={tool.icon} className="h-4.5 w-4.5" /></span>
               <div>
-                <h1 className="text-[18px] font-semibold leading-tight">{tool.title}</h1>
+                <h1 className="flex items-center gap-1 text-[18px] font-semibold leading-tight">{tool.title}<StarButton id={tool.id} title={tool.title} className="!opacity-100" /></h1>
                 <div className="text-[11.5px] text-muted">{tool.tagline}</div>
               </div>
             </div>
@@ -179,6 +191,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
               <button type="button" onClick={saveCalc} disabled={!calc?.output} className="ctl flex items-center gap-1.5 bg-accent px-3.5 py-1.5 text-[12.5px] font-semibold text-accent-fg disabled:opacity-40"><Icon name="Save" className="h-3.5 w-3.5" /> Save result</button>
             )}
             {tool.example && <button type="button" onClick={() => setInputs(defaultInputs(tool.fields, tool.example))} className="ctl border border-line px-2.5 py-1.5 text-[11.5px] text-muted hover:border-accent/50 hover:text-fg">Try an example</button>}
+            {tool.kind === "ai" && !busy && <CostLine feature={`tool:${tool.id}`} what="A run of this workflow" className="basis-full" />}
             {tool.kind === "ai" && <ModelPicker value={settings} onChange={setSettings} compact />}
             {status && <span className="text-[11px] text-pos">{status}</span>}
             {runs && runs.length > 0 && (
@@ -221,6 +234,7 @@ export function ToolRunner({ tool, initialInputs, runId, compact = false, ticker
                 </div>
               </div>
               <OutputBlocks output={shown} sources={sources} compact={compact} />
+              {figures && <div className="mt-1"><FigureCheck r={figures} uncitedIsWarning={false} /></div>}
             </>
           ) : (
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center text-muted">

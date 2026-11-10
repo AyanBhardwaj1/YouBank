@@ -186,7 +186,7 @@ async function main() {
     check("FMP's percent change becomes a fraction at the boundary", p?.changePct === 0.015, p && { changePct: p.changePct });
     const { fmtChange, NA } = await import("@/lib/market/units");
     check("one display formatter: +1.50%", fmtChange(0.015) === "+1.50%" && fmtChange(-0.0023) === "-0.23%" && fmtChange(null) === NA, fmtChange(0.015));
-    const files = ["src/components/terminal/Tape.tsx", "src/components/terminal/Rail.tsx", "src/components/terminal/Terminal.tsx", "src/components/terminal/screens/DesScreen.tsx", "src/components/workspace/HomeDashboard.tsx", "src/lib/meetings/copilot.ts"];
+    const files = ["src/components/terminal/Tape.tsx", "src/components/terminal/Rail.tsx", "src/components/terminal/Terminal.tsx", "src/components/terminal/screens/DesScreen.tsx", "src/components/workspace/home/Widgets.tsx", "src/lib/meetings/copilot.ts"];
     check("UI and copilot format the change through fmtChange", files.every((f) => /fmtChange\(/.test(src(f)) && !/changePct\.toFixed|chg\.toFixed|Math\.abs\(chg\)\.toFixed|Math\.abs\(i\.chg\)/.test(src(f))), files.filter((f) => !/fmtChange\(/.test(src(f))));
     check("snapshot no longer divides by 100", !/changePct \/ 100/.test(src("src/lib/terminal/snapshot.ts")));
     check("AI tool sends a formatted change, not a raw percent", /change_today: fmtChange\(/.test(src("src/lib/ai/tools.ts")));

@@ -1,0 +1,710 @@
+/** The Book (src/lib/book/position.ts): pnpm exec tsx scripts/test-book.ts */
+import { derive } from "@/lib/metrics";
+import type { CompanyData } from "@/lib/types";
+import { alertsFor, gateAlerts, needsPoint, normalizeBookState, recordHistory, streakOf } from "@/lib/book/alerts";
+import { netSelling, windowFilings, type InsiderFact } from "@/lib/book/insiders";
+import { filingLine, isFresh, latestPeriodic, type FilingFact } from "@/lib/book/filings";
+import type { InsiderTx } from "@/lib/edgar/insiders";
+import { nextPrint } from "@/lib/book/print";
+import { calibrationOf, closedFrom, forecastAlerts, closedReturn, normalizeJournal, scorecard, scorecardLine, type ClosedPosition } from "@/lib/book/journal";
+import { BROKEN_FORECAST, calibration, calibrationLine, fitPlatt, normalizeConviction, freshForecast, PAST_FORECASTS_MAX, recalibrate, resolveForecast, standing, supersede } from "@/lib/book/forecast";
+import { checkFigures, draftLetter, factsFrom, lintLetter } from "@/lib/book/letter";
+import { sizingCheck, spearman } from "@/lib/book/sizing";
+import { weekAlert, weekBrief } from "@/lib/book/week";
+import { noTouch, phi, conjunctionCheck, priceBaseRate, priceLines } from "@/lib/book/baserate";
+import { thesisGaps, toothless } from "@/lib/book/quality";
+import { brokenNow, brokenNowLine, catalystsDue, catalystsMissed, staleTheses } from "@/lib/book/discipline";
+import { healthLine, healthTrend, processHealth, recordHealth } from "@/lib/book/process";
+import { bookTodos } from "@/lib/book/todo";
+import { csvRow } from "@/lib/csv";
+import { AUTO_MAX, journalRows, catalystEntry, catalystOutcome, changesOf, goalpostEntry, isPmChange, loosened, recentVerdict, NOTES_MAX, normalizeLog, notesOf, withEntries } from "@/lib/book/decisions";
+import { bullPrompt, chairPrompt, committeeFrom, normalizeCommittee, poolChairs } from "@/lib/book/committee";
+import { bookCalendar, fold, icsText } from "@/lib/book/calendar";
+import { normalizeProposals, proposalFrom, PROPOSALS_MAX, withProposal } from "@/lib/book/proposals";
+import { bookRows, byUrgency, checkCriterion, defaultTemplate, DRAFT_SYSTEM, draftToPosition, headroomOf, evaluate, fmtMetric, normalizeBook, normalizePosition, parseImport, POSITIONS_MAX, redTeamPrompt, SAMPLE_BOOK, summarize, TEMPLATES, type Position } from "@/lib/book/position";
+
+let pass = 0, fail = 0;
+const ok = (label: string, got: unknown, want: unknown) => {
+  const g = JSON.stringify(got), w = JSON.stringify(want);
+  if (g === w) { pass++; console.log(`  ok   ${label}`); }
+  else { fail++; console.log(`  FAIL ${label}\n       got  ${g}\n       want ${w}`); }
+};
+
+// A company: LTM revenue $4,520M (+24.7%), gross margin 66.8%, op margin -27.7%, FCF $1,010M, net debt -$400M, price $180.
+const co = {
+  ticker: "SNOW", name: "Snowflake Inc.",
+  ltm: { periodEnd: "2026-07-31", revenue: 4520.5, priorRevenue: 3626.4, grossProfit: 3020, operatingIncome: -1250, da: null, sbc: null, ebitda: null, adjEbitda: null, operatingCashFlow: 1100, capex: 90, netIncome: -1200 },
+  balance: { asOf: "2026-07-31", cash: 1200, debt: 800, sharesOut: 330 },
+  price: { last: 180, change: 2, changePct: 0.011, marketCap: 59400, low52: 120, high52: 220, asOf: "2026-11-05T20:00:00Z", source: "FMP" },
+  estimates: { ntmRevenue: null, ntmEbitda: null, source: null },
+  sources: { concepts: {}, notes: [], factsUrl: "https://data.sec.gov/api/xbrl/companyfacts/CIK0001640147.json", submissionsUrl: "" },
+  quarters: [], filings: [],
+} as unknown as CompanyData;
+const d = derive(co);
+const now = new Date("2026-11-06T12:00:00Z");
+
+console.log("cleaning");
+ok("a position needs a ticker and a thesis", [normalizePosition({ ticker: "", thesis: "x" }), normalizePosition({ ticker: "SNOW", thesis: "  " })], [null, null]);
+const t = normalizePosition({
+  ticker: "$snow", weight: "4.5", entry: 150, thesis: "Consumption growth re-accelerates as AI workloads land.", direction: "long", pillars: ["AI data workloads", "", "Net retention bottoms"],
+  criteria: [
+    { metric: "revenue_growth", op: ">=", value: 20 },
+    { metric: "gross_margin", op: ">=", value: 70 },
+    { metric: "price", op: ">=", value: 150, note: "stop" },
+    { metric: "bogus", op: ">=", value: 1 },
+    { metric: "pe", op: "~", value: 1 },
+  ],
+  catalysts: [{ label: "Q3 earnings", date: "2026-11-19" }, { label: "bad date", date: "soon" }],
+}, "2026-11-06T00:00:00Z")!;
+ok("ticker upper-cased, $ dropped; empty pillars dropped", [t.ticker, t.pillars], ["SNOW", ["AI data workloads", "Net retention bottoms"]]);
+ok("unknown metrics and operators are dropped", t.criteria.map((c) => c.metric), ["revenue_growth", "gross_margin", "price"]);
+ok("weight and entry parse; nonsense is dropped", [t.weight, t.entry, normalizePosition({ ...t, weight: -3, entry: "abc" })?.weight, normalizePosition({ ...t, weight: 500 })?.weight], [4.5, 150, null, null]);
+ok("a catalyst needs a real date", t.catalysts.map((c) => c.label), ["Q3 earnings"]);
+ok("a red team source must be https", normalizePosition({ ...t, redTeam: { at: "x", text: "y", sources: [{ id: "S1", label: "a", url: "javascript:alert(1)" }, { id: "S2", label: "b", url: "https://sec.gov/x" }] } })?.redTeam?.sources.map((s) => s.id), ["S2"]);
+ok("at most POSITIONS_MAX, one per id", normalizeBook([...Array.from({ length: 30 }, (_, i) => ({ ...t, id: `id-${String(i).padStart(4, "0")}` })), { ...t, id: "id-0000" }]).length, POSITIONS_MAX);
+
+console.log("checking criteria");
+const growth = checkCriterion(t.criteria[0], co, d);
+ok("growth passes with room, from SEC XBRL, with its period", [growth.state, growth.shown, growth.evidence?.source, growth.evidence?.period], ["pass", "24.7%", "SEC XBRL company facts", "LTM to 2026-07-31"]);
+const gm = checkCriterion(t.criteria[1], co, d);
+ok("gross margin under 70% fails, close or not", [gm.state, gm.shown, gm.target], ["fail", "66.8%", "at least 70.0%"]);
+ok("the price stop passes and cites the feed", [checkCriterion(t.criteria[2], co, d).state, checkCriterion(t.criteria[2], co, d).evidence?.source], ["pass", "FMP"]);
+ok("within 3 points of a percentage threshold is near", checkCriterion({ id: "x", metric: "revenue_growth", op: ">=", value: 22 }, co, d).state, "near");
+ok("within 10% of other thresholds is near", checkCriterion({ id: "x", metric: "price", op: ">=", value: 170 }, co, d).state, "near");
+ok("an at-most criterion", checkCriterion({ id: "x", metric: "net_debt", op: "<=", value: 0 }, co, d).state, "pass");
+ok("missing data is unknown, never a pass", checkCriterion({ id: "x", metric: "pe", op: "<=", value: 40 }, co, d).state, "unknown");
+
+console.log("the verdict");
+const ev = evaluate(t, co, d, [{ id: 1, headline: "Snowflake wins a deal", at: "2026-11-05T00:00:00Z" }], now);
+ok("a failed kill criterion breaks the thesis", [ev.verdict, ev.score], ["broken", 67]);
+ok("the summary names the criterion", ev.summary, "Kill criterion hit: Gross margin (LTM) is 66.8%, needed at least 70.0%.");
+ok("catalysts carry days to go", ev.catalysts.map((c) => [c.label, c.inDays]), [["Q3 earnings", 13]]);
+const intact = evaluate({ ...t, criteria: [t.criteria[0]] }, co, d, [], now);
+ok("all criteria with room: intact, with the next catalyst", [intact.verdict, intact.summary], ["intact", "All 1 criteria hold; Q3 earnings in 13 days."]);
+ok("no data: unknown", evaluate(t, null, null, [], now).verdict, "unknown");
+ok("no criteria: watch, asking for one", [evaluate({ ...t, criteria: [] }, co, d, [], now).verdict, evaluate({ ...t, criteria: [] }, co, d, [], now).summary], ["watch", "Add a kill criterion so YouBank can tell you when this thesis breaks."]);
+ok("most urgent first", [intact, ev, evaluate({ ...t, criteria: [{ id: "n", metric: "revenue_growth", op: ">=", value: 22 }] }, co, d, [], now)].sort(byUrgency).map((e) => e.verdict), ["broken", "watch", "intact"]);
+
+console.log("formatting and the red team");
+ok("units", [fmtMetric("gross_margin", 0.668), fmtMetric("pe", 41.23), fmtMetric("revenue", 4520.5), fmtMetric("price", 180), fmtMetric("rule_of_40", 46.9), fmtMetric("pe", null)], ["66.8%", "41.2x", "$4,521M", "$180.00", "46.9", "n/a"]);
+const p = redTeamPrompt(t, ev);
+ok("the red team argues the other side with sources and checkable signals", [p.includes("short seller"), p.includes("cite every figure"), p.includes("Gross margin (LTM) 66.8% (fail)"), p.includes("checkable signals")], [true, true, true, true]);
+ok("a short thesis gets a bull as its red team", redTeamPrompt({ ...t, direction: "short" } as Position, null).includes("long-only bull"), true);
+
+console.log("P&L and the book");
+ok("a long gains when the price rises", Math.round((ev.pnl ?? 0) * 1000) / 1000, 0.2);
+const shortEv = evaluate({ ...t, direction: "short", entry: 200 } as Position, co, d, [], now);
+ok("a short gains when the price falls", Math.round((shortEv.pnl ?? 0) * 1000) / 1000, 0.1);
+ok("no entry, no P&L", evaluate({ ...t, entry: null }, co, d, [], now).pnl, null);
+const book = summarize([ev, { ...shortEv, weight: 2 }, { ...intact, weight: 3, pnl: null }]);
+ok("exposure: long, short, gross, net", [book.long, book.short, book.gross, book.net], [7.5, 2, 9.5, 5.5]);
+ok("at-risk weight counts broken and watch", [book.verdicts.broken, book.atRiskWeight], [2, 6.5]);
+ok("P&L contribution weights each position", book.pnlContribution, 1.1);
+ok("an empty book has no P&L", summarize([]).pnlContribution, null);
+ok("every template normalizes", TEMPLATES.map((x) => normalizePosition({ ticker: "ABC", ...x })?.criteria.length), [3, 3, 3, 3]);
+
+console.log("getting a book in");
+const sheet = parseImport("Ticker\tSide\tWeight\tEntry\tThesis\nSNOW\tLong\t4.5%\t$150.00\tAI workloads re-accelerate consumption\ninTC\tshort\t3\t30\tFoundry burns cash\n\tlong\t2\t10\tno ticker here");
+ok("a pasted sheet: header skipped, cells read by what they hold", sheet.rows, [{ ticker: "SNOW", direction: "long", weight: 4.5, entry: 150, thesis: "AI workloads re-accelerate consumption" }, { ticker: "INTC", direction: "short", weight: 3, entry: 30, thesis: "Foundry burns cash" }]);
+ok("a line without a ticker is reported, not guessed", sheet.problems.length, 1);
+ok("column order is free; a negative weight is a short; quoted commas stay", parseImport('"Cheap, and getting cheaper", -2.5, BRK.B').rows, [{ ticker: "BRK.B", direction: "short", weight: 2.5, entry: null, thesis: "Cheap, and getting cheaper" }]);
+ok("semicolons; a bare ticker", parseImport("MSFT;5;410\nAAPL").rows.map((r) => [r.ticker, r.weight, r.entry]), [["MSFT", 5, 410], ["AAPL", null, null]]);
+ok("duplicates are reported; the cap holds", [parseImport("MSFT\nMSFT").problems.length, parseImport(Array.from({ length: 30 }, (_, i) => `T${String.fromCharCode(65 + (i % 26))}${i}`).join("\n")).rows.length], [1, POSITIONS_MAX]);
+ok("templates by side", [defaultTemplate("long").id, defaultTemplate("short").id], ["growth", "short"]);
+ok("the sample book is valid and says it is a sample", SAMPLE_BOOK.map((p) => { const n = normalizePosition({ ...p, id: `sample-${p.ticker.toLowerCase()}` }); return !!n && n.criteria.length === p.criteria.length && n.thesis.startsWith("Sample:"); }), [true, true, true, true, true]);
+
+console.log("alerts");
+const mk = (id: string, verdict: "intact" | "watch" | "broken" | "unknown", extra: Partial<typeof ev> = {}) => ({ ...ev, positionId: id, ticker: id.toUpperCase(), verdict, catalysts: [], ...extra });
+const first = alertsFor(normalizeBookState(null), [mk("a", "broken"), mk("b", "watch"), mk("c", "intact")], now);
+ok("first sight: only a thesis already broken alerts", first.alerts.map((a) => [a.positionId, a.kind, a.urgent]), [["a", "broken", true]]);
+ok("the baseline is kept", first.next.verdicts, { a: "broken", b: "watch", c: "intact" });
+const second = alertsFor(first.next, [mk("a", "broken"), mk("b", "broken"), mk("c", "watch")], new Date("2026-11-07T21:30:00Z"));
+ok("changes alert: watch→broken, intact→watch; still broken says nothing", second.alerts.map((a) => [a.positionId, a.kind]), [["b", "broken"], ["c", "watch"]]);
+ok("the alert names the criterion and the weight", second.alerts[0].reasons, ["Gross margin (LTM) 66.8% vs at least 70.0%", "4.5% of NAV"]);
+const third = alertsFor(second.next, [mk("a", "intact"), mk("b", "unknown"), mk("c", "watch")], new Date("2026-11-08T21:30:00Z"));
+ok("recovery alerts; no data keeps the last verdict quietly", [third.alerts.map((a) => [a.positionId, a.kind]), third.next.verdicts.b], [[["a", "recovered"]], "broken"]);
+ok("keys are per position, verdict and day: a re-run dedupes", alertsFor(first.next, [mk("b", "broken")], new Date("2026-11-07T23:00:00Z")).alerts[0].key, second.alerts[0].key);
+const cat = alertsFor(first.next, [mk("c", "intact", { catalysts: [{ id: "q3", label: "Q3 earnings", date: "2026-11-07", inDays: 1 }, { id: "x", label: "Investor day", date: "2026-11-20", inDays: 14 }] })], now);
+ok("a catalyst tomorrow alerts once per date; later ones do not", cat.alerts.map((a) => [a.kind, a.title, a.key]), [["catalyst", "C: Q3 earnings tomorrow", "book:c:catalyst:q3:2026-11-07"]]);
+ok("stored state is cleaned", normalizeBookState({ verdicts: { a: "broken", b: "nonsense" }, checkedAt: 5, history: { "bad id!": [], c: [] , abcd: [{ d: "2026-11-01", v: "intact", s: 100 }, { d: "x", v: "intact" }] } }), { verdicts: { a: "broken" }, checkedAt: null, history: { abcd: [{ d: "2026-11-01", v: "intact", s: 100 }] }, muted: [] });
+
+console.log("history");
+const day = (iso: string) => new Date(`${iso}T21:30:00Z`);
+let h = recordHistory({}, [mk("a", "intact", { score: 100 }), mk("b", "unknown")], day("2026-11-02"));
+ok("a point a day; no data adds none", [h.a, h.b], [[{ d: "2026-11-02", v: "intact", s: 100, p: 180 }], []]);
+h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-02"));
+ok("a second check the same day replaces the first", h.a, [{ d: "2026-11-02", v: "watch", s: 83, p: 180 }]);
+h = recordHistory(h, [mk("a", "watch", { score: 83 })], day("2026-11-03"));
+h = recordHistory(h, [mk("a", "broken", { score: 67 })], day("2026-11-05"));
+ok("closed positions drop out of the history", Object.keys(h), ["a"]);
+ok("the streak counts from the first day of the current verdict", [streakOf(h.a, day("2026-11-06")), streakOf(h.a.slice(0, 2), day("2026-11-06"))], [{ since: "2026-11-05", verdict: "broken", days: 1 }, { since: "2026-11-02", verdict: "watch", days: 4 }]);
+ok("a read records today's point only when it is missing", [needsPoint(h, [mk("a", "broken")], day("2026-11-05")), needsPoint(h, [mk("a", "broken")], day("2026-11-06")), needsPoint(h, [mk("a", "unknown")], day("2026-11-06"))], [false, true, false]);
+ok("history is capped", recordHistory({ a: Array.from({ length: 200 }, (_, i) => ({ d: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), v: "intact" as const, s: 100 })) }, [mk("a", "intact")], day("2026-11-06")).a.length, 180);
+ok("the daily check carries the history forward", alertsFor({ verdicts: {}, checkedAt: null, history: { a: [{ d: "2026-11-01", v: "intact", s: 100 }] }, muted: [] }, [mk("a", "intact")], day("2026-11-02")).next.history.a.length, 2);
+
+console.log("headroom");
+ok("percentages in points; past the line is negative", [growth.headroom?.shown, gm.headroom?.shown], ["+4.7 pts", "−3.2 pts"]);
+ok("a price stop as a share of the stop", checkCriterion(t.criteria[2], co, d).headroom?.shown, "+20.0%");
+ok("an at-most criterion counts room downwards; a zero threshold uses the unit", [headroomOf({ id: "x", metric: "ev_revenue", op: "<=", value: 10 }, 8).shown, headroomOf({ id: "x", metric: "net_debt", op: "<=", value: 0 }, -400).shown], ["+20.0%", "+$400M"]);
+ok("no data, no headroom", checkCriterion({ id: "x", metric: "pe", op: "<=", value: 40 }, co, d).headroom, null);
+
+console.log("drafting from words");
+const drafted = draftToPosition({ ticker: "snow", direction: "long", thesis: "AI workloads re-accelerate consumption", pillars: ["AI data", ""], criteria: [{ metric: "revenue_growth", op: ">=", value: 20, note: "" }, { metric: "net_revenue_retention", op: ">=", value: 120, note: "" }, { metric: "gross_margin", op: ">=", value: 70, note: "suggested: margins must follow" }], catalysts: [{ label: "Q3", date: "next week" }], weight: 99, id: "attacker-id", redTeam: { at: "x", text: "y", sources: [] } });
+ok("a draft is cleaned like a saved position: unknown metrics, bad dates and server fields dropped", [drafted?.ticker, drafted?.criteria.map((c) => c.metric), drafted?.catalysts.length, drafted?.weight, drafted?.id === "attacker-id", !!drafted?.redTeam, drafted?.criteria[1].note], ["SNOW", ["revenue_growth", "gross_margin"], 0, null, false, false, "suggested: margins must follow"]);
+ok("no ticker, no draft", draftToPosition({ ticker: "", thesis: "x" }), null);
+ok("the brief lists every metric with its unit", ["revenue_growth", "ev_revenue", "US$ millions", "given as percent"].every((w) => DRAFT_SYSTEM.includes(w)), true);
+
+console.log("earnings dates");
+const withE = evaluate({ ...t, catalysts: [] }, co, d, [], now, { date: "2026-11-07", estimated: true });
+ok("the next earnings date shows with days to go, and counts as a near catalyst", [withE.earnings, withE.summary.includes("earnings in 1 days") || withE.verdict === "broken"], [{ date: "2026-11-07", estimated: true, inDays: 1 }, true]);
+ok("far, past or missing dates are left out", [evaluate(t, co, d, [], now, { date: "2027-06-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: "2026-10-01", estimated: false }).earnings, evaluate(t, co, d, [], now, { date: null, estimated: false }).earnings], [null, null, null]);
+const eAlert = alertsFor(first.next, [{ ...mk("c", "intact"), earnings: { date: "2026-11-07", estimated: true, inDays: 1 } }], now).alerts;
+ok("earnings tomorrow alerts once per date", eAlert.map((a) => [a.title, a.key]), [["C reports tomorrow (estimated)", "book:c:earnings:2026-11-07"]]);
+
+console.log("export");
+const rows = bookRows([ev, evaluate({ ...t, id: "nocrit", criteria: [] }, co, d, [], now)], [t]);
+ok("a header, a row per criterion, and one for a position without criteria; headroom as a number with its unit", [rows.length, rows[0][0], rows[1][10], rows[1][13], rows[1][14], rows[2][13], rows[3][14], rows[4][10]], [5, "ticker", "Revenue growth (LTM, y/y)", 4.7, "pts", -3.2, "% of threshold", ""]);
+
+console.log("insider selling");
+const tx = (code: string, shares: number | null, price: number | null, date = "2026-10-01", derivative = false) => ({ filed: date, owner: "o", relationship: "", security: "Common", date, code, codeLabel: "", shares, price, owned: null, acquired: code === "P", derivative, url: "" }) as InsiderTx;
+ok("sales less purchases, open market only, in $M", netSelling([tx("S", 100_000, 50), tx("P", 20_000, 50), tx("M", 1e6, 1), tx("F", 5e4, 50), tx("S", 1e5, 50, "2026-07-01"), tx("S", 1e5, 50, "2026-10-01", true)], "2026-08-08"), { value: 4, trades: 2, priced: true });
+const amend = (x: InsiderTx) => ({ ...x, amendment: true });
+ok("a Form 4/A replaces the lines it restates (no double count); a trade-free amendment changes nothing", [netSelling([tx("S", 100_000, 50), amend(tx("S", 100_000, 50))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), amend(tx("S", 100_000, 40))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), tx("S", 100_000, 50, "2026-10-02"), amend(tx("S", 100_000, 50))], "2026-08-08").value, netSelling([tx("S", 100_000, 50), amend(tx("M", 1e5, 1, "2026-10-01", true))], "2026-08-08").value], [5, 4, 10, 5]);
+ok("a counted trade without a price makes the figure incomplete", netSelling([tx("S", 1000, null)], "2026-08-08").priced, false);
+const recent = { filingDate: ["2026-11-01", "2026-10-20", "2026-09-01", "2026-07-01"], form: ["4", "8-K", "4/A", "4"] };
+ok("filings in the window; complete when the list reaches back before it", [windowFilings(recent, true, "2026-08-08"), windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, true, "2026-08-08").complete, windowFilings({ filingDate: ["2026-11-01", "2026-10-01"], form: ["4", "4"] }, false, "2026-08-08").complete], [{ indexes: [0, 2], complete: true }, false, true]);
+const fact = (value: number | null, complete: boolean): InsiderFact => ({ value, complete, filings: 3, trades: 2, since: "2026-08-08", asOf: "2026-11-06T21:30:00Z", url: "https://www.sec.gov/x", note: complete ? "" : "1 of 3 Form 4 filings could not be read" });
+const ins = { id: "i1", metric: "insider_selling" as const, op: "<=" as const, value: 5 };
+ok("$M amounts: decimals under $10M, the minus before the $", [fmtMetric("insider_selling", 0.45), fmtMetric("insider_selling", 4.56), fmtMetric("insider_selling", -3), fmtMetric("net_debt", -12345), fmtMetric("revenue", 61858.4), fmtMetric("insider_selling", -0.001)], ["$0.45M", "$4.6M", "-$3.0M", "-$12,345M", "$61,858M", "$0.00M"]);
+ok("a complete figure is checked, with its filings as evidence", [checkCriterion(ins, co, d, fact(4, true)).state, checkCriterion(ins, co, d, fact(4.6, true)).state, checkCriterion(ins, co, d, fact(4, true)).evidence?.source, checkCriterion(ins, co, d, fact(8, true)).state], ["pass", "near", "SEC Form 4 filings (3 filed, 2 open-market trades)", "fail"]);
+ok("an incomplete or missing figure is no data, with the reason, never a pass", [checkCriterion(ins, co, d, fact(0, false)).state, checkCriterion(ins, co, d, fact(0, false)).note, checkCriterion(ins, co, d, null).state, checkCriterion(ins, co, d, null).note], ["unknown", "No complete figure: 1 of 3 Form 4 filings could not be read.", "unknown", "Worked out from Form 4 filings after each US close."]);
+
+console.log("concentration");
+const ind = summarize([{ ...ev, industry: "Software", weight: 4 }, { ...ev, positionId: "b", industry: "Software", direction: "short", weight: 1 }, { ...ev, positionId: "c", industry: "Semiconductors", weight: 2 }, { ...ev, positionId: "d", industry: "", weight: null }]).byIndustry;
+ok("exposure by industry: long, short, net, largest first", ind, [{ industry: "Software", positions: 2, long: 4, short: 1, gross: 5, net: 3 }, { industry: "Semiconductors", positions: 1, long: 2, short: 0, gross: 2, net: 2 }, { industry: "Unclassified", positions: 1, long: 0, short: 0, gross: 0, net: 0 }]);
+ok("a company's industry comes with its evaluation", ev.industry, "Unclassified");
+
+console.log("new filings");
+const filing: FilingFact = { form: "10-Q", filed: "2026-11-03", url: "https://www.sec.gov/f", counts: { added: 3, removed: 1, changed: 2, unchanged: 40 }, summary: ["New risk: AI capacity costs."], prior: "2026-08-04", asOf: "2026-11-05T21:30:00Z" };
+ok("the newest 10-K or 10-Q is found", latestPeriodic({ filings: [{ form: "8-K", filed: "2026-11-04", period: "", title: "", url: "a" }, { form: "10-Q", filed: "2026-11-03", period: "", title: "", url: "b" }] }), { form: "10-Q", filed: "2026-11-03", url: "b" });
+ok("one line on what moved", [filingLine(filing), filingLine({ ...filing, counts: { added: 0, removed: 0, changed: 0, unchanged: 9 } })], ["Risk factors: 3 added, 1 removed, 2 reworded paragraphs against the 10-Q filed 2026-08-04.", "Risk factors unchanged from the 10-Q filed 2026-08-04."]);
+ok("fresh for two weeks", [isFresh(filing, now), isFresh({ ...filing, filed: "2026-10-01" }, now), isFresh(null, now)], [true, false, false]);
+const withF = evaluate(t, co, d, [], now, null, null, filing);
+ok("a fresh filing rides on the evaluation; a stale one does not", [withF.filing?.form, evaluate(t, co, d, [], now, null, null, { ...filing, filed: "2026-09-01" }).filing], ["10-Q", null]);
+ok("one alert per filing", alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts.map((a) => [a.title, a.key]), [["C filed its 10-Q", "book:c:filing:10-Q:2026-11-03"]]);
+const fAlerts = alertsFor(first.next, [{ ...mk("c", "intact"), filing }], now).alerts;
+const offRun = gateAlerts(fAlerts, [], true), onRun = gateAlerts(fAlerts, offRun.muted, false);
+ok("alerts off: nothing sent and the filing remembered; back on, it is not sent late; other alerts still go", [offRun.send.length, offRun.muted, onRun.send.length, gateAlerts([...fAlerts, ...eAlert], offRun.muted, false).send.map((a) => a.key)], [0, ["book:c:filing:10-Q:2026-11-03"], 0, ["book:c:earnings:2026-11-07"]]);
+
+console.log("what the next report must show");
+const qs = ["2024-10-31", "2025-01-31", "2025-04-30", "2025-07-31", "2025-10-31", "2026-01-31", "2026-04-30", "2026-07-31"].map((end, i) => ({ label: `Q${i + 1}`, end, revenue: 800 + 50 * i }));
+const qco = { ticker: "Q", quarters: qs, ltm: { revenue: 4300 } } as unknown as CompanyData;
+const bars = nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }, { id: "r", metric: "revenue", op: ">=", value: 3000 }, { id: "m", metric: "gross_margin", op: ">=", value: 60 }], qco);
+ok("growth ≥ 20%: next quarter needs 1.2 × 3,700 − 3,300 = $1,140M, +14.0% on the year-ago quarter", [bars.length, bars[0].need, bars[0].yoy, bars[0].lastYoy, bars[0].yearAgo, bars[0].line], [2, 1140, 0.14, 0.2105, "Q5", "At least $1,140M of revenue next quarter (+14.0% y/y against Q5; last quarter +21.1%) keeps LTM revenue growth at or above 20%."]);
+ok("a level the three staying quarters already clear is settled", [bars[1].settled, bars[1].line], [true, "LTM revenue at or above $3,000M holds whatever next quarter's revenue is."]);
+ok("no answer when the quarters disagree with the LTM, skip a quarter, or are too few", [nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, ltm: { revenue: 5000 } } as unknown as CompanyData).length, nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, quarters: qs.filter((_, i) => i !== 3) } as unknown as CompanyData).length, nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, quarters: qs.slice(2) } as unknown as CompanyData).length], [0, 0, 0]);
+ok("no answer when the year-before quarters disagree with the reported year-before LTM (a restatement)", [nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, ltm: { revenue: 4300, priorRevenue: 3700 } } as unknown as CompanyData).length, nextPrint([{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }], { ...qco, ltm: { revenue: 4300, priorRevenue: 3500 } } as unknown as CompanyData).length], [0, 1]);
+ok("at most: a ceiling the staying quarters already pass cannot hold", nextPrint([{ id: "r", metric: "revenue", op: "<=", value: 3000 }], qco)[0].line, "LTM revenue at or below $3,000M cannot hold after next quarter: the three quarters that stay already exceed it.");
+ok("evaluate carries it", evaluate({ ...t, criteria: [{ id: "g", metric: "revenue_growth", op: ">=", value: 20 }] }, { ...co, quarters: qs, ltm: { ...co.ltm, revenue: 4300, priorRevenue: 3500 } } as unknown as CompanyData, d, [], now).nextPrint?.[0]?.need, 1140);
+
+console.log("proposals from AI apps");
+const pr = proposalFrom({ ticker: "nvda", direction: "long", thesis: "Data-center demand outruns supply through 2027.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 70 }], weight_pct_nav: 3, rationale: "Margins held above 70% for six quarters [S1]." }, "Claude (connected)", now);
+ok("a proposal is a cleaned position, with who sent it and why", "proposal" in pr ? [pr.proposal.position.ticker, pr.proposal.position.weight, pr.proposal.position.criteria.length, pr.proposal.from, /^pr-[a-z0-9]+-[a-z0-9]+$/.test(pr.proposal.id)] : pr, ["NVDA", 3, 1, "Claude (connected)", true]);
+ok("no ticker or thesis, or criteria none of which can be read: refused with a reason", [("error" in proposalFrom({ ticker: "", thesis: "x" }, "a", now)), ("error" in proposalFrom({ ticker: "NVDA", thesis: "A thesis here", kill_criteria: [{ metric: "vibes", op: ">=", value: 1 }] }, "a", now))], [true, true]);
+if ("proposal" in pr) {
+  const again = proposalFrom({ ticker: "NVDA", direction: "long", thesis: "Updated thesis for the same name.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 72 }] }, "Claude (connected)", new Date(now.getTime() + 1000));
+  const other = proposalFrom({ ticker: "NVDA", direction: "long", thesis: "Another app's view.", kill_criteria: [{ metric: "gross_margin", op: ">=", value: 65 }] }, "ChatGPT (connected)", now);
+  const list = "proposal" in again && "proposal" in other ? withProposal(withProposal(withProposal([], pr.proposal), other.proposal), again.proposal) : [];
+  ok("the same app's newer proposal for the same name and side replaces its older one; another app's stays", list.map((x) => [x.from, x.position.thesis.slice(0, 7)]), [["Claude (connected)", "Updated"], ["ChatGPT (connected)", "Another"]]);
+  let many = [] as ReturnType<typeof withProposal>;
+  for (let i = 0; i < 14; i++) { const x = proposalFrom({ ticker: `T${String.fromCharCode(65 + i)}`, direction: "long", thesis: "A thesis here." }, "a", now); if ("proposal" in x) many = withProposal(many, { ...x.proposal, id: `pr-${i}-abcd` }); }
+  ok("at most ten are kept, newest first; stored junk is dropped", [many.length, many[0].position.ticker, normalizeProposals([...many, { id: "x" }, null, { ...many[0] }]).length], [PROPOSALS_MAX, "TN", PROPOSALS_MAX]);
+}
+
+console.log("stop-loss from entry");
+const stop = { id: "s1", metric: "return_since_entry" as const, op: ">=" as const, value: -15 };
+const sLong = checkCriterion(stop, co, d, null, { entry: 150, direction: "long" }), sShort = checkCriterion(stop, co, d, null, { entry: 150, direction: "short" }), sNone = checkCriterion(stop, co, d, null, { entry: null, direction: "long" });
+ok("measured in the position's favour from the entry: a long up 20% holds, a short at the same prices is down 20% and fails", [sLong.state, sLong.shown, sShort.state, sShort.shown, sShort.evidence?.source.includes("against the entry of $150")], ["pass", "20.0%", "fail", "-20.0%", true]);
+ok("no entry price: no figure, and why", [sNone.state, sNone.note], ["unknown", "Needs the position's entry price."]);
+ok("evaluate passes the position's entry and side", evaluate({ ...t, entry: 150, criteria: [stop] }, co, d, [], now).checks[0].state, "pass");
+ok("a draft keeps an entry price the person stated, and never a weight", [draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [stop], catalysts: [], entry: 150 })?.entry, draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [], catalysts: [], entry: null, weight: 9 })?.entry, draftToPosition({ ticker: "AAPL", direction: "long", thesis: "Services keep compounding.", pillars: [], criteria: [], catalysts: [], entry: 150, weight: 9 })?.weight], [150, null, null]);
+ok("the drafting prompt says how to write a stop-loss", DRAFT_SYSTEM.includes("return_since_entry >= -15"), true);
+
+console.log("calendar");
+const calEv = { ...evaluate({ ...t, id: "abcd", catalysts: [{ id: "c1", label: "Investor day; Q&A, live", date: "2026-11-20" }, { id: "c0", label: "Past", date: "2026-11-01" }] }, co, d, [], now, { date: "2026-11-19", estimated: true }), nextPrint: [{ criterionId: "g", metric: "revenue_growth" as const, op: ">=" as const, need: 1140, yoy: 0.14, lastYoy: 0.21, yearAgo: "Q5", settled: false, line: "At least $1,140M of revenue next quarter keeps it." }] };
+const ics = bookCalendar([calEv], "https://youbank.example", now);
+const vevents = ics.split("BEGIN:VEVENT").length - 1;
+ok("an all-day event for the next earnings and each coming catalyst (not past ones), with CRLF lines", [vevents, ics.includes("DTSTART;VALUE=DATE:20261119\r\nDTEND;VALUE=DATE:20261120"), ics.includes("SUMMARY:SNOW earnings (estimated)"), ics.includes("SUMMARY:SNOW: Investor day\\; Q&A\\, live"), ics.endsWith("END:VCALENDAR\r\n"), ics.split("\r\n").every((l) => Buffer.byteLength(l, "utf8") <= 75)], [2, true, true, true, true, true]);
+ok("the earnings event says what the report must show and links to the position", [ics.replace(/\r\n /g, "").includes("What the report must show:\\nAt least $1\\,140M"), ics.replace(/\r\n /g, "").includes("URL:https://youbank.example/app/book?position=abcd")], [true, true]);
+const twice = bookCalendar([calEv, { ...calEv, positionId: "efgh", catalysts: [] }], "https://youbank.example", now);
+const moved = bookCalendar([{ ...calEv, earnings: { date: "2026-11-24", estimated: false, inDays: 18 } }], "https://youbank.example", new Date(now.getTime() + 3_600_000));
+const uidOf = (x: string) => /UID:(book-earnings-[^\r]+)/.exec(x)?.[1];
+const seqOf = (x: string) => Number(/SEQUENCE:(\d+)/.exec(x)?.[1]);
+ok("one earnings event per ticker; a moved date keeps the UID with a higher SEQUENCE; a lone CR is escaped", [twice.split("SUMMARY:SNOW earnings").length - 1, uidOf(moved) === uidOf(ics), seqOf(moved) > seqOf(ics), icsText("a\rb")], [1, true, true, "a\\nb"]);
+ok("text escaping and folding (never inside a character)", [icsText("a;b,c\\d\ne"), fold("x".repeat(80)).split("\r\n ").map((l) => l.length), fold("é".repeat(40)).split("\r\n ").every((l) => !l.includes("\uFFFD"))], ["a\\;b\\,c\\\\d\\ne", [75, 5], true]);
+
+console.log("track record");
+const pos = { ...t, id: "trk1", ticker: "SNOW", direction: "long" as const, entry: 150, createdAt: "2026-06-01T00:00:00.000Z" };
+const hist = [{ d: "2026-10-01", v: "intact" as const, s: 100, p: 170 }, { d: "2026-10-10", v: "broken" as const, s: 50, p: 160 }, { d: "2026-10-11", v: "broken" as const, s: 50, p: 155 }];
+const c1 = closedFrom(pos, "broken", hist, 140, "thesis_broke", "  margins  ", new Date("2026-10-13T15:00:00Z"));
+ok("a close keeps the exit, the reason, the verdict and the first day the thesis broke with its price", [c1.exit, c1.reason, c1.note, c1.verdictAtClose, c1.brokeOn, c1.priceAtBreak, c1.openedAt.slice(0, 10)], [140, "thesis_broke", "margins", "broken", "2026-10-10", 160, "2026-06-01"]);
+ok("return in the position's favour", [Math.round(closedReturn(c1)! * 1000) / 1000, Math.round(closedReturn({ entry: 100, exit: 80, direction: "short" })! * 1000) / 1000, closedReturn({ entry: null, exit: 80, direction: "long" })], [-0.067, 0.2, null]);
+const mk2 = (id: string, entry: number, exit: number, reason: ClosedPosition["reason"], brokeOn: string | null = null, priceAtBreak: number | null = null, closedAt = "2026-10-20T00:00:00.000Z", direction: "long" | "short" = "long"): ClosedPosition => ({ ...c1, id, entry, exit, reason, brokeOn, priceAtBreak, closedAt, direction, verdictAtClose: brokeOn ? "broken" : "intact", brokenSince: brokeOn });
+const book2 = [mk2("a1", 100, 130, "target"), mk2("a2", 100, 90, "thesis_broke", "2026-10-17", 95), mk2("a3", 100, 80, "thesis_broke", "2026-09-01", 98), mk2("a4", 100, 110, "other")];
+const sc = scorecard(book2);
+ok("hit rate, average, payoff, by reason", [sc.closed, sc.hitRate, sc.avgReturn, sc.avgWin, sc.avgLoss, sc.payoff, sc.byReason.map((r) => [r.reason, r.n, r.avgReturn])], [4, 0.5, 0.025, 0.2, -0.15, 1.3333, [["thesis_broke", 2, -0.15], ["target", 1, 0.3], ["other", 1, 0.1]]]);
+ok("discipline: broken theses, exits within five days, median days to exit", [sc.broke, sc.exitedOnBreak, sc.medianDaysToExit], [2, 1, 26]);
+ok("the counterfactual: out on the break against the exit taken", sc.counterfactual, { n: 2, onBreak: -0.035, taken: -0.15 });
+ok("a thesis that broke and recovered before the close is not counted as broken at the close", scorecard([{ ...mk2("r1", 100, 120, "target", "2026-06-01"), verdictAtClose: "intact" }]).broke, 0);
+ok("one line for a person", scorecardLine(sc), "4 closed; 50% winners; average +2.5%; payoff 1.33x; 1 of 2 broken theses exited within 5 days (median 26 days); median hold 141 days for winners, 141 for losers.");
+ok("an empty record says so", [scorecard([]).hitRate, scorecardLine(scorecard([]))], [null, "No closed positions yet."]);
+ok("stored records are cleaned: junk dropped, duplicates once, unknown reason is other", normalizeJournal([c1, c1, { id: "x" }, { ...c1, id: "trk2", reason: "vibes", exit: -5 }]).map((x) => [x.id, x.reason, x.exit]), [["trk1", "thesis_broke", 140], ["trk2", "other", null]]);
+
+console.log("calibration");
+ok("a conviction is a 1-99% chance and a date, as percent or fraction; anything else is none", [normalizeConviction({ p: 70, by: "2027-02-01", at: "2026-11-01" }), normalizeConviction({ p: 0.7, by: "2027-02-01", source: "Claude (connected)" })?.source, normalizeConviction({ p: 100, by: "2027-02-01" }), normalizeConviction({ p: 50, by: "soon" }), normalizeConviction({ p: 50, by: "2026-10-01", at: "2026-11-01" })], [{ p: 0.7, by: "2027-02-01", at: "2026-11-01", source: "You" }, "Claude (connected)", null, null, null]);
+const conv = { p: 0.8, by: "2026-12-31", at: "2026-10-15", source: "You" };
+const hBreak = [{ d: "2026-11-01", v: "intact" as const, s: 100 }, { d: "2026-11-20", v: "broken" as const, s: 40 }];
+ok("a break before the date resolves 0; the date passing without one resolves 1; still open is unresolved", [resolveForecast(conv, hBreak, new Date("2026-11-25T00:00:00Z")), resolveForecast(conv, [{ d: "2026-11-01", v: "intact", s: 100 }], new Date("2027-01-02T00:00:00Z")), resolveForecast(conv, [], new Date("2026-11-25T00:00:00Z"))], [{ outcome: 0, resolvedOn: "2026-11-20" }, { outcome: 1, resolvedOn: "2026-12-31" }, { outcome: null, resolvedOn: null }]);
+ok("a break before the forecast was made does not count against it", resolveForecast({ ...conv, at: "2026-11-25" }, hBreak, new Date("2027-01-05T00:00:00Z")), { outcome: 1, resolvedOn: "2026-12-31" });
+ok("a closed record keeps the first break after the forecast", closedFrom(normalizePosition({ ...t, id: "cv09", conviction: { p: 60, by: "2027-01-31", at: "2026-11-05" } })!, "broken", hBreak, 100, "thesis_broke", "", new Date("2026-11-25T00:00:00Z")).convictionBrokeOn, "2026-11-20");
+ok("closed early without a break is not counted as a win; a break after the date does not count against it", [resolveForecast(conv, [], new Date("2027-03-01T00:00:00Z"), "2026-12-01T00:00:00Z").outcome, resolveForecast(conv, [], new Date("2027-03-01T00:00:00Z"), "2027-02-01T00:00:00Z", "2027-01-15").outcome], [null, 1]);
+const cal = calibration([
+  { ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }, { ticker: "B", p: 0.8, by: "x", source: "You", outcome: 0, resolvedOn: "x" },
+  { ticker: "C", p: 0.6, by: "x", source: "Claude (connected)", outcome: 1, resolvedOn: "x" }, { ticker: "D", p: 0.9, by: "x", source: "You", outcome: null, resolvedOn: null },
+]);
+ok("Brier, bias, buckets and by source", [cal.n, cal.open, cal.brier, cal.bias, cal.buckets.map((b) => [b.label, b.n, b.avgP, b.held]), cal.bySource], [3, 1, 0.28, 0.067, [["50-70%", 1, 0.6, 1], ["70-90%", 2, 0.8, 0.5]], [{ source: "You", n: 2, brier: 0.34 }, { source: "Claude (connected)", n: 1, brier: 0.16 }]]);
+ok("one line for a person", [calibrationLine(cal), calibrationLine(calibration([]))], ["Brier 0.280 over 3 resolved forecasts (0 is perfect, 0.25 a coin flip): overconfident by 7 points; 1 still open.", "No forecasts yet: give a position a conviction and a date."]);
+const withConv = normalizePosition({ ...t, id: "cv01", conviction: { p: 75, by: "2026-12-31", at: "2026-10-01" } })!;
+const closedConv = closedFrom(withConv, "broken", hBreak, 100, "thesis_broke", "", new Date("2026-11-25T00:00:00Z"));
+const prConv = proposalFrom({ ticker: "AMD", direction: "long", thesis: "Share gains continue.", conviction_pct: 65, review_by: "2027-03-31" }, "Claude (connected)", now);
+ok("an AI app's proposal carries its own forecast, marked as its", "proposal" in prConv ? [prConv.proposal.position.conviction?.p, prConv.proposal.position.conviction?.by, prConv.proposal.position.conviction?.source] : prConv, [0.65, "2027-03-31", "Claude (connected)"]);
+ok("positions and their closes keep the forecast; open and closed are scored together", [withConv.conviction, closedConv.conviction?.p, calibrationOf([withConv], { cv01: [{ d: "2026-11-01", v: "intact", s: 100 }] }, [{ ...closedConv, id: "cv02" }], new Date("2027-01-05T00:00:00Z")).n], [{ p: 0.75, by: "2026-12-31", at: "2026-10-01", source: "You" }, 0.75, 2]);
+
+const fcPos = normalizePosition({ ...t, id: "fc01", ticker: "CRWD", conviction: { p: 70, by: "2026-12-31", at: "2026-11-01" } })!;
+const brokeToday = forecastAlerts([fcPos], { fc01: [{ d: "2026-11-05", v: "intact", s: 100 }, { d: "2026-11-06", v: "broken", s: 50 }] }, now);
+const heldToday = forecastAlerts([fcPos], { fc01: [{ d: "2026-12-30", v: "intact", s: 100 }] }, new Date("2026-12-31T21:30:00Z"));
+ok("a forecast that resolves today alerts once: a miss on its break day, a hit on its date; nothing on other days", [brokeToday.map((a) => [a.title, a.key]), heldToday.map((a) => a.title), forecastAlerts([fcPos], { fc01: [{ d: "2026-11-06", v: "broken", s: 50 }] }, new Date("2026-11-08T21:30:00Z")).length], [[["CRWD: your 70% forecast missed", "book:fc01:forecast:2026-11-01:2026-12-31"]], ["CRWD: your 70% forecast held"], 0]);
+
+console.log("LP letter");
+const letterEv = evaluate(t, co, d, [], now);
+const letter = draftLetter({ firm: "Northwind Capital", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [{ ...c1, closedAt: "2026-10-13T15:00:00.000Z" }], record: scorecard([c1]), calibration: calibration([{ ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }]), risk: { betaNet: 12.3, var95: 0.8, worst: { label: "COVID crash", pnl: -3.4 } }, ai: { outputs: 42, reviewedShare: 12, verifiedShare: 91, ledgerOn: true } });
+ok("the draft covers the book, closes, process, risk and AI use, with a disclaimer", ["## The book (Q4 2026)", "## What we closed, and why", "**SNOW**", "## Our process, measured", "Calibration of our conviction", "## Risk", "## How we use AI", "42 AI outputs", "91% of the figures", "Northwind Capital", "not fund performance"].map((x) => letter.includes(x)), Array(11).fill(true));
+{
+  const withNotes = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null, notes: [{ ticker: "SNOW", at: new Date(now.getTime() - 5 * 86_400_000).toISOString(), text: "Trimmed: margins slipped below plan" }, { ticker: "OLD", at: "2020-01-01T00:00:00Z", text: "too old" }] });
+  ok("the letter quotes the PM's own journal notes from the quarter, dated", [withNotes.includes("## Decisions, in our words at the time"), withNotes.includes('**SNOW**'), withNotes.includes('2026') && withNotes.includes(': "Trimmed: margins slipped below plan"'), withNotes.includes("too old")], [true, true, true, false]);
+  ok("the quoted notes, with their changes, pass the compliance pass", lintLetter(withNotes, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
+}
+ok("the draft passes its own compliance pass", lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").map((f) => [f.rule, f.excerpt]), []);
+const lint = lintLetter("We guarantee strong results. Our fund is the best in its class. We returned 32% for investors. Gross return was 18%. A backtest shows we would have gained 40% since 2015. Our AI-powered process finds alpha.", { ledgerOn: false });
+ok("the compliance pass flags promises, superlatives, performance without a period, gross without net, hypotheticals and unbacked AI claims", lint.map((f) => [f.rule, f.severity]), [["Promissory or guaranteeing language", "high"], ["Unsupported superlative", "medium"], ["Performance without a time period", "medium"], ["Performance without a time period", "medium"], ["Gross performance without net", "high"], ["Hypothetical performance", "medium"], ["AI claim without a record", "high"]]);
+ok("text after a horizontal rule is still checked; the draft's own disclaimer is not", [lintLetter("Fine.\n---\nP.S. We guarantee it.", { ledgerOn: true }).length, lintLetter(letter, { ledgerOn: true }).filter((f) => f.severity !== "info").length], [1, 0]);
+{
+  const both2 = calibration([{ ticker: "A", p: 0.8, by: "x", source: "You", outcome: 1, resolvedOn: "x" }, { ticker: "A", p: 0.6, by: "x", source: "AI committee", outcome: 1, resolvedOn: "x" }]);
+  const l2 = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: both2, risk: null, ai: null });
+  ok("the letter sets the PM's calibration beside the AI committee's, and still passes its own check", [l2.includes("its Brier score is 0.160 on 1 resolved forecast, against 0.040 on 1 for our own"), lintLetter(l2, { ledgerOn: false }).filter((f) => f.severity !== "info").length], [true, 0]);
+}
+ok("a 1% conviction is 1%, not 100%", normalizeConviction({ p: 1, by: "2027-02-01", at: "2026-11-01" })?.p, 0.01);
+ok("a period makes performance acceptable; an AI claim with the ledger on is a note, not a fault", [lintLetter("We returned 12% in 2026, net of fees.", { ledgerOn: false }).length, lintLetter("Machine learning helps us screen.", { ledgerOn: true }).map((f) => f.severity)], [0, ["info"]]);
+
+console.log("AI investment committee");
+const brief = (text: string) => ({ at: "2026-11-06T10:00:00.000Z", text, sources: [{ id: "S1", label: "10-Q", url: "https://www.sec.gov/x" }, { id: "S2", label: "bad", url: "http://insecure" }] });
+const cm = committeeFrom({ decision: "trim", probability: 62.4, rationale: "  The bear's   margin evidence carried it.  ", dissent: "Growth is still 30%.", watch: ["NRR", "", "FCF margin", "Billings", "Extra"] }, brief("For."), brief("Against."), new Date("2026-11-06T12:00:00Z"));
+ok("the chair's answer becomes a committee with a 90-day forecast from the AI committee", [cm.decision, cm.rationale, cm.watch, cm.forecast], ["trim", "The bear's margin evidence carried it.", ["NRR", "FCF margin", "Billings"], { p: 0.62, by: "2027-02-04", at: "2026-11-06", source: "AI committee" }]);
+ok("on a thesis that reads broken the chair still decides but keeps no forecast (its chance is kept for the record, flagged)", [normalizeCommittee(JSON.parse(JSON.stringify(committeeFrom({ decision: "exit", probability: 10, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b"), new Date(), undefined, null, true))))!].map((x) => [x.decision, x.forecast, x.brokenAtSitting, x.brokenP]), [["exit", null, true, 0.1]]);
+ok("a probability out of range is clamped to 1-99", [committeeFrom({ decision: "hold", probability: 140, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, committeeFrom({ decision: "hold", probability: 0, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p], [0.99, 0.01]);
+const stored = normalizeCommittee(JSON.parse(JSON.stringify({ ...cm, forecast: { ...cm.forecast, source: "You" } })));
+ok("a stored committee round-trips, keeps only https sources, and its forecast is always the AI's", [stored?.decision, stored?.bull.sources.map((x) => x.id), stored?.forecast?.source], ["trim", ["S1"], "AI committee"]);
+ok("the base rate the chairs started from is kept with the committee", [normalizeCommittee(JSON.parse(JSON.stringify(committeeFrom({ decision: "hold", probability: 60, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b"), new Date(), undefined, 0.634))))?.baseRate, committeeFrom({ decision: "hold", probability: 60, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).baseRate], [0.63, undefined]);
+ok("a malformed committee is dropped", [normalizeCommittee({ ...cm, decision: "buy" }), normalizeCommittee({ ...cm, bull: null }), normalizeCommittee(null)], [null, null, null]);
+const withCm = normalizePosition({ ...t, id: "cm01", committee: cm })!;
+ok("a position keeps its committee", withCm.committee?.decision, "trim");
+ok("the chair is given a base rate to adjust from, when there is one", [chairPrompt(withCm, null, "B", "R", { p: 0.63, by: "2027-02-04" }).includes("63% chance the price lines"), chairPrompt(withCm, null, "B", "R").includes("base rate")], [true, false]);
+ok("the bull is briefed with the thesis and the criteria; the chair sees both briefs, labelled", [bullPrompt(withCm, null).includes(withCm.thesis), bullPrompt(withCm, null).includes("FOR"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief FOR (written alone) ---\nBULLTEXT"), chairPrompt(withCm, null, "BULLTEXT", "BEARTEXT").includes("Brief AGAINST (written alone) ---\nBEARTEXT")], [true, true, true, true]);
+const both = normalizePosition({ ...withCm, conviction: { p: 80, by: "2027-02-04", at: "2026-11-06" } })!;
+const calCm = calibrationOf([both], { cm01: [{ d: "2026-11-20", v: "broken", s: 40 }] }, [], new Date("2026-12-01T00:00:00Z"));
+ok("the PM's forecast and the committee's are scored side by side", [calCm.n, calCm.bySource.map((b) => b.source).sort()], [2, ["AI committee", "You"]]);
+const closedCm = closedFrom(both, "broken", [{ d: "2026-11-20", v: "broken", s: 40 }], 90, "thesis_broke", "", new Date("2026-11-21T00:00:00Z"));
+const reread = normalizeJournal([JSON.parse(JSON.stringify(closedCm))])[0];
+ok("a close keeps the committee's forecast and when it broke", [reread?.aiConviction?.p, reread?.aiConvictionBrokeOn, reread?.aiConviction?.source], [0.62, "2026-11-20", "AI committee"]);
+
+console.log("Forecasts cannot be withdrawn");
+const f1 = { p: 0.9, by: "2027-01-31", at: "2026-11-01", source: "You" };
+const f2 = { p: 0.4, by: "2027-01-31", at: "2026-11-10", source: "You" };
+ok("a forecast changed on a later day is kept; one corrected the same day, unchanged, or already kept is not", [supersede([], f1, f2, "2026-11-10"), supersede([], f1, null, "2026-11-10"), supersede([], f1, f2, "2026-11-01"), supersede([], f1, f1, "2026-11-10"), supersede([f1], f1, f2, "2026-11-12")], [[f1], [f1], [], [], [f1]]);
+ok("a new or changed forecast is dated today and must resolve after today; an unchanged one keeps its date", [freshForecast({ ...f1, at: "2026-01-01" }, undefined, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-11-10" }, undefined, "2026-11-10").error, freshForecast({ ...f1, at: "2026-11-10" }, f1, "2026-11-10").conviction?.at, freshForecast({ ...f1, by: "2026-06-01", at: "2026-01-01" }, f1, "2026-11-10").error], ["2026-11-10", "A forecast must resolve after today.", "2026-11-01", "A forecast must resolve after today."]);
+ok("while the thesis reads broken a new or changed forecast is refused (it would be scored on a known break); an unchanged one or none is kept", [freshForecast({ ...f1, p: 0.01 }, f1, "2026-11-10", true).error === BROKEN_FORECAST, freshForecast({ ...f1, at: "2026-11-10" }, f1, "2026-11-10", true).conviction, freshForecast(undefined, f1, "2026-11-10", true).error], [true, f1, undefined]);
+ok("a posted forecast cannot claim to be the AI committee's", freshForecast({ ...f1, source: "AI committee" }, undefined, "2026-11-10").conviction?.source, "You");
+ok("only the newest twenty are kept", supersede(Array.from({ length: PAST_FORECASTS_MAX }, (_, i) => ({ ...f1, p: (i + 1) / 100 })), f1, f2, "2026-11-10").length, PAST_FORECASTS_MAX);
+const pf = normalizePosition({ ...t, id: "pf01", conviction: f2, pastForecasts: [f1, { p: 7 }] })!;
+const pfCal = calibrationOf([pf], { pf01: [{ d: "2026-11-05", v: "intact", s: 100 }, { d: "2026-11-08", v: "broken", s: 40 }] }, [], new Date("2026-11-20T00:00:00Z"));
+ok("a withdrawn 90% still counts as a miss when the thesis broke after it; the new 40% is still open", [pf.pastForecasts?.length, pfCal.n, pfCal.open, pfCal.brier], [1, 1, 1, 0.81]);
+const pfClosed = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(pf, "broken", [{ d: "2026-11-08", v: "broken", s: 40 }], 50, "thesis_broke", "", new Date("2026-11-20T00:00:00Z"))))])[0];
+ok("a close keeps the earlier forecasts and their breaks", pfClosed?.pastForecasts, [{ f: f1, brokeOn: "2026-11-08" }]);
+
+console.log("Sizing against conviction; process against outcome");
+ok("rank correlation: perfect, reversed, ties averaged, no spread", [spearman([1, 2, 3], [10, 20, 30]), spearman([1, 2, 3], [30, 20, 10]), spearman([1, 1, 2, 3], [1, 2, 3, 4]), spearman([1, 1, 1], [1, 2, 3])], [1, -1, 0.95, null]);
+const sz = sizingCheck([{ ticker: "AAA", weight: 6, p: 0.45 }, { ticker: "BBB", weight: 3, p: 0.8 }, { ticker: "CCC", weight: 2, p: 0.7 }, { ticker: "DDD", weight: 4, p: null }]);
+ok("the largest position on the lowest conviction is named once; sizing against conviction is flagged", [sz?.n, sz?.notes.length, sz?.notes[0], sz?.notes[1]?.startsWith("Across 3 positions")], [3, 2, "Your largest position, AAA at 6% of NAV, carries your lowest conviction (45%).", true]);
+ok("a book sized with its conviction has nothing to say; too few forecasts says nothing", [sizingCheck([{ ticker: "A", weight: 6, p: 0.9 }, { ticker: "B", weight: 3, p: 0.7 }, { ticker: "C", weight: 1, p: 0.6 }])?.notes, sizingCheck([{ ticker: "A", weight: 6, p: 0.9 }])], [[], null]);
+ok("a coin-flip-or-worse thesis sized above the median is noted", sizingCheck([{ ticker: "A", weight: 5, p: 0.4 }, { ticker: "B", weight: 5, p: 0.9 }, { ticker: "C", weight: 1, p: 0.95 }])?.notes.some((n) => n.startsWith("A is 5% of NAV at 40% conviction")), true);
+const proc = scorecard([
+  { ...c1, id: "q1", ticker: "WIN1", entry: 100, exit: 120, brokeOn: null },
+  { ...c1, id: "q2", ticker: "LOSS1", entry: 100, exit: 90, brokeOn: "2026-10-10", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q3", ticker: "LUCK", entry: 100, exit: 115, brokeOn: "2026-09-01", verdictAtClose: "broken" as const, brokenSince: "2026-09-20", closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q4", ticker: "SAT", entry: 100, exit: 70, brokeOn: "2026-09-01", verdictAtClose: "broken" as const, brokenSince: null, closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q6", ticker: "BLIP", entry: 100, exit: 140, brokeOn: "2026-06-01", verdictAtClose: "intact" as const, closedAt: "2026-10-12T15:00:00.000Z" },
+  { ...c1, id: "q5", ticker: "NOEXIT", entry: 100, exit: null },
+].map((x) => ({ ...x, direction: "long" as const })));
+ok("process against outcome: a prompt exit, an intact thesis or a break that recovered is sound; still broken for over five days at the close is not", proc.process, { earned: ["WIN1", "BLIP"], unlucky: ["LOSS1"], lucky: ["LUCK"], deserved: ["SAT"] });
+ok("the broken run at the close is measured from its own start, not the first break ever", closedFrom(normalizePosition({ ...t, id: "bs01" })!, "broken", [{ d: "2026-06-01", v: "broken", s: 0 }, { d: "2026-06-02", v: "intact", s: 100 }, { d: "2026-10-10", v: "broken", s: 0 }, { d: "2026-10-11", v: "broken", s: 0 }], 90, "thesis_broke", "", new Date("2026-10-12T00:00:00Z")).brokenSince, "2026-10-10");
+ok("a forecast must look at least 30 days ahead; the same chance and date posted under another name is the same forecast", [freshForecast({ ...f1, by: "2026-11-20" }, undefined, "2026-11-10").error?.includes("30 days"), freshForecast({ ...f1, source: "Claude" }, f1, "2026-11-10").conviction], [true, f1]);
+ok("a chair's chance given as a fraction is read as a percent", committeeFrom({ decision: "hold", probability: 0.72, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")).forecast?.p, 0.72);
+const early = calibrationOf([], {}, [{ ...c1, id: "ce1", conviction: { p: 0.8, by: "2027-03-01", at: "2026-09-01", source: "You" }, convictionBrokeOn: null, closedAt: "2026-10-01T00:00:00Z" }], new Date("2026-11-20T00:00:00Z"));
+ok("a forecast whose position closed early without a break is counted as unscored, not open", [early.n, early.open, early.closedEarly, calibrationLine(early).includes("closed before its date and left unscored")], [0, 0, 1, true]);
+
+console.log("The week in the book");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pA = normalizePosition({ ...t, catalysts: [], id: "wk01", ticker: "AAA", conviction: { p: 80, by: "2026-11-06", at: "2026-08-01" } })!;
+  const pB = normalizePosition({ ...t, id: "wk02", ticker: "BBB" })!;
+  const pC = normalizePosition({ ...t, id: "wk03", ticker: "CCC" })!;
+  const hist = {
+    wk01: [{ d: "2026-10-30", v: "intact" as const, s: 100 }, { d: "2026-11-05", v: "watch" as const, s: 60 }, { d: "2026-11-06", v: "broken" as const, s: 30 }, { d: "2026-11-07", v: "broken" as const, s: 30 }],
+    wk02: [{ d: "2026-10-30", v: "intact" as const, s: 100 }, { d: "2026-11-08", v: "intact" as const, s: 100 }],
+    wk03: [{ d: "2026-11-01", v: "broken" as const, s: 0 }, { d: "2026-11-04", v: "intact" as const, s: 100 }],
+  };
+  const evA = { ...evaluate(pA, co, d, [], wNow), earnings: { date: "2026-11-12", estimated: false, inDays: 3 } };
+  const wb = weekBrief({ now: wNow, book: [pA, pB, pC], evals: [evA], history: hist, closed: [], proposals: [] });
+  ok("a week's brief: what broke and recovered (from where it stood before the week), when the new verdict began, and what is coming", [wb.from, wb.changes.map((c) => [c.ticker, c.from, c.to, c.on]), wb.coming.map((c) => [c.ticker, c.label, c.inDays])], ["2026-11-02", [["AAA", "intact", "broken", "2026-11-06"], ["CCC", "broken", "intact", "2026-11-04"]], [["AAA", "Earnings", 3]]]);
+  ok("a forecast that resolved in the week is listed; the headline says it all in one line", [wb.resolved.map((r) => [r.ticker, r.held, r.on]), wb.headline], [[["AAA", false, "2026-11-06"]], "This week: 1 thesis broke (AAA); 1 recovered (CCC); 1 forecast resolved, 0 held; 1 date in the next two weeks."]);
+  const pJ = normalizePosition({ ...t, catalysts: [], id: "wkj1", ticker: "JRN", log: [{ at: "2026-11-05T10:00:00Z", text: "Sized down ahead of the print" }, { at: "2026-11-05T10:00:00Z", text: "Weight 4% → 2% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old note" }] })!;
+  ok("the week lists the PM's own notes from the week with the change saved alongside, not YouBank's entries or older notes", weekBrief({ now: wNow, book: [pJ], evals: [], history: {}, closed: [], proposals: [] }).notes, [{ ticker: "JRN", on: "2026-11-05", text: "Sized down ahead of the print", with: "Weight 4% → 2% of NAV" }]);
+  ok("a note typed after a resize explains it; an earlier note's changes are not repeated; the AI committee is not the PM's change", notesOf([
+    { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-11-01T11:00:00Z", text: "first" },
+    { at: "2026-11-03T10:00:00Z", text: "AI committee: hold.", auto: true }, { at: "2026-11-04T10:00:00Z", text: "Weight 3% → 1% of NAV.", auto: true }, { at: "2026-11-04T12:00:00Z", text: "cut after the miss" },
+    { at: "2026-10-01T10:00:00Z", text: "Weight 1% → 2% of NAV.", auto: true },
+  ]).map((n) => [n.text, n.with ?? null]), [["first", "Weight 2% → 3% of NAV"], ["cut after the miss", "Weight 3% → 1% of NAV"]]);
+  ok("a note's context leaves out an AI app's proposal entry", notesOf([{ at: "a", text: "Proposed by Claude, whose reasoning was: \"x\"", auto: true }, { at: "a", text: "Opened: long X.", auto: true }, { at: "a", text: "mine" }, { at: "b", text: "later" }]), [{ at: "a", text: "mine", with: "Opened: long X" }, { at: "b", text: "later" }]);
+  const pU = normalizePosition({ ...t, catalysts: [], id: "wku1", ticker: "UNX", log: [{ at: "2026-11-06T10:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-10-01T10:00:00Z", text: "old reason" }] })!;
+  const wU = weekBrief({ now: wNow, book: [pJ, pU], evals: [], history: {}, closed: [], proposals: [] });
+  const pNew = normalizePosition({ ...t, catalysts: [], id: "wkn1", ticker: "NEW", log: [{ at: "2026-11-06T10:00:00Z", text: "Opened at 2% of NAV.", auto: true }] })!;
+  ok("a position opened this week is not a change without a reason", weekBrief({ now: wNow, book: [pNew], evals: [], history: {}, closed: [], proposals: [] }).unexplained, []);
+  ok("the week lists positions changed this week with no note on why, not ones the PM explained", wU.unexplained, [{ positionId: "wku1", ticker: "UNX", changes: ["Weight 3% → 5% of NAV."] }]);
+  const pAI = normalizePosition({ ...t, catalysts: [], id: "wka1", ticker: "AIC", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-05T10:00:00Z", text: "AI committee: hold, 70%.", auto: true }] })!;
+  const pLate = normalizePosition({ ...t, catalysts: [], id: "wkl1", ticker: "LAT", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-03T10:00:00Z", text: "monday note" }, { at: "2026-11-06T10:00:00Z", text: "Weight 2% → 4% of NAV.", auto: true }] })!;
+  ok("the AI committee's sitting is not the PM's change; a note earlier in the week does not explain a later change", weekBrief({ now: wNow, book: [pAI, pLate], evals: [], history: {}, closed: [], proposals: [] }).unexplained.map((u) => u.ticker), ["LAT"]);
+  ok("a quiet week says so", weekBrief({ now: wNow, book: [pB], evals: [], history: { wk02: hist.wk02 }, closed: [], proposals: [] }).headline, "A quiet week: no thesis changed verdict.");
+}
+
+console.log("Pooled chairs");
+{
+  const ch = (decision: "add" | "hold" | "trim" | "exit", probability: number, rationale: string = decision) => ({ decision, probability, rationale, dissent: "", watch: [] as string[] });
+  const pool = poolChairs([ch("trim", 60, "a"), ch("trim", 70, "b"), ch("hold", 40, "c")])!;
+  ok("three chairs: the majority decides, the probability is the mean in log-odds, the wording comes from the majority chair nearest it", [pool.chair.decision, pool.chair.probability, pool.chair.rationale, pool.samples], ["trim", 57, "a", [{ decision: "trim", p: 0.6 }, { decision: "trim", p: 0.7 }, { decision: "hold", p: 0.4 }]]);
+  ok("a split takes the median call (add against exit is trim; add, hold and exit is hold); fractions count as percents; none is none", [poolChairs([ch("add", 80), ch("exit", 20)])!.chair.decision, poolChairs([ch("add", 80), ch("hold", 60), ch("exit", 20)])!.chair.decision, poolChairs([ch("hold", 0.9), ch("hold", 90)])!.chair.probability, poolChairs([])], ["trim", "hold", 90, null]);
+  ok("log-odds pooling keeps a confident chair from being averaged away", poolChairs([ch("hold", 95), ch("hold", 50), ch("hold", 50)])!.chair.probability, 73);
+  const withSamples = committeeFrom(pool.chair, brief("a"), brief("b"), new Date("2026-11-06T12:00:00Z"), pool.samples);
+  ok("a committee keeps its chairs' spread through storage; a lone chair stores none", [normalizeCommittee(JSON.parse(JSON.stringify(withSamples)))?.samples?.length, withSamples.forecast?.p, committeeFrom(ch("hold", 50), brief("a"), brief("b"), new Date(), [{ decision: "hold", p: 0.5 }]).samples], [3, 0.57, undefined]);
+}
+
+console.log("Calibration correction");
+{
+  // An overconfident forecaster: says 90% and is right 60% of the time, 30 times.
+  const over = Array.from({ length: 30 }, (_, k) => ({ p: 0.9, outcome: (k % 10 < 6 ? 1 : 0) as 0 | 1 }));
+  const f = fitPlatt(over)!;
+  ok("an overconfident 90% is corrected toward what happened (60%), shrunk toward no correction", [f !== null, recalibrate(0.9, f) < 0.9 && recalibrate(0.9, f) > 0.55], [true, true]);
+  ok("too few, or all the same, fits nothing", [fitPlatt(over.slice(0, 10)), fitPlatt(Array.from({ length: 25 }, () => ({ p: 0.7, outcome: 1 as const })))], [null, null]);
+  const items = over.map((x, k) => ({ ticker: `T${k}`, p: x.p, by: "x", source: "You", outcome: x.outcome, resolvedOn: "x" }));
+  const cal20 = calibration(items);
+  ok("the calibration says what a source's stated chance has meant", [cal20.bySource[0].meant?.said, (cal20.bySource[0].meant?.means ?? 1) < 0.9], [0.9, true]);
+}
+
+console.log("AI claims against the record");
+{
+  const rec = { reviewedShare: 12, verifiedShare: 91, outputs: 42 };
+  const own = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [letterEv], summary: summarize([letterEv]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: { outputs: 42, reviewedShare: 12, verifiedShare: 91, ledgerOn: true } });
+  ok("the letter's own AI paragraph matches the record, clause by clause", lintLetter(own, { ledgerOn: true, record: rec }).filter((f) => f.severity !== "info").map((f) => f.excerpt), []);
+  const bad = lintLetter("Every AI output is reviewed by a person. Our AI tools' figures were 99% verified against their sources. A person approved 12% of AI outputs.", { ledgerOn: true, record: rec });
+  ok("claims the ledger contradicts are flagged high; a true one is not", bad.filter((f) => f.rule === "AI claim contradicts the record").map((f) => f.why), ["The ledger shows 12% of AI outputs reviewed by a person, not all. Say what the record shows.", "The ledger shows 91% of AI figures verified against their source for this period, not 99%."]);
+  ok("a review claim with no review record is flagged", lintLetter("All AI output is reviewed.", { ledgerOn: true, record: { reviewedShare: null, verifiedShare: null, outputs: 0 } }).map((f) => f.rule).includes("AI claim the record cannot show"), true);
+}
+
+console.log("Second review: edge cases");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pN = normalizePosition({ ...t, catalysts: [], id: "wkn1", ticker: "NEW" })!, pR = normalizePosition({ ...t, catalysts: [], id: "wkr1", ticker: "RTR" })!;
+  const wb2 = weekBrief({ now: wNow, book: [pN, pR], evals: [], history: {
+    wkn1: [{ d: "2026-11-03", v: "intact", s: 100 }, { d: "2026-11-05", v: "broken", s: 0 }],
+    wkr1: [{ d: "2026-10-30", v: "intact", s: 100 }, { d: "2026-11-04", v: "broken", s: 0 }, { d: "2026-11-06", v: "intact", s: 100 }],
+  }, closed: [], proposals: [] });
+  ok("the week sees a position new this week that broke, and a break that recovered within the week", [wb2.changes.map((c) => [c.ticker, c.from, c.path.join(">")]), wb2.headline], [[["NEW", "intact", "broken"], ["RTR", "intact", "broken>intact"]], "This week: 1 thesis broke (NEW); 1 broke and recovered within the week (RTR)."]);
+  const hi = Array.from({ length: 25 }, (_, k) => ({ p: 0.95, outcome: (k < 10 ? 1 : 0) as 0 | 1 }));
+  const fh = fitPlatt(hi);
+  const lo = Array.from({ length: 25 }, (_, k) => ({ p: k % 2 ? 0.1 : 0.14, outcome: (k < 22 ? 1 : 0) as 0 | 1 }));
+  const fl = fitPlatt(lo);
+  ok("the fit never says the opposite of what happened: an overconfident 95% that held 40% corrects down; a 12% that held 88% corrects up", [fh === null || recalibrate(0.95, fh) < 0.95, fl === null || recalibrate(0.12, fl) > 0.12], [true, true]);
+  const sampleP = normalizePosition({ ...t, id: "smp01", conviction: { p: 60, by: "2027-03-01", at: "2026-09-01", source: "Sample" } })!;
+  ok("sample forecasts are never scored, kept or on the record", [calibrationOf([sampleP], { smp01: [{ d: "2026-10-01", v: "broken", s: 0 }] }, [], new Date("2026-11-20T00:00:00Z")).n, supersede([], sampleP.conviction, null, "2026-11-20"), standing("2026-11-20", sampleP.conviction)], [0, [], false]);
+  const lintAi = (x: string) => lintLetter(x, { ledgerOn: true, record: { reviewedShare: 12, verifiedShare: 91, outputs: 42 } }).filter((f) => f.rule.startsWith("AI claim c")).length;
+  ok("ordinary sentences are not read as AI claims; a real one still is", [lintAi("We aim for every figure in this letter to be accurate."), lintAi("Our AI screening tool reviewed 40% more filings this quarter than last."), lintAi("We used AI to screen 1,200 companies, and 30% of our holdings were reviewed by the committee."), lintAi("Every AI output is reviewed by a person.")], [0, 0, 0, 1]);
+  ok("a break seen only at the close starts on the close day", closedFrom(normalizePosition({ ...t, id: "bsc1" })!, "broken", [{ d: "2026-06-01", v: "broken", s: 0 }, { d: "2026-06-02", v: "intact", s: 100 }], 90, "thesis_broke", "", new Date("2026-10-12T00:00:00Z")).brokenSince, "2026-10-12");
+}
+
+console.log("Figures checked against the filing");
+{
+  const facts = [{ ticker: "SNOW", name: "Snowflake Inc.", metric: "gross margin" as const, value: 66.8, shown: "66.8%", source: "SEC XBRL company facts, LTM to 2026-07-31" }, { ticker: "TTD", name: "The Trade Desk", metric: "revenue growth" as const, value: 18.2, shown: "18.2%", source: "SEC XBRL" }];
+  const got = (x: string) => checkFigures(x, facts).map((r) => [r.fact.ticker, r.said]);
+  ok("a figure about a holding that does not match its filing is caught, by ticker or name; a matching or rounded one is not", [got("Snowflake's gross margin reached 72%."), got("SNOW gross margin was 66.8%, and we added."), got("SNOW's gross margin is about 67%."), got("Gross margins of 40% at SNOW would be a problem.")], [[["SNOW", 72]], [], [], [["SNOW", 40]]]);
+  ok("a common first word is not a company name; the ticker still works", [got("The gross margin across the book was 55%."), got("TTD revenue growth was 25%.")], [[], [["TTD", 25]]]);
+  const evF = evaluate(t, co, d, [], now);
+  const draftF = draftLetter({ firm: "N", period: "Q4 2026", now, evals: [evF], summary: summarize([evF]), closed: [], record: scorecard([]), calibration: null, risk: null, ai: null });
+  ok("the draft's own figures match the filing", lintLetter(draftF, { ledgerOn: false, facts: factsFrom([evF]) }).filter((f) => f.rule === "Figure does not match the filing").length, 0);
+  ok("the compliance pass names the filing's figure and source", lintLetter("Snowflake's gross margin reached 72%.", { ledgerOn: false, facts }).find((f) => f.rule === "Figure does not match the filing")?.why.startsWith("SNOW's gross margin is 66.8% (SEC XBRL company facts, LTM to 2026-07-31), not 72%."), true);
+}
+
+console.log("The Friday brief");
+{
+  const pF = normalizePosition({ ...t, catalysts: [], id: "wkf1", ticker: "FRI" })!;
+  const fri = new Date("2026-11-13T21:30:00Z"), thu = new Date("2026-11-12T21:30:00Z");
+  const a = weekAlert({ now: fri, book: [pF], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example");
+  ok("after Friday's close the week's headline goes to the bell once (keyed by the week), linking to the page; not on other days or for an empty book", [a?.key, a?.url, a?.body, weekAlert({ now: thu, book: [pF], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example"), weekAlert({ now: fri, book: [], evals: [], history: {}, closed: [], proposals: [] }, "https://x.example")], ["book:week:2026-11-13", "https://x.example/report/week", "A quiet week: no thesis changed verdict.", null, null]);
+}
+
+console.log("Returns by the committee's call");
+{
+  const withCall = (id: string, entry: number, exit: number, aiDecision?: "add" | "hold" | "trim" | "exit") => ({ ...mk2(id, entry, exit, "other"), ...(aiDecision ? { aiDecision } : {}) });
+  const sc2 = scorecard([withCall("k1", 100, 80, "exit"), withCall("k2", 100, 90, "exit"), withCall("k3", 100, 130, "hold"), withCall("k4", 100, 110)]);
+  ok("closes are grouped by the committee's last call; ones it never sat on are left out", sc2.byCommittee, [{ decision: "hold", n: 1, avgReturn: 0.3 }, { decision: "exit", n: 2, avgReturn: -0.15 }]);
+  const cl = closedFrom(normalizePosition({ ...t, id: "kc01", committee: committeeFrom({ decision: "trim", probability: 50, rationale: "", dissent: "", watch: [] }, brief("a"), brief("b")) })!, "intact", [], 90, "other", "", now);
+  ok("a close keeps the committee's last call through storage", normalizeJournal([JSON.parse(JSON.stringify(cl))])[0]?.aiDecision, "trim");
+}
+
+console.log("Figure check: the third review's cases");
+{
+  const F = (ticker: string, name: string, metric: "revenue growth" | "gross margin" | "operating margin" | "free cash flow margin", value: number) => ({ ticker, name, metric, value, shown: `${value}%`, source: "SEC XBRL" });
+  const facts = [F("SNOW", "Snowflake Inc.", "revenue growth", 30), F("SNOW", "Snowflake Inc.", "gross margin", 67), F("A", "Agilent Technologies", "revenue growth", 4), F("NOW", "ServiceNow, Inc.", "revenue growth", 21), F("TGT", "Target Corp", "gross margin", 28), F("INTC", "Intel Corp", "revenue growth", -5), F("INTC", "Intel Corp", "gross margin", 40), F("CRM", "Salesforce, Inc.", "operating margin", 20), F("DDOG", "Datadog, Inc.", "revenue growth", 26)];
+  const got = (x: string) => checkFigures(x, facts).map((r) => [r.fact.ticker, r.fact.metric, r.said]);
+  ok("English words are not tickers or names: 'a', 'now', 'target'", [got("Snowflake revenue grew a strong 30%."), got("Revenue growth at Snowflake is now 30%."), got("Our target gross margin for INTC is 40%.")], [[], [], []]);
+  ok("negatives: the minus sign, 'down', and a range are read right", [got("Intel revenue growth was −5.0%."), got("Intel revenue growth was down 5%."), got("Snowflake gross margin of 66-68% held.")], [[], [], []]);
+  ok("a quarter's figure is not compared with LTM", got("In Q3, Snowflake revenue grew 28% year over year."), []);
+  ok("each percent belongs to its own metric and company; 'from X to Y' means Y", [got("SNOW gross margin held up while revenue grew 30%."), got("SNOW revenue growth of 30% outpaced DDOG revenue growth of 26%."), got("Snowflake revenue growth decelerated from 40% to 30%.")], [[], [], []]);
+  ok("a name with a comma still matches, and a wrong figure is still caught", got("Salesforce operating margin was 33%."), [["CRM", "operating margin", 33]]);
+}
+
+console.log("Forecasts about to be scored");
+{
+  const wNow = new Date("2026-11-09T12:00:00Z");
+  const pS = normalizePosition({ ...t, catalysts: [], id: "fsc1", ticker: "FSC", conviction: { p: 70, by: "2026-11-15", at: "2026-09-01" } })!;
+  const pL = normalizePosition({ ...t, catalysts: [], id: "fsc2", ticker: "FSL", conviction: { p: 70, by: "2027-01-15", at: "2026-09-01" } })!;
+  const pX = normalizePosition({ ...t, catalysts: [], id: "fsc3", ticker: "FSX", conviction: { p: 70, by: "2026-11-15", at: "2026-09-01", source: "Sample" } })!;
+  ok("an open forecast due within two weeks is listed as coming; a later or sample one is not", weekBrief({ now: wNow, book: [pS, pL, pX], evals: [], history: { fsc1: [{ d: "2026-10-01", v: "intact", s: 100 }] }, closed: [], proposals: [] }).coming.map((c) => [c.ticker, c.label, c.inDays]), [["FSC", "Your 70% forecast is scored", 6]]);
+}
+
+console.log("Price base rate");
+{
+  ok("the normal CDF", [phi(0).toFixed(4), phi(1.96).toFixed(4), phi(-1.96).toFixed(4)], ["0.5000", "0.9750", "0.0250"]);
+  // S=100, floor 80, 40% vol, one year: 1 - 2*phi(-ln(1.25)/0.4) = 1 - 2*phi(-0.5579) = 0.4231
+  ok("reflection principle: a floor 20% below at 40% vol over a year holds about 42% of the time; a line already crossed, 0", [noTouch(100, 80, 0.4, 1, "floor", false).toFixed(3), noTouch(100, 120, 0.4, 1, "floor"), noTouch(100, 125, 0.4, 1, "ceiling", false).toFixed(3), noTouch(100, 80, 0.4, 1, "floor") > 0.423], ["0.423", 0, "0.423", true]);
+  const long = { direction: "long" as const, entry: 100, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -15 }, { id: "b", metric: "price" as const, op: ">=" as const, value: 70 }, { id: "c", metric: "gross_margin" as const, op: ">=" as const, value: 60 }] };
+  const short = { direction: "short" as const, entry: 50, criteria: [{ id: "a", metric: "return_since_entry" as const, op: ">=" as const, value: -20 }] };
+  ok("price lines: a long's stop below entry and a price floor; a short's stop above entry; fundamentals ignored", [priceLines(long), priceLines(short)], [[{ level: 85, side: "floor" }, { level: 70, side: "floor" }], [{ level: 60, side: "ceiling" }]]);
+ok("a profit-take ('at most +50%') is a long's ceiling and a short's floor", [priceLines({ direction: "long", entry: 100, criteria: [{ id: "p", metric: "return_since_entry", op: "<=", value: 50 }] }), priceLines({ direction: "short", entry: 100, criteria: [{ id: "p", metric: "return_since_entry", op: "<=", value: 40 }] })], [[{ level: 150, side: "ceiling" }], [{ level: 60, side: "floor" }]]);
+{
+  // A band (floor 85, ceiling 115) at 30% vol over 90 days: about 0.45 by simulation, not the 0.69 of the tighter line alone.
+  const band = priceBaseRate({ direction: "long", entry: 100, criteria: [{ id: "f", metric: "return_since_entry", op: ">=", value: -15 }, { id: "c", metric: "price", op: "<=", value: 115 }] }, 100, 30, "2027-02-03", new Date("2026-11-06T00:00:00Z"));
+  ok("a floor and a ceiling together: the band's chance, well under either line's", band !== null && band.p > 0.38 && band.p < 0.5, true);
+}
+  const br = priceBaseRate(long, 100, 30, "2027-05-06", new Date("2026-11-06T00:00:00Z"));
+  ok("the base rate is the binding line's, and absent without a price line, a price, a volatility or a future date", [br?.lines, br && br.p > 0.3 && br.p < 0.7, priceBaseRate({ ...long, criteria: [long.criteria[2]] }, 100, 30, "2027-05-06", new Date()), priceBaseRate(long, null, 30, "2027-05-06", new Date()), priceBaseRate(long, 100, null, "2027-05-06", new Date()), priceBaseRate(long, 100, 30, "2020-01-01", new Date())], [2, true, null, null, null, null]);
+}
+
+console.log("Kill criteria that cannot fail");
+{
+  const mkc = (metric: "revenue_growth" | "rule_of_40" | "pe" | "price" | "return_since_entry", value: number, room: number, state: "pass" | "near" | "fail" = "pass") => ({ criterion: { id: metric, metric, op: ">=" as const, value }, label: metric, state, actual: 0, shown: "", target: "", headroom: { value: room, shown: `+${room}` }, evidence: null });
+  const lvl = (metric: "pe" | "net_debt" | "revenue", op: ">=" | "<=", value: number, actual: number) => ({ criterion: { id: metric, metric, op, value }, label: metric, state: "pass" as const, actual, shown: "", target: "", headroom: { value: 1, shown: "+1" }, evidence: null });
+  ok("levels: more than double an 'at least' line or under half an 'at most' one; net debt and zero lines are left alone", toothless([lvl("pe", "<=", 100, 12), lvl("pe", "<=", 30, 20), lvl("revenue", ">=", 100, 500), lvl("net_debt", "<=", 0, -150), lvl("net_debt", "<=", 10, -500)]).map((x) => x.label), ["pe", "revenue"]);
+  ok("growth with 75 points of room, a rule of 40 with 40, a multiple at triple its line are toothless; a tight one, a price line, a stop or a failing one are not", toothless([mkc("revenue_growth", -50, 75), mkc("revenue_growth", 20, 4.7), mkc("rule_of_40", 0, 40), mkc("price", 10, 900), mkc("return_since_entry", -15, 60), mkc("revenue_growth", 20, 30, "fail")]).map((x) => x.label), ["revenue_growth", "rule_of_40"]);
+}
+
+console.log("Decision journal");
+{
+  const a = normalizePosition({ ...t, id: "dj01", weight: 3, conviction: { p: 70, by: "2027-02-01", at: "2026-11-01" } })!;
+  const b = normalizePosition({ ...a, weight: 5, thesis: "A rewritten thesis for the journal.", conviction: { p: 55, by: "2027-02-01", at: "2026-11-06" } })!;
+  ok("a save writes what changed: weight, thesis, forecast; nothing when nothing changed; an opening for a new position", [changesOf(a, b), changesOf(a, a), changesOf(null, a)[0].startsWith("Opened: long")], [["Weight 3% → 5% of NAV.", "Thesis rewritten.", "Forecast 70% to 2027-02-01 → 55% to 2027-02-01."], [], true]);
+  const log = withEntries([], ["Weight 3% → 5% of NAV."], "2026-11-06T10:00:00.000Z", "  added after the call  ");
+  ok("entries are dated; the change is marked automatic and the note is the PM's", log, [{ at: "2026-11-06T10:00:00.000Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-11-06T10:00:00.000Z", text: "added after the call" }]);
+  const opened = withEntries([], ["Opened: long X."], "2026-11-01T00:00:00Z");
+  const flooded = Array.from({ length: 60 }, (_, k) => k).reduce((l, k) => withEntries(l, [], `2026-11-02T00:00:${String(k).padStart(2, "0")}Z`, `filler ${k}`), opened);
+  ok("notes can't push YouBank's own entries out: they are capped apart", [flooded.filter((x) => x.auto).map((x) => x.text), flooded.filter((x) => !x.auto).length, NOTES_MAX < AUTO_MAX], [["Opened: long X."], NOTES_MAX, true]);
+  ok("junk is dropped", normalizeLog([{ at: "bad", text: "x" }, { at: "2026-11-06T00:00:00Z", text: "" }, { at: "2026-11-06T00:00:00Z", text: "ok" }]), [{ at: "2026-11-06T00:00:00Z", text: "ok" }]);
+  const c1x = normalizePosition({ ...a, weight: 0.1 + 0.2, criteria: [...a.criteria, { id: "nn", metric: "gross_margin", op: ">=", value: 65 }] })!;
+  ok("weights are rounded and the criteria change names what was added", changesOf(a, c1x), ["Weight 3% → 0.3% of NAV.", "Kill criteria: added gross margin at least 65."]);
+  const withLog = normalizePosition({ ...a, log })!;
+  const closedLog = normalizeJournal([JSON.parse(JSON.stringify(closedFrom(withLog, "intact", [], 120, "target", "", new Date("2026-11-20T00:00:00Z"))))])[0]?.log;
+  ok("the journal is kept through the close, ending with it", [closedLog?.length, closedLog?.[closedLog.length - 1]?.text], [3, "Closed: target reached at $120."]);
+  const withNote = closedFrom(withLog, "intact", [], 120, "target", "Took profits at the target", new Date("2026-11-20T00:00:00Z")).log;
+  ok("the close's note joins the journal beside the close", withNote?.slice(-2).map((x) => [x.text, !!x.auto]), [["Closed: target reached at $120.", true], ["Took profits at the target", false]]);
+}
+
+{
+  // The live book's broken theses: acted on since the break, or not.
+  const dNow = new Date("2026-11-20T12:00:00Z");
+  const H = (id: string, pts: [string, "intact" | "broken"][]) => ({ [id]: pts.map(([d, v]) => ({ d, v, s: null })) });
+  const acted = normalizePosition({ ...t, id: "dsc1", ticker: "ACT", log: [{ at: "2026-11-12T15:00:00Z", text: "Thesis rewritten.", auto: true }, { at: "2026-11-13T15:00:00Z", text: "Weight 5% → 2% of NAV.", auto: true }] })!;
+  const idle = normalizePosition({ ...t, id: "dsc2", ticker: "IDL", log: [{ at: "2026-11-01T15:00:00Z", text: "Weight 3% → 5% of NAV.", auto: true }, { at: "2026-11-16T15:00:00Z", text: "watching it" }] })!;
+  const fine = normalizePosition({ ...t, id: "dsc3", ticker: "FIN" })!;
+  const hist = { ...H("dsc1", [["2026-11-09", "intact"], ["2026-11-10", "broken"], ["2026-11-11", "broken"], ["2026-11-19", "broken"]]), ...H("dsc2", [["2026-11-12", "intact"], ["2026-11-14", "broken"], ["2026-11-19", "broken"]]), ...H("dsc3", [["2026-11-14", "broken"], ["2026-11-19", "intact"]]) };
+  const b = brokenNow([acted, idle, fine], hist, dNow);
+  ok("broken now: nothing done first; a thesis edit, a note or a resize before the break is not acting on it; recovered positions are left out", b.map((x) => [x.ticker, x.since, x.actedAfter, x.days]), [["IDL", "2026-11-14", null, 6], ["ACT", "2026-11-10", 3, 10]]);
+  ok("broken now: the action is named, and a stale broken reading (no data since) is not broken now", [b[1].action, brokenNow([fine], H("dsc3", [["2026-11-10", "broken"]]), dNow).length], ["cut", 0]);
+  ok("broken now: one line", brokenNowLine(b), "Broken now: nothing done since the break on IDL (6 days); ACT cut 3 days after the break.");
+  ok("broken now: a break seen today reads as today", brokenNowLine(brokenNow([fine], H("dsc3", [["2026-11-20", "broken"]]), dNow)), "Broken now: nothing done since the break on FIN (broke today).");
+  ok("broken now: nothing to say when no thesis is broken", brokenNowLine(brokenNow([fine], hist, dNow)), "");
+}
+
+{
+  // Moving the goalposts: a kill criterion loosened while the thesis reads broken or on watch.
+  const before = normalizePosition({ ...t, id: "gp1", criteria: [{ metric: "revenue_growth", op: ">=", value: 20 }, { metric: "gross_margin", op: ">=", value: 70 }, { metric: "net_debt", op: "<=", value: 500 }] })!;
+  const looser = normalizePosition({ ...before, criteria: [{ metric: "revenue_growth", op: ">=", value: 15 }, { metric: "net_debt", op: "<=", value: 800 }] })!;
+  const tighter = normalizePosition({ ...before, criteria: [{ metric: "revenue_growth", op: ">=", value: 25 }, { metric: "gross_margin", op: ">=", value: 70 }, { metric: "net_debt", op: "<=", value: 400 }] })!;
+  ok("loosened: a lowered 'at least', a removed line and a raised 'at most'; tightening is not loosening", [loosened(before, looser), loosened(before, tighter)], [["revenue growth at least 20 → 15", "gross margin at least 70 removed", "net debt at most 500 → 800"], []]);
+  ok("goalposts: recorded only while the thesis reads broken or on watch", [goalpostEntry(before, looser, "broken"), goalpostEntry(before, looser, "intact"), goalpostEntry(null, looser, "broken"), goalpostEntry(before, tighter, "watch")], ["Kill criteria loosened while the thesis read broken: revenue growth at least 20 → 15; gross margin at least 70 removed; net debt at most 500 → 800.", null, null, null]);
+}
+
+{
+  // Goalposts in the week and the track record (not in the LP letter's line).
+  const gNow = new Date("2026-11-09T12:00:00Z");
+  const g = normalizePosition({ ...t, catalysts: [], id: "gpw", ticker: "GPW", log: [{ at: "2026-10-01T10:00:00Z", text: "Opened.", auto: true }, { at: "2026-11-05T10:00:00Z", text: "Kill criteria loosened while the thesis read broken: gross margin at least 70 removed.", auto: true }] })!;
+  const wg = weekBrief({ now: gNow, book: [g], evals: [], history: {}, closed: [], proposals: [] });
+  ok("the week lists goalposts moved and says so in the headline", [wg.goalposts.map((x) => x.ticker), wg.headline.includes("kill criteria loosened while failing on GPW")], [["GPW"], true]);
+  const gc = { ...c1, ticker: "GPC", log: g.log };
+  const sc = scorecard([gc, { ...c1, ticker: "CLN", log: [] }]);
+  ok("the track record counts closes whose criteria were loosened while failing", [sc.goalposts, scorecardLine(sc).includes("kill criteria loosened while failing on 1 of 2")], [["GPC"], true]);
+}
+
+{
+  // The disposition effect: losers held longer than winners.
+  const mk = (ticker: string, exit: number, days: number) => ({ ...c1, ticker, entry: 100, exit, direction: "long" as const, openedAt: "2026-01-01T00:00:00Z", closedAt: new Date(Date.parse("2026-01-01T00:00:00Z") + days * 86_400_000).toISOString(), log: [] });
+  const d1 = scorecard([mk("W1", 120, 10), mk("W2", 110, 20), mk("L1", 90, 60), mk("L2", 80, 80)]);
+  ok("disposition: median hold for winners and losers, flagged when losers are held 1.5x longer", d1.holding, { winners: 15, losers: 70, n: 4, disposition: true });
+  ok("disposition: said in the line", scorecardLine(d1).includes("median hold 15 days for winners, 70 for losers (losers held longer: the disposition effect)"), true);
+  ok("disposition: not judged on fewer than two of each", scorecard([mk("W1", 120, 10), mk("L1", 90, 60)]).holding, null);
+  ok("disposition: even holding is not flagged", scorecard([mk("W1", 120, 30), mk("W2", 110, 40), mk("L1", 90, 35), mk("L2", 80, 45)]).holding?.disposition, false);
+}
+
+{
+  // Stale theses: no note or change from the PM in 90 days.
+  const sNow = new Date("2026-11-20T12:00:00Z");
+  const old = normalizePosition({ ...t, id: "st1", ticker: "OLD", createdAt: "2026-05-01T00:00:00Z", log: [{ at: "2026-06-01T00:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-10-01T00:00:00Z", text: "AI committee: hold.", auto: true }] })!;
+  const kept = normalizePosition({ ...t, id: "st2", ticker: "KPT", createdAt: "2026-05-01T00:00:00Z", log: [{ at: "2026-10-15T00:00:00Z", text: "still fine after the print" }] })!;
+  const fresh = normalizePosition({ ...t, id: "st3", ticker: "NEW", createdAt: "2026-11-01T00:00:00Z" })!;
+  ok("stale: no note or PM change for 90 days (a committee sitting does not count); a recent note or a new position is not stale", staleTheses([old, kept, fresh], sNow).map((x) => [x.ticker, x.since, x.days]), [["OLD", "2026-06-01", 172]]);
+}
+
+{
+  // Process health: one panel from records already kept.
+  const hNow = new Date("2026-11-20T12:00:00Z");
+  const a = normalizePosition({ ...t, catalysts: [], id: "phx1", ticker: "AAA", createdAt: "2026-10-01T00:00:00Z", log: [
+    { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }, { at: "2026-11-02T10:00:00Z", text: "sized up after the call" },
+    { at: "2026-11-10T10:00:00Z", text: "Weight 3% → 4% of NAV.", auto: true },
+    { at: "2026-11-12T10:00:00Z", text: "Kill criteria loosened while the thesis read broken: gross margin at least 70 removed.", auto: true },
+  ] })!;
+  const hist = { phx1: [{ d: "2026-11-12", v: "broken" as const, s: null }, { d: "2026-11-19", v: "broken" as const, s: null }] };
+  const hx = processHealth({ open: [a], closed: [], history: hist, calibration: null, now: hNow });
+  const by = (k: string) => hx.find((x) => x.key === k)!;
+  ok("process health: reasons counts the PM's changes with a note within a week (the goalposts entry is not a PM change)", [by("reasons").value, by("reasons").status], ["1 of 2", "watch"]);
+  ok("process health: a broken thesis left alone more than five days is to fix", [by("broken").value, by("broken").status], ["0 of 1", "fix"]);
+  ok("process health: goalposts moved once is to watch; no history yet is said", [by("goalposts").status, by("disposition").status, by("calibration").status, by("stale").status], ["watch", "none", "none", "good"]);
+  ok("process health: an empty journal does not grade goalposts as good", processHealth({ open: [], closed: [], history: {}, calibration: null, now: hNow }).find((x) => x.key === "goalposts")!.status, "none");
+  ok("process health: one line", healthLine(hx), "Process health: 1 good, 2 to watch, 1 to fix (3 not enough history yet).");
+}
+
+{
+  // Fixes from the eighth review.
+  const lb = normalizePosition({ ...t, id: "rv81", direction: "long", criteria: [{ metric: "revenue_growth", op: ">=", value: 20 }, { metric: "gross_margin", op: ">=", value: 70 }] })!;
+  const flip = normalizePosition({ ...lb, direction: "short", criteria: [{ metric: "revenue_growth", op: "<=", value: 20 }, { metric: "gross_margin", op: "<=", value: 70 }] })!;
+  ok("flipping the side is not moving the goalposts", goalpostEntry(lb, flip, "broken"), null);
+  ok("an op changed on the same side is said as changed, not removed; duplicates are said once", loosened(lb, { criteria: [{ metric: "revenue_growth", op: "<=", value: 30 }, { metric: "gross_margin", op: ">=", value: 60 }, { metric: "gross_margin", op: ">=", value: 60 }] }), ["revenue growth at least 20 changed to at most 30", "gross margin at least 70 → 60"]);
+  ok("a recent check counts; a stale or future one does not", [recentVerdict([{ d: "2026-11-18", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict([{ d: "2026-10-01", v: "broken" }], new Date("2026-11-20T12:00:00Z")), recentVerdict(undefined)], ["broken", undefined, undefined]);
+  const team = { ...normalizePosition({ ...t, id: "rv82" })!, createdAt: "", log: [{ at: "2026-11-01T00:00:00Z", text: "AI committee: hold.", auto: true }] };
+  ok("a teammate's position with nothing to date it by is not judged stale (and does not throw)", staleTheses([team], new Date("2026-11-20T12:00:00Z")), []);
+}
+
+{
+  // Catalyst reviews.
+  const cNow = new Date("2026-11-20T12:00:00Z");
+  const cp = normalizePosition({ ...t, id: "cat1", createdAt: "2026-01-01T00:00:00Z", catalysts: [{ label: "Q3 earnings", date: "2026-11-10" }, { label: "Investor day", date: "2026-12-05" }, { label: "Old", date: "2026-08-01" }] })!;
+  const due = catalystsDue(cp, cNow);
+  ok("catalysts due: passed within 60 days and not yet reviewed (not future, not long gone)", due.map((x) => [x.label, x.daysAgo]), [["Q3 earnings", 10]]);
+  const reviewed = { ...cp, log: [{ at: "2026-11-12T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-11-10", "mixed"), auto: true }] };
+  ok("a reviewed catalyst is no longer due; its outcome reads back", [catalystsDue(reviewed, cNow).length, catalystOutcome(reviewed.log[0]), isPmChange(reviewed.log[0])], [0, "mixed", false]);
+  const ch = processHealth({ open: [cp], closed: [{ ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Launch", "2026-08-30", "yes"), auto: true }, { at: "2026-10-01T00:00:00Z", text: catalystEntry("Deal", "2026-09-30", "no"), auto: true }] }], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!;
+  ok("process health: the catalyst hit rate and the reviews still owed", [ch.value, ch.status, ch.detail], ["1 of 2 played out", "fix", "Of 2 catalysts reviewed, 1 played out as expected. 1 passed catalyst waits for a review. 1 passed more than 60 days ago without one."]);
+  const miss = normalizePosition({ ...t, id: "cat2", createdAt: "2026-01-01T00:00:00Z", catalysts: [{ label: "Old deal", date: "2026-08-01" }] })!;
+  ok("a catalyst ignored past 60 days is missed, not forgotten", [catalystsMissed(miss, cNow), processHealth({ open: [miss], closed: [], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.status], [1, "fix"]);
+  const same = { ...c1, log: [{ at: "2026-09-01T00:00:00Z", text: catalystEntry("Q3 earnings", "2026-08-30", "yes"), auto: true }, { at: "2026-09-01T01:00:00Z", text: catalystEntry("Investor day", "2026-08-30", "no"), auto: true }, { at: "2026-09-02T00:00:00Z", text: catalystEntry("Ruling (2026-01-15) was due", "2026-08-31", "mixed"), auto: true }] };
+  ok("two catalysts on one date are two outcomes; a date inside a label is not read as the catalyst's", processHealth({ open: [], closed: [same], history: {}, calibration: null, now: cNow }).find((x) => x.key === "catalysts")!.value, "1 of 3 played out");
+  const hist = normalizePosition({ ...t, id: "cat3", createdAt: "2026-09-01T00:00:00Z", catalysts: [{ label: "Before we owned it", date: "2026-07-01" }] })!;
+  ok("a catalyst dated before the position was opened is never missed", catalystsMissed(hist, cNow), 0);
+  ok("a catalyst review counts as looking at the thesis", staleTheses([{ ...reviewed, createdAt: "2026-01-01T00:00:00Z" }], cNow), []);
+}
+
+{
+  // Needs you: one ranked list.
+  const tNow = new Date("2026-11-20T12:00:00Z");
+  const brk = normalizePosition({ ...t, id: "tdo1", ticker: "BRK", catalysts: [], createdAt: "2026-11-01T00:00:00Z" })!;
+  const cat = normalizePosition({ ...t, id: "tdo2", ticker: "CAT", createdAt: "2026-11-01T00:00:00Z", catalysts: [{ label: "Q3 earnings", date: "2026-11-15" }], log: [{ at: "2026-11-16T00:00:00Z", text: "Weight 2% → 1% of NAV.", auto: true }] })!;
+  const old = normalizePosition({ ...t, id: "tdo3", ticker: "OLD", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
+  const todos = bookTodos([old, cat, brk], { tdo1: [{ d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
+  ok("needs you: broken first, then catalysts, then changes with no reason, then stale theses", todos.map((x) => [x.ticker, x.kind]), [["BRK", "broken"], ["CAT", "catalyst"], ["CAT", "reason"], ["OLD", "stale"]]);
+  const fc = normalizePosition({ ...t, id: "tdo4", ticker: "FCS", catalysts: [], createdAt: "2026-11-01T00:00:00Z", conviction: { p: 70, by: "2027-02-01", at: "2026-11-05", source: "You" }, log: [{ at: "2026-11-15T00:00:00Z", text: "Weight 3% → 2% of NAV.", auto: true }, { at: "2026-11-15T01:00:00Z", text: "cut on the miss" }] })!;
+  const ft = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "broken", s: null }] }, tNow);
+  ok("needs you: a forecast made before the break is not asked to be updated while the thesis is broken (no new one is taken)", ft.map((x) => x.kind), []);
+  const rec = bookTodos([fc], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: once it recovers, a forecast made before the break asks for a new one (for two weeks)", rec.map((x) => [x.kind, x.text]), [["forecast", "Recovered from the break on 2026-11-13: set a new forecast"]]);
+  const rec2 = bookTodos([{ ...fc, conviction: { ...fc.conviction!, at: "2026-11-14" } }, { ...fc, id: "tdo5", conviction: undefined }], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }], tdo5: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: not once a new forecast was set after the recovery, nor for a position that never had one", rec2.filter((x) => x.kind === "forecast"), []);
+  const rec3 = bookTodos([fc], { tdo4: [{ d: "2026-10-01", v: "broken", s: null }, { d: "2026-10-02", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: a recovery more than two weeks ago is not asked about", rec3.filter((x) => x.kind === "forecast"), []);
+  const rec4 = bookTodos([{ ...fc, conviction: { ...fc.conviction!, at: "2026-11-12" } }], { tdo4: [{ d: "2026-11-10", v: "broken", s: null }, { d: "2026-11-12", v: "broken", s: null }, { d: "2026-11-13", v: "intact", s: null }, { d: "2026-11-19", v: "intact", s: null }] }, tNow);
+  ok("needs you: not for a forecast made on the last broken day (no break after it, so still open)", rec4.filter((x) => x.kind === "forecast"), []);
+  ok("needs you: says what to do", todos.map((x) => x.text), ["Broken for 8 days, nothing done since", "Did Q3 earnings (2026-11-15) play out?", "The 2026-11-16 change has no reason: Weight 2% → 1% of NAV", "Not reviewed in 203 days"]);
+}
+
+{
+  // The decision journal as CSV rows for compliance.
+  const rows = journalRows([{ id: "jo1", ticker: "OPN", log: [{ at: "2026-11-02T10:00:00Z", text: "=HYPERLINK(1)" }, { at: "2026-11-01T10:00:00Z", text: "Weight 2% → 3% of NAV.", auto: true }] }], [{ id: "jc1", ticker: "CLS", closedAt: "2026-10-30T00:00:00Z", log: [{ at: "2026-10-01T09:00:00Z", text: "AI committee: hold.", auto: true }] }]);
+  ok("journal rows: header, oldest first, who wrote each, closed marked", rows.map((r) => [r[0], r[1], r[3], r[4]]), [["Recorded at (UTC)", "Ticker", "Status", "Written by"], ["2026-10-01 09:00:00", "CLS", "closed 2026-10-30", "AI committee (recorded by YouBank)"], ["2026-11-01 10:00:00", "OPN", "open", "Portfolio manager's change (recorded by YouBank)"], ["2026-11-02 10:00:00", "OPN", "open", "Portfolio manager"]]);
+  ok("journal CSV: a note that looks like a formula is neutralised", csvRow(rows[3]).endsWith(",'=HYPERLINK(1)"), true);
+}
+
+{
+  const fri = new Date("2026-11-20T22:00:00Z");
+  const stale = normalizePosition({ ...t, id: "wka9", ticker: "STL", catalysts: [], createdAt: "2026-05-01T00:00:00Z" })!;
+  ok("the Friday alert says how many things need the PM", weekAlert({ now: fri, book: [stale], evals: [], history: {}, closed: [], proposals: [] }, "https://x")?.reasons, ["2026-11-13 to 2026-11-20", "1 position in the Book needs you"]);
+}
+
+{
+  const gNow = new Date("2026-11-20T12:00:00Z");
+  ok("thesis gaps: only market lines, and no catalyst ahead", thesisGaps({ criteria: [{ metric: "price" }, { metric: "pe" }], catalysts: [{ date: "2026-11-01" }] }, gNow).length, 2);
+  ok("thesis gaps: a known earnings date ahead is a catalyst", thesisGaps({ criteria: [{ metric: "revenue_growth" }], catalysts: [] }, gNow, "2026-12-10"), []);
+  ok("thesis gaps: a business line and a catalyst ahead leave none; no criteria is said", [thesisGaps({ criteria: [{ metric: "price" }, { metric: "gross_margin" }], catalysts: [{ date: "2026-12-01" }] }, gNow), thesisGaps({ criteria: [], catalysts: [{ date: "2026-12-01" }] }, gNow)], [[], ["No kill criterion: nothing would show the thesis is wrong."]]);
+}
+
+{
+  // The conjunction rule: the chance no criterion fails cannot beat the chance the price lines alone hold.
+  ok("above the base rate: asks for a reason, naming the other criteria when there are some", conjunctionCheck(0.8, { p: 0.6, lines: 1 }, 3), "80% is above the 60% volatility-only chance the price line holds. With the other kill criteria also needing to hold, what do you expect that the model does not (drift in your favour, calmer volatility)?");
+  ok("above the base rate: price lines only; an older forecast is asked to be updated; at or under (or within rounding) is fine", [conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2), conjunctionCheck(0.9, { p: 0.7, lines: 2 }, 2, true), conjunctionCheck(0.61, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.5, { p: 0.6, lines: 1 }, 3), conjunctionCheck(0.9, null, 3)], ["90% is above the 70% volatility-only chance the price lines hold. What do you expect that the model does not (drift in your favour, calmer volatility)?", "90%, made earlier, is above the 70% volatility-only chance the price lines hold as priced today. What do you expect that the model does not (drift in your favour, calmer volatility)? If nothing does any more, update it.", null, null, null]);
+}
+
+{
+  // Process health over time.
+  const h1 = recordHealth(undefined, { d: "2026-11-13", good: 2, watch: 2, fix: 1 });
+  const h2 = recordHealth([...h1, { d: "bad", good: 1, watch: 1, fix: 1 }], { d: "2026-11-20", good: 3, watch: 1, fix: 0 });
+  ok("health history: kept in date order, malformed entries dropped, one per day", recordHealth(h2, { d: "2026-11-20", good: 4, watch: 0, fix: 0 }).map((x) => [x.d, x.good]), [["2026-11-13", 2], ["2026-11-20", 4]]);
+  ok("health trend: against the last snapshot before today", [healthTrend(h2, { d: "2026-11-20", good: 3, watch: 1, fix: 0 }), healthTrend([], { d: "2026-11-20", good: 3, watch: 1, fix: 0 })], ["Since 2026-11-13: 1 to fix and 2 to watch then, 0 and 1 now (better).", ""]);
+  ok("health trend: a Saturday is read against the Friday a week before, not the day before", healthTrend(h2, { d: "2026-11-21", good: 3, watch: 1, fix: 0 }), "Since 2026-11-13: 1 to fix and 2 to watch then, 0 and 1 now (better).");
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+if (fail) process.exit(1);
