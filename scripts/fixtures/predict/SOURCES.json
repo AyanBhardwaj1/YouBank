@@ -1,0 +1,15 @@
+{
+  "note": "Synthetic samples shaped exactly like each venue's public API response, trimmed. Prices, volumes and outcomes are illustrative, not real. The sandbox these were written in could not reach the venue hosts (the proxy refuses api.elections.kalshi.com, gamma-api.polymarket.com, clob.polymarket.com, api.gemini.com, api.manifold.markets), so they were not captured live. Re-capture with scripts/test-predict.ts --live once the hosts are reachable.",
+  "files": {
+    "kalshi-events.json": { "endpoint": "GET https://api.elections.kalshi.com/trade-api/v2/events?status=open&with_nested_markets=true&limit=200", "auth": "none", "schema": "kalshi-typescript@3.11.0 models EventData and Market (the official SDK generated from Kalshi's OpenAPI spec)" },
+    "kalshi-market-settled.json": { "endpoint": "GET https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}", "auth": "none", "schema": "GetMarketResponse { market: Market }" },
+    "kalshi-candles.json": { "endpoint": "GET https://api.elections.kalshi.com/trade-api/v2/series/{series}/markets/{ticker}/candlesticks?start_ts&end_ts&period_interval=1440", "auth": "none", "schema": "GetMarketCandlesticksResponse { ticker, candlesticks: MarketCandlestick[] }" },
+    "kalshi-orderbook.json": { "endpoint": "GET https://api.elections.kalshi.com/trade-api/v2/markets/{ticker}/orderbook?depth=10", "auth": "the SDK marks it signed; the app tries it unsigned and falls back to the market's best bid and ask", "schema": "GetMarketOrderbookResponse { orderbook_fp: { yes_dollars, no_dollars } } (yes bids and no bids only, ascending)" },
+    "polymarket-events.json": { "endpoint": "GET https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr&ascending=false&limit=100", "auth": "none", "schema": "Gamma events with nested markets; outcomes, outcomePrices and clobTokenIds are JSON-encoded strings" },
+    "polymarket-market-resolved.json": { "endpoint": "GET https://gamma-api.polymarket.com/markets/{id}", "auth": "none" },
+    "polymarket-history.json": { "endpoint": "GET https://clob.polymarket.com/prices-history?market={yes token id}&interval=1m&fidelity=1440", "auth": "none" },
+    "polymarket-book.json": { "endpoint": "GET https://clob.polymarket.com/book?token_id={yes token id}", "auth": "none" },
+    "gemini-events.json": { "endpoint": "GET https://api.gemini.com/v1/prediction-markets/events?status=active&limit=50", "auth": "none for market data (developer.gemini.com, Prediction Markets, Market Data)", "schema": "reconstructed from the documentation's field names (contracts[].instrumentSymbol, contracts[].prices.bestBid/bestAsk/lastTradePrice, event volume in USD); the parser accepts the documented variants. Least certain of the set." },
+    "manifold-markets.json": { "endpoint": "GET https://api.manifold.markets/v0/search-markets?term=&filter=open&sort=liquidity&limit=100", "auth": "none" }
+  }
+}

@@ -1,0 +1,278 @@
+/*
+ * Interfaces (Settings → Style → Interface; src/lib/desk/interfaces.ts). Each one is a whole way of drawing
+ * the signed-in app, not a palette: its own colours, type, density, what a panel is, and where the
+ * navigation lives (with src/components/workspace/InterfaceChrome.tsx). Everything is scoped to pages that
+ * have the app frame (`:has(.app-frame)` / `.app-frame`), so the public site never changes. The tokens
+ * outrank any theme (html[data-theme] is 0-1-1, these are 0-2-1 and later), and a person's own accent
+ * (an inline style on <html>) still wins over all of them.
+ *
+ * Shared hooks in the frame: .yb-topbar (the top bar), .yb-wordmark, .yb-pins (pinned features),
+ * .yb-pill (the active tab's highlight), .yb-main (the page area).
+ */
+
+/* ---------- Shared: the navigation an interface moves elsewhere leaves the top bar ---------- */
+html:is([data-ui="glass"], [data-ui="bento"], [data-ui="swiss"], [data-ui="zen"]) .app-frame .yb-pins { display: none; }
+html[data-ui] .app-frame { background: var(--bg); }
+html[data-ui]:has(.app-frame) body { background-image: none; }
+
+/* =====================================================================================================
+   Broadsheet: a financial paper. Masthead, serif type, ruled columns instead of boxes, one red.
+   ===================================================================================================== */
+html[data-ui="broadsheet"]:has(.app-frame) {
+  --bg: #f4efe4; --panel: #f4efe4; --elevated: #ece5d7; --raised: #fbf8f1; --line: #d3c9b6; --line-strong: #1b1a17;
+  --fg: #1b1a17; --muted: #5d574c; --faint: #8f877a; --accent: #9b1c1c; --accent-soft: rgba(155, 28, 28, 0.09); --accent-fg: #ffffff;
+  --pos: #1f6b3a; --neg: #a61b1b; --info: #1f4e79; --chart-1: #1f4e79; --chart-dim: #c9bfae; --chart-emphasis: #9b1c1c;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 18px 40px rgba(40, 30, 10, 0.18); --glow: none; --glass: 0;
+  --font-sans: "Iowan Old Style", "Charter", "Palatino Linotype", Georgia, serif;
+  color-scheme: light;
+}
+html[data-ui="broadsheet"] .app-frame { font-size: 13px; }
+html[data-ui="broadsheet"] .app-frame .yb-topbar { background: var(--bg); border-bottom: 3px double var(--fg); backdrop-filter: none; }
+html[data-ui="broadsheet"] .app-frame .yb-wordmark { font-family: var(--font-display); font-size: 24px; font-weight: 400; letter-spacing: -0.01em; }
+html[data-ui="broadsheet"] .app-frame .yb-pins a { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-size: 13px; color: var(--fg); }
+html[data-ui="broadsheet"] .app-frame .yb-pins a[aria-current="page"] { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+html[data-ui="broadsheet"] .app-frame .yb-pill { display: none; }
+html[data-ui="broadsheet"] .app-frame .panel { background: transparent; border: 0; border-top: 1px solid var(--fg); border-radius: 0; }
+html[data-ui="broadsheet"] .app-frame .home-card { background: transparent; border: 0; border-top: 2px solid var(--fg); border-radius: 0; }
+html[data-ui="broadsheet"] .app-frame h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(28px, 3.4vw, 40px); line-height: 1.05; letter-spacing: -0.015em; text-wrap: balance; }
+html[data-ui="broadsheet"] .app-frame h2 { font-family: var(--font-display); font-weight: 400; font-size: 21px; letter-spacing: -0.01em; }
+html[data-ui="broadsheet"] .app-frame h3 { font-weight: 700; }
+html[data-ui="broadsheet"] .app-frame .uppercase { letter-spacing: 0.14em; }
+html[data-ui="broadsheet"] .app-frame table th { border-bottom: 1px solid var(--fg); }
+
+/* =====================================================================================================
+   Cockpit: an instrument panel. Bracketed gauges, monospaced readouts, a faint scan, a live status strip.
+   ===================================================================================================== */
+html[data-ui="cockpit"]:has(.app-frame) {
+  --bg: #04070a; --panel: #08111a; --elevated: #0c1824; --raised: #0f1d2b; --line: #133340; --line-strong: #1f5262;
+  --fg: #d3eaf1; --muted: #78a1ad; --faint: #426570; --accent: #22d3ee; --accent-soft: rgba(34, 211, 238, 0.12); --accent-fg: #04070a;
+  --pos: #4ade80; --neg: #fb7185; --info: #fbbf24; --chart-1: #22d3ee; --chart-dim: #1f5262; --chart-emphasis: #fbbf24;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 1px #1f5262, 0 24px 60px rgba(0, 0, 0, 0.7); --glow: 0 0 14px rgba(34, 211, 238, 0.3); --glass: 0;
+  --font-sans: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+html[data-ui="cockpit"] .app-frame { background: radial-gradient(120% 80% at 50% 0%, #0a1620 0%, #04070a 60%); }
+html[data-ui="cockpit"] .app-frame::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: repeating-linear-gradient(0deg, rgba(160, 230, 255, 0.022) 0 1px, transparent 1px 3px);
+}
+html[data-ui="cockpit"] .app-frame .yb-topbar { background: #03060899; border-bottom: 1px solid var(--line-strong); }
+html[data-ui="cockpit"] .app-frame .yb-pins a { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; }
+html[data-ui="cockpit"] .app-frame .yb-pill { background: transparent; box-shadow: inset 0 0 0 1px var(--accent), var(--glow); }
+html[data-ui="cockpit"] .app-frame :is(.panel, .home-card) {
+  border: 1px solid var(--line); border-radius: 0;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left top / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left top / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right top / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right top / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 1.5px 12px no-repeat,
+    linear-gradient(180deg, rgba(34, 211, 238, 0.035), transparent 40%), var(--panel);
+}
+html[data-ui="cockpit"] .app-frame h1 { text-transform: uppercase; letter-spacing: 0.1em; font-size: 17px; font-weight: 600; }
+html[data-ui="cockpit"] .app-frame h1::before { content: "▍"; color: var(--accent); margin-right: 6px; }
+html[data-ui="cockpit"] .app-frame h2, html[data-ui="cockpit"] .app-frame h3 { text-transform: uppercase; letter-spacing: 0.08em; }
+html[data-ui="cockpit"] .app-frame .text-pos { text-shadow: 0 0 10px rgba(74, 222, 128, 0.35); }
+html[data-ui="cockpit"] .app-frame .text-neg { text-shadow: 0 0 10px rgba(251, 113, 133, 0.35); }
+
+/* =====================================================================================================
+   Glass: frosted panes over colour, a floating top bar and a dock along the bottom.
+   ===================================================================================================== */
+html[data-ui="glass"]:has(.app-frame) {
+  --bg: #120d26; --panel: rgba(255, 255, 255, 0.075); --elevated: rgba(255, 255, 255, 0.12); --raised: #251d47; --line: rgba(255, 255, 255, 0.14); --line-strong: rgba(255, 255, 255, 0.28);
+  --fg: #f5f3ff; --muted: #c3bde0; --faint: #8b84b3; --accent: #7dd3fc; --accent-soft: rgba(125, 211, 252, 0.16); --accent-fg: #0b0a1a;
+  --pos: #6ee7b7; --neg: #fda4af; --info: #c4b5fd; --chart-1: #7dd3fc; --chart-dim: rgba(255, 255, 255, 0.24); --chart-emphasis: #f0abfc;
+  --radius: 18px; --radius-sm: 10px; --bg-image: none; --shadow-lg: 0 30px 80px -20px rgba(5, 2, 20, 0.8); --glow: 0 0 0 1px rgba(125, 211, 252, 0.4), 0 0 24px rgba(125, 211, 252, 0.3); --glass: 1;
+  color-scheme: dark;
+}
+html[data-ui="glass"] .app-frame {
+  background:
+    radial-gradient(38% 46% at 12% 18%, rgba(124, 58, 237, 0.75), transparent 70%),
+    radial-gradient(34% 42% at 88% 12%, rgba(8, 145, 178, 0.7), transparent 70%),
+    radial-gradient(42% 48% at 62% 100%, rgba(219, 39, 119, 0.5), transparent 70%),
+    radial-gradient(30% 36% at 30% 85%, rgba(16, 185, 129, 0.35), transparent 70%),
+    #120d26;
+}
+@media (min-width: 768px) {
+  html[data-ui="glass"] .app-frame .yb-topbar { margin: 10px 12px 4px; border: 1px solid var(--line); border-radius: 16px; background: rgba(18, 13, 38, 0.45); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+  html[data-ui="glass"] .app-frame .yb-main { padding-bottom: 84px; }
+}
+html[data-ui="glass"] .app-frame :is(.panel, .home-card) {
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 18px;
+  backdrop-filter: blur(22px) saturate(1.5); -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 48px -28px rgba(5, 2, 20, 0.7);
+}
+html[data-ui="glass"] .app-frame h1 { font-size: clamp(24px, 2.6vw, 32px); font-weight: 650; letter-spacing: -0.025em; }
+
+/* =====================================================================================================
+   Swiss: international typographic style. An index down the side, heavy rules, big type, one red.
+   ===================================================================================================== */
+html[data-ui="swiss"]:has(.app-frame) {
+  --bg: #ffffff; --panel: #ffffff; --elevated: #f2f2f2; --raised: #ffffff; --line: #d6d6d6; --line-strong: #0a0a0a;
+  --fg: #0a0a0a; --muted: #525252; --faint: #8a8a8a; --accent: #e3120b; --accent-soft: rgba(227, 18, 11, 0.08); --accent-fg: #ffffff;
+  --pos: #00703c; --neg: #c00018; --info: #0047ab; --chart-1: #0a0a0a; --chart-dim: #c8c8c8; --chart-emphasis: #e3120b;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 2px #0a0a0a; --glow: none; --glass: 0;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, "Nimbus Sans", sans-serif;
+  color-scheme: light;
+}
+html[data-ui="swiss"] .app-frame .yb-topbar { background: #ffffff; border-bottom: 3px solid #0a0a0a; backdrop-filter: none; }
+html[data-ui="swiss"] .app-frame .yb-wordmark { font-weight: 800; font-size: 16px; letter-spacing: -0.03em; }
+html[data-ui="swiss"] .app-frame :is(.panel, .home-card) { border: 0; border-top: 3px solid #0a0a0a; border-radius: 0; background: transparent; }
+html[data-ui="swiss"] .app-frame h1 { font-size: clamp(32px, 4vw, 52px); font-weight: 800; letter-spacing: -0.04em; line-height: 0.98; }
+html[data-ui="swiss"] .app-frame h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+html[data-ui="swiss"] .app-frame h3 { font-weight: 800; }
+html[data-ui="swiss"] .app-frame .uppercase { font-weight: 700; letter-spacing: 0.06em; }
+html[data-ui="swiss"] .app-frame .bg-accent { font-weight: 700; }
+
+/* =====================================================================================================
+   Ledger: a bound account book. Ruled green paper, a red double margin, figures set in ink.
+   ===================================================================================================== */
+html[data-ui="ledger"]:has(.app-frame) {
+  --bg: #eef3e6; --panel: #f8fbf2; --elevated: #e5eddb; --raised: #fbfdf7; --line: #bccbb2; --line-strong: #5f7f69;
+  --fg: #1b3a2c; --muted: #4c6858; --faint: #84a08f; --accent: #a3262a; --accent-soft: rgba(163, 38, 42, 0.09); --accent-fg: #ffffff;
+  --pos: #1f6b3a; --neg: #a3262a; --info: #2b5a8a; --chart-1: #2e6b4f; --chart-dim: #c2d0b8; --chart-emphasis: #a3262a;
+  --radius: 2px; --radius-sm: 1px; --bg-image: none; --shadow-lg: 0 18px 40px rgba(27, 58, 44, 0.2); --glow: none; --glass: 0;
+  color-scheme: light;
+}
+html[data-ui="ledger"] .app-frame {
+  background:
+    linear-gradient(90deg, transparent 46px, rgba(163, 38, 42, 0.38) 46px 47px, transparent 47px 50px, rgba(163, 38, 42, 0.38) 50px 51px, transparent 51px),
+    repeating-linear-gradient(180deg, transparent 0 25px, rgba(46, 94, 70, 0.11) 25px 26px),
+    #eef3e6;
+}
+html[data-ui="ledger"] .app-frame :is(.num, table) { font-family: "Iowan Old Style", Charter, Georgia, serif; font-variant-numeric: tabular-nums lining-nums; }
+html[data-ui="ledger"] .app-frame .yb-topbar { background: #e3ebd8; border-bottom: 3px double var(--line-strong); backdrop-filter: none; }
+html[data-ui="ledger"] .app-frame .yb-wordmark { font-family: "Iowan Old Style", Charter, Georgia, serif; font-size: 16px; }
+html[data-ui="ledger"] .app-frame .yb-pins a[aria-current="page"] { color: var(--fg); }
+html[data-ui="ledger"] .app-frame .yb-pill { background: #f8fbf2; box-shadow: 0 0 0 1px var(--line), 0 -2px 0 var(--accent) inset; }
+html[data-ui="ledger"] .app-frame :is(.panel, .home-card) { border: 1px solid var(--line); border-top: 3px double var(--line-strong); box-shadow: 2px 3px 0 rgba(27, 58, 44, 0.08); }
+html[data-ui="ledger"] .app-frame h1 { font-family: "Iowan Old Style", Charter, Georgia, serif; font-weight: 600; font-size: clamp(22px, 2.4vw, 30px); text-decoration: underline double var(--line-strong); text-underline-offset: 6px; text-decoration-thickness: 1px; }
+html[data-ui="ledger"] .app-frame h2 { font-family: "Iowan Old Style", Charter, Georgia, serif; }
+html[data-ui="ledger"] .app-frame table td { border-bottom: 1px dotted var(--line); }
+html[data-ui="ledger"] .app-frame table tfoot td { border-top: 3px double var(--line-strong); }
+
+/* =====================================================================================================
+   Blueprint: a drafting sheet. Grid paper, dashed construction lines, monospaced notes, a title block.
+   ===================================================================================================== */
+html[data-ui="blueprint"]:has(.app-frame) {
+  --bg: #0b3560; --panel: rgba(255, 255, 255, 0.035); --elevated: rgba(255, 255, 255, 0.07); --raised: #0f4378; --line: rgba(230, 240, 255, 0.3); --line-strong: rgba(230, 240, 255, 0.62);
+  --fg: #e8f1ff; --muted: #aac4e6; --faint: #7896c0; --accent: #ffd166; --accent-soft: rgba(255, 209, 102, 0.14); --accent-fg: #0b3560;
+  --pos: #7ef0b0; --neg: #ff9494; --info: #8fd3ff; --chart-1: #ffd166; --chart-dim: rgba(230, 240, 255, 0.3); --chart-emphasis: #ff9494;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 1px rgba(230, 240, 255, 0.6), 0 24px 50px rgba(3, 20, 40, 0.6); --glow: none; --glass: 0;
+  --font-sans: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+html[data-ui="blueprint"] .app-frame {
+  background:
+    linear-gradient(rgba(230, 240, 255, 0.13) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(90deg, rgba(230, 240, 255, 0.13) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(rgba(230, 240, 255, 0.055) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(230, 240, 255, 0.055) 1px, transparent 1px) 0 0 / 16px 16px,
+    #0b3560;
+}
+html[data-ui="blueprint"] .app-frame .yb-topbar { background: rgba(9, 44, 80, 0.9); border-bottom: 1px solid var(--line-strong); }
+html[data-ui="blueprint"] .app-frame .yb-pins a { text-transform: uppercase; letter-spacing: 0.12em; font-size: 10.5px; }
+html[data-ui="blueprint"] .app-frame .yb-pill { background: transparent; outline: 1px dashed var(--accent); outline-offset: -1px; }
+html[data-ui="blueprint"] .app-frame :is(.panel, .home-card) { background: rgba(11, 53, 96, 0.55); border: 1px dashed var(--line); border-radius: 0; }
+html[data-ui="blueprint"] .app-frame h1 { text-transform: uppercase; letter-spacing: 0.14em; font-size: 17px; font-weight: 600; border-bottom: 1px solid var(--line-strong); padding-bottom: 4px; display: inline-block; }
+html[data-ui="blueprint"] .app-frame :is(h2, h3) { text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* =====================================================================================================
+   Zen: one calm column, no chrome; everything else is a keystroke away (⌘K) or in the menu.
+   ===================================================================================================== */
+html[data-ui="zen"]:has(.app-frame) {
+  --bg: #f6f4ef; --panel: #fcfbf8; --elevated: #f0ede6; --raised: #ffffff; --line: #e6e1d6; --line-strong: #cfc8b9;
+  --fg: #2e2c29; --muted: #6b665d; --faint: #a39d92; --accent: #4f7a5a; --accent-soft: rgba(79, 122, 90, 0.1); --accent-fg: #ffffff;
+  --pos: #3f7d52; --neg: #b5523b; --info: #4a6f94; --chart-1: #4f7a5a; --chart-dim: #d7d1c4; --chart-emphasis: #c08a3e;
+  --radius: 16px; --radius-sm: 10px; --bg-image: none; --shadow-lg: 0 24px 60px -24px rgba(60, 50, 30, 0.28); --glow: none; --glass: 0;
+  color-scheme: light;
+}
+html[data-ui="zen"] .app-frame { font-size: 13px; line-height: 1.5; }
+html[data-ui="zen"] .app-frame .yb-topbar { background: transparent; border-bottom-color: transparent; backdrop-filter: none; }
+@media (min-width: 1024px) {
+  html[data-ui="zen"] .app-frame .yb-main { padding-inline: max(24px, calc((100% - 1160px) / 2)); }
+}
+html[data-ui="zen"] .app-frame :is(.panel, .home-card) { border-color: transparent; box-shadow: 0 1px 2px rgba(60, 50, 30, 0.04), 0 14px 34px -22px rgba(60, 50, 30, 0.22); }
+html[data-ui="zen"] .app-frame h1 { font-size: clamp(24px, 2.6vw, 32px); font-weight: 500; letter-spacing: -0.02em; }
+
+/* =====================================================================================================
+   Bento: bold rounded tiles in colour, chunky type, pill buttons and a dock of big buttons.
+   ===================================================================================================== */
+html[data-ui="bento"]:has(.app-frame) {
+  --bg: #111014; --panel: #1c1a22; --elevated: #24212c; --raised: #2a2733; --line: #2c2934; --line-strong: #403b4c;
+  --fg: #f7f5fb; --muted: #aba5b9; --faint: #716a80; --accent: #ff7a59; --accent-soft: rgba(255, 122, 89, 0.16); --accent-fg: #1a0f0b;
+  --pos: #4ade80; --neg: #fb7185; --info: #60a5fa; --chart-1: #ff7a59; --chart-dim: #403b4c; --chart-emphasis: #facc15;
+  --radius: 22px; --radius-sm: 12px; --bg-image: none; --shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.7); --glow: none; --glass: 0;
+  color-scheme: dark;
+}
+html[data-ui="bento"] .app-frame :is(.panel, .home-card) { border: 0; border-radius: 22px; }
+/* Each tile takes the next colour among its siblings. A wrapper holding a panel is counted among the
+   wrappers beside it, and the colour inherits into its panel; panels that sit side by side with no
+   wrappers are counted among themselves. */
+html[data-ui="bento"] .app-frame :nth-child(5n + 1 of :has(> .panel)) { --tile: #ff7a59; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 2 of :has(> .panel)) { --tile: #60a5fa; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 3 of :has(> .panel)) { --tile: #a78bfa; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 4 of :has(> .panel)) { --tile: #4ade80; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 5 of :has(> .panel)) { --tile: #facc15; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 1 of .panel):is(:has(~ .panel), .panel ~ .panel) { --tile: #ff7a59; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 2 of .panel):is(:has(~ .panel), .panel ~ .panel) { --tile: #60a5fa; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 3 of .panel):is(:has(~ .panel), .panel ~ .panel) { --tile: #a78bfa; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 4 of .panel):is(:has(~ .panel), .panel ~ .panel) { --tile: #4ade80; }
+html[data-ui="bento"] .app-frame :nth-child(5n + 5 of .panel):is(:has(~ .panel), .panel ~ .panel) { --tile: #facc15; }
+html[data-ui="bento"] .app-frame .panel { background: color-mix(in srgb, var(--tile, #1c1a22) 12%, #1c1a22); }
+html[data-ui="bento"] .app-frame h1 { font-size: clamp(26px, 3vw, 38px); font-weight: 800; letter-spacing: -0.035em; }
+html[data-ui="bento"] .app-frame h2 { font-weight: 800; letter-spacing: -0.02em; }
+html[data-ui="bento"] .app-frame .bg-accent { border-radius: 999px; }
+html[data-ui="bento"] .app-frame .yb-topbar { background: #111014; border-bottom-color: transparent; }
+@media (min-width: 768px) { html[data-ui="bento"] .app-frame .yb-main { padding-bottom: 92px; } }
+
+/* ---------- The pieces InterfaceChrome adds ---------- */
+.yb-dock { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 40; display: flex; gap: 6px; padding: 8px; max-width: calc(100% - 32px); overflow-x: auto; scrollbar-width: none; }
+.yb-dock::-webkit-scrollbar { display: none; }
+html[data-ui="glass"] .yb-dock { border-radius: 22px; background: rgba(30, 22, 64, 0.5); border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(24px) saturate(1.6); -webkit-backdrop-filter: blur(24px) saturate(1.6); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 50px -16px rgba(0, 0, 0, 0.65); }
+html[data-ui="bento"] .yb-dock { border-radius: 28px; background: #1c1a22; box-shadow: 0 0 0 1px #2c2934, 0 24px 50px -16px rgba(0, 0, 0, 0.7); }
+.yb-dock a { position: relative; display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; color: var(--muted); transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), background-color 160ms ease, color 160ms ease; }
+html[data-ui="bento"] .yb-dock a { width: 52px; height: 52px; border-radius: 18px; background: #24212c; }
+.yb-dock a:hover { color: var(--fg); transform: translateY(-3px); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.yb-dock a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.yb-dock a[href][aria-current="page"] { color: var(--accent-fg); background: var(--accent); }
+.yb-dock .yb-dock-tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); white-space: nowrap; padding: 3px 8px; border-radius: 8px; font-size: 11px; background: var(--raised); color: var(--fg); border: 1px solid var(--line); opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
+.yb-dock a:is(:hover, :focus-visible) .yb-dock-tip { opacity: 1; }
+
+.yb-rail { width: 184px; flex-shrink: 0; overflow-y: auto; border-right: 3px solid #0a0a0a; padding: 20px 0 20px 18px; }
+.yb-rail a { display: grid; grid-template-columns: 30px 1fr; align-items: baseline; padding: 7px 12px 7px 0; color: var(--fg); font-weight: 700; font-size: 14px; letter-spacing: -0.01em; border-bottom: 1px solid var(--line); transition: color 120ms ease; }
+.yb-rail a .yb-rail-n { font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.yb-rail a:hover { color: var(--accent); }
+.yb-rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.yb-rail a[aria-current="page"] { color: var(--accent); }
+.yb-rail a[aria-current="page"] .yb-rail-n { color: var(--accent); }
+
+.yb-strip { display: flex; align-items: center; gap: 14px; height: 26px; padding: 0 12px; font-size: 10.5px; white-space: nowrap; overflow: hidden; }
+html[data-ui="cockpit"] .yb-strip { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: #03060a; border-top: 1px solid var(--line-strong); }
+html[data-ui="blueprint"] .yb-strip { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); background: rgba(9, 44, 80, 0.92); border-top: 1px solid var(--line-strong); height: 30px; }
+html[data-ui="blueprint"] .yb-strip > * + * { border-left: 1px solid var(--line); padding-left: 12px; }
+html[data-ui="ledger"] .yb-strip { font-family: "Iowan Old Style", Charter, Georgia, serif; color: var(--muted); background: #e3ebd8; border-top: 3px double var(--line-strong); font-size: 11.5px; font-style: italic; }
+.yb-strip .yb-dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; margin-right: 6px; vertical-align: 1px; }
+
+.yb-edition { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 14px; font-size: 11.5px; font-style: italic; color: var(--muted); border-bottom: 1px solid var(--fg); background: var(--bg); }
+
+/* Desktop furniture only: on a phone every interface keeps the bottom tab bar. (Here rather than as
+   `max-md:hidden`, which, being a layered utility, loses to the unlayered display rules above.) */
+@media (max-width: 767.98px) {
+  .yb-dock, .yb-rail, .yb-strip, .yb-edition { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yb-dock a { transition: none; }
+  .yb-dock a:hover { transform: none; }
+}
+html[data-motion="reduced"] .yb-dock a:hover { transform: none; }
+
+/* Higher contrast works inside every interface too. */
+html[data-ui][data-contrast="high"]:has(.app-frame) {
+  --muted: color-mix(in oklab, var(--fg) 82%, var(--bg));
+  --faint: color-mix(in oklab, var(--fg) 62%, var(--bg));
+}

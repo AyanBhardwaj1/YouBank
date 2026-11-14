@@ -5,6 +5,9 @@ import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS,
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
 import { sitePath } from "@/lib/desktop/feed";
+import { INTERFACES, INTERFACE_META, chromeOf, interfacesFor, isInterface, suggestedInterface } from "@/lib/desk/interfaces";
+import { ROLE_IDS } from "@/lib/roles";
+import { readFileSync } from "node:fs";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -135,5 +138,26 @@ console.log("sharing a setup");
   ok("a feature the role does not have stays out", readSetupCode(`yb2.${Buffer.from(JSON.stringify({ l: "desk", w: ["brief"], h: ["home", "bogus"], t: "paper" })).toString("base64url")}`, "banker")?.desk.hidden, []);
 }
 ok("desktop notifications: a full link (the Book's alerts) opens its own page; anything off-site falls back", [sitePath("https://youbank.app/report/week", "/app/news"), sitePath("/app/book?x=1", "/f"), sitePath("//evil.com/x", "/f"), sitePath("https://a.com//evil", "/f"), sitePath("javascript:alert(1)", "/f")], ["/report/week", "/app/book?x=1", "/f", "/f", "/f"]);
+console.log("interfaces");
+{
+  ok("the default look is the Classic interface and sets no data-ui", [DEFAULT_LOOK.ui, lookAttrs(DEFAULT_LOOK).attrs["data-ui"]], ["classic", undefined]);
+  ok("an unknown interface falls back to Classic", normalizeLook({ ui: "vaporwave" }).ui, "classic");
+  ok("eight interfaces besides Classic", INTERFACES.filter((i) => i !== "classic").length, 8);
+  for (const id of INTERFACES.filter((i) => i !== "classic")) ok(`${id}: sets data-ui and survives the cookie`, [lookAttrs(normalizeLook({ ui: id })).attrs["data-ui"], readLookCookie(lookCookie(normalizeLook({ ui: id }))).ui], [id, id]);
+  ok("isInterface accepts only the list", [isInterface("zen"), isInterface("ZEN"), isInterface(3)], [true, false, false]);
+  ok("every interface has a name, tagline and suits line", INTERFACES.every((id) => INTERFACE_META[id].name && INTERFACE_META[id].tagline.length > 20 && INTERFACE_META[id].suits), true);
+  ok("navigation moves: masthead, dock, rail and hidden all appear", [...new Set(INTERFACES.map((id) => chromeOf(id).nav))].sort(), ["dock", "hidden", "masthead", "rail", "topbar"]);
+  ok("no two interfaces share the same frame and colours", new Set(INTERFACES.map((id) => JSON.stringify([chromeOf(id), INTERFACE_META[id].preview.bg, INTERFACE_META[id].preview.font]))).size, INTERFACES.length);
+  ok("a markets person is offered Cockpit, an accountant Ledger, a student Bento", [suggestedInterface("markets"), suggestedInterface("accountant"), suggestedInterface("student")], ["cockpit", "ledger", "bento"]);
+  for (const r of ROLE_IDS) {
+    const list = interfacesFor(r).map((m) => m.id);
+    ok(`${r}: all nine, Classic first, the suggested one second`, [list.length, new Set(list).size, list[0], suggestedInterface(r) ? list[1] === suggestedInterface(r) : true], [9, 9, "classic", true]);
+  }
+  const css = readFileSync("src/app/interfaces.css", "utf8");
+  for (const id of INTERFACES.filter((i) => i !== "classic")) ok(`${id}: its tokens are scoped to the app frame (the public site never changes)`, css.includes(`html[data-ui="${id}"]:has(.app-frame) {`), true);
+  ok("no interface rule reaches outside the app frame", css.split("\n").filter((l) => /^html\[data-ui/.test(l) && !l.includes(".app-frame") && !/ \.yb-(dock|strip|rail|edition)/.test(l)).length, 0);
+  ok("the look code keeps the interface", readLookCode(lookCode({ name: "x", theme: "terminal", look: normalizeLook({ ui: "swiss" }) }))?.look.ui, "swiss");
+  ok("setup codes carry the interface", readSetupCode(setupCode({ desk: normalizeDesk(undefined, "pe"), theme: "paper", look: normalizeLook({ ui: "ledger" }) }), "pe")?.look.ui, "ledger");
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

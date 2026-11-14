@@ -3,13 +3,15 @@ import { secretsMatch } from "@/lib/crm/crypto";
 import { scanDeals } from "@/lib/edge/dealwatch";
 import { sendDigests } from "@/lib/edge/digest";
 import { scanFilings } from "@/lib/edge/docs/filingwatch";
-import { scanFlares } from "@/lib/edge/flares";
 import { graphDaily } from "@/lib/edge/graph/jobs";
 import { jobsReady } from "@/lib/edge/infra/jobs";
 import { notifyWatchers } from "@/lib/edge/notify";
 import { scanPermits } from "@/lib/edge/permits";
 import { scanMethane } from "@/lib/edge/premium/carbonmapper";
 import { scanRadar } from "@/lib/edge/radar";
+import { scanDealImpacts } from "@/lib/edge/dealimpact";
+import { runFlarePass, runRecordsPass } from "@/lib/edge/passes";
+import { scanSatellite } from "@/lib/edge/sat/scan";
 import { dailyNext } from "@/lib/edge/next";
 import { checkDue } from "@/lib/edge/watches";
 import { describeFailure } from "@/lib/errors";
@@ -22,12 +24,14 @@ export const maxDuration = 300;
  * (weekly), look at every watched company and place not checked in the last day (each distinct target
  * once, least recently checked first), build pro-forma cards for new deals that touch the map, compare
  * new 10-Ks and 10-Qs of watched companies with the previous ones, look for flaring at every mapped
- * plant in the last week of NASA's night-time heat detections, and at the same time read watched plants
+ * plant in the last week of NASA's night-time heat detections (the full read; the hourly job keeps it
+ * current between), read the new satellite analyses (crops, water, ships) and the public records
+ * (reactor status, recalls), and at the same time read watched plants
  * in Sentinel-1 radar for new structures (each every six days, a dozen a day), count the drilling
  * permits near them, and (only when licensed) match Carbon Mapper's methane plumes to them; keep the
  * relationship graph current (watched companies re-read, the Newsroom's deals folded in, the deal model
  * retrained when a deal was announced since it last trained); then Edge's next features (forecasts settled,
- * new merger documents into the deal database, watched companies' Pulse and sale odds). Big findings alert
+ * new merger documents into the deal database, watched companies' Pulse and sale odds). Signals that touch a pending deal become deal-watch cards. Big findings alert
  * their watchers at once; the rest go in the daily digest.
  */
 export async function GET(req: Request) {
@@ -42,22 +46,29 @@ export async function GET(req: Request) {
     const filings = await scanFilings(deadline - 45_000);
     // Flaring, radar, permits and methane read different services, so they run side by side, each within its own time.
     const end = deadline - 30_000;
-    const [flares, radar, permits, methane] = await Promise.all([
-      scanFlares(end).catch((e) => ({ plants: 0, flaring: 0, created: [] as number[], updated: 0, error: describeFailure(e, 500, "edge-cron-flares").message })),
+    // Flaring here is the full seven-day read; the hourly job (and the page-open refresh) keep it within the hour between.
+    const [flares, radar, permits, methane, sat, records] = await Promise.all([
+      runFlarePass("daily", end).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-flares").message })),
       scanRadar(Math.min(end, Date.now() + 75_000)).catch((e) => ({ watched: 0, due: 0, checked: 0, created: [] as number[], error: describeFailure(e, 500, "edge-cron-radar").message })),
       scanPermits(Math.min(end, Date.now() + 60_000)).catch((e) => ({ plants: 0, read: 0, jumps: 0, created: [] as number[], error: describeFailure(e, 500, "edge-cron-permits").message })),
       scanMethane(end).catch((e) => ({ plumes: 0, plants: 0, created: [] as number[], error: describeFailure(e, 500, "edge-cron-methane").message })),
+      // The new satellite analyses (crops, water, ships) and the public records (reactors, recalls).
+      scanSatellite(Math.min(end, Date.now() + 120_000)).catch((e) => ({ created: [] as number[], error: describeFailure(e, 500, "edge-cron-sat").message })),
+      runRecordsPass("daily", Math.min(end, Date.now() + 60_000)).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-records").message })),
     ]);
     const methaneCreated = "created" in methane ? methane.created : [];
     // Big findings alert their watchers now; the rest wait for the digest.
-    const alerts = await notifyWatchers([...watches.found, ...deals, ...filings, ...flares.created, ...radar.created, ...permits.created, ...methaneCreated]).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-notify").message }));
+    // The flare and records passes alert their own new cards.
+    const alerts = await notifyWatchers([...watches.found, ...deals, ...filings, ...radar.created, ...permits.created, ...methaneCreated, ...sat.created]).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-notify").message }));
+    // Every signal of the last three days against pending deals (the passes above checked their own new cards already).
+    const dealWatch = await scanDealImpacts(deadline - 40_000).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-deal-watch").message }));
     const graph = await graphDaily().catch((e) => ({ error: describeFailure(e, 500, "edge-cron-graph").message }));
     // Edge's next features: forecasts settled, new merger documents, watched companies' Pulse and odds (lib/edge/next.ts).
     const next = await dailyNext(deadline - 20_000).catch((e) => ({ created: [] as number[], error: describeFailure(e, 500, "edge-cron-next").message }));
     const nextAlerts = next.created.length ? await notifyWatchers(next.created).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-next-notify").message })) : null;
     // Digests go hourly from the job runner at each person's brief time; without it, once a day from here.
     const digests = jobsReady() ? "hourly" : await sendDigests(deadline, { anyHour: true }).catch((e) => ({ error: describeFailure(e, 500, "edge-cron-digest").message }));
-    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, flares, radar, permits, methane, alerts, graph, next, nextAlerts, digests });
+    return NextResponse.json({ ok: true, watches, deals: deals.length, filings: filings.length, flares, radar, permits, methane, sat, records, dealWatch, alerts, graph, next, nextAlerts, digests });
   } catch (e) {
     return NextResponse.json({ ok: false, error: describeFailure(e, 500, "edge-cron").message }, { status: 500 });
   }

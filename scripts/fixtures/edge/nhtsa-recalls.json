@@ -1,0 +1,71 @@
+[
+ {
+  "report_received_date": "2026-11-10T00:00:00.000",
+  "nhtsa_id": "26V812000",
+  "manufacturer": "Ford Motor Company",
+  "subject": "Rearview Camera Image May Not Display",
+  "component": "BACK OVER PREVENTION",
+  "mfr_campaign_number": "26C55",
+  "recall_type": "Vehicle",
+  "potentially_affected": "612432",
+  "recall_link": {
+   "url": "https://www.nhtsa.gov/recalls?nhtsaId=26V812"
+  },
+  "park_outside_advisory": "No",
+  "do_not_drive_advisory": "No"
+ },
+ {
+  "report_received_date": "2026-11-10T00:00:00.000",
+  "nhtsa_id": "26V812000",
+  "manufacturer": "Ford Motor Company",
+  "subject": "Rearview Camera Image May Not Display",
+  "component": "ELECTRICAL SYSTEM",
+  "potentially_affected": "612432"
+ },
+ {
+  "report_received_date": "2026-11-06T00:00:00.000",
+  "nhtsa_id": "26V790000",
+  "manufacturer": "Kia America, Inc.",
+  "subject": "Hydraulic Electronic Control Unit May Short Circuit Causing Fire",
+  "component": "ELECTRICAL SYSTEM",
+  "potentially_affected": "91000",
+  "park_outside_advisory": "Yes",
+  "do_not_drive_advisory": "No"
+ },
+ {
+  "report_received_date": "2026-11-02T00:00:00.000",
+  "nhtsa_id": "26V770000",
+  "manufacturer": "Tesla, Inc.",
+  "subject": "Seat Belt Warning Software",
+  "component": "SEAT BELTS",
+  "potentially_affected": "2100"
+ },
+ {
+  "report_received_date": "2026-06-02T00:00:00.000",
+  "nhtsa_id": "26V401000",
+  "manufacturer": "Ford Motor Company",
+  "subject": "Fuel Pump May Fail",
+  "component": "FUEL SYSTEM",
+  "potentially_affected": "120000"
+ },
+ {
+  "report_received_date": "2026-03-15T00:00:00.000",
+  "nhtsa_id": "26V201000",
+  "manufacturer": "Tesla, Inc.",
+  "subject": "Steering Assist",
+  "component": "STEERING",
+  "potentially_affected": "5000"
+ },
+ {
+  "report_received_date": "2026-02-01T00:00:00.000",
+  "nhtsa_id": "26V101000",
+  "manufacturer": "Small Trailer Works LLC",
+  "subject": "Lamp",
+  "component": "EQUIPMENT",
+  "potentially_affected": "40"
+ },
+ {
+  "nhtsa_id": "",
+  "manufacturer": "Nobody"
+ }
+]

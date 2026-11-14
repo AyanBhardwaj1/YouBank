@@ -7,6 +7,7 @@ import { whatIfFrom } from "@/lib/edge/links";
 import { edgeFeed } from "@/lib/edge/feed";
 import { onboardEdge } from "@/lib/edge/onboard";
 import { edgeState } from "@/lib/edge/state";
+import { flareFreshness, refreshIfStale } from "@/lib/edge/passes";
 import type { EdgeState, FeedData } from "@/components/edge/client";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export default async function EdgePage({ searchParams }: { searchParams: Promise
   if (!p) redirect("/onboarding");
   const rest = await onboardEdge(user).catch(() => null);
   if (rest) after(rest);
+  // Flaring is read again after the response when the last pass is over an hour old (behind a lease; never blocks the page).
+  after(() => refreshIfStale(40_000));
   const q = await searchParams;
   const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
   const view = one(q.view);
@@ -47,6 +50,6 @@ export default async function EdgePage({ searchParams }: { searchParams: Promise
   // the API sends them (dates as strings), so the first paint needs no further request.
   const plain = <T,>(v: T) => JSON.parse(JSON.stringify(v)) as T;
   const state = await edgeState(user.id, p.prefs.beta, p.prefs.since, p.prefs.blend).then((s) => plain(s) as EdgeState).catch(() => undefined);
-  const feed = state && initialView === "feed" ? await edgeFeed(user.id, state.watches, p.prefs.blend, { scope: "all", limit: 20 }).then((f) => plain({ ...f, generatedAt: new Date().toISOString() }) as FeedData).catch(() => undefined) : undefined;
+  const feed = state && initialView === "feed" ? await Promise.all([edgeFeed(user.id, state.watches, p.prefs.blend, { scope: "all", limit: 20 }), flareFreshness().catch(() => null)]).then(([f, flares]) => plain({ ...f, flares, generatedAt: new Date().toISOString() }) as FeedData).catch(() => undefined) : undefined;
   return <EdgeWorkspace initialView={initialView} initialDocs={docs} initialCompany={company} initialDeal={deal} initialTicker={ticker} initialTab={tab} initialThesis={thesis} initialState={state} initialFeed={feed} seededAt={new Date().toISOString()} />;
 }

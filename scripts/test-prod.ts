@@ -8,6 +8,7 @@
 import { isPlainRead, isTransientDbError, mayRetry, neverSent } from "@/db/transient";
 import { checkAuthUrl, checkDatabaseUrl, checkEnv, checkJobs, featureStatus, FEATURES, moneySwitches } from "@/lib/env";
 import { healthVerdict } from "@/lib/health";
+import { aiVerdict, readProbe } from "@/lib/health-ai";
 import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
 import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
@@ -257,6 +258,23 @@ function testEnvAndHealth() {
   const pub = healthVerdict({ db: { ...okDb, schema: { core: [], migrations: [{ name: "0025_algo", missing: ["algo_orders"] }] } }, env: { missing: ["CRON_SECRET"], invalid: [], fatal: [] }, jobs: { on: false }, operator: false });
   check("visitors see counts, not names", !JSON.stringify(pub).includes("algo") && !JSON.stringify(pub).includes("CRON_SECRET") && JSON.stringify(pub).includes("problems"));
   check("a missing optional setting is degraded, not down", pub.status === "degraded");
+
+  console.log("AI health and key checks");
+  const today = new Date().toISOString().slice(0, 10);
+  const spend = { todayUsd: 12, days: [{ day: "2026-11-10", usd: 20 }, { day: "2026-11-11", usd: 40 }, { day: today, usd: 12 }], topFeatures: [{ feature: "chat", usd: 9.123, calls: 40 }] };
+  const good = aiVerdict({ providers: ["openai"], disabled: false, spend, capUsd: 200 });
+  check("a key, spend under the cap: ok", good.ok && good.status === "ok" && good.notes.length === 0);
+  check("burn is the average of full days, and projects a month", good.spend?.burnPerDayUsd === 30 && good.spend?.projectedMonthUsd === 900);
+  check("today's share of the cap is reported", good.spend?.capUsedPct === 6);
+  check("money is rounded to cents", good.spend?.topFeatures[0].usd === 9.12);
+  check("no key: off, with the fix", (() => { const v = aiVerdict({ providers: [], disabled: false, spend, capUsd: 200 }); return v.status === "off" && !v.ok && v.notes.some((n) => n.includes("No OpenAI or Anthropic key")); })());
+  check("paused: off", aiVerdict({ providers: ["openai"], disabled: true, spend, capUsd: 200 }).status === "off");
+  check("near the cap: warn, still ok", (() => { const v = aiVerdict({ providers: ["openai"], disabled: false, spend: { ...spend, todayUsd: 170 }, capUsd: 200 }); return v.status === "warn" && v.ok && v.notes.some((n) => n.includes("85%")); })());
+  check("at the cap: not ok", !aiVerdict({ providers: ["openai"], disabled: false, spend: { ...spend, todayUsd: 200 }, capUsd: 200 }).ok);
+  check("a rejected key: warn with what to do", (() => { const v = aiVerdict({ providers: ["openai"], disabled: false, spend, capUsd: 200, keys: [{ service: "OpenAI", ok: false, status: "rejected" }] }); return !v.ok && v.status === "warn" && v.notes.some((n) => n.includes("OpenAI rejected its key")); })());
+  check("unreadable spend tables do not fail AI", aiVerdict({ providers: ["anthropic"], disabled: false, spend: null, capUsd: 200 }).ok);
+  check("probe statuses: 2xx accepted, 401/403 rejected, the rest unreachable", [readProbe(200), readProbe(401), readProbe(403), readProbe(429), readProbe(500), readProbe(null)].join() === "accepted,rejected,rejected,unreachable,unreachable,unreachable");
+  check("a key check never carries the key", !JSON.stringify(aiVerdict({ providers: ["openai"], disabled: false, spend, capUsd: 200, keys: [{ service: "OpenAI", ok: true, status: "accepted" }] })).includes("sk-"));
 }
 
 async function testAuthAndHeaders() {

@@ -4,6 +4,8 @@ import { lazyPanel, useIdlePreload } from "@/components/ui/lazyPanel";
 import Link from "next/link";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
+import { InterfacePicker } from "@/components/settings/InterfacePicker";
+import { INTERFACE_META } from "@/lib/desk/interfaces";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { AiUsage } from "@/components/ai/AiUsage";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -49,7 +51,7 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
   useSubNav("/app/settings", (v) => { const t = TABS.find((x) => x.id === v); if (t) setTab(t.id); });
   useViewInUrl("/app/settings", "tab", tab, "style");
   const [routing, setRouting] = useState(prefs.routing !== false);
-  const { profile, config, tools } = useWorkspace();
+  const { profile, config, tools, look } = useWorkspace();
   const { settings, setSettings, status, catalog } = useAiSettings();
 
   return (
@@ -73,8 +75,13 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
 
         {tab === "style" && (
           <section className="mt-5 rise">
-            <h2 className="text-[14px] font-semibold">Interface style</h2>
-            <p className="mt-1 max-w-[70ch] text-[12px] text-muted">Fourteen styles, each with its own palette, density, corner radius and glass. Terminal styles are square and dense; modern styles are rounder and softer. Your choice is saved to your account and applies everywhere, including the signed-out pages on this browser.</p>
+            <h2 className="text-[14px] font-semibold">Interface</h2>
+            <p className="mt-1 max-w-[70ch] text-[12px] text-muted">The whole frame of the app: where the navigation lives, what a panel is, the type and the colours. Each is a different way of working, not a different paint job. It applies at once, only inside the app, and is saved to your account.</p>
+            <InterfacePicker />
+            <h2 className="mt-8 text-[14px] font-semibold">Colour style</h2>
+            {look.ui === "classic"
+              ? <p className="mt-1 max-w-[70ch] text-[12px] text-muted">Fourteen palettes for the Classic interface, each with its own density, corner radius and glass. Your choice is saved to your account and applies everywhere, including the signed-out pages on this browser.</p>
+              : <p className="mt-1 max-w-[70ch] text-[12px] text-muted">The {INTERFACE_META[look.ui].name} interface brings its own colours inside the app, so these palettes apply to the signed-out pages and to Classic. Your accent colour below still applies everywhere.</p>}
             <div className="mt-4"><ThemePicker /></div>
             <LookSettings />
           </section>

@@ -5,11 +5,12 @@
  * Edge, ranked by a blend they can tune (relevance, size of the change, novelty, confidence).
  */
 import { AnimatePresence, motion } from "motion/react";
-import { Download, Loader2, Radar as RadarIcon, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, Flame, Loader2, Radar as RadarIcon, RefreshCw, SlidersHorizontal, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { agoWords, arrived as arrivedIds } from "@/lib/edge/fresh";
 import type { EdgeBrief } from "@/lib/edge/brief";
-import { EdgeCardView, type OnMap } from "./Cards";
-import { api, post, useApi, type Blend, type EdgeCard, type EdgeState, type FeedData, type Scope } from "./client";
+import { ArrivedContext, EdgeCardView, type OnMap } from "./Cards";
+import { api, post, useApi, useClock, type Blend, type EdgeCard, type EdgeState, type FeedData, type FlareFreshness, type Scope } from "./client";
 import { onTabKeys, tabProps } from "./tabs";
 
 const SCOPES: { id: Scope | "all"; label: string }[] = [
@@ -21,6 +22,8 @@ const KINDS: { id: string; label: string }[] = [
   { id: "filing_change", label: "Filings" }, { id: "graph_flag", label: "Red flags" }, { id: "graph_prediction", label: "Model picks" },
   { id: "hiring_shift", label: "Hiring" }, { id: "hiring_tell", label: "Tells" }, { id: "attention_spike", label: "Attention" }, { id: "contract_award", label: "Awards" },
   { id: "layoff_notice", label: "Layoffs" }, { id: "patent_shift", label: "Patents" }, { id: "deal_odds", label: "Sale odds" },
+  { id: "crop_vigour", label: "Crops" }, { id: "water_extent", label: "Water" }, { id: "vessel_traffic", label: "Ships" }, { id: "reactor_outage", label: "Nuclear" },
+  { id: "fda_recall", label: "FDA recalls" }, { id: "vehicle_recall", label: "Vehicle recalls" }, { id: "deal_impact", label: "Deal watch" },
   { id: "call_evasion", label: "Call Desk" }, { id: "guidance_result", label: "Promises" }, { id: "commitment_due", label: "Promises due" }, { id: "thesis_update", label: "Your theses" },
 ];
 const SIGNALS: { key: keyof Blend; label: string; hint: string }[] = [
@@ -38,7 +41,20 @@ export function FeedView({ state, initial, onMap, onOpenDeal, onOpenRadar, onOpe
   const [quiet, setQuiet] = useState(false);
   const query = `scope=${scope}${kind ? `&kind=${kind}` : ""}`;
   // The first page may have come with the page itself (only for the opening scope).
+  // Polled every two minutes while the tab is visible (paused when hidden): new flares land within the hour.
   const feed = useApi<FeedData>(`/api/edge/feed?${query}`, quiet ? 20_000 : 120_000, initial, initial?.generatedAt);
+  // Cards that arrived after this view first loaded are marked new until it is left.
+  const firstIds = useRef<{ query: string; ids: Set<number> } | null>(null);
+  const [arrived, setArrived] = useState<{ query: string; ids: Set<number> }>({ query: "", ids: new Set() });
+  useEffect(() => {
+    const ids = feed.data?.cards.map((c) => c.id);
+    if (!ids) return;
+    if (!firstIds.current || firstIds.current.query !== query) { firstIds.current = { query, ids: new Set(ids) }; return; }
+    const fresh = arrivedIds(firstIds.current.ids, ids);
+    if (fresh.length) queueMicrotask(() => setArrived((cur) => ({ query, ids: new Set([...(cur.query === query ? cur.ids : []), ...fresh]) })));
+  }, [feed.data, query]);
+  const [flares, setFlares] = useState<FlareFreshness | null>(initial?.flares ?? null);
+  useEffect(() => { if (feed.data?.flares) queueMicrotask(() => setFlares(feed.data!.flares!)); }, [feed.data]);
   // Further pages, loaded on request and kept for the scope and kind they were loaded in.
   const [extra, setExtra] = useState<{ query: string; cards: EdgeCard[] }>({ query: "", cards: [] });
   const [loadingMore, setLoadingMore] = useState(false);
@@ -98,6 +114,7 @@ export function FeedView({ state, initial, onMap, onOpenDeal, onOpenRadar, onOpe
         </div>
       )}
 
+      <FlareStatus flares={flares} newCount={arrived.query === query ? arrived.ids.size : 0} />
       {scope === "all" && !kind && <BriefPanel cards={cards} />}
 
       {feed.error && !feed.data && (
@@ -111,13 +128,15 @@ export function FeedView({ state, initial, onMap, onOpenDeal, onOpenRadar, onOpe
         <div className="panel mt-4 flex flex-col items-center gap-2 px-6 py-12 text-center">
           <span className="relative flex h-10 w-10 items-center justify-center"><span className="pulse-ring absolute inset-0 rounded-full bg-accent/25" /><RadarIcon className="relative h-5 w-5 text-accent" /></span>
           <h3 className="text-[14px] font-semibold">{scope === "all" || scope === "mine" ? "Edge is looking at your watches" : scope === "team" ? "Nothing from your team's watches yet" : "Nothing trending yet"}</h3>
-          <p className="max-w-[52ch] text-[12.5px] text-muted">Each watched plant is compared with the same place a year ago in Sentinel-2 imagery, and deals that touch your companies are drawn on the map. Most sites are quiet; changes appear here as they are found, and everything is looked at again daily.</p>
+          <p className="max-w-[52ch] text-[12.5px] text-muted">Each watched plant is compared with the same place a year ago in Sentinel-2 imagery, flaring is read every hour, and deals that touch your companies are drawn on the map. Most sites are quiet; changes appear here as they are found.</p>
         </div>
       )}
       {cards.length > 0 && (
-        <div className="mt-3 grid items-start gap-3 lg:grid-cols-2">
-          {cards.map((c, i) => <EdgeCardView key={c.id} card={c} index={i} onMap={onMap} onOpenDeal={onOpenDeal} onOpenRadar={onOpenRadar} onOpenNetworks={onOpenNetworks} />)}
-        </div>
+        <ArrivedContext.Provider value={arrived.query === query ? arrived.ids : EMPTY_IDS}>
+          <div className="mt-3 grid items-start gap-3 lg:grid-cols-2">
+            {cards.map((c, i) => <EdgeCardView key={c.id} card={c} index={i} onMap={onMap} onOpenDeal={onOpenDeal} onOpenRadar={onOpenRadar} onOpenNetworks={onOpenNetworks} />)}
+          </div>
+        </ArrivedContext.Provider>
       )}
       {feed.data && cards.length < feed.data.total && (
         <div className="mt-4 flex justify-center">
@@ -126,6 +145,29 @@ export function FeedView({ state, initial, onMap, onOpenDeal, onOpenRadar, onOpe
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+const EMPTY_IDS: ReadonlySet<number> = new Set();
+
+/** When flaring was last read and the newest heat in it, kept fresh by the shared clock; and how many cards arrived while the feed was open. */
+function FlareStatus({ flares, newCount }: { flares: FlareFreshness | null; newCount: number }) {
+  const now = useClock();
+  if (!flares?.checkedAt && !newCount && flares?.ok !== false) return null;
+  const stale = !!flares?.checkedAt && now > 0 && now - Date.parse(flares.checkedAt) > 2 * 3_600_000;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted" aria-live="polite">
+      {flares?.checkedAt && (
+        <span className="inline-flex items-center gap-1.5" title="NASA's VIIRS satellites pass several times a day; new detections reach Edge within about three hours of a pass, and Edge reads them every hour.">
+          <Flame className="h-3.5 w-3.5 text-[#E8590C]" />
+          Flaring checked {now ? agoWords(flares.checkedAt, now) : "recently"}
+          {flares.newestSpot ? <span className="text-faint">· newest heat seen {flares.newestSpot.slice(5, 10)} at {flares.newestSpot.slice(11, 16)} UTC</span> : null}
+          {stale ? <span className="text-faint">· a fresh look starts when you open Edge</span> : <span className="text-faint">· checked hourly</span>}
+        </span>
+      )}
+      {flares && !flares.ok && <span className="text-faint">{flares.checkedAt ? "The latest flaring read did not come through; this is the last good one. Edge tries again within the hour." : "Flaring has not been read yet. Edge tries again within the hour."}</span>}
+      {newCount > 0 && <span className="rounded-full bg-accent-soft px-2 py-0.5 text-accent">{newCount} new since you opened the feed</span>}
     </div>
   );
 }

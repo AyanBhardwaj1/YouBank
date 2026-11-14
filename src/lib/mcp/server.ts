@@ -40,6 +40,7 @@ import { failureMessage } from "@/lib/errors";
 import { siteLink } from "@/lib/site";
 import { withSources, type McpPrompt, type McpServer } from "./protocol";
 import { DEFAULT_POLICY, toolAllowed, type KeyPolicy } from "./keys";
+import { predictExposureTool, predictSearchTool } from "@/lib/predict/mcp-tools";
 
 const OFFERED = new Set(["get_company_financials", "get_trading_comps", "search_companies", "search_filing", "read_filing", "edgar_fulltext_search", "read_document", "get_recent_filings", "get_xbrl_series", "get_insider_transactions", "calc", "form_d_search", "search_startups"]);
 
@@ -49,6 +50,7 @@ const TITLES: Record<string, string> = {
   get_xbrl_series: "XBRL time series", get_insider_transactions: "Insider transactions", calc: "Calculator", form_d_search: "Private raises (Form D)", search_startups: "Startup directory",
   filing_changes: "What changed in the 10-K / 10-Q", ticker_news: "News for a ticker", check_thesis: "Check kill criteria now", book_status: "My book: which theses hold",
   book_risk: "My book's risk and stress tests", book_track_record: "My track record and calibration", book_week: "My book this week", compliance_check: "Compliance check for investor text", propose_position: "Propose a position for my review",
+  prediction_markets_search: "Prediction markets: search", prediction_event_exposure: "Prediction markets: event exposure for tickers",
 };
 /** Tools that write something (a proposal only); every other tool is read-only. */
 const WRITES = new Set(["propose_position"]);
@@ -415,7 +417,7 @@ export const PROMPTS: McpPrompt[] = [
 
 /** The server for one person; `from` names the calling app (its key's name) on what it proposes. */
 export function mcpServer(userId: string, from = "An AI app", policy: KeyPolicy = DEFAULT_POLICY): McpServer {
-  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, weekTool(userId) as unknown as ToolDef<unknown>, complianceTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>]
+  const defs: ToolDef<unknown>[] = [...ALL_TOOLS.filter((t) => OFFERED.has(t.name)), filingChangesTool as unknown as ToolDef<unknown>, tickerNewsTool as unknown as ToolDef<unknown>, checkThesisTool as unknown as ToolDef<unknown>, bookTool(userId) as unknown as ToolDef<unknown>, riskTool(userId) as unknown as ToolDef<unknown>, trackRecordTool(userId) as unknown as ToolDef<unknown>, weekTool(userId) as unknown as ToolDef<unknown>, complianceTool(userId) as unknown as ToolDef<unknown>, proposeTool(userId, from) as unknown as ToolDef<unknown>, predictSearchTool as unknown as ToolDef<unknown>, predictExposureTool as unknown as ToolDef<unknown>]
     // What this app may use (Settings → Connect AI apps): tools it may not use are neither listed nor callable.
     .filter((t) => toolAllowed(policy, t.name));
   return {

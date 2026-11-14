@@ -6,6 +6,7 @@ import { jobsReady } from "@/lib/edge/infra/jobs";
 import { checkEnv, featureStatus, moneySwitches, REQUIRED } from "@/lib/env";
 import { logError } from "@/lib/errors";
 import { healthVerdict, type DbCheck } from "@/lib/health";
+import { aiHealth } from "@/lib/health-ai";
 import { schemaStatus } from "@/lib/setup";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,8 @@ async function database(): Promise<DbCheck> {
  * secret as a bearer token, or a signed-in ADMIN_EMAILS address) and in development. No setting's value
  * is ever read into the response.
  *   curl -H "Authorization: Bearer $CRON_SECRET" https://…/api/health
+ * Operators also see AI spend (today, the last week, the busiest features, the burn rate) and, with
+ * ?probe=keys, whether OpenAI, Anthropic, Stripe and FMP accept the keys the app holds (src/lib/health-ai.ts).
  */
 export async function GET(req: Request) {
   const production = process.env.NODE_ENV === "production";
@@ -54,13 +57,16 @@ export async function GET(req: Request) {
     jobs: { on: jobsReady() },
     operator,
   });
+  // AI: keys present, the money spent today against the cap, the burn rate; keys tried live only when an operator asks.
+  const probeKeys = operator && new URL(req.url).searchParams.get("probe") === "keys";
+  const ai = dbCheck.ok ? await aiHealth({ probeKeys }).catch((e) => { logError(e, { where: "health-ai" }); return null; }) : null;
   const body = {
     status: v.status,
     time: new Date().toISOString(),
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     env: process.env.VERCEL_ENV ?? (production ? "production" : "development"),
     region: process.env.VERCEL_REGION ?? null,
-    checks: v.checks,
+    checks: { ...v.checks, ...(ai ? { ai: operator ? ai : { ok: ai.ok, status: ai.status } } : {}) },
     ...(operator ? {
       features: Object.fromEntries(featureStatus(process.env).map((f) => [f.id, f.on ? true : { on: false, missing: f.missing }])),
       realMoney: moneySwitches(process.env),

@@ -1,0 +1,45 @@
+[
+  {
+    "id": "aB3dE5fG7h",
+    "creatorUsername": "macrowatcher",
+    "question": "Will the Fed cut rates by 25bps at its December 2026 meeting?",
+    "slug": "will-the-fed-cut-rates-by-25bps-at-i",
+    "url": "https://manifold.markets/macrowatcher/will-the-fed-cut-rates-by-25bps-at-i",
+    "outcomeType": "BINARY",
+    "mechanism": "cpmm-1",
+    "probability": 0.6,
+    "volume": 15402.5,
+    "volume24Hours": 820.1,
+    "totalLiquidity": 1500,
+    "createdTime": 1758200000000,
+    "closeTime": 1796839200000,
+    "isResolved": false,
+    "uniqueBettorCount": 211
+  },
+  {
+    "id": "zZ9yY8xX7w",
+    "creatorUsername": "forecaster",
+    "question": "Will the US enter a recession in 2026?",
+    "slug": "will-the-us-enter-a-recession-in-20",
+    "url": "https://manifold.markets/forecaster/will-the-us-enter-a-recession-in-20",
+    "outcomeType": "BINARY",
+    "mechanism": "cpmm-1",
+    "probability": 0.1,
+    "volume": 40210,
+    "volume24Hours": 120,
+    "totalLiquidity": 2200,
+    "createdTime": 1735700000000,
+    "closeTime": 1798761540000,
+    "isResolved": false
+  },
+  {
+    "id": "mUlTi000001",
+    "question": "Which party will control the Senate after the 2026 midterms?",
+    "url": "https://manifold.markets/x/which-party-senate-2026",
+    "outcomeType": "MULTIPLE_CHOICE",
+    "volume": 9000,
+    "createdTime": 1735700000000,
+    "closeTime": 1793750400000,
+    "isResolved": false
+  }
+]

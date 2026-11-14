@@ -87,8 +87,9 @@ function SavedLooks() {
   const { look, setLook, looks, setLooks } = useWorkspace();
   const { themeId, setTheme } = useTheme();
   const [note, setNote] = useState<string | null>(null);
-  const same = (p: LookPreset) => p.theme === themeId && JSON.stringify(p.look) === JSON.stringify(look);
-  const apply = (p: LookPreset) => { setTheme(p.theme); setLook(p.look); setNote(null); };
+  const same = (p: LookPreset) => p.theme === themeId && JSON.stringify({ ...p.look, ui: look.ui }) === JSON.stringify(look);
+  // A saved look is colours and settings; the interface chosen above stays (unless the look was saved with one).
+  const apply = (p: LookPreset) => { setTheme(p.theme); setLook(p.look.ui === "classic" ? { ...p.look, ui: look.ui } : p.look); setNote(null); };
   const save = async () => {
     const name = await promptDialog({ title: "Save this look", label: "Name", placeholder: "e.g. Late nights", confirmLabel: "Save" });
     if (!name?.trim()) return;
@@ -138,7 +139,8 @@ export function LookSettings() {
 function LookStudio() {
   const { look, setLook } = useWorkspace();
   const set = (p: Partial<LookPrefs>) => setLook(p);
-  const changed = (Object.keys(DEFAULT_LOOK) as (keyof LookPrefs)[]).some((k) => look[k] !== DEFAULT_LOOK[k]);
+  // The interface is chosen above and is not part of "the style's defaults".
+  const changed = (Object.keys(DEFAULT_LOOK) as (keyof LookPrefs)[]).some((k) => k !== "ui" && look[k] !== DEFAULT_LOOK[k]);
   return (
     <div className="panel mt-5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -146,7 +148,7 @@ function LookStudio() {
           <h3 className="text-[13.5px] font-semibold">Make it yours</h3>
           <p className="mt-0.5 text-[12px] text-muted">On top of the style above. Changes apply as you click.</p>
         </div>
-        {changed && <button type="button" onClick={() => set(DEFAULT_LOOK)} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Back to the style&apos;s defaults</button>}
+        {changed && <button type="button" onClick={() => set({ ...DEFAULT_LOOK, ui: look.ui })} className="ctl border border-line px-2.5 py-1 text-[11.5px] text-muted hover:text-fg">Back to the style&apos;s defaults</button>}
       </div>
       <div className="mt-2" role="radiogroup">
         <Row icon="Contrast" label="Light and dark" hint="Follow your device's setting, with a style for each">

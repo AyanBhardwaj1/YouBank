@@ -58,6 +58,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0033_research_ledger", ["research_ledger"], "research_ledger_user_seq_uidx"],
   ["0034_account_recovery", ["auth_recovery"], "auth_recovery_created_idx"],
   ["0035_app_secrets", ["app_secrets"], ""],
+  ["0037_predict", ["predict_watches", "predict_forecasts"], "predict_forecasts_user_market_day_uidx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */

@@ -1,0 +1,27 @@
+{
+  "market": {
+    "ticker": "KXFEDDECISION-26OCT-C25",
+    "event_ticker": "KXFEDDECISION-26OCT",
+    "market_type": "binary",
+    "title": "Will the Federal Reserve cut rates by 25bps at their October 2026 meeting?",
+    "yes_sub_title": "Cut 25bps",
+    "no_sub_title": "Cut 25bps",
+    "close_time": "2026-10-28T17:59:00Z",
+    "latest_expiration_time": "2026-11-04T18:00:00Z",
+    "status": "finalized",
+    "yes_bid_dollars": "0.0000",
+    "yes_ask_dollars": "0.0000",
+    "last_price_dollars": "0.9900",
+    "volume_fp": "5200000.00",
+    "volume_24h_fp": "0.00",
+    "result": "yes",
+    "open_interest_fp": "0.00",
+    "previous_price_dollars": "0.9900",
+    "liquidity_dollars": "0.0000",
+    "settlement_value_dollars": "1.0000",
+    "settlement_ts": "2026-10-28T18:10:00Z",
+    "expiration_value": "25",
+    "rules_primary": "If the Federal Reserve lowers the upper bound of the federal funds target range by exactly 25 basis points at its meeting ending October 28, 2026, then the market resolves to Yes.",
+    "rules_secondary": ""
+  }
+}

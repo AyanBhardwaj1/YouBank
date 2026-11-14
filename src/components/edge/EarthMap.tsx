@@ -34,7 +34,13 @@ import { createOverlay, hasWebGL2, lighting, loadDeck, type Loaded, type Overlay
 import type { Map3DScene } from "./map3d/scene";
 
 export type MapParty = { key: string; label: string; color: string; tickers: string[]; companies: string[] };
-export type MapMarker = { id: number; lon: number; lat: number; title: string; kind: string };
+export type MapMarker = {
+  id: number; lon: number; lat: number; title: string; kind: string;
+  /** For the globe's markers: a colour by group, and what the popup says (tickers, why it may move, confidence, new). */
+  color?: string; tickers?: string[]; why?: string; confidence?: number; fresh?: "new" | "updated" | null; seen?: string;
+};
+/** A whole-Earth imagery layer (NASA GIBS) drawn under the map's own layers; `key` changes with the layer or date. */
+export type MapImagery = { key: string; tiles: string; maxzoom: number; attribution: string; overlay: boolean };
 export type CountyShade = Record<string, { flag: "high" | "watch" | ""; shared: boolean }>;
 
 /** What a page can do with the map once it is drawn (record it, turn it). */
@@ -51,6 +57,10 @@ export type EarthMapProps = {
   shade?: CountyShade;
   markers?: MapMarker[];
   satellite?: Imagery | null;
+  /** Whole-Earth imagery for a date (NASA GIBS): true colour, night lights, fires, nitrogen dioxide. */
+  imagery?: MapImagery | null;
+  /** Changing this number turns the globe on and zooms out to the whole Earth. */
+  wantGlobe?: number;
   focus?: { lon: number; lat: number; zoom?: number; pitch?: number; bearing?: number; key: number } | null;
   onMarker?: (id: number) => void;
   /** A pipeline or plant clicked on the map. */
@@ -157,10 +167,20 @@ function shadeCounties(counties: AssetCollection | null | undefined, shade: Coun
   return { type: "FeatureCollection" as const, features } as GeoData;
 }
 
-const markerData = (markers: MapMarker[] | undefined) => ({
+const markerData = (markers: MapMarker[] | undefined, accent: string) => ({
   type: "FeatureCollection" as const,
-  features: (markers ?? []).map((m) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [m.lon, m.lat] }, properties: { id: m.id, title: m.title, kind: m.kind } })),
+  features: (markers ?? []).map((m) => ({ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [m.lon, m.lat] }, properties: { id: m.id, title: m.title, kind: m.kind, color: m.color ?? accent, fresh: m.fresh ? 1 : 0 } })),
 }) as GeoData;
+
+const confidenceWords = (c: number) => (c >= 0.7 ? "High" : c >= 0.4 ? "Medium" : "Low");
+
+/** A marker's popup: the tickers, what was seen, why it may move the stock, how sure Edge is. Escaped. */
+function markerHtml(m: MapMarker): string {
+  const tickers = m.tickers?.length ? `<div style="font-weight:600;letter-spacing:.04em">${m.tickers.slice(0, 6).map(esc).join(" · ")}${m.fresh ? ` <span style="font-size:10px;padding:0 5px;border-radius:8px;background:${esc(m.color ?? "#f5a623")};color:#111">${m.fresh === "new" ? "NEW" : "UPDATED"}</span>` : ""}</div>` : "";
+  const why = m.why ? `<div style="margin-top:4px;opacity:.8">${esc(m.why)}</div>` : "";
+  const meta = [m.confidence !== undefined ? `${confidenceWords(m.confidence)} confidence (${Math.round(m.confidence * 100)})` : "", m.seen ? `seen ${esc(m.seen.slice(0, 10))}` : ""].filter(Boolean).join(" · ");
+  return `<div style="font:12px/1.4 var(--font-sans);max-width:260px">${tickers}<div style="margin-top:2px;font-weight:600">${esc(m.title)}</div>${why}${meta ? `<div style="margin-top:4px;opacity:.65">${meta}</div>` : ""}<div style="margin-top:4px;opacity:.65">The full card is open beside the map.</div></div>`;
+}
 
 /** Whether this browser can draw WebGL (some locked-down machines and old devices cannot). */
 function hasWebGL(): boolean {
@@ -267,7 +287,7 @@ function MapCanvas(props: EarthMapProps) {
       const coloured = colourAssets(p.assets, p.parties, p.highlight, muted);
       m.addSource("assets", { type: "geojson", data: coloured });
       m.addSource("columns", { type: "geojson", data: plantColumns(coloured) });
-      m.addSource("markers", { type: "geojson", data: markerData(p.markers) });
+      m.addSource("markers", { type: "geojson", data: markerData(p.markers, accent) });
       m.addLayer({ id: "county-fill", type: "fill", source: "counties", paint: { "fill-color": ["match", ["get", "flag"], "high", neg, "watch", accent, info], "fill-opacity": ["case", ["==", ["get", "flag"], "high"], 0.28, ["==", ["get", "flag"], "watch"], 0.2, ["==", ["get", "shared"], 1], 0.1, 0] } });
       m.addLayer({ id: "county-line", type: "line", source: "counties", paint: { "line-color": muted, "line-width": 0.6, "line-opacity": 0.6 } });
       m.addLayer({ id: "pipes", type: "line", source: "assets", filter: ["==", ["get", "kind"], "pipeline"], layout: { "line-cap": "round", "line-join": "round", "line-sort-key": ["get", "lit"] }, paint: { "line-color": ["get", "color"], "line-width": ["interpolate", ["linear"], ["zoom"], 5, ["case", ["==", ["get", "lit"], 1], 1.4, 0.6], 11, ["case", ["==", ["get", "lit"], 1], 3.2, 1.2]], "line-opacity": ["case", ["==", ["get", "lit"], 1], 0.95, 0.45] } });
@@ -279,11 +299,13 @@ function MapCanvas(props: EarthMapProps) {
       } });
       m.addLayer({ id: "plants", type: "circle", source: "assets", filter: ["==", ["get", "kind"], "processing_plant"], layout: { "circle-sort-key": ["get", "lit"] }, paint: { "circle-color": ["get", "color"], "circle-radius": ["interpolate", ["linear"], ["sqrt", ["get", "cap"]], 0, 3, 30, 11], "circle-stroke-color": fg, "circle-stroke-width": ["case", ["==", ["get", "lit"], 1], 1.2, 0.4], "circle-opacity": ["case", ["==", ["get", "lit"], 1], 0.95, 0.55] } });
       // Findings are rings with a white core, so they never read as a plant.
-      m.addLayer({ id: "markers-halo", type: "circle", source: "markers", paint: { "circle-color": accent, "circle-radius": 14, "circle-opacity": 0.18, "circle-blur": 0.5 } });
-      m.addLayer({ id: "markers", type: "circle", source: "markers", paint: { "circle-color": "#ffffff", "circle-radius": 4.5, "circle-stroke-color": accent, "circle-stroke-width": 3.5 } });
+      // Each marker takes its group's colour (the globe's markers); new ones carry a wider halo.
+      m.addLayer({ id: "markers-halo", type: "circle", source: "markers", paint: { "circle-color": ["get", "color"], "circle-radius": ["case", ["==", ["get", "fresh"], 1], 20, 14], "circle-opacity": ["case", ["==", ["get", "fresh"], 1], 0.32, 0.18], "circle-blur": 0.5 } });
+      m.addLayer({ id: "markers", type: "circle", source: "markers", paint: { "circle-color": "#ffffff", "circle-radius": 4.5, "circle-stroke-color": ["get", "color"], "circle-stroke-width": 3.5 } });
       // Crypto layer: Bitcoin mining sites and crypto data centres, self-contained with its own button and popups (src/lib/crypto/map-layer.ts).
       addCryptoSitesLayer(m, { beforeId: "markers-halo" });
       syncSatellite(m, p.satellite);
+      syncImagery(m, p.imagery);
       syncOverlay(m, p.overlay);
       syncSite(m, p.site, false);
       sync3D(m, view3D.current.on, view3D.current.relief, false, sunPosition(Date.now(), m.getCenter().lat, m.getCenter().lng), isDark());
@@ -312,7 +334,10 @@ function MapCanvas(props: EarthMapProps) {
       m.on("idle", () => { if (m.getTerrain() && Date.now() - lastIdle > 1000) { lastIdle = Date.now(); setGroundKey((k) => k + 1); } });
       m.on("click", "markers", (e) => {
         const id = Number(e.features?.[0]?.properties?.id);
-        if (Number.isFinite(id)) onMarker.current?.(id);
+        if (!Number.isFinite(id)) return;
+        const mk = latest.current.markers?.find((x) => x.id === id);
+        if (mk && (mk.why || mk.tickers?.length)) popup.current?.setLngLat([mk.lon, mk.lat]).setHTML(markerHtml(mk)).addTo(m);
+        onMarker.current?.(id);
       });
       m.on("click", (e) => {
         const f = m.queryRenderedFeatures(e.point, { layers: ["plants", "plant-columns", "pipes"].filter((id) => m.getLayer(id)) })[0];
@@ -339,9 +364,18 @@ function MapCanvas(props: EarthMapProps) {
     (m.getSource("columns") as GeoJSONSource | undefined)?.setData(plantColumns(coloured));
   }, [props.assets, props.parties, props.highlight, loaded]);
   useEffect(() => { const m = map.current; if (m && loaded) (m.getSource("counties") as GeoJSONSource | undefined)?.setData(shadeCounties(props.counties, props.shade)); }, [props.counties, props.shade, loaded]);
-  useEffect(() => { const m = map.current; if (m && loaded) (m.getSource("markers") as GeoJSONSource | undefined)?.setData(markerData(props.markers)); }, [props.markers, loaded]);
+  useEffect(() => { const m = map.current; if (m && loaded) (m.getSource("markers") as GeoJSONSource | undefined)?.setData(markerData(props.markers, cssVar("--accent", "#f5a623"))); }, [props.markers, loaded]);
 
   useEffect(() => { const m = map.current; if (m && loaded) syncSatellite(m, props.satellite); }, [props.satellite, loaded]);
+  // Keyed on the layer and date, so a feed poll's new object for the same imagery does not reload the tiles.
+  const imageryKey = props.imagery?.key ?? null;
+  useEffect(() => { const m = map.current; if (m && loaded) syncImagery(m, latest.current.imagery); }, [imageryKey, loaded]);
+  // Asked to show the whole Earth: the globe, zoomed out.
+  useEffect(() => {
+    if (!props.wantGlobe) return;
+    queueMicrotask(() => { setThreeD(false); setGlobe(true); });
+    map.current?.easeTo({ zoom: 1.6, pitch: 0, bearing: 0, duration: 1600, freezeElevation: true });
+  }, [props.wantGlobe]);
 
   // The live sun moves on every five minutes while nobody has picked an hour.
   useEffect(() => {
@@ -586,6 +620,19 @@ function sync3D(m: MLMap, on: boolean, relief: number, animate: boolean, sun: Su
     m.dragRotate.disable(); m.touchZoomRotate.disableRotation(); m.touchPitch.disable();
     tilt(m, 0, 0, animate);
   }
+}
+
+/** NASA GIBS imagery: the whole Earth for a date, under our layers; the ground itself sits under the basemap's labels too. */
+function syncImagery(m: MLMap, img: MapImagery | null | undefined) {
+  const src = m.getSource("gibs") as (maplibregl.RasterTileSource & { _key?: string }) | undefined;
+  if (src && img && src._key === img.key) return;
+  if (m.getLayer("gibs")) m.removeLayer("gibs");
+  if (src) m.removeSource("gibs");
+  if (!img) return;
+  m.addSource("gibs", { type: "raster", tiles: [img.tiles], tileSize: 256, maxzoom: img.maxzoom, attribution: img.attribution });
+  (m.getSource("gibs") as maplibregl.RasterTileSource & { _key?: string })._key = img.key;
+  // An overlay (fires, nitrogen dioxide) sits just under our markers; a picture of the ground under all of our layers.
+  m.addLayer({ id: "gibs", type: "raster", source: "gibs", paint: { "raster-opacity": img.overlay ? 0.85 : 1, "raster-fade-duration": 150 } }, img.overlay ? below(m, ["markers-halo", "markers"]) : below(m, ["sat", ...OUR_LAYERS]));
 }
 
 function syncSatellite(m: MLMap, sat: Imagery | null | undefined) {

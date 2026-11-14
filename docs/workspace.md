@@ -91,6 +91,24 @@ Both are base64url JSON, and every value goes through the same normalizers as st
   most 300 an hour, and only for tickers the SEC lists.
 - See `src/lib/public/company-page.ts`.
 
+## Interfaces
+
+Settings → Style → Interface picks the whole frame of the signed-in app, nine ways (`src/lib/desk/interfaces.ts`). A theme only recolours the Classic frame; an interface changes where the navigation lives, what a panel is, the type, the density and the colours:
+
+| Interface | Navigation | Panels | Suggested for |
+|---|---|---|---|
+| Classic | top bar | the theme's boxes | everyone (default) |
+| Broadsheet | masthead with an edition line | ruled columns, serif headlines | consultants |
+| Cockpit | top bar and a live status strip | bracketed instruments, monospaced | markets |
+| Glass | floating bar and a bottom dock | frosted panes over colour | VC |
+| Swiss | numbered index rail | heavy rules, big grotesk type | PE |
+| Ledger | top bar and a folio strip | ruled green paper, red margin | accountants, bankers |
+| Blueprint | top bar and a title block | dashed lines on grid paper | corporate finance |
+| Zen | none (⌘K and the menu) | one calm centred column | anyone who wants focus |
+| Bento | bottom dock | rounded tiles in colour | students |
+
+It is `look.ui` in the stored look and the `yb-look` cookie, set on `<html data-ui>` by `lookAttrs`, so the first paint already has it. `src/app/interfaces.css` draws each one, scoped to pages with the app frame (`:has(.app-frame)`), so the public site never changes. `src/components/workspace/InterfaceChrome.tsx` adds the dock, the rail, the status strip and the edition line, all desktop-only: on a phone every interface keeps the bottom tab bar. The hooks it styles are `.yb-topbar`, `.yb-wordmark`, `.yb-pins`, `.yb-pill` and `.yb-main`. Interfaces are offered only in Settings, never on the landing page or in the command palette.
+
 ## Tests
 
 `scripts/test-desk.ts`, `test-palette.ts`, `test-inbox.ts`, `test-watchlist.ts`, `test-markets.ts`,

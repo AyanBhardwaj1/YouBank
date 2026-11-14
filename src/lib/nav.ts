@@ -5,7 +5,7 @@
  */
 import type { RoleId } from "./roles";
 
-export type NavId = "home" | "book" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
+export type NavId = "home" | "book" | "terminal" | "news" | "tools" | "studio" | "edge" | "vc" | "crypto" | "copy" | "algo" | "quant" | "predict" | "crm" | "calendar" | "collab" | "library" | "team" | "settings";
 
 /**
  * A workflow inside a feature. `event` switches the view in place when the feature's page is already
@@ -58,6 +58,10 @@ export const FEATURES: NavFeature[] = [
   {
     id: "quant", href: "/app/quant", label: "Quant", icon: "Gauge", blurb: "Factors, risk, backtest checks, sizing, trading costs and insiders, with intervals and sources",
     links: [tab("/app/quant", "tab", "overview", "Overview", true), tab("/app/quant", "tab", "integrity", "Backtest check"), tab("/app/quant", "tab", "factors", "Factors"), tab("/app/quant", "tab", "risk", "Risk"), tab("/app/quant", "tab", "sizing", "Sizing"), tab("/app/quant", "tab", "costs", "Costs"), tab("/app/quant", "tab", "insiders", "Insiders"), tab("/app/quant", "tab", "drills", "Drills"), tab("/app/quant", "tab", "signals", "Signals")],
+  },
+  {
+    id: "predict", href: "/app/predict", label: "Prediction markets", icon: "Percent", blurb: "Event odds from Kalshi, Polymarket and Gemini: what they move in your book, where venues disagree, and your own forecasts scored",
+    links: [tab("/app/predict", "tab", "markets", "Markets", true), tab("/app/predict", "tab", "spreads", "Cross-venue spreads"), tab("/app/predict", "tab", "exposure", "Event exposure"), tab("/app/predict", "tab", "watch", "Watchlist and forecasts")],
   },
   {
     id: "crm", href: "/app/crm", label: "Relationships", icon: "Network", blurb: "Email, meetings, pipeline and follow-ups",

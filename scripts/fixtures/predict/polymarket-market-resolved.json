@@ -1,0 +1,18 @@
+{
+  "id": "598001",
+  "question": "Fed decreases interest rates by 25 bps after October 2026 meeting?",
+  "slug": "fed-decreases-interest-rates-by-25-bps-after-october-2026-meeting",
+  "groupItemTitle": "25 bps decrease",
+  "endDate": "2026-10-28T00:00:00Z",
+  "description": "This market will resolve to \"Yes\" if the upper bound of the target federal funds rate is decreased by 25 basis points at the FOMC meeting scheduled for October 27-28, 2026.",
+  "outcomes": "[\"Yes\", \"No\"]",
+  "outcomePrices": "[\"1\", \"0\"]",
+  "clobTokenIds": "[\"41000000000000000000000000000000000000000000000000000000000000000000000000001\", \"41000000000000000000000000000000000000000000000000000000000000000000000000002\"]",
+  "volume": "30411200.4",
+  "liquidity": "0",
+  "volume24hr": 0,
+  "active": true,
+  "closed": true,
+  "umaResolutionStatus": "resolved",
+  "events": [{ "id": "34001", "slug": "fed-decision-in-october-2026", "title": "Fed decision in October?" }]
+}
