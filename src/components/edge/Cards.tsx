@@ -17,6 +17,7 @@ import { ProbBar, Sparkline } from "./next/charts";
 import { freshness } from "@/lib/edge/fresh";
 import { ago, confidenceLabel, fmtNum, useClock, type DealImpactVisual, type EdgeCard, type FilingVisual, type FlagVisual, type FlaringVisual, type GroundVisual, type MethaneVisual, type PermitsVisual, type PredictionVisual, type ProformaVisual, type RadarVisual, type ReactorVisual, type RecallVisual, type SatVisual } from "./client";
 import { edgeImageSrc } from "@/lib/edge/imgsrc";
+import { terminalLink } from "@/lib/edge/links";
 
 /** "4m", "Yesterday", "Sep 26": kept fresh by the shared clock, so a tick re-renders only the times. */
 export function Ago({ iso }: { iso: string }) {
@@ -100,10 +101,24 @@ function Shell({ card, index, children, kicker, icon }: { card: EdgeCard; index:
         <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
           <Icon name={icon} className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{kicker}</span><FreshMark card={card} />
         </div>
-        <Confidence value={card.confidence} />
+        <div className="flex shrink-0 items-center gap-2">
+          <TerminalLink card={card} />
+          <Confidence value={card.confidence} />
+        </div>
       </div>
       {children}
     </motion.article>
+  );
+}
+
+/** "SAT XOM": the Terminal monitor this finding belongs in, opened beside the rest of the person's panels. */
+function TerminalLink({ card }: { card: EdgeCard }) {
+  const link = terminalLink(card.kind, card.tickers);
+  if (!link) return null;
+  return (
+    <a href={link.href} title={`Open in Terminal: ${link.label}`} className="num inline-flex items-center gap-1 rounded border border-line px-1.5 py-px text-[10px] font-semibold tracking-wide text-muted hover:border-accent/50 hover:text-accent">
+      <ArrowUpRight className="h-3 w-3" />{link.label}
+    </a>
   );
 }
 

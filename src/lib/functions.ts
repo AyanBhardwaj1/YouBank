@@ -77,6 +77,13 @@ export const FUNCTIONS = {
   ODDS: { label: "Deal Radar", hint: "A model probability of a sale announcement within 12 months; ODDS alone for the board", group: "edge" },
   CALL: { label: "Call Desk", hint: "Its latest earnings call question by question, scored for evasion, and its promises against what it reported", group: "edge" },
   LBO: { label: "LBO stress", hint: "Its buyout over 1,000 synthetic paths: breach odds, the IRR range, the most a sponsor can pay", group: "edge" },
+  // Bloomberg-style Edge monitors (src/components/terminal/screens/Edge*Screen.tsx). MARB, FLR and EVTS watch
+  // every company and take no ticker; SAT and ALT take one before or after the code ("SAT XOM", "XOM SAT").
+  MARB: { label: "Merger arbitrage", hint: "Pending deals: offer value, gross spread, annualised return to close, implied odds, Edge risk flags and prediction markets", group: "edge" },
+  SAT: { label: "Geospatial signals", hint: "Every satellite, flaring, radar, permit and methane signal at its sites, with z-scores and history: SAT XOM", group: "edge" },
+  FLR: { label: "Flaring monitor", hint: "Every mapped plant's flaring: seven days and twelve weeks of radiant heat, change against its average, the last pass", group: "edge" },
+  ALT: { label: "Alt data", hint: "Its hiring, attention, awards, WARN, patents, recalls, reactors, prediction markets and Deal Radar odds against its own history: ALT NVDA", group: "edge" },
+  EVTS: { label: "Edge events", hint: "The live tape of Edge findings across kinds: EVTS FLR, EVTS XOM, EVTS high", group: "edge", args: true },
 } as const satisfies Record<string, FnDef>;
 
 export type FunctionCode = keyof typeof FUNCTIONS;
@@ -100,8 +107,12 @@ export function isFunctionCode(s: string): s is FunctionCode {
 export const EDGE_CODES: ReadonlySet<string> = new Set(FUNCTION_CODES.filter((f) => (FUNCTIONS[f] as FnDef).group === "edge"));
 export const isCommandCode = (s: string, edge: boolean): s is FunctionCode => isFunctionCode(s) && (edge || !EDGE_CODES.has(s));
 
-/** Market and workspace functions do not act on a ticker (TOOL and TOOLS do, through the active one). */
-export const needsTicker = (fn: FunctionCode) => { const g = (FUNCTIONS[fn] as FnDef).group; return g === "company" || g === "edge" || fn === "TOOL" || fn === "TOOLS"; };
+/** Edge's monitors across every company (no ticker), and its company functions that may take the ticker after the code ("SAT XOM"). */
+const EDGE_MONITORS: ReadonlySet<string> = new Set(["MARB", "FLR", "EVTS"]);
+const TICKER_AFTER: ReadonlySet<string> = new Set(["SAT", "ALT"]);
+
+/** Market and workspace functions do not act on a ticker (TOOL and TOOLS do, through the active one); nor do Edge's monitors. */
+export const needsTicker = (fn: FunctionCode) => { const g = (FUNCTIONS[fn] as FnDef).group; return g === "company" || (g === "edge" && !EDGE_MONITORS.has(fn)) || fn === "TOOL" || fn === "TOOLS"; };
 const takesArgs = (fn: FunctionCode) => (FUNCTIONS[fn] as FnDef).args === true;
 /** Functions that work with or without a ticker: given one ("AAPL FACT") they use it; alone they do not take the active one. */
 export const optionalTicker = (fn: FunctionCode) => fn === "FACT" || fn === "INSC";
@@ -139,6 +150,8 @@ function parseWords(input: string, activeTicker: string, edge: boolean): { ok: t
   const code = (s: string): s is FunctionCode => isCommandCode(s, edge);
 
   const tickerFirst = TICKER_RE.test(first) && !!second && code(second) && (!code(first) || !takesArgs(first) || tokens.length === 2);
+  // "SAT XOM": the Edge functions that read like Bloomberg's take the ticker after the code too.
+  if (code(first) && TICKER_AFTER.has(first) && tokens.length === 2 && TICKER_RE.test(second) && !code(second)) return build(first, second, []);
   // ODDS alone is the Deal Radar's board, not the active company's odds.
   if (code(first) && !tickerFirst) return build(first, (first === "ODDS" && tokens.length === 1) || optionalTicker(first) ? "" : activeTicker, raw.slice(1));
   if (!TICKER_RE.test(first)) return { ok: false, error: `"${first}" is not a ticker or a function` };

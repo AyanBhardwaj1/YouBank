@@ -35,6 +35,8 @@ export function HelpOverlay({ onClose }: { onClose: () => void }) {
               <li><span className="num text-accent">PG DES</span> a ticker that is also a code works with a function after it</li>
               {edge && <li><span className="num text-accent">{config.watchlist[0] ?? "SNOW"} ASK</span> <span className="text-muted">what drove volumes?</span>: ask its filings, with quotes</li>}
               {edge && <li><span className="num text-accent">{config.watchlist[0] ?? "SNOW"} SIM oil -30%</span> stress its stock; <span className="num text-accent">SIM 2008</span> replays a year</li>}
+              {edge && <li><span className="num text-accent">MARB</span> merger arbitrage; <span className="num text-accent">FLR</span> flaring; <span className="num text-accent">EVTS FLR high</span> the live tape, filtered</li>}
+              {edge && <li><span className="num text-accent">SAT XOM</span> or <span className="num text-accent">ALT NVDA</span>: a company&apos;s geospatial signals or alt data. In a monitor: ↑ ↓ move, Enter drills in, 1–9 sort</li>}
             </ul>
             <div className="mt-4 text-[10.5px] uppercase tracking-wider text-muted">Keys</div>
             <dl className="mt-2 space-y-1 text-[12px]">

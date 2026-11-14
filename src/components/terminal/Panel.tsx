@@ -73,6 +73,12 @@ const PulseScreen = dynamic(() => import("./screens/SignalScreens").then((m) => 
 const OddsScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.OddsScreen), { loading: ScreenLoading });
 const CallScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.CallScreen), { loading: ScreenLoading });
 const LboScreen = dynamic(() => import("./screens/SignalScreens").then((m) => m.LboScreen), { loading: ScreenLoading });
+// Edge's Bloomberg-style monitors.
+const MarbScreen = dynamic(() => import("./screens/MarbScreen").then((m) => m.MarbScreen), { loading: ScreenLoading });
+const SatScreen = dynamic(() => import("./screens/SatScreen").then((m) => m.SatScreen), { loading: ScreenLoading });
+const FlrScreen = dynamic(() => import("./screens/FlrScreen").then((m) => m.FlrScreen), { loading: ScreenLoading });
+const AltScreen = dynamic(() => import("./screens/AltScreen").then((m) => m.AltScreen), { loading: ScreenLoading });
+const EvtsScreen = dynamic(() => import("./screens/EvtsScreen").then((m) => m.EvtsScreen), { loading: ScreenLoading });
 const CrypScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.CrypScreen), { loading: ScreenLoading });
 const TokenScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.TokenScreen), { loading: ScreenLoading });
 const DefiScreen = dynamic(() => import("./screens/CryptoScreens").then((m) => m.DefiScreen), { loading: ScreenLoading });
@@ -151,6 +157,11 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
       case "ODDS": return <OddsScreen ticker={t} onRun={onRun} />;
       case "CALL": return <CallScreen ticker={t} onRun={onRun} />;
       case "LBO": return <LboScreen ticker={t} onRun={onRun} />;
+      case "MARB": return <MarbScreen onRun={onRun} />;
+      case "SAT": return <SatScreen ticker={t} onRun={onRun} />;
+      case "FLR": return <FlrScreen onRun={onRun} />;
+      case "ALT": return <AltScreen ticker={t} onRun={onRun} />;
+      case "EVTS": return <EvtsScreen key={panel.arg ?? ""} arg={panel.arg} onRun={onRun} />;
       case "CRYP": return <CrypScreen onRun={onRun} />;
       case "TOKEN": return <TokenScreen onRun={onRun} arg={panel.arg} />;
       case "DEFI": return <DefiScreen onRun={onRun} />;
@@ -180,7 +191,7 @@ export function Panel({ panel, maximized, onClose, onToggleMax, onRun, ai, openP
     }
   })();
 
-  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK" || panel.fn === "TOKEN" || panel.fn === "WALLET" || panel.fn === "FACT" || panel.fn === "BTX" || panel.fn === "KELLY" || panel.fn === "TCA") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
+  const title = panel.fn === "TOOL" ? (panel.arg ?? "tool") : (panel.fn === "EQS" || panel.fn === "PORT" || panel.fn === "NI" || panel.fn === "SIM" || panel.fn === "ASK" || panel.fn === "TOKEN" || panel.fn === "WALLET" || panel.fn === "FACT" || panel.fn === "BTX" || panel.fn === "KELLY" || panel.fn === "TCA" || panel.fn === "EVTS") && panel.arg ? `${FUNCTIONS[panel.fn].label}: ${panel.arg}` : FUNCTIONS[panel.fn].label;
 
   return (
     <section className="group flex h-full min-h-0 flex-col overflow-hidden panel glass">
