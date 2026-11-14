@@ -71,6 +71,17 @@ export const authTwoFactor = pgTable("auth_two_factor", {
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
 }, (t) => [index("auth_two_factor_user_idx").on(t.userId)]);
 
+/**
+ * Account recovery without email (drizzle/0034, src/lib/auth/recovery.ts): one recovery key per person, kept
+ * only as an HMAC under BETTER_AUTH_SECRET, replaced each time it is used.
+ */
+export const authRecovery = pgTable("auth_recovery", {
+  userId: text("user_id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
+  keyHash: text("key_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+}, (t) => [index("auth_recovery_created_idx").on(t.createdAt)]);
+
 /** Saved peer groups (user-created or saved from an AI proposal). */
 export const peerGroups = pgTable("peer_groups", {
   id: serial("id").primaryKey(),

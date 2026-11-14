@@ -6,6 +6,7 @@ import { STEP_UP_ATTEMPTS, STEP_UP_WINDOW_MS, stepUpState, stepUpVerdict, twoFac
 import { withinRate } from "@/lib/locks";
 import { currentUser, noteSessionChange, type SessionChange } from "@/lib/auth/user";
 import { errorResponse } from "@/lib/errors";
+import { setupState } from "@/lib/setup";
 
 /**
  * Sign-in's own endpoints (Google redirect and callback, session, sign-out). The handler is built on the
@@ -150,8 +151,17 @@ async function post(req: Request): Promise<Response> {
   return res;
 }
 
-export const GET = handle;
-export const POST = post;
+/**
+ * The first sign-in call after a deploy can arrive before any page: let the app apply its pending migrations
+ * first (src/lib/setup.ts, remembered per instance for five minutes), so sign-in never meets a column it lacks.
+ */
+const ready = <A extends unknown[]>(fn: (req: Request, ...a: A) => Promise<Response>) => async (req: Request, ...a: A) => {
+  await setupState().catch(() => undefined);
+  return fn(req, ...a);
+};
+
+export const GET = ready(handle);
+export const POST = ready(post);
 export const PUT = handle;
 export const DELETE = handle;
 export const PATCH = handle;

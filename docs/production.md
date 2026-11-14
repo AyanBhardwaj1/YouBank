@@ -159,6 +159,31 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 
 ---
 
+## Migrations apply themselves
+
+On the first request after a deploy, the app compares the database with `drizzle/` (`src/lib/setup.ts`
+`schemaStatus`) and applies what is missing from copies embedded at build time (`src/lib/db/automigrate.ts`,
+`src/lib/db/migrations.gen.ts`), in one transaction under an advisory lock, so two instances never race.
+The "YouBank is being set up" screen therefore only stays up when something cannot be fixed from the code:
+no `DATABASE_URL`, no `BETTER_AUTH_SECRET`, or a database with no schema at all. `/api/health` names which.
+
+- After adding a migration: `pnpm exec tsx scripts/gen-migrations.mts` (scripts/test-recovery.ts fails
+  until you do).
+- A migration with `CREATE INDEX CONCURRENTLY` cannot run in a transaction; apply it with
+  `scripts/apply-sql.mts` (health lists it).
+- `AUTO_MIGRATE=off` turns it off.
+
+## Forgotten passwords
+
+No setup needed. Each account gets a recovery key at sign-up (shown once, kept only as an HMAC under
+`BETTER_AUTH_SECRET`); Settings → Security makes a new one (asking for the password). At `/sign-in/reset`,
+the email, the key and a new password reset it: every other session is signed out, and the key is replaced
+by a new one, shown once. Five tries per email and twenty per address in fifteen minutes.
+
+With `SMTP_URL` and `MAIL_FROM` set, the same page also sends a reset link by email (one hour), through
+Better Auth's own reset flow. Changing `BETTER_AUTH_SECRET` invalidates every recovery key (and signs
+everyone out), so keep it fixed.
+
 ## Switching to a custom domain
 
 Do these in order, the same hour. The old `youbank-nu.vercel.app` keeps working throughout (sign-in trusts

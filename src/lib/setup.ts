@@ -10,6 +10,7 @@
 import { sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
 import { shared } from "./shared";
+import { autoMigrate } from "./db/automigrate";
 
 /** Tables the schema push creates and every page needs. */
 export const CORE_TABLES = ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache"];
@@ -55,6 +56,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0031_two_factor", ["auth_two_factor"], "auth_two_factor_user_idx"],
   ["0032_analytics", ["analytics_activity", "analytics_cohorts", "analytics_modules"], ""],
   ["0033_research_ledger", ["research_ledger"], "research_ledger_user_seq_uidx"],
+  ["0034_account_recovery", ["auth_recovery"], "auth_recovery_created_idx"],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
@@ -95,7 +97,19 @@ export async function schemaStatus(d: Db): Promise<SchemaStatus> {
 export type SetupState = { ready: true } | { ready: false; reason: "database" | "schema" | "auth" };
 
 /** Per process (src/lib/shared): the layout, pages and routes are separate build layers with their own module copies. */
-const ready = shared("setup:ready", () => ({ until: 0 }));
+const ready = shared("setup:ready", () => ({ until: 0, migrated: false }));
+
+/**
+ * Apply whatever drizzle/ migrations the database lacks (src/lib/db/automigrate.ts). Once per instance
+ * when it first serves a page, and again whenever sign-in's own columns are missing.
+ */
+async function ensureMigrations(): Promise<void> {
+  if (!db) return;
+  const status = await schemaStatus(db);
+  // Without the core tables (a database that never had the schema pushed) the migrations cannot apply.
+  if (status.core.length) return;
+  await autoMigrate(status.migrations.map((m) => m.name));
+}
 
 /**
  * For pages: whether to render the app or the "being set up" screen. Only configuration and the core
@@ -110,13 +124,23 @@ export async function setupState(): Promise<SetupState> {
   const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
   if (!devUser && !process.env.BETTER_AUTH_SECRET?.trim()) return { ready: false, reason: "auth" };
   if (Date.now() < ready.until) return { ready: true };
+  if (!ready.migrated) {
+    ready.migrated = true;
+    await ensureMigrations().catch(() => undefined);
+  }
+  const check = async () => {
+    const r = await db!.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
+    if (r.rows.length) return r.rows.length;
+    const c = await db!.execute<{ n: number }>(sql`select count(*)::int as n from information_schema.columns where table_schema = 'public' and (table_name, column_name) in (${sql.join(CORE_COLUMNS.map(([t, col]) => sql`(${t}, ${col})`), sql`, `)})`);
+    return CORE_COLUMNS.length - Number(c.rows[0]?.n ?? 0);
+  };
   let missing: number;
   try {
-    const r = await db.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
-    missing = r.rows.length;
-    if (!missing) {
-      const c = await db.execute<{ n: number }>(sql`select count(*)::int as n from information_schema.columns where table_schema = 'public' and (table_name, column_name) in (${sql.join(CORE_COLUMNS.map(([t, col]) => sql`(${t}, ${col})`), sql`, `)})`);
-      missing = CORE_COLUMNS.length - Number(c.rows[0]?.n ?? 0);
+    missing = await check();
+    // Sign-in's own columns are missing (a deploy ahead of its database): apply the migrations now, then look again.
+    if (missing) {
+      await ensureMigrations().catch(() => undefined);
+      missing = await check();
     }
   } catch {
     // The check itself failed (a slow or unreachable database): serve the app, not "being set up". The
