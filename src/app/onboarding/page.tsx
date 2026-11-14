@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Onboarding({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const setup = await setupState();
-  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
+  if (!setup.ready) return <SetupScreen reason={setup.reason} detail={"detail" in setup ? setup.detail : undefined} />;
   const user = await currentUser();
   const next = safeNext((await searchParams).next);
   if (!user) redirect(next === "/app" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`);

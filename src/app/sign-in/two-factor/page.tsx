@@ -16,7 +16,7 @@ export const metadata = { title: "Two-factor sign-in" };
 export default async function TwoFactorSignIn({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const next = safeNext((await searchParams).next);
   const setup = await setupState().catch(() => ({ ready: true as const }));
-  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
+  if (!setup.ready) return <SetupScreen reason={setup.reason} detail={"detail" in setup ? setup.detail : undefined} />;
   if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">
