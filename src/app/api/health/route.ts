@@ -7,6 +7,9 @@ import { checkEnv, featureStatus, moneySwitches, REQUIRED } from "@/lib/env";
 import { logError } from "@/lib/errors";
 import { healthVerdict, type DbCheck } from "@/lib/health";
 import { aiHealth } from "@/lib/health-ai";
+import { gatewayStatus } from "@/lib/ai/gateway";
+import { workerHealth } from "@/lib/cloudflare/worker";
+import { r2Ready } from "@/lib/edge/infra/r2";
 import { schemaStatus } from "@/lib/setup";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +63,8 @@ export async function GET(req: Request) {
   // AI: keys present, the money spent today against the cap, the burn rate; keys tried live only when an operator asks.
   const probeKeys = operator && new URL(req.url).searchParams.get("probe") === "keys";
   const ai = dbCheck.ok ? await aiHealth({ probeKeys }).catch((e) => { logError(e, { where: "health-ai" }); return null; }) : null;
+  // Cloudflare: AI Gateway, R2, and which parts run on the Worker (asked whether it answers with ?probe=keys).
+  const cloudflare = operator ? { aiGateway: gatewayStatus(), r2: r2Ready(), worker: await workerHealth(probeKeys) } : null;
   const body = {
     status: v.status,
     time: new Date().toISOString(),
@@ -70,6 +75,7 @@ export async function GET(req: Request) {
     ...(operator ? {
       features: Object.fromEntries(featureStatus(process.env).map((f) => [f.id, f.on ? true : { on: false, missing: f.missing }])),
       realMoney: moneySwitches(process.env),
+      cloudflare,
     } : {}),
   };
   return Response.json(body, { status: v.httpStatus, headers: { "Cache-Control": "no-store" } });

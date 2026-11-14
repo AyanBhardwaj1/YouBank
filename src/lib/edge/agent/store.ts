@@ -31,6 +31,8 @@ import { runTick, type AgentRow, type AgentStore, type Deps, type Step } from ".
 import { monitorData, TOOL_DEFS } from "./tools";
 import { emptyState, type AgentState, type AgentTier, type ClaimState, type EvidenceItem, type KillState, type Plan } from "./types";
 import { applyLadder, LADDER_VERSION, overall, recomputeTree } from "./update";
+import { callWorker, cfOn } from "@/lib/cloudflare/worker";
+import { lease } from "@/lib/locks";
 
 const DAY = 86_400_000;
 export const LIMITS = { free: { active: 1, horizonDays: 14, budget: 0.5, maxBudget: 1 }, plus: { active: 5, horizonDays: 90, budget: 5, maxBudget: 25 } } as const;
@@ -138,6 +140,8 @@ async function thesisCard(row: AgentRow, s: AgentState, what: { moved: { n: numb
 
 /** The ids of agents whose tick is due (or was cut short), oldest first. */
 export async function dueAgents(limit = 4, now = new Date()): Promise<number[]> {
+  // With the Thesis Agent on Cloudflare, each agent wakes itself; this pass only catches one more than two hours late.
+  if (cfOn("thesis")) now = new Date(now.getTime() - 2 * 3_600_000);
   const rows = await requireDb().select({ id: schema.edgeAgents.id }).from(schema.edgeAgents)
     .where(and(eq(schema.edgeAgents.status, "running"), or(sql`${schema.edgeAgents.memo}->>'tickKey' is not null`, lt(sql`${schema.edgeAgents.memo}->>'nextTickAt'`, now.toISOString()))))
     .orderBy(sql`${schema.edgeAgents.memo}->>'nextTickAt'`).limit(limit);
@@ -146,6 +150,13 @@ export async function dueAgents(limit = 4, now = new Date()): Promise<number[]> 
 
 /** Run one agent's due tick (a slice of it before the deadline); a premium thesis re-checks the owner's plan first. */
 export async function tickAgent(id: number, deadline: number): Promise<{ done: boolean; reason?: string }> {
+  // One runner per thesis at a time, whoever asks: its Cloudflare agent, the hourly job, or the daily pass.
+  const release = await lease(`edge:agent:${id}`, Math.max(60_000, deadline - Date.now() + 30_000));
+  if (!release) return { done: true, reason: "running elsewhere" };
+  try { return await tickAgentHeld(id, deadline); } finally { await release(); }
+}
+
+async function tickAgentHeld(id: number, deadline: number): Promise<{ done: boolean; reason?: string }> {
   const loaded = await dbStore.load(id);
   if (!loaded) return { done: true, reason: "gone" };
   const { row, state } = loaded;
@@ -161,6 +172,18 @@ export async function tickAgent(id: number, deadline: number): Promise<{ done: b
     await dbStore.save(id, { ...state, error: "The last tick failed; it will be tried again at the next one." }).catch(() => undefined);
     return { done: true, reason: "error" };
   }
+}
+
+/** Where a thesis stands for its Cloudflare agent: running or not, and when its next tick is due. */
+export async function agentSchedule(id: number): Promise<{ status: string; nextTickAt: string | null } | null> {
+  const loaded = await dbStore.load(id);
+  return loaded ? { status: loaded.row.status, nextTickAt: loaded.state.nextTickAt ?? null } : null;
+}
+
+/** Tell the thesis's Cloudflare agent to wake now (approved, resumed) or to stop scheduling (paused, stopped). Never throws. */
+export async function signalAgent(id: number, to: "wake" | "stop"): Promise<void> {
+  if (!cfOn("thesis")) return;
+  await callWorker(`/thesis/${id}/${to}`, {}, { timeoutMs: 5_000 });
 }
 
 /** Every due tick, a slice at a time, until the deadline (the daily pass's fallback when Inngest is not set up). */
@@ -238,6 +261,7 @@ export async function approveThesis(userId: string, id: number): Promise<AgentSt
   const state: AgentState = { ...a.state, claims, kills, approvedAt: now, nextTickAt: now, error: null };
   await dbStore.save(id, state, { status: "running" });
   await dbStore.addStep(id, today, { key: `approve:${id}:${now}`, kind: "approval", input: { by: userId }, output: { approved: true, claims: claims.length, kills: kills.length } });
+  await signalAgent(id, "wake");
   return state;
 }
 
@@ -261,6 +285,7 @@ export async function setStatus(userId: string, id: number, to: "paused" | "runn
   const state: AgentState = to === "running" ? { ...a.state, nextTickAt: new Date().toISOString(), error: null, ...(a.state.tier === "plus" && !plus ? { tier: "free" as const, maxTicks: 14, stepsPerTick: 6 } : {}) } : { ...a.state, tickKey: null, ...(to === "stopped" ? { stopReason: "stopped by its owner", nextTickAt: null } : {}) };
   await dbStore.save(id, state, { status: to });
   await dbStore.addStep(id, new Date().toISOString().slice(0, 10), { key: `status:${id}:${Date.now()}`, kind: "approval", input: { by: userId }, output: { from, to } });
+  await signalAgent(id, to === "running" ? "wake" : "stop");
   return to;
 }
 

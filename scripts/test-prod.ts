@@ -9,6 +9,10 @@ import { isPlainRead, isTransientDbError, mayRetry, neverSent } from "@/db/trans
 import { checkAuthUrl, checkDatabaseUrl, checkEnv, checkJobs, featureStatus, FEATURES, moneySwitches } from "@/lib/env";
 import { healthVerdict } from "@/lib/health";
 import { aiVerdict, readProbe } from "@/lib/health-ai";
+import { baseFor, cacheTtl, DIRECT, failover, gatewayBase, gatewayFailed, gatewayHeaders, gatewayStatus } from "@/lib/ai/gateway";
+import { cfOn, workerConfig } from "@/lib/cloudflare/worker";
+import { cacheableImage, edgeImageSrc } from "@/lib/edge/imgsrc";
+import { archiveKey } from "@/lib/edgar/client";
 import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
 import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
@@ -226,7 +230,7 @@ function testDb() {
   check("a missing core table is core", summarize(["profiles"]).core[0] === "profiles");
 }
 
-function testEnvAndHealth() {
+async function testEnvAndHealth() {
   console.log("environment");
   const full = { DATABASE_URL: "postgres://u:p@ep-x-pooler.us-east-2.aws.neon.tech/db", BETTER_AUTH_SECRET: "x".repeat(40), OPENAI_API_KEY: "k" };
   check("the minimum runs", checkEnv(full, false).missing.length === 0);
@@ -274,6 +278,49 @@ function testEnvAndHealth() {
   check("a rejected key: warn with what to do", (() => { const v = aiVerdict({ providers: ["openai"], disabled: false, spend, capUsd: 200, keys: [{ service: "OpenAI", ok: false, status: "rejected" }] }); return !v.ok && v.status === "warn" && v.notes.some((n) => n.includes("OpenAI rejected its key")); })());
   check("unreadable spend tables do not fail AI", aiVerdict({ providers: ["anthropic"], disabled: false, spend: null, capUsd: 200 }).ok);
   check("probe statuses: 2xx accepted, 401/403 rejected, the rest unreachable", [readProbe(200), readProbe(401), readProbe(403), readProbe(429), readProbe(500), readProbe(null)].join() === "accepted,rejected,rejected,unreachable,unreachable,unreachable");
+  console.log("Cloudflare AI Gateway");
+  const gw = { CF_AI_GATEWAY_URL: "https://gateway.ai.cloudflare.com/v1/acct123/youbank" };
+  check("off without settings: the providers directly", gatewayBase({}) === null && baseFor("openai", {}) === DIRECT.openai && baseFor("anthropic", {}) === DIRECT.anthropic && Object.keys(gatewayHeaders({ feature: "chat" }, {})).length === 0);
+  check("on: each provider's gateway endpoint", baseFor("openai", gw) === "https://gateway.ai.cloudflare.com/v1/acct123/youbank/openai" && baseFor("anthropic", gw) === "https://gateway.ai.cloudflare.com/v1/acct123/youbank/anthropic");
+  check("built from an account and gateway id too", gatewayBase({ CF_ACCOUNT_ID: "acct123", CF_AI_GATEWAY_ID: "youbank" }) === "https://gateway.ai.cloudflare.com/v1/acct123/youbank");
+  check("a URL that is not Cloudflare's gateway is ignored, and reported as misconfigured", gatewayBase({ CF_AI_GATEWAY_URL: "https://evil.example/v1/a/b" }) === null && gatewayStatus({ CF_AI_GATEWAY_URL: "https://evil.example/v1/a/b" }).misconfigured);
+  check("every request names its feature (cleaned) for per-feature cost", JSON.parse(gatewayHeaders({ feature: "edge thesis/plan" }, gw)["cf-aig-metadata"]).feature === "edge_thesis_plan");
+  check("caching only when the call asks and a TTL is set, capped at 30 days", !gatewayHeaders({ feature: "x", cache: true }, gw)["cf-aig-cache-ttl"] && gatewayHeaders({ feature: "x", cache: true }, { ...gw, CF_AI_GATEWAY_CACHE_TTL: "3600" })["cf-aig-cache-ttl"] === "3600" && !gatewayHeaders({ feature: "x" }, { ...gw, CF_AI_GATEWAY_CACHE_TTL: "3600" })["cf-aig-cache-ttl"] && cacheTtl(true, { CF_AI_GATEWAY_CACHE_TTL: "99999999" }) === 2_592_000);
+  check("an authenticated gateway gets its token", gatewayHeaders({ feature: "x" }, { ...gw, CF_AI_GATEWAY_TOKEN: "tok" })["cf-aig-authorization"] === "Bearer tok");
+  check("gateway failures are 502, 504 and 520-527; provider answers are not", [502, 504, 520, 527].every(gatewayFailed) && ![200, 400, 401, 429, 500, 503].some(gatewayFailed));
+  {
+    const seen: { url: string; headers: Headers }[] = [];
+    const fake = (status: number | "throw") => (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input); seen.push({ url, headers: new Headers(init?.headers) });
+      if (url.startsWith("https://gateway") && status === "throw") throw new TypeError("fetch failed");
+      return new Response("{}", { status: url.startsWith("https://gateway") && typeof status === "number" ? status : 200 });
+    }) as typeof fetch;
+    const body = JSON.stringify({ model: "m" });
+    const hdrs = { "cf-aig-metadata": "{}", authorization: "Bearer k" };
+    let res = await failover("openai", gw, fake("throw"))("https://gateway.ai.cloudflare.com/v1/acct123/youbank/openai/responses", { method: "POST", body, headers: hdrs });
+    check("gateway unreachable: the same request goes straight to OpenAI", res.status === 200 && seen[1]?.url === "https://api.openai.com/v1/responses");
+    check("…without the gateway's headers, with the provider key", !seen[1]?.headers.has("cf-aig-metadata") && seen[1]?.headers.get("authorization") === "Bearer k");
+    seen.length = 0;
+    res = await failover("anthropic", gw, fake(502))("https://gateway.ai.cloudflare.com/v1/acct123/youbank/anthropic/v1/messages", { method: "POST", body });
+    check("gateway 502: retried at Anthropic directly", res.status === 200 && seen[1]?.url === "https://api.anthropic.com/v1/messages");
+    seen.length = 0;
+    res = await failover("openai", gw, fake(429))("https://gateway.ai.cloudflare.com/v1/acct123/youbank/openai/responses", { method: "POST", body });
+    check("a provider's own answer (429) is passed back, not retried", res.status === 429 && seen.length === 1);
+    seen.length = 0;
+    const stream = new ReadableStream({ start(c) { c.close(); } });
+    let threw = false;
+    try { await failover("openai", gw, fake("throw"))("https://gateway.ai.cloudflare.com/v1/acct123/youbank/openai/files", { method: "POST", body: stream, duplex: "half" } as RequestInit); } catch { threw = true; }
+    check("a streamed upload is never sent twice", threw && seen.length === 1);
+  }
+
+  console.log("Cloudflare Worker, R2 pictures and filings");
+  const secret = "x".repeat(40);
+  check("the Worker is off without an https address and a long secret", !workerConfig({}) && !workerConfig({ CF_WORKER_URL: "https://w.example", CF_WORKER_SECRET: "short" }) && !workerConfig({ CF_WORKER_URL: "http://w.example", CF_WORKER_SECRET: secret, NODE_ENV: "production" }) && !!workerConfig({ CF_WORKER_URL: "https://w.example/", CF_WORKER_SECRET: secret }));
+  check("local wrangler dev is allowed outside production only", !!workerConfig({ CF_WORKER_URL: "http://localhost:8787", CF_WORKER_SECRET: secret, NODE_ENV: "development" }) && !workerConfig({ CF_WORKER_URL: "http://localhost:8787", CF_WORKER_SECRET: secret, NODE_ENV: "production" }));
+  check("each part can be switched off on its own", cfOn("ledger", { CF_WORKER_URL: "https://w.example", CF_WORKER_SECRET: secret }) && !cfOn("ledger", { CF_WORKER_URL: "https://w.example", CF_WORKER_SECRET: secret, CF_DISABLE: "thesis, ledger" }) && cfOn("thesis", { CF_WORKER_URL: "https://w.example", CF_WORKER_SECRET: secret, CF_DISABLE: "ledger" }) && !cfOn("mcp", { CF_WORKER_URL: "https://w.example", CF_WORKER_SECRET: secret, CF_DISABLE: "all" }));
+  check("only Planetary Computer data pictures go through the image cache", cacheableImage("https://planetarycomputer.microsoft.com/api/data/v1/item/crop.png?collection=sentinel-2-l2a") && !cacheableImage("https://evil.example/api/data/x.png") && !cacheableImage("http://planetarycomputer.microsoft.com/api/data/x") && !cacheableImage("https://planetarycomputer.microsoft.com/api/stac/v1/search"));
+  check("other pictures keep their address", edgeImageSrc("https://example.com/a.png") === "https://example.com/a.png" && edgeImageSrc(null) === "" && edgeImageSrc("https://planetarycomputer.microsoft.com/api/data/v1/x.png").startsWith("/api/edge/img?u=https%3A%2F%2F"));
+  check("filed documents map to R2 keys; anything else is not archived", archiveKey("https://www.sec.gov/Archives/edgar/data/0000320193/000032019325000079/aapl-20250628.htm") === "filings/320193/000032019325000079/aapl-20250628.htm" && archiveKey("https://www.sec.gov/cgi-bin/browse-edgar?x") === null && archiveKey("https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/../../x") === null);
   check("a key check never carries the key", !JSON.stringify(aiVerdict({ providers: ["openai"], disabled: false, spend, capUsd: 200, keys: [{ service: "OpenAI", ok: true, status: "accepted" }] })).includes("sk-"));
 }
 
@@ -518,7 +565,7 @@ async function main() {
   await testNet();
   clearInterval(alive);
   testDb();
-  testEnvAndHealth();
+  await testEnvAndHealth();
   await testAuthAndHeaders();
   const alive2 = setInterval(() => undefined, 1_000);
   await testClient();
