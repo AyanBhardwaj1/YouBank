@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import type { Frame } from "@/lib/edge/timelapse";
 import { useApi } from "./client";
+import { edgeImageSrc } from "@/lib/edge/imgsrc";
 
 export function Timelapse({ detection, before, after }: { detection: number; before?: string; after?: string }) {
   const { data, error } = useApi<{ frames: Frame[] }>(`/api/edge/timelapse?detection=${detection}`);
@@ -60,7 +61,7 @@ export function Timelapse({ detection, before, after }: { detection: number; bef
     <div className="space-y-1.5">
       <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-elevated">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={frames[i].url} alt={`The site in ${frames[i].month}`} className="h-full w-full object-cover" />
+        <img src={edgeImageSrc(frames[i].url)} alt={`The site in ${frames[i].month}`} className="h-full w-full object-cover" />
         <span className="num absolute left-2 top-2 rounded bg-bg/80 px-1.5 py-0.5 text-[11px] font-semibold">{frames[i].month}</span>
         {(i === bi || i === ai) && <span className="absolute right-2 top-2 rounded bg-accent px-1.5 py-0.5 text-[10.5px] font-semibold text-accent-fg">{i === bi ? "Before" : "After"}</span>}
         {loaded.size < frames.length && <span className="absolute bottom-2 left-2 rounded bg-bg/80 px-1.5 py-0.5 text-[10.5px] text-muted">Loading {loaded.size} of {frames.length}</span>}

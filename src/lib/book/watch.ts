@@ -59,22 +59,40 @@ export async function watchBook(userId: string, now = new Date()): Promise<BookA
 }
 
 /** Everyone with a book, within the time given. */
-export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number; insiders: number; filings: number; risk: number }> {
+/**
+ * The night's work, in the order it runs: whose books to check (least recently checked first, so a run that
+ * stops early never leaves anyone at the back for good), the tickers whose kill criteria read insider selling,
+ * and every ticker held (for new 10-Qs and 10-Ks). Shared by the inline pass below and the Cloudflare
+ * Workflow (src/app/api/cf/book), which runs each part as its own retried step.
+ */
+export async function bookPlan(): Promise<{ users: string[]; insiderTickers: string[]; heldTickers: string[] }> {
   const rows = await requireDb().select({ userId: schema.profiles.userId }).from(schema.profiles)
     .where(sql`jsonb_typeof(${schema.profiles.extra}->'book') = 'array' and jsonb_array_length(${schema.profiles.extra}->'book') > 0`)
-    // Least recently checked first: a run that hits its deadline leaves the rest for the next one, and nobody
-    // is left at the back of the queue for good.
     .orderBy(sql`(${schema.profiles.extra}->'bookState'->>'checkedAt') asc nulls first`);
+  const held = await requireDb().execute<{ tickers: unknown }>(sql`select coalesce(jsonb_agg(distinct p->>'ticker'), '[]'::jsonb) as tickers from ${schema.profiles}, jsonb_array_elements(case when jsonb_typeof(${schema.profiles.extra}->'book') = 'array' then ${schema.profiles.extra}->'book' else '[]'::jsonb end) p where exists (select 1 from jsonb_array_elements(coalesce(p->'criteria', '[]'::jsonb)) c where c->>'metric' = 'insider_selling')`);
+  const allHeld = await requireDb().execute<{ tickers: unknown }>(sql`select coalesce(jsonb_agg(distinct p->>'ticker'), '[]'::jsonb) as tickers from ${schema.profiles}, jsonb_array_elements(case when jsonb_typeof(${schema.profiles.extra}->'book') = 'array' then ${schema.profiles.extra}->'book' else '[]'::jsonb end) p`);
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === "string") : []);
+  return { users: rows.map((r) => r.userId), insiderTickers: list(held.rows[0]?.tickers).slice(0, 300), heldTickers: list(allHeld.rows[0]?.tickers).slice(0, 500) };
+}
+
+/** Today's risk for one book with weights, so the risk panel, the report and MCP's book_status have it ready. Returns whether it ran. */
+export async function warmRisk(userId: string): Promise<boolean> {
+  const book = await loadBook(userId).catch(() => []);
+  if (!book.some((p) => p.weight)) return false;
+  const { riskOf } = await import("./risk-store");
+  await riskOf(book);
+  return true;
+}
+
+export async function watchAllBooks(deadline: number): Promise<{ people: number; checked: number; alerts: number; failed: number; unfinished: number; insiders: number; filings: number; risk: number }> {
+  const plan = await bookPlan();
+  const rows = plan.users.map((userId) => ({ userId }));
   let checked = 0, alerts = 0, failed = 0;
   // Insider selling first, for the names whose criteria use it (each fetched once, however many books hold it),
   // within a third of the time.
-  const held = await requireDb().execute<{ tickers: unknown }>(sql`select coalesce(jsonb_agg(distinct p->>'ticker'), '[]'::jsonb) as tickers from ${schema.profiles}, jsonb_array_elements(case when jsonb_typeof(${schema.profiles.extra}->'book') = 'array' then ${schema.profiles.extra}->'book' else '[]'::jsonb end) p where exists (select 1 from jsonb_array_elements(coalesce(p->'criteria', '[]'::jsonb)) c where c->>'metric' = 'insider_selling')`);
-  const tickers = Array.isArray(held.rows[0]?.tickers) ? (held.rows[0].tickers as unknown[]) : [];
-  const insiders = await warmInsiders(tickers.filter((t): t is string => typeof t === "string").slice(0, 300), Date.now() + Math.max(0, deadline - Date.now()) / 3);
+  const insiders = await warmInsiders(plan.insiderTickers, Date.now() + Math.max(0, deadline - Date.now()) / 3);
   // New 10-Qs and 10-Ks among everything held, within the next sixth of the time (a radar runs only on a new filing).
-  const allHeld = await requireDb().execute<{ tickers: unknown }>(sql`select coalesce(jsonb_agg(distinct p->>'ticker'), '[]'::jsonb) as tickers from ${schema.profiles}, jsonb_array_elements(case when jsonb_typeof(${schema.profiles.extra}->'book') = 'array' then ${schema.profiles.extra}->'book' else '[]'::jsonb end) p`);
-  const heldTickers = Array.isArray(allHeld.rows[0]?.tickers) ? (allHeld.rows[0].tickers as unknown[]).filter((t): t is string => typeof t === "string") : [];
-  const filings = await warmFilings(heldTickers.slice(0, 500), Date.now() + Math.max(0, deadline - Date.now()) / 6);
+  const filings = await warmFilings(plan.heldTickers, Date.now() + Math.max(0, deadline - Date.now()) / 6);
   for (const { userId } of rows) {
     if (Date.now() > deadline) break;
     try { alerts += (await watchBook(userId)).length; checked++; }
@@ -85,12 +103,9 @@ export async function watchAllBooks(deadline: number): Promise<{ people: number;
   let risk = 0;
   // Every book was reached (checked, or failed and logged): one bad book does not stop the warm-up for everyone.
   if (checked + failed === rows.length) {
-    const { riskOf } = await import("./risk-store");
     for (const { userId } of rows) {
       if (Date.now() > deadline) break;
-      const book = await loadBook(userId).catch(() => []);
-      if (!book.some((p) => p.weight)) continue;
-      await riskOf(book).then(() => { risk++; }, (e) => logError(e, { where: "book-risk-warm" }));
+      await warmRisk(userId).then((ran) => { if (ran) risk++; }, (e) => logError(e, { where: "book-risk-warm" }));
     }
   }
   return { people: rows.length, checked, alerts, failed, unfinished: rows.length - checked - failed, insiders, filings, risk };

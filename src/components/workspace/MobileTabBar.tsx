@@ -37,7 +37,7 @@ export function MobileTabBar() {
   const moreActive = nav.open || (!!current && !inTabs);
 
   return (
-    <nav aria-label="Main" className="hide-on-kb glass relative z-50 shrink-0 border-t border-line bg-bg/92 pb-safe px-safe md:hidden">
+    <nav aria-label="Main" className="yb-tabbar hide-on-kb glass relative z-50 shrink-0 border-t border-line bg-bg/92 pb-safe px-safe md:hidden">
       <ul className="grid h-14 grid-cols-5">
         {tabs.map((f) => {
           const active = !nav.open && current?.id === f.id;

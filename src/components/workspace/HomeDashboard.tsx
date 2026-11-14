@@ -6,11 +6,12 @@
  * - Home: a calm, roomy page for the day, with larger type and cards;
  * - Desk: everything, dense, in two columns.
  * The widgets, their order and their width are the person's (src/lib/desk/desk.ts), arranged in Settings
- * → My desk or right here with Arrange (home/Arrange.tsx).
+ * → My desk or right here with Arrange (home/Arrange.tsx). These three layouts are Classic's; every other
+ * interface (Settings → Style → Interface) composes Home its own way from the same widgets (HOMES below).
  */
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useState, type ComponentType } from "react";
 import { useNow } from "@/components/ui/useNow";
 import { takeArrange } from "@/lib/client/arrange";
 import { useWorkspace } from "./WorkspaceProvider";
@@ -22,9 +23,30 @@ import { LAYOUTS, isWide, type HomeLayout } from "@/lib/desk/desk";
 import { Widget, type HomeFacts } from "./home/Widgets";
 import { ArrangeBar, ArrangeProvider, Slot } from "./home/Arrange";
 import { DayLine } from "./home/DayLine";
+import { AskBox, greeting, Suggestions, type HomeProps } from "./home/Kit";
+import { homeOf, type HomeComposition } from "@/lib/desk/interfaces";
 
-/** By the browser's clock; "Hello" until the page is live, so the server's time zone never shows. */
-const greeting = (now: number | null) => { if (now === null) return "Hello"; const h = new Date(now).getHours(); return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+/**
+ * Every interface but Classic composes Home its own way (src/lib/desk/interfaces.ts `home`), from the same
+ * widgets: a plain document, a cinematic reel, a conversation, a canvas, a front page, instruments, a
+ * desktop, a poster, a book spread, a drawing sheet, one calm column, a bento box. Each is its own chunk,
+ * loaded only by the people who use that interface.
+ */
+const HOMES: Record<Exclude<HomeComposition, "desk">, ComponentType<HomeProps>> = {
+  document: dynamic(() => import("./interfaces/homes/DocumentHome")),
+  cinema: dynamic(() => import("./interfaces/homes/CinemaHome")),
+  thread: dynamic(() => import("./interfaces/homes/ThreadHome")),
+  canvas: dynamic(() => import("./interfaces/homes/CanvasHome")),
+  frontpage: dynamic(() => import("./interfaces/homes/FrontPageHome")),
+  instruments: dynamic(() => import("./interfaces/homes/InstrumentsHome")),
+  desktop: dynamic(() => import("./interfaces/homes/DesktopHome")),
+  poster: dynamic(() => import("./interfaces/homes/PosterHome")),
+  spread: dynamic(() => import("./interfaces/homes/SpreadHome")),
+  drawing: dynamic(() => import("./interfaces/homes/DrawingHome")),
+  calm: dynamic(() => import("./interfaces/homes/CalmHome")),
+  bento: dynamic(() => import("./interfaces/homes/BentoHome")),
+};
+
 const LAYOUT_LABEL: Record<HomeLayout, string> = { focus: "Focus", home: "Home", desk: "Desk" };
 
 function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange: () => void }) {
@@ -42,39 +64,8 @@ function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange:
   );
 }
 
-/** Focus: three questions to start from, one click each (the role's prompt library). */
-function Suggestions() {
-  const { config } = useWorkspace();
-  const first = config.watchlist[0] ?? "SNOW";
-  return (
-    <div className="mt-2.5 flex flex-wrap gap-1.5">
-      {config.suggestedPrompts(first).slice(0, 3).map((p) => (
-        <Link key={p} href={`/app/terminal?ticker=${encodeURIComponent(first)}&fn=AI&arg=${encodeURIComponent(p)}`}
-          className="max-w-full truncate rounded-full border border-line bg-panel px-2.5 py-1 text-[11.5px] text-muted hover:border-accent/50 hover:text-fg">{p}</Link>
-      ))}
-    </div>
-  );
-}
-
-function AskBox({ big }: { big?: boolean }) {
-  const { config } = useWorkspace();
-  const router = useRouter();
-  const [q, setQ] = useState("");
-  const first = config.watchlist[0] ?? "SNOW";
-  return (
-    <form onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t) router.push(`/app/terminal?ticker=${first}&fn=AI&arg=${encodeURIComponent(t)}`); }}
-      className={`flex items-center gap-2 border border-line bg-panel focus-within:border-accent ${big ? "home-card px-4 py-3" : "panel px-3 py-2"}`}>
-      <Icon name="Sparkles" className="h-4 w-4 shrink-0 text-accent" />
-      <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Ask anything"
-        placeholder={`Ask anything: a company, a deal, a number… e.g. “${config.suggestedPrompts(first)[0] ?? "What changed in the latest 10-Q?"}”`}
-        className={`min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-faint ${big ? "text-[15px]" : "text-[13px]"}`} />
-      <button type="submit" disabled={!q.trim()} className="ctl bg-accent px-3 py-1.5 text-[12px] font-semibold text-accent-fg disabled:opacity-50">Ask</button>
-    </form>
-  );
-}
-
 export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: BriefSeed }) {
-  const { profile, tools, desk } = useWorkspace();
+  const { profile, tools, desk, look } = useWorkspace();
   const on = desk.widgets.filter((w) => w.on);
   const [arranging, setArranging] = useState(false);
   // "Arrange" from elsewhere (What's new).
@@ -91,6 +82,12 @@ export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: Brie
   const name = profile.name ? `, ${profile.name.split(" ")[0]}` : "";
   const now = useNow(60_000);
   const today = now === null ? "\u00a0" : new Date(now).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  const composition = homeOf(look.ui);
+  if (composition !== "desk") {
+    const Composed = HOMES[composition];
+    return <ArrangeProvider on={arranging}><Composed widgets={on} facts={facts} brief={brief} arranging={arranging} setArranging={setArranging} /></ArrangeProvider>;
+  }
 
   if (desk.layout === "focus") {
     return (

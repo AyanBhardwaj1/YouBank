@@ -36,3 +36,20 @@ export function simRequest(ticker: string, arg?: string): Record<string, unknown
   if (replay) return { ...base, driver: "replay", replay };
   return { ...base, driver: "shock", shockText: text.slice(0, 400) };
 }
+
+const SITE_KINDS = new Set(["flaring", "crop_vigour", "water_extent", "vessel_traffic", "radar_change", "ground_change", "permits", "methane_plume"]);
+const ALT_KINDS = new Set(["fda_recall", "vehicle_recall", "reactor_outage", "hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds"]);
+const TERMINAL_TICKER = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+
+/**
+ * The Terminal monitor a finding belongs in, as a link ("Open in Terminal: SAT XOM"): its company's
+ * geospatial signals for a site finding, its alternative data for records and Pulse signals, the merger
+ * arbitrage monitor for a deal. Null when the kind has no monitor or the finding names no ticker.
+ */
+export function terminalLink(kind: string, tickers: string[]): { label: string; href: string } | null {
+  if (kind === "deal_impact" || kind === "deal_proforma") return { label: "MARB", href: "/app/terminal?fn=MARB" };
+  const fn = SITE_KINDS.has(kind) ? "SAT" : ALT_KINDS.has(kind) ? "ALT" : null;
+  const t = tickers[0];
+  if (!fn || !t || !TERMINAL_TICKER.test(t)) return null;
+  return { label: `${fn} ${t}`, href: `/app/terminal?fn=${fn}&ticker=${encodeURIComponent(t)}` };
+}

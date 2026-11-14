@@ -1,0 +1,108 @@
+/* =====================================================================================================
+   Spectacle: deliberately over the top, still usable. An aurora drifts behind everything, a light
+   follows the pointer, panels are smoked glass with lit edges, headings are set in Unbounded with a
+   moving gradient, focus glows. The navigation is an orb at the bottom that leans toward the pointer and
+   blooms into the features (interfaces/Orb.tsx); pages arrive out of a blur (RouteMotion); Home is a
+   cinematic title and a reel of cards that tilt toward you (homes/CinemaHome.tsx).
+   ===================================================================================================== */
+html[data-ui="spectacle"]:has(.app-frame) {
+  --bg: #07051a; --panel: rgba(22, 16, 54, 0.62); --elevated: rgba(255, 255, 255, 0.09); --raised: #1b1440; --line: rgba(255, 255, 255, 0.12); --line-strong: rgba(255, 255, 255, 0.26);
+  --fg: #ffffff; --muted: #cfc8f6; --faint: #9a93c9; --accent: #c4b5fd; --accent-soft: rgba(196, 181, 253, 0.16); --accent-fg: #14092e;
+  --pos: #6ee7b7; --neg: #fda4af; --info: #7dd3fc; --chart-1: #a5b4fc; --chart-dim: rgba(255, 255, 255, 0.22); --chart-emphasis: #f0abfc;
+  --radius: 22px; --radius-sm: 12px; --bg-image: none; --shadow-lg: 0 40px 90px -30px rgba(3, 0, 20, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1); --glow: 0 0 0 1px rgba(196, 181, 253, 0.5), 0 0 30px rgba(167, 139, 250, 0.45); --glass: 1;
+  --sp-grad: linear-gradient(100deg, #f0abfc 0%, #c4b5fd 30%, #7dd3fc 60%, #6ee7b7 100%);
+  color-scheme: dark;
+}
+html[data-ui="spectacle"] .app-frame { background: #07051a; isolation: isolate; }
+/* The aurora: two soft fields of colour drifting at different speeds (transform only, on the compositor). */
+html[data-ui="spectacle"] .app-frame::before, html[data-ui="spectacle"] .app-frame::after { content: ""; position: fixed; inset: -25%; z-index: -1; pointer-events: none; }
+html[data-ui="spectacle"] .app-frame::before {
+  background:
+    radial-gradient(30% 34% at 22% 30%, rgba(139, 92, 246, 0.55), transparent 70%),
+    radial-gradient(26% 30% at 78% 22%, rgba(34, 211, 238, 0.38), transparent 70%),
+    radial-gradient(34% 30% at 60% 82%, rgba(236, 72, 153, 0.32), transparent 70%);
+  animation: sp-aurora 26s ease-in-out infinite alternate;
+}
+html[data-ui="spectacle"] .app-frame::after {
+  background:
+    radial-gradient(24% 28% at 70% 60%, rgba(16, 185, 129, 0.22), transparent 70%),
+    radial-gradient(22% 26% at 30% 75%, rgba(99, 102, 241, 0.35), transparent 70%),
+    radial-gradient(60% 50% at 50% 0%, rgba(167, 139, 250, 0.18), transparent 70%);
+  animation: sp-aurora 34s ease-in-out infinite alternate-reverse;
+}
+@keyframes sp-aurora { 0% { transform: translate3d(-4%, -3%, 0) rotate(0deg) scale(1); } 50% { transform: translate3d(5%, 4%, 0) rotate(8deg) scale(1.12); } 100% { transform: translate3d(-2%, 6%, 0) rotate(-6deg) scale(1.04); } }
+/* The light that follows the pointer (interfaces/PointerLight.tsx moves it). */
+.yb-spot { position: fixed; left: 0; top: 0; width: 720px; height: 720px; margin: -360px 0 0 -360px; border-radius: 50%; pointer-events: none; z-index: 0; background: radial-gradient(closest-side, rgba(196, 181, 253, 0.16), rgba(125, 211, 252, 0.06) 55%, transparent); will-change: transform; }
+
+/* The top bar floats, with no pins (the orb has them). */
+html[data-ui="spectacle"] .app-frame .yb-topbar { background: transparent; border-bottom-color: transparent; backdrop-filter: none; }
+@media (min-width: 768px) {
+  html[data-ui="spectacle"] .app-frame .yb-topbar > div { height: 56px; padding: 0 18px; }
+  html[data-ui="spectacle"] .app-frame .yb-right { padding: 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  html[data-ui="spectacle"] .app-frame .yb-right :is(button, a) { border-radius: 999px; border-color: transparent; }
+  html[data-ui="spectacle"] .app-frame .yb-main { padding-bottom: 96px; }
+}
+html[data-ui="spectacle"] .app-frame .yb-wordmark { font-family: var(--font-unbounded), sans-serif; font-weight: 600; font-size: 15px; letter-spacing: -0.02em; }
+html[data-ui="spectacle"] .app-frame .yb-wordmark span { background: var(--sp-grad); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: gradient-shift 8s ease infinite; }
+
+/* Smoked glass with a lit top edge; it rises to meet the pointer. */
+html[data-ui="spectacle"] .app-frame :is(.panel, .home-card) {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)), rgba(16, 11, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.11); border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 30px 60px -36px rgba(0, 0, 0, 0.8);
+}
+html[data-ui="spectacle"] .app-frame .home-card { backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); }
+html[data-ui="spectacle"] .app-frame .lift { transition: transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 300ms ease, border-color 300ms ease; }
+html[data-ui="spectacle"] .app-frame .lift:hover { transform: translateY(-5px) scale(1.01); box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.45), 0 30px 70px -24px rgba(139, 92, 246, 0.55); }
+html[data-ui="spectacle"] .app-frame h1 { font-family: var(--font-unbounded), sans-serif; font-weight: 600; letter-spacing: -0.035em; font-size: clamp(26px, 3vw, 40px); line-height: 1.05; }
+html[data-ui="spectacle"] .app-frame h2 { letter-spacing: 0.02em; }
+html[data-ui="spectacle"] .app-frame .bg-accent {
+  background: var(--sp-grad); background-size: 200% 100%; color: #14092e; font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset, 0 10px 30px -8px rgba(167, 139, 250, 0.7);
+  transition: background-position 600ms ease, box-shadow 300ms ease, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+html[data-ui="spectacle"] .app-frame .bg-accent:hover { background-position: 100% 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4) inset, 0 14px 40px -6px rgba(125, 211, 252, 0.7); }
+html[data-ui="spectacle"] .app-frame .bg-accent:active { transform: scale(0.97); }
+html[data-ui="spectacle"] .app-frame :focus-visible { outline: 2px solid #ddd6fe; outline-offset: 3px; box-shadow: 0 0 0 7px rgba(196, 181, 253, 0.22), 0 0 28px rgba(167, 139, 250, 0.6); border-radius: 12px; }
+html[data-ui="spectacle"] .app-frame :is(input, textarea):focus { box-shadow: 0 0 0 4px rgba(196, 181, 253, 0.18); }
+
+/* The orb (interfaces/Orb.tsx). */
+.yb-orb { position: absolute; left: 50%; bottom: 22px; z-index: 45; width: 0; height: 0; }
+.yb-orb::before { content: ""; position: absolute; left: -480px; top: -330px; width: 960px; height: 380px; border-radius: 50%; pointer-events: none; background: radial-gradient(closest-side, rgba(7, 5, 26, 0.92), rgba(7, 5, 26, 0.6) 60%, transparent); opacity: 0; transform: scale(0.6); transform-origin: 50% 100%; transition: opacity 260ms ease, transform 420ms cubic-bezier(0.16, 1, 0.3, 1); }
+.yb-orb-open::before { opacity: 1; transform: none; }
+.yb-orb-core {
+  position: absolute; left: -32px; top: -64px; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; color: #14092e;
+  background: radial-gradient(circle at 32% 28%, #ffffff 0%, #e9d5ff 18%, #a78bfa 46%, #6d28d9 78%, #3b0764 100%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4) inset, 0 0 30px 6px rgba(167, 139, 250, 0.55), 0 0 80px 10px rgba(125, 211, 252, 0.25), 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+}
+.yb-orb-core::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(from 0deg, transparent, rgba(125, 211, 252, 0.9), transparent 30%, rgba(240, 171, 252, 0.9), transparent 65%); filter: blur(6px); z-index: -1; animation: ybm-spin 6s linear infinite; }
+.yb-orb-core:focus-visible { outline: 2px solid #ffffff; outline-offset: 4px; }
+.yb-orb-label { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); white-space: nowrap; font-size: 10.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+.yb-orb-item {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 9px 14px 9px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: #ffffff;
+  background: rgba(26, 18, 64, 0.72); border: 1px solid rgba(255, 255, 255, 0.16); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 16px 34px -12px rgba(0, 0, 0, 0.7);
+}
+.yb-orb-item:hover, .yb-orb-item:focus-visible { border-color: rgba(196, 181, 253, 0.7); box-shadow: 0 0 0 1px rgba(196, 181, 253, 0.4), 0 0 26px rgba(167, 139, 250, 0.55); outline: none; }
+.yb-orb-item[aria-current="page"] { background: var(--sp-grad); color: #14092e; }
+
+/* Phone: the tab bar is a floating glass pill with a lit active tab. */
+html[data-ui="spectacle"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 26px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(20, 14, 50, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7); }
+html[data-ui="spectacle"] .app-frame .yb-tabbar [aria-current="page"] { color: #ffffff; text-shadow: 0 0 14px rgba(196, 181, 253, 0.9); }
+html[data-ui="spectacle"] .app-frame .yb-tabbar .bg-accent { background: var(--sp-grad); box-shadow: 0 0 12px rgba(196, 181, 253, 0.9); width: 40px; }
+
+/* Home (homes/CinemaHome.tsx). */
+html[data-ui="spectacle"] .app-frame .sp-title { font-family: var(--font-unbounded), sans-serif; font-weight: 700; letter-spacing: -0.05em; line-height: 0.95; font-size: clamp(44px, 7.4vw, 116px); }
+.sp-title .sp-word { display: inline-block; background: var(--sp-grad); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: gradient-shift 9s ease infinite; padding-bottom: 0.08em; }
+.sp-ask { position: relative; border-radius: 999px; padding: 1px; background: linear-gradient(100deg, rgba(240, 171, 252, 0.8), rgba(125, 211, 252, 0.8), rgba(110, 231, 183, 0.8)); box-shadow: 0 0 60px -10px rgba(167, 139, 250, 0.6); }
+.sp-ask > form { border-radius: 999px; background: rgba(12, 8, 34, 0.86); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.sp-reel { display: flex; align-items: flex-start; gap: 22px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 18px max(20px, calc((100% - 1240px) / 2)) 30px; scrollbar-width: none; overscroll-behavior-x: contain; }
+.sp-reel::-webkit-scrollbar { display: none; }
+.sp-card { flex: 0 0 min(440px, 86vw); scroll-snap-align: center; perspective: 1000px; }
+.sp-card.sp-wide { flex-basis: min(780px, 90vw); }
+.sp-card > .sp-tilt { transform-style: preserve-3d; will-change: transform; border-radius: 22px; }
+.sp-card .sp-shine { position: absolute; inset: 0; border-radius: 22px; pointer-events: none; background: radial-gradient(400px circle at var(--sx, 50%) var(--sy, 0%), rgba(255, 255, 255, 0.14), transparent 45%); opacity: 0; transition: opacity 300ms ease; }
+.sp-card:hover .sp-shine { opacity: 1; }
+.sp-chip { border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.05); padding: 6px 12px; font-size: 12px; color: var(--muted); transition: border-color 200ms ease, color 200ms ease, box-shadow 200ms ease; }
+.sp-chip:hover { color: #ffffff; border-color: rgba(196, 181, 253, 0.6); box-shadow: 0 0 20px rgba(167, 139, 250, 0.35); }
+@media (prefers-reduced-motion: reduce) { .sp-title .sp-word, html[data-ui="spectacle"] .app-frame .yb-wordmark span { animation: none; } .yb-orb-core::before { animation: none; } }

@@ -16,6 +16,7 @@ import { aiUser, recordUsage } from "@/lib/ai/usage";
 import { logError } from "@/lib/errors";
 import type { Segment } from "../docs/chunk";
 import { small } from "../models";
+import { openaiClient } from "@/lib/ai/gateway";
 
 export const diarizeModel = () => process.env.EDGE_TRANSCRIBE_MODEL?.trim() || "gpt-4o-transcribe-diarize";
 export const USD_PER_MINUTE = 0.006;
@@ -39,7 +40,7 @@ export async function diarizePiece(bytes: Uint8Array, name: string, mime: string
   if (!apiKey) throw new Error("Speaker labels need OPENAI_API_KEY.");
   await guardAi(aiUser());
   const model = diarizeModel();
-  const client = new OpenAI({ apiKey, timeout: 240_000, maxRetries: 1 });
+  const client = openaiClient({ apiKey, feature: "edge-diarize", timeout: 240_000, maxRetries: 1 });
   const res = await client.audio.transcriptions.create({
     file: await toFile(bytes, name, { type: mime || "audio/mpeg" }), model,
     response_format: "diarized_json", chunking_strategy: "auto",

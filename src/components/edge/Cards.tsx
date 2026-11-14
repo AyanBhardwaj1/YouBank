@@ -16,6 +16,8 @@ import { wordDiff } from "@/lib/edge/docs/text";
 import { ProbBar, Sparkline } from "./next/charts";
 import { freshness } from "@/lib/edge/fresh";
 import { ago, confidenceLabel, fmtNum, useClock, type DealImpactVisual, type EdgeCard, type FilingVisual, type FlagVisual, type FlaringVisual, type GroundVisual, type MethaneVisual, type PermitsVisual, type PredictionVisual, type ProformaVisual, type RadarVisual, type ReactorVisual, type RecallVisual, type SatVisual } from "./client";
+import { edgeImageSrc } from "@/lib/edge/imgsrc";
+import { terminalLink } from "@/lib/edge/links";
 
 /** "4m", "Yesterday", "Sep 26": kept fresh by the shared clock, so a tick re-renders only the times. */
 export function Ago({ iso }: { iso: string }) {
@@ -99,10 +101,24 @@ function Shell({ card, index, children, kicker, icon }: { card: EdgeCard; index:
         <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
           <Icon name={icon} className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{kicker}</span><FreshMark card={card} />
         </div>
-        <Confidence value={card.confidence} />
+        <div className="flex shrink-0 items-center gap-2">
+          <TerminalLink card={card} />
+          <Confidence value={card.confidence} />
+        </div>
       </div>
       {children}
     </motion.article>
+  );
+}
+
+/** "SAT XOM": the Terminal monitor this finding belongs in, opened beside the rest of the person's panels. */
+function TerminalLink({ card }: { card: EdgeCard }) {
+  const link = terminalLink(card.kind, card.tickers);
+  if (!link) return null;
+  return (
+    <a href={link.href} title={`Open in Terminal: ${link.label}`} className="num inline-flex items-center gap-1 rounded border border-line px-1.5 py-px text-[10px] font-semibold tracking-wide text-muted hover:border-accent/50 hover:text-accent">
+      <ArrowUpRight className="h-3 w-3" />{link.label}
+    </a>
   );
 }
 
@@ -353,7 +369,7 @@ export function MethaneCard({ card, index, onMap }: { card: EdgeCard; index: num
       <div className="mt-2.5 px-3.5">
         {v.image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={v.image} alt={`Methane plume near ${v.site.name}, ${v.date}`} className="aspect-square w-full rounded-lg border border-line bg-elevated object-contain" />
+          <img src={edgeImageSrc(v.image)} alt={`Methane plume near ${v.site.name}, ${v.date}`} className="aspect-square w-full rounded-lg border border-line bg-elevated object-contain" />
         ) : (
           <div className="mx-auto aspect-square w-3/4 max-w-[320px]"><RingPlot site={v.site} radiusKm={v.radiusKm} label={`Methane plumes within ${v.radiusKm} km of ${v.site.name}`} points={v.plumes.map((p) => ({ lon: p.lon, lat: p.lat, recent: true, r: 2 + Math.min(4, Math.sqrt(p.rateKgH ?? 0) / 10), title: `${p.rateKgH !== null ? `${fmtNum(p.rateKgH)} kg/h` : "no estimate"} · ${fmtNum(p.m)} m from the plant` }))} /></div>
         )}
@@ -765,7 +781,7 @@ export function SatCard({ card, index, onMap }: { card: EdgeCard; index: number;
         <div className="mt-2.5 px-3.5">
           <figure className="overflow-hidden rounded-lg border border-line bg-black">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={v.image.url} alt={`${v.site.name}, ${v.image.date}: ${v.image.caption}`} loading="lazy" className="aspect-square w-full object-cover" />
+            <img src={edgeImageSrc(v.image.url)} alt={`${v.site.name}, ${v.image.date}: ${v.image.caption}`} loading="lazy" className="aspect-square w-full object-cover" />
             <figcaption className="bg-bg/80 px-2 py-1 text-[10.5px] text-muted">{v.image.caption} · {v.image.date}</figcaption>
           </figure>
         </div>

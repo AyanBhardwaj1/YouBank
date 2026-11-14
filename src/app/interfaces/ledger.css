@@ -1,0 +1,74 @@
+/* =====================================================================================================
+   Ledger: a bound account book open on a leather desk. The top bar is the book's spine-coloured band with
+   the name in gold; every page is a sheet of ruled green paper with a red double margin; the features
+   are coloured thumb tabs cut into the book's right edge (interfaces/ThumbTabs.tsx); a folio strip runs
+   along the foot. Home is the open book, two pages and a gutter (homes/SpreadHome.tsx). Pages turn.
+   ===================================================================================================== */
+html[data-ui="ledger"]:has(.app-frame) {
+  --bg: #f6f9ef; --panel: #f9fbf4; --elevated: #ebf1e1; --raised: #fbfdf7; --line: #bccbb2; --line-strong: #5f7f69;
+  --fg: #1b3a2c; --muted: #46604f; --faint: #586f61; --accent: #a3262a; --accent-soft: rgba(163, 38, 42, 0.09); --accent-fg: #ffffff;
+  --pos: #1f6b3a; --neg: #a3262a; --info: #2b5a8a; --chart-1: #2e6b4f; --chart-dim: #c2d0b8; --chart-emphasis: #a3262a;
+  --radius: 2px; --radius-sm: 1px; --bg-image: none; --shadow-lg: 0 18px 40px rgba(27, 58, 44, 0.25); --glow: none; --glass: 0;
+  --font-sans: var(--font-newsreader), "Iowan Old Style", Charter, Georgia, serif;
+  --ld-desk: #2a1d14;
+  color-scheme: light;
+}
+html[data-ui="ledger"] .app-frame { font-size: 13px; background: radial-gradient(120% 90% at 50% 30%, #4a3424 0%, #2a1d14 70%), #2a1d14; }
+html[data-ui="ledger"] .app-frame :is(.num, table) { font-family: var(--font-newsreader), Charter, Georgia, serif; font-variant-numeric: tabular-nums lining-nums; }
+html[data-ui="ledger"] .app-frame .yb-topbar { background: linear-gradient(180deg, #24432f, #1a3324); border-bottom: 1px solid #0f2117; backdrop-filter: none; color: #e7dcc0; }
+html[data-ui="ledger"] .app-frame .yb-topbar :is(.text-muted, .text-fg, .text-faint) { color: #d9cba6; }
+html[data-ui="ledger"] .app-frame .yb-wordmark { font-family: var(--font-newsreader), Georgia, serif; font-style: italic; font-size: 19px; font-weight: 600; letter-spacing: 0.01em; }
+html[data-ui="ledger"] .app-frame .yb-wordmark span { color: #e2c27a !important; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45); }
+html[data-ui="ledger"] .app-frame .yb-brand svg { filter: sepia(1) saturate(2) hue-rotate(5deg) brightness(1.1); }
+html[data-ui="ledger"] .app-frame .yb-right :is(button, a) { border-color: rgba(226, 194, 122, 0.35); }
+html[data-ui="ledger"] .app-frame .yb-right .bg-accent-soft { background: rgba(226, 194, 122, 0.2); color: #f1d999; }
+
+/* Every page is a sheet of the book. */
+@media (min-width: 768px) {
+  html[data-ui="ledger"] .app-frame .yb-main {
+    margin: 14px 64px 10px 18px; border-radius: 3px 6px 6px 3px; overflow: hidden;
+    background:
+      linear-gradient(90deg, rgba(0, 0, 0, 0.16), transparent 18px),
+      linear-gradient(90deg, transparent 54px, rgba(163, 38, 42, 0.4) 54px 55px, transparent 55px 58px, rgba(163, 38, 42, 0.4) 58px 59px, transparent 59px),
+      repeating-linear-gradient(180deg, transparent 0 25px, rgba(46, 94, 70, 0.12) 25px 26px),
+      #f6f9ef;
+    box-shadow: 0 0 0 1px #c9c0a6, 3px 0 0 #e9e4d2, 6px 0 0 #d9d2bc, 9px 1px 0 #cbc3aa, 0 30px 60px -18px rgba(0, 0, 0, 0.75);
+  }
+}
+html[data-ui="ledger"] .app-frame :is(.panel, .home-card) { background: rgba(249, 251, 244, 0.86); border: 1px solid var(--line); border-top: 3px double var(--line-strong); box-shadow: none; }
+html[data-ui="ledger"] .app-frame h1 { font-family: var(--font-newsreader), Georgia, serif; font-weight: 600; font-size: clamp(24px, 2.6vw, 34px); text-decoration: underline double var(--line-strong); text-underline-offset: 7px; text-decoration-thickness: 1px; }
+html[data-ui="ledger"] .app-frame h2 { font-family: var(--font-newsreader), Georgia, serif; }
+html[data-ui="ledger"] .app-frame h2.uppercase { font-variant-caps: all-small-caps; text-transform: none; font-size: 14px; letter-spacing: 0.06em; color: var(--fg); }
+html[data-ui="ledger"] .app-frame table td { border-bottom: 1px dotted var(--line); }
+html[data-ui="ledger"] .app-frame table tfoot td { border-top: 3px double var(--line-strong); }
+html[data-ui="ledger"] .yb-strip { font-family: var(--font-newsreader), Georgia, serif; color: #d9cba6; background: transparent; font-size: 12px; font-style: italic; padding: 0 22px; }
+
+/* The thumb tabs. */
+.yb-thumbs { position: absolute; right: 18px; top: 30px; max-height: calc(100% - 40px); overflow: hidden; z-index: 30; display: flex; flex-direction: column; gap: 4px; width: 46px; }
+.yb-thumb { position: relative; display: flex; align-items: center; justify-content: center; min-height: 58px; padding: 10px 0; width: 34px; border-radius: 0 7px 7px 0; writing-mode: vertical-rl; font-family: var(--font-newsreader), Georgia, serif; font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em; color: #fffaf0; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); box-shadow: inset 3px 0 4px -2px rgba(0, 0, 0, 0.35), 2px 3px 6px -2px rgba(0, 0, 0, 0.55); transition: width 220ms cubic-bezier(0.2, 0.8, 0.2, 1); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.yb-thumb:nth-child(5n + 1) { background: #8f2b2b; } .yb-thumb:nth-child(5n + 2) { background: #2e5e45; } .yb-thumb:nth-child(5n + 3) { background: #8a6418; } .yb-thumb:nth-child(5n + 4) { background: #2c4f78; } .yb-thumb:nth-child(5n + 5) { background: #5b3a6b; }
+.yb-thumb:hover, .yb-thumb:focus-visible { width: 42px; }
+.yb-thumb[aria-current="page"] { width: 46px; background: #f6f9ef !important; color: #1b3a2c; text-shadow: none; box-shadow: 2px 3px 6px -2px rgba(0, 0, 0, 0.55); }
+.yb-thumb:focus-visible { outline: 2px solid #e2c27a; outline-offset: 2px; }
+
+/* Home: the open book. */
+.ld-spread { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 100%; }
+.ld-page { padding: 26px 30px 40px 76px; min-width: 0; }
+.ld-page + .ld-page { padding-left: 46px; background: linear-gradient(90deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.04) 26px, transparent 60px); }
+.ld-page:first-child { background: linear-gradient(270deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.03) 22px, transparent 50px); }
+.ld-head { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 3px double var(--line-strong); padding-bottom: 4px; margin-bottom: 16px; font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-size: 15px; color: var(--muted); }
+.ld-entry { margin-bottom: 18px; }
+.ld-entry :is(.panel, .home-card) { background: transparent !important; border: 0 !important; padding: 0 !important; }
+.ld-entry > .ld-label { display: flex; align-items: baseline; gap: 8px; font-size: 16px; font-weight: 600; font-style: italic; color: var(--fg); margin-bottom: 4px; }
+.ld-entry > .ld-label::after { content: ""; flex: 1; border-bottom: 1px dotted var(--line-strong); transform: translateY(-4px); }
+.ld-body section > div:first-child > h2 { display: none; }
+.ld-entry:has(> .ld-body:empty) { display: none; }
+@media (max-width: 1023.98px) { .ld-spread { grid-template-columns: minmax(0, 1fr); } .ld-page, .ld-page + .ld-page { padding: 18px 18px 26px 70px; background: none; } }
+@media (max-width: 767.98px) { .ld-page, .ld-page + .ld-page { padding: 16px 16px 24px; } }
+
+/* Phone: a green cloth band with gold words. */
+html[data-ui="ledger"] .app-frame .yb-tabbar { background: linear-gradient(180deg, #24432f, #1a3324); border-top: 1px solid #0f2117; color: #d9cba6; }
+html[data-ui="ledger"] .app-frame .yb-tabbar :is(a, button) { color: #cdbf9a; }
+html[data-ui="ledger"] .app-frame .yb-tabbar [aria-current="page"] { color: #f1d999; }
+html[data-ui="ledger"] .app-frame .yb-tabbar .bg-accent { background: #e2c27a; }
+@media (max-width: 767.98px) { html[data-ui="ledger"] .app-frame .yb-main { background: repeating-linear-gradient(180deg, transparent 0 25px, rgba(46, 94, 70, 0.12) 25px 26px), #f6f9ef; } }

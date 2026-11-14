@@ -1,0 +1,70 @@
+/* =====================================================================================================
+   Cockpit: a heads-up display. Monospaced readouts, bracketed instruments, a faint scan, the pinned
+   features as bracketed function keys and a live status strip along the bottom. Home is an instrument
+   cluster: a radar with a blip for each name, a big clock and gauges, then the widgets as numbered
+   channels (homes/InstrumentsHome.tsx). Pages boot in with a flicker.
+   ===================================================================================================== */
+html[data-ui="cockpit"]:has(.app-frame) {
+  --bg: #04070a; --panel: #08111a; --elevated: #0c1824; --raised: #0f1d2b; --line: #133340; --line-strong: #1f5262;
+  --fg: #d3eaf1; --muted: #85adb9; --faint: #5d8692; --accent: #22d3ee; --accent-soft: rgba(34, 211, 238, 0.12); --accent-fg: #04070a;
+  --pos: #4ade80; --neg: #fb7185; --info: #fbbf24; --chart-1: #22d3ee; --chart-dim: #1f5262; --chart-emphasis: #fbbf24;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 1px #1f5262, 0 24px 60px rgba(0, 0, 0, 0.7); --glow: 0 0 14px rgba(34, 211, 238, 0.3); --glass: 0;
+  --font-sans: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+html[data-ui="cockpit"] .app-frame { background: radial-gradient(120% 80% at 50% 0%, #0a1620 0%, #04070a 60%); }
+html[data-ui="cockpit"] .app-frame::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60; background: repeating-linear-gradient(0deg, rgba(160, 230, 255, 0.025) 0 1px, transparent 1px 3px); }
+html[data-ui="cockpit"] .app-frame .yb-topbar { background: #03060899; border-bottom: 1px solid var(--line-strong); }
+/* The pinned features as bracketed function keys, F1, F2… */
+html[data-ui="cockpit"] .app-frame .yb-pins { counter-reset: yb-fk; gap: 4px; }
+html[data-ui="cockpit"] .app-frame .yb-pins a { counter-increment: yb-fk; text-transform: uppercase; letter-spacing: 0.12em; font-size: 10.5px; padding: 3px 9px; border: 1px solid var(--line); }
+html[data-ui="cockpit"] .app-frame .yb-pins a::before { content: "F" counter(yb-fk); color: var(--faint); font-size: 9px; margin-right: 2px; }
+html[data-ui="cockpit"] .app-frame .yb-pins a[aria-current="page"] { color: var(--accent); border-color: var(--accent); }
+html[data-ui="cockpit"] .app-frame .yb-pill { background: var(--accent-soft); box-shadow: var(--glow); }
+html[data-ui="cockpit"] .app-frame :is(.panel, .home-card) {
+  border: 1px solid var(--line); border-radius: 0;
+  background:
+    linear-gradient(var(--accent), var(--accent)) left top / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left top / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right top / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right top / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) left bottom / 1.5px 12px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 12px 1.5px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) right bottom / 1.5px 12px no-repeat,
+    linear-gradient(180deg, rgba(34, 211, 238, 0.035), transparent 40%), var(--panel);
+}
+html[data-ui="cockpit"] .app-frame h1 { text-transform: uppercase; letter-spacing: 0.1em; font-size: 17px; font-weight: 600; }
+html[data-ui="cockpit"] .app-frame h1::before { content: "▍"; color: var(--accent); margin-right: 6px; }
+html[data-ui="cockpit"] .app-frame :is(h2, h3) { text-transform: uppercase; letter-spacing: 0.08em; }
+html[data-ui="cockpit"] .app-frame .text-pos { text-shadow: 0 0 10px rgba(74, 222, 128, 0.35); }
+html[data-ui="cockpit"] .app-frame .text-neg { text-shadow: 0 0 10px rgba(251, 113, 133, 0.35); }
+html[data-ui="cockpit"] .app-frame .bg-accent { text-transform: uppercase; letter-spacing: 0.1em; box-shadow: var(--glow); }
+html[data-ui="cockpit"] .yb-strip { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: #03060a; border-top: 1px solid var(--line-strong); }
+
+/* Home: the instrument cluster. */
+.ck-hud { max-width: 1400px; margin: 0 auto; padding: 18px 20px 40px; }
+.ck-top { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; }
+.ck-radar { position: relative; aspect-ratio: 1; border: 1px solid var(--line); background: radial-gradient(closest-side, rgba(34, 211, 238, 0.06), transparent); }
+.ck-sweep { position: absolute; inset: 5%; border-radius: 50%; background: conic-gradient(from 0deg, transparent 0deg 270deg, rgba(34, 211, 238, 0.4) 359deg, rgba(34, 211, 238, 0.9) 360deg); animation: ybm-spin 4s linear infinite; }
+.ck-blip { animation: ck-blip 4s linear infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes ck-blip { 0% { opacity: 1; transform: scale(1.5); } 30% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0.35; transform: scale(1); } }
+.ck-readout { font-size: clamp(46px, 5.4vw, 76px); font-weight: 300; letter-spacing: -0.02em; line-height: 1; color: var(--fg); text-shadow: 0 0 24px rgba(34, 211, 238, 0.35); }
+.ck-gauges { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ck-gauge { border: 1px solid var(--line); padding: 10px 12px; background: rgba(8, 17, 26, 0.8); }
+.ck-gauge b { display: block; font-size: 24px; font-weight: 500; color: var(--fg); letter-spacing: -0.01em; }
+.ck-gauge span { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.ck-bar { height: 3px; margin-top: 8px; background: var(--line); position: relative; overflow: hidden; }
+.ck-bar > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); box-shadow: 0 0 10px var(--accent); transform-origin: left; }
+.ck-channels { counter-reset: ck-ch; display: grid; grid-auto-flow: row dense; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; align-items: start; }
+.ck-ch { counter-increment: ck-ch; position: relative; min-width: 0; }
+.ck-ch.ck-wide { grid-column: span 2; }
+.ck-ch::before { content: "CH " counter(ck-ch, decimal-leading-zero); position: absolute; right: 8px; top: -7px; z-index: 1; padding: 0 5px; font-size: 9.5px; letter-spacing: 0.16em; color: var(--accent); background: var(--bg); }
+@media (max-width: 1023.98px) { .ck-top { grid-template-columns: minmax(0, 1fr); } .ck-radar { max-width: 320px; margin: 0 auto; width: 100%; } .ck-channels { grid-template-columns: minmax(0, 1fr); } .ck-ch.ck-wide { grid-column: auto; } .ck-gauges { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .ck-sweep, .ck-blip { animation: none; } }
+
+/* Phone: function keys along the bottom. */
+html[data-ui="cockpit"] .app-frame .yb-tabbar { background: #03060a; border-top: 1px solid var(--line-strong); }
+html[data-ui="cockpit"] .app-frame .yb-tabbar :is(a, button) > span:last-child { text-transform: uppercase; letter-spacing: 0.1em; font-size: 10px; }
+html[data-ui="cockpit"] .app-frame .yb-tabbar .bg-accent { border-radius: 0; box-shadow: var(--glow); width: 100%; }
+.ck-ch:empty { display: none; }

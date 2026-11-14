@@ -12,6 +12,7 @@ import { and, asc, desc, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { requireDb, schema } from "@/db";
 import { isMissingTable, logError } from "@/lib/errors";
 import { updateExtra } from "@/lib/prefs/extra";
+import { callWorker, cfOn } from "@/lib/cloudflare/worker";
 import { cleanContent, nextEntry, signoffContent, verifyChain, type LedgerContent, type LedgerEntry, type LedgerKind, type Verification } from "./chain";
 import type { GovRow } from "./governance";
 
@@ -92,11 +93,36 @@ export async function append(userId: string, content: LedgerContent): Promise<Le
   return requireDb().transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`ledger:${userId}`}, 0))`);
     const [prev] = await tx.select({ seq: t.seq, hash: t.hash }).from(t).where(eq(t.userId, userId)).orderBy(desc(t.seq)).limit(1);
+    // With the ledger on Cloudflare, the person's Durable Object places the entry and keeps its own copy of the
+    // chain (cloudflare/src/ledger.ts). It is asked while the lock is held, so the head it is told is always the
+    // stored one. Anything it sends is verified here first; if it does not answer, or answers a chain that does
+    // not verify, the entry is placed here as before.
+    const viaDo = cfOn("ledger") ? await placeViaWorker(userId, content, prev ?? null).catch((err) => { logError(err, { where: "ledger-cf-append" }); return null; }) : null;
     // Postgres keeps microseconds; the hash is over the millisecond ISO time, so store exactly that.
-    const e = nextEntry(prev ?? null, content, new Date());
-    await tx.insert(t).values({ userId, ...e, at: new Date(e.at) });
-    return e;
+    const chain = viaDo ?? [nextEntry(prev ?? null, content, new Date())];
+    for (const e of chain) await tx.insert(t).values({ userId, ...e, at: new Date(e.at) });
+    return chain[chain.length - 1];
   });
+}
+
+/**
+ * The new entry from the person's ledger Durable Object, after any entries it holds that never reached this
+ * database (an insert that failed after it answered), all verified onto the stored head. Null when it does not
+ * answer or what it sends does not verify.
+ */
+async function placeViaWorker(userId: string, content: LedgerContent, head: { seq: number; hash: string } | null): Promise<LedgerEntry[] | null> {
+  const r = await callWorker<{ entry: LedgerEntry; missing?: LedgerEntry[] }>(`/ledger/${encodeURIComponent(userId)}/append`, { content, base: head }, { timeoutMs: 8_000 });
+  if (!r?.entry) return null;
+  const chain = [...(r.missing ?? []), r.entry];
+  const check = verifyChain(chain, head);
+  if (!check.ok) { logError(new Error(`ledger Durable Object answered a chain that does not verify: ${check.problem}`), { where: "ledger-cf-verify" }); return null; }
+  return chain;
+}
+
+/** Forget the person's copy in the ledger's Durable Object, for deleting their account. Never throws. */
+export async function purgeLedgerCopy(userId: string): Promise<boolean> {
+  if (!cfOn("ledger")) return true;
+  return !!(await callWorker<{ purged: boolean }>(`/ledger/${encodeURIComponent(userId)}`, undefined, { method: "DELETE", timeoutMs: 8_000 }));
 }
 
 /** Record an AI answer or call when the person's ledger is on. Never throws. */

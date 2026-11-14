@@ -1,0 +1,81 @@
+/* =====================================================================================================
+   Blueprint: a drafting sheet. Grid paper, every page inside a ruled border with zone marks, dashed
+   construction lines, monospaced notes. The features are drawing-sheet tabs along the bottom, as a CAD
+   program has them (interfaces/SheetTabs.tsx), over a title block; a crosshair follows the pointer with
+   its coordinates. Home is a general-arrangement drawing whose details draw themselves in
+   (homes/DrawingHome.tsx).
+   ===================================================================================================== */
+html[data-ui="blueprint"]:has(.app-frame) {
+  --bg: #0b3560; --panel: rgba(11, 53, 96, 0.6); --elevated: rgba(255, 255, 255, 0.07); --raised: #0f4378; --line: rgba(230, 240, 255, 0.3); --line-strong: rgba(230, 240, 255, 0.62);
+  --fg: #e8f1ff; --muted: #b3cbea; --faint: #8eabd2; --accent: #ffd166; --accent-soft: rgba(255, 209, 102, 0.14); --accent-fg: #0b3560;
+  --pos: #7ef0b0; --neg: #ff9e9e; --info: #8fd3ff; --chart-1: #ffd166; --chart-dim: rgba(230, 240, 255, 0.3); --chart-emphasis: #ff9e9e;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 1px rgba(230, 240, 255, 0.6), 0 24px 50px rgba(3, 20, 40, 0.6); --glow: none; --glass: 0;
+  --font-sans: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+html[data-ui="blueprint"] .app-frame {
+  background:
+    linear-gradient(rgba(230, 240, 255, 0.12) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(90deg, rgba(230, 240, 255, 0.12) 1px, transparent 1px) 0 0 / 80px 80px,
+    linear-gradient(rgba(230, 240, 255, 0.05) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(230, 240, 255, 0.05) 1px, transparent 1px) 0 0 / 16px 16px,
+    #0b3560;
+}
+html[data-ui="blueprint"] .app-frame .yb-topbar { background: rgba(9, 44, 80, 0.94); border-bottom: 1px solid var(--line-strong); }
+html[data-ui="blueprint"] .app-frame .yb-wordmark { text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; }
+html[data-ui="blueprint"] .app-frame .yb-right :is(button, a) { border-style: dashed; }
+/* The sheet's border and zone marks around every page. */
+@media (min-width: 768px) {
+  html[data-ui="blueprint"] .app-frame .yb-main { position: relative; margin: 10px 12px 0; border: 1px solid var(--line-strong); outline: 1px solid rgba(230, 240, 255, 0.35); outline-offset: 5px; }
+  html[data-ui="blueprint"] .app-frame .yb-main::before { content: "A\A\A\A\A\A B\A\A\A\A\A C\A\A\A\A\A D"; white-space: pre; position: absolute; left: -12px; top: 12%; z-index: 1; font-size: 9px; line-height: 1.9; color: var(--muted); pointer-events: none; }
+}
+html[data-ui="blueprint"] .app-frame :is(.panel, .home-card) { background: rgba(11, 53, 96, 0.62); border: 1px dashed var(--line); border-radius: 0; }
+html[data-ui="blueprint"] .app-frame h1 { text-transform: uppercase; letter-spacing: 0.14em; font-size: 17px; font-weight: 600; border-bottom: 1px solid var(--line-strong); padding-bottom: 4px; display: inline-block; }
+html[data-ui="blueprint"] .app-frame :is(h2, h3) { text-transform: uppercase; letter-spacing: 0.1em; }
+html[data-ui="blueprint"] .app-frame .bg-accent { text-transform: uppercase; letter-spacing: 0.1em; }
+html[data-ui="blueprint"] .app-frame :is(a, button) { cursor: pointer; }
+html[data-ui="blueprint"] .app-frame .yb-main { cursor: crosshair; }
+html[data-ui="blueprint"] .yb-strip { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); background: rgba(9, 44, 80, 0.95); border-top: 1px solid var(--line-strong); height: 30px; }
+html[data-ui="blueprint"] .yb-strip > * + * { border-left: 1px solid var(--line); padding-left: 12px; }
+
+/* The sheet tabs. */
+.yb-sheets { display: flex; align-items: flex-end; gap: 0; height: 30px; padding: 0 12px; background: rgba(9, 44, 80, 0.9); border-top: 1px solid var(--line-strong); overflow-x: auto; scrollbar-width: none; }
+.yb-sheets::-webkit-scrollbar { display: none; }
+.yb-sheet-tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 12px; margin-right: -1px; border: 1px dashed var(--line); border-top: 0; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); white-space: nowrap; align-self: flex-start; }
+.yb-sheet-tab:hover { color: var(--fg); border-color: var(--line-strong); }
+.yb-sheet-tab[aria-current="page"] { height: 28px; color: var(--accent); border: 1px solid var(--accent); border-top: 0; background: #0b3560; }
+.yb-sheet-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.yb-sheet-tab b { color: var(--faint); font-weight: 400; }
+/* The crosshair. */
+.yb-cross { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+.yb-cross > i { position: absolute; background: rgba(255, 209, 102, 0.35); will-change: transform; }
+.yb-cross > i:first-child { left: 0; right: 0; top: 0; height: 1px; }
+.yb-cross > i:last-child { top: 0; bottom: 0; left: 0; width: 1px; }
+
+/* Home: the drawing. */
+.bp-sheet { padding: 22px 26px 40px; }
+.bp-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line-strong); padding-bottom: 10px; }
+.bp-dims { position: relative; height: 18px; margin: 14px 0 6px; color: var(--muted); font-size: 10px; letter-spacing: 0.14em; }
+.bp-dims::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; border-top: 1px solid var(--line); }
+.bp-dims > span { position: relative; padding: 0 8px; background: #0b3560; margin-left: 40%; }
+.bp-details { display: grid; grid-auto-flow: row dense; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 26px; align-items: start; }
+.bp-detail { position: relative; min-width: 0; padding: 10px; }
+.bp-detail.bp-wide { grid-column: span 2; }
+.bp-detail > svg.bp-outline { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.bp-detail > svg.bp-outline rect { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 1; stroke-dashoffset: 1; animation: bp-draw 1.1s cubic-bezier(0.6, 0, 0.2, 1) forwards; animation-delay: var(--d, 0ms); }
+@keyframes bp-draw { to { stroke-dashoffset: 0; } }
+.bp-detail :is(.panel, .home-card) { border: 0 !important; background: transparent !important; }
+.bp-body section > div:first-child > h2 { display: none; }
+.bp-detail:has(> .bp-body:empty) { display: none; }
+.bp-callout { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.bp-callout b { display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); font-weight: 600; }
+.bp-callout::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+@media (max-width: 1023.98px) { .bp-details { grid-template-columns: minmax(0, 1fr); } .bp-detail.bp-wide { grid-column: auto; } .bp-dims > span { margin-left: 12px; } .bp-sheet { padding: 16px 14px 30px; } }
+@media (prefers-reduced-motion: reduce) { .bp-detail > svg.bp-outline rect { animation: none; stroke-dashoffset: 0; } }
+html[data-motion="reduced"] .bp-detail > svg.bp-outline rect { stroke-dashoffset: 0; }
+
+/* Phone: a title block for a tab bar. */
+html[data-ui="blueprint"] .app-frame .yb-tabbar { background: rgba(9, 44, 80, 0.97); border-top: 1px solid var(--line-strong); }
+html[data-ui="blueprint"] .app-frame .yb-tabbar li + li { border-left: 1px dashed var(--line); }
+html[data-ui="blueprint"] .app-frame .yb-tabbar :is(a, button) > span:last-child { text-transform: uppercase; letter-spacing: 0.08em; font-size: 9.5px; }
+html[data-ui="blueprint"] .app-frame .yb-tabbar .bg-accent { border-radius: 0; width: 100%; }

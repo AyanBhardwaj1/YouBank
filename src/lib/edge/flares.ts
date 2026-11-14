@@ -31,7 +31,7 @@ const DATA = "https://planetarycomputer.microsoft.com/api/data/v1";
 export type FlareDay = { date: string; n: number; frp: number; sats: string[] };
 export type FlareStats = { detections: number; days: number; frpTotal: number; frpMax: number; nearestM: number; satellites: number; high: number };
 export type FlareWeek = { week: string; days: number; frp: number };
-type Plant = { id: number; name: string; company: string; ticker: string; lon: number; lat: number; cap: number };
+export type Plant = { id: number; name: string; company: string; ticker: string; lon: number; lat: number; cap: number };
 
 /* ---------------- Pure pieces ---------------- */
 
@@ -208,7 +208,8 @@ async function heatAt(box: Bbox): Promise<{ scene: Scene; hot: number } | null> 
   return { scene, hot: hotPixels(data.subarray(0, cells), data.subarray(cells, 2 * cells), shape[0] >= 3 ? data.subarray(2 * cells, 3 * cells) : undefined) };
 }
 
-async function plants(): Promise<Plant[]> {
+/** Every mapped processing plant in the covered regions (also the Terminal's FLR board). */
+export async function plants(): Promise<Plant[]> {
   const boxes = COVERED.map((c) => sql`geom && ST_MakeEnvelope(${c.bbox[0]}, ${c.bbox[1]}, ${c.bbox[2]}, ${c.bbox[3]}, 4326)`);
   const rows = await requireDb().execute(sql`
     select id, name, company, ticker, ST_X(geom) as lon, ST_Y(geom) as lat, coalesce((attrs->>'capacityMMcfd')::float, 0) as cap
@@ -217,7 +218,9 @@ async function plants(): Promise<Plant[]> {
     .map((r) => ({ id: r.id, name: r.name, company: r.company ?? "", ticker: r.ticker ?? "", lon: Number(r.lon), lat: Number(r.lat), cap: Number(r.cap) || 0 }));
 }
 
-const HIST = "edge:flares:hist:v1", LAST = "edge:flares:cards:v1", FILLED = "edge:flares:backfilled:v1", SPOTS = "edge:flares:spots:v1";
+/** The kept weekly record per plant (HIST) and the week of hot spots kept between passes (SPOTS) are read by the Terminal's FLR board too. */
+export const HIST = "edge:flares:hist:v1", SPOTS = "edge:flares:spots:v1";
+const LAST = "edge:flares:cards:v1", FILLED = "edge:flares:backfilled:v1";
 const readJson = async <T,>(key: string, fallback: T): Promise<T> => { try { const v = await cacheGet(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; } };
 
 const fmt = (v: number, dp = 0) => v.toLocaleString("en-US", { maximumFractionDigits: dp, minimumFractionDigits: dp });

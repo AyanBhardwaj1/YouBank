@@ -1,0 +1,74 @@
+/* =====================================================================================================
+   Bare: text and links on a white page. The system font, no boxes, no icons in the navigation, no
+   shadows, no motion at all. Navigation is one line of numbered links (press the number to go there;
+   InterfaceChrome's BareKeys), Home is a plain document. Links are blue and underline, as links were.
+   ===================================================================================================== */
+html[data-ui="bare"]:has(.app-frame) {
+  --bg: #ffffff; --panel: #ffffff; --elevated: #f4f4f4; --raised: #ffffff; --line: #e2e2e2; --line-strong: #111111;
+  --fg: #111111; --muted: #555555; --faint: #6b6b6b; --accent: #0000ee; --accent-soft: rgba(0, 0, 238, 0.07); --accent-fg: #ffffff;
+  --pos: #0a6b2d; --neg: #b00020; --info: #0000ee; --chart-1: #111111; --chart-dim: #c4c4c4; --chart-emphasis: #0000ee;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 1px #111111; --glow: none; --glass: 0;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+html[data-ui="bare"] .app-frame { font-size: 14px; line-height: 1.5; }
+/* Nothing moves. */
+html[data-ui="bare"] .app-frame *, html[data-ui="bare"] .app-frame *::before, html[data-ui="bare"] .app-frame *::after { animation: none !important; transition: none !important; }
+html[data-ui="bare"] .app-frame .reveal { opacity: 1; transform: none; }
+html[data-ui="bare"] .app-frame :is(.shimmer) { background: var(--elevated); }
+
+/* The navigation: one line of text. */
+html[data-ui="bare"] .app-frame .yb-topbar { background: #ffffff; border-bottom: 1px solid #111111; backdrop-filter: none; }
+html[data-ui="bare"] .app-frame .yb-topbar svg { display: none; }
+html[data-ui="bare"] .app-frame .yb-topbar :is(.yb-side-btn, .yb-right button, .yb-right a) svg { display: block; }
+html[data-ui="bare"] .app-frame .yb-brand svg { display: none; }
+html[data-ui="bare"] .app-frame .yb-wordmark { font-weight: 700; font-size: 14px; letter-spacing: 0; text-transform: lowercase; }
+html[data-ui="bare"] .app-frame .yb-wordmark span { color: #111111; }
+html[data-ui="bare"] .app-frame .yb-pins { counter-reset: yb-key; gap: 2px; }
+html[data-ui="bare"] .app-frame .yb-pins a { counter-increment: yb-key; font-size: 14px; color: #0000ee; padding: 2px 6px; background: none; }
+html[data-ui="bare"] .app-frame .yb-pins a > span:not(.yb-pill) { text-decoration: underline; text-underline-offset: 3px; }
+html[data-ui="bare"] .app-frame .yb-pins a::before { content: counter(yb-key); font-family: var(--font-mono); font-size: 11px; color: #555555; margin-right: 4px; text-decoration: none; display: inline-block; }
+html[data-ui="bare"] .app-frame .yb-pins a > span:not(.yb-pill) { display: inline !important; }
+html[data-ui="bare"] .app-frame .yb-pins a[aria-current="page"] { color: #111111; font-weight: 700; }
+html[data-ui="bare"] .app-frame .yb-pins a[aria-current="page"] > span { text-decoration: none; }
+html[data-ui="bare"] .app-frame .yb-pins a:hover { color: #551a8b; }
+html[data-ui="bare"] .app-frame .yb-pins > button, html[data-ui="bare"] .app-frame .yb-pins .border-dashed { border: 0; }
+html[data-ui="bare"] .app-frame .yb-pill { display: none; }
+html[data-ui="bare"] .app-frame .yb-right > button, html[data-ui="bare"] .app-frame .yb-right .relative > button { border-color: transparent; }
+html[data-ui="bare"] .app-frame .yb-search kbd { display: none; }
+html[data-ui="bare"] .app-frame .yb-search > span::before { content: "/ "; font-family: var(--font-mono); color: #555555; }
+
+/* Boxes become plain blocks separated by a hairline. */
+html[data-ui="bare"] .app-frame :is(.panel, .home-card, .home-hero, .float) { background: transparent; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; }
+html[data-ui="bare"] .app-frame .panel { border-top: 1px solid var(--line); }
+html[data-ui="bare"] .app-frame .lift:hover { transform: none; box-shadow: none; }
+html[data-ui="bare"] .app-frame .float { background: #ffffff; box-shadow: 0 0 0 1px #111111; }
+html[data-ui="bare"] .app-frame a:not([class*="bg-"]):hover { text-decoration: underline; text-underline-offset: 3px; }
+html[data-ui="bare"] .app-frame .bg-accent { background: #111111; color: #ffffff; }
+html[data-ui="bare"] .app-frame .bg-accent-soft { background: #f0f0f0; }
+html[data-ui="bare"] .app-frame :is(h1, h2, h3) { font-weight: 700; letter-spacing: 0; text-transform: none; }
+html[data-ui="bare"] .app-frame h1 { font-size: 22px; }
+html[data-ui="bare"] .app-frame .uppercase { text-transform: none; letter-spacing: 0; }
+html[data-ui="bare"] .app-frame :focus-visible { outline: 2px solid #0000ee; outline-offset: 2px; box-shadow: none; }
+
+/* Home: a document. */
+.bare-doc { max-width: 720px; margin: 0 auto; padding: 40px 24px 96px; font-size: 15px; line-height: 1.6; }
+.bare-doc h1 { font-size: 22px; margin: 0; }
+.bare-doc .bare-section h2 { font-size: 16px !important; font-weight: 700; color: #111111; text-transform: none; letter-spacing: 0; display: flex; align-items: baseline; gap: 6px; }
+.bare-doc .bare-section h2::before { content: "##"; color: #6b6b6b; font-family: var(--font-mono); font-weight: 400; font-size: 13px; }
+.bare-doc .bare-section h2 svg { display: none; }
+.bare-doc .bare-section :is(.lift, .ctl.border) { border-color: transparent; }
+.bare-doc .bare-toc a { color: #0000ee; text-decoration: underline; text-underline-offset: 3px; }
+.bare-doc .bare-toc a:visited { color: #551a8b; }
+.bare-doc :is(.panel, .home-card) { padding: 0 !important; border: 0 !important; }
+.bare-doc .bare-ask { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid #111111; padding: 4px 0; }
+.bare-doc .bare-ask:focus-within { border-bottom-width: 2px; }
+.bare-doc kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid #bbbbbb; padding: 0 4px; }
+
+/* The phone's tab bar: words, no icons. */
+html[data-ui="bare"] .app-frame .yb-tabbar { background: #ffffff; border-top: 1px solid #111111; backdrop-filter: none; }
+html[data-ui="bare"] .app-frame .yb-tabbar svg, html[data-ui="bare"] .app-frame .yb-tabbar .rounded-full.bg-accent { display: none; }
+html[data-ui="bare"] .app-frame .yb-tabbar a, html[data-ui="bare"] .app-frame .yb-tabbar button { color: #0000ee; }
+html[data-ui="bare"] .app-frame .yb-tabbar :is(a, button) > span:last-child { font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+html[data-ui="bare"] .app-frame .yb-tabbar [aria-current="page"] > span:last-child { color: #111111; text-decoration: none; font-weight: 700; }

@@ -8,6 +8,7 @@
  */
 import { useCallback, useRef, useState } from "react";
 import { Eye, EyeOff, ImageOff } from "lucide-react";
+import { edgeImageSrc } from "@/lib/edge/imgsrc";
 
 type Shot = { url: string; date: string };
 
@@ -46,10 +47,10 @@ export function Compare({ before, after, overlay, label, height = "aspect-square
           </div>
         )}
         {/* eslint-disable-next-line @next/next/no-img-element -- satellite crops rendered on request by the imagery service */}
-        <img src={src(before.url)} alt={`${label}, ${before.date}`} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded((n) => n + 1)} onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
+        <img src={src(edgeImageSrc(before.url))} alt={`${label}, ${before.date}`} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded((n) => n + 1)} onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0" style={{ clipPath: `inset(0 0 0 ${pos}%)` }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- see above */}
-          <img src={src(after.url)} alt={`${label}, ${after.date}`} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded((n) => n + 1)} onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
+          <img src={src(edgeImageSrc(after.url))} alt={`${label}, ${after.date}`} loading="lazy" decoding="async" draggable={false} onLoad={() => setLoaded((n) => n + 1)} onError={() => setBroken(true)} className="absolute inset-0 h-full w-full object-cover" />
           {/* eslint-disable-next-line @next/next/no-img-element -- the change mask, a small generated PNG */}
           {overlay && showChange && <img src={overlay} alt="" aria-hidden draggable={false} className="absolute inset-0 h-full w-full object-cover [image-rendering:pixelated]" />}
         </div>

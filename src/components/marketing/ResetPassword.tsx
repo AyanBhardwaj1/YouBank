@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { RecoveryKeyReveal } from "@/components/settings/RecoveryKeyReveal";
 
+/** Who to write to when someone cannot get back in on their own. */
+export const SUPPORT_EMAIL = "bhardwajayan000@gmail.com";
+
 const FIELD = "w-full rounded-md border border-line bg-transparent px-3 py-2 text-[13px] text-fg outline-none placeholder:text-muted focus:border-line-strong";
 const BUTTON = "w-full rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white disabled:opacity-60";
 
@@ -93,7 +96,7 @@ export function ResetPassword({ emailReset, token, expired }: { emailReset: bool
 
   return (
     <div className="mt-2">
-      {expired && <p role="alert" className="mt-2 text-[12px] text-neg">That reset link has expired or was already used. Ask for a new one, or use your recovery key.</p>}
+      {expired && <p role="alert" className="mt-2 text-[12px] text-neg">That reset link has expired or was already used. Ask for a new one, or use your recovery key. Still stuck? Email {SUPPORT_EMAIL}.</p>}
       {emailReset && (
         <div className="mt-3 inline-flex rounded-lg border border-line p-0.5 text-[12px]" role="tablist" aria-label="How to reset">
           {([["key", "Recovery key"], ["email", "Email me a link"]] as const).map(([m, label]) => (
@@ -122,7 +125,9 @@ export function ResetPassword({ emailReset, token, expired }: { emailReset: bool
           {mismatch && <div className="text-[11px] text-neg">The two passwords are not the same.</div>}
           <button type="submit" disabled={busy || mismatch} className={BUTTON}>{busy ? "One moment…" : "Set the new password"}</button>
           {error && <div role="alert" className="text-[11px] text-neg">{error}</div>}
-          <p className="text-[11px] leading-relaxed text-muted">No recovery key? {emailReset ? "Use “Email me a link” above, or ask" : "Ask"} the person who runs YouBank for your team to reset it.</p>
+          <p className="text-[11px] leading-relaxed text-muted">No recovery key? {emailReset ? "Use “Email me a link” above, or email" : "Email"} the founder at{" "}
+            <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("YouBank password reset")}`} className="text-fg underline underline-offset-2 hover:text-accent">{SUPPORT_EMAIL}</a>{" "}
+            from your account&apos;s email address, and your password will be reset for you.</p>
         </form>
       )}
     </div>

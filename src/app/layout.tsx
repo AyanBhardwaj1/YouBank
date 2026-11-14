@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif, Inter_Tight, Newsreader, Space_Grotesk, Unbounded } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { DialogHost } from "@/components/ui/Dialog";
@@ -15,6 +15,12 @@ import { siteUrl } from "@/lib/site";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const display = Instrument_Serif({ variable: "--font-display-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
+// Faces only some interfaces use (Settings → Style → Interface, src/app/interfaces): declared everywhere so the
+// first paint is right, but not preloaded, so a browser downloads one only when an interface draws with it.
+const newsreader = Newsreader({ variable: "--font-newsreader", subsets: ["latin"], style: ["normal", "italic"], preload: false });
+const interTight = Inter_Tight({ variable: "--font-inter-tight", subsets: ["latin"], preload: false });
+const unbounded = Unbounded({ variable: "--font-unbounded", subsets: ["latin"], preload: false });
+const spaceGrotesk = Space_Grotesk({ variable: "--font-space-grotesk", subsets: ["latin"], preload: false });
 
 export const metadata: Metadata = {
   title: { default: "YouBank · Hedge-fund grade, pocket-sized", template: "%s · YouBank" },
@@ -51,7 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const look = lookAttrs(readLookCookie(jar.get(LOOK_COOKIE)?.value));
   const user = await currentUser().catch(() => null);
   return (
-    <html lang="en" data-theme={theme.id} {...look.attrs} style={Object.keys(look.vars).length ? (look.vars as React.CSSProperties) : undefined} className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="en" data-theme={theme.id} {...look.attrs} style={Object.keys(look.vars).length ? (look.vars as React.CSSProperties) : undefined} className={`${geistSans.variable} ${geistMono.variable} ${display.variable} ${newsreader.variable} ${interTight.variable} ${unbounded.variable} ${spaceGrotesk.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full">
         <ThemeProvider initial={theme.id} signedIn={!!user}><MotionPrefs>{children}<DialogHost /></MotionPrefs></ThemeProvider>
         <MobileViewport />

@@ -1,8 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 import { aiConfig } from "./config";
 import { guardAi } from "./limits";
 import { aiUser, recordUsage } from "./usage";
+import { openaiClient, anthropicClient } from "@/lib/ai/gateway";
 
 /** What the providers charge per web search, on top of tokens. */
 export const WEB_SEARCH_FEE_USD = 0.01;
@@ -16,7 +15,7 @@ export async function webResearch(query: string): Promise<ResearchResult> {
   await guardAi(aiUser());
   const instructions = "Research the query using web search. Reply with a compact factual summary (under 250 words) and include the URLs you relied on.";
   if (cfg.provider === "openai") {
-    const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 90_000, maxRetries: 1 });
+    const client = openaiClient({ apiKey: cfg.apiKey, feature: "research", timeout: 90_000, maxRetries: 1 });
     const res = await client.responses.create({ model: cfg.researchModel, tools: [{ type: "web_search" }], instructions, input: query });
     const u = res.usage;
     const searches = res.output.filter((i) => i.type === "web_search_call").length;
@@ -33,7 +32,7 @@ export async function webResearch(query: string): Promise<ResearchResult> {
     }
     return { text, citations };
   }
-  const client = new Anthropic({ apiKey: cfg.apiKey, timeout: 90_000, maxRetries: 1 });
+  const client = anthropicClient({ apiKey: cfg.apiKey, feature: "research", timeout: 90_000, maxRetries: 1 });
   const res = await client.messages.create({
     model: cfg.model, max_tokens: 4000, system: instructions,
     tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],

@@ -7,6 +7,7 @@ import { noteFreshness } from "@/lib/market/provenance";
 import { callSource } from "@/lib/market/source";
 import { fetchRetry, retryServerErrors, type RetryInit } from "@/lib/net";
 import { shared, sharedMap } from "@/lib/shared";
+import { logError } from "@/lib/errors";
 
 /**
  * SEC EDGAR fetch with a descriptive User-Agent (required by SEC), a rate limit, and a JSON disk cache
@@ -173,10 +174,36 @@ export async function edgarText(url: string, cacheKey: string, ttlMs: number): P
   const cached = await cacheGet(`edgar:${cacheKey}`);
   if (cached) return cached;
   return once(`text:${cacheKey}`, async () => {
+    // A filed document never changes: with R2 set up it is kept there for good, so SEC is asked once.
+    const archived = await archiveGet(url);
+    if (archived !== null) { await cacheSet(`edgar:${cacheKey}`, archived, ttlMs); return archived; }
     const res = await secRequest(url, { headers: { "User-Agent": UA }, cache: "no-store", timeoutMs: budget().secTimeoutMs }, opOf(url));
     if (!res.ok) throw new Error(`EDGAR ${res.status} for ${url}`);
     const text = await res.text();
     await cacheSet(`edgar:${cacheKey}`, text, ttlMs);
+    await archivePut(url, text);
     return text;
   });
+}
+
+/** Where a filed document lives in R2 (filings/{cik}/{accession}/{file}), or null for anything not under EDGAR's archive. Pure. */
+export function archiveKey(url: string): string | null {
+  const m = /^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/(\d{1,10})\/(\d{18})\/([A-Za-z0-9._-]{1,200})$/.exec(url);
+  return m ? `filings/${Number(m[1])}/${m[2]}/${m[3]}` : null;
+}
+
+async function archiveGet(url: string): Promise<string | null> {
+  const key = archiveKey(url);
+  if (!key) return null;
+  const { r2Ready, getObject } = await import("@/lib/edge/infra/r2");
+  if (!r2Ready()) return null;
+  try { const res = await getObject(key); return res ? await res.text() : null; } catch (e) { logError(e, { where: "edgar-archive-get" }); return null; }
+}
+
+async function archivePut(url: string, text: string): Promise<void> {
+  const key = archiveKey(url);
+  if (!key || !text || text.length > 40_000_000) return;
+  const { r2Ready, putObject } = await import("@/lib/edge/infra/r2");
+  if (!r2Ready()) return;
+  await putObject(key, text, "text/html; charset=utf-8", "private, max-age=31536000, immutable").catch((e) => logError(e, { where: "edgar-archive-put" }));
 }

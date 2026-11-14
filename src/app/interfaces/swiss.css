@@ -1,0 +1,53 @@
+/* =====================================================================================================
+   Swiss: the international typographic style. A numbered index down the left side, Inter Tight in heavy
+   weights, 3px rules, white, black and one red. Home is a poster on a twelve-column grid: the date as a
+   giant numeral cut by a red rule, then the widgets as numbered sections (homes/PosterHome.tsx). Pages
+   arrive with a hard cut, a red rule wiping across the top.
+   ===================================================================================================== */
+html[data-ui="swiss"]:has(.app-frame) {
+  --bg: #ffffff; --panel: #ffffff; --elevated: #f2f2f2; --raised: #ffffff; --line: #d6d6d6; --line-strong: #0a0a0a;
+  --fg: #0a0a0a; --muted: #4f4f4f; --faint: #6e6e6e; --accent: #e3120b; --accent-soft: rgba(227, 18, 11, 0.07); --accent-fg: #ffffff;
+  --pos: #00703c; --neg: #c00018; --info: #0047ab; --chart-1: #0a0a0a; --chart-dim: #c8c8c8; --chart-emphasis: #e3120b;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 0 0 2px #0a0a0a; --glow: none; --glass: 0;
+  --font-sans: var(--font-inter-tight), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color-scheme: light;
+}
+html[data-ui="swiss"] .app-frame .yb-topbar { background: #ffffff; border-bottom: 3px solid #0a0a0a; backdrop-filter: none; }
+html[data-ui="swiss"] .app-frame .yb-wordmark { font-weight: 800; font-size: 17px; letter-spacing: -0.04em; }
+html[data-ui="swiss"] .app-frame .yb-right :is(button, a) { border-color: transparent; }
+html[data-ui="swiss"] .app-frame :is(.panel, .home-card, .home-hero) { border: 0; border-top: 3px solid #0a0a0a; border-radius: 0; background: transparent; }
+html[data-ui="swiss"] .app-frame h1 { font-size: clamp(34px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.045em; line-height: 0.96; }
+html[data-ui="swiss"] .app-frame h2 { font-size: 18px; font-weight: 800; letter-spacing: -0.025em; }
+html[data-ui="swiss"] .app-frame h2.uppercase { font-size: 12px; letter-spacing: 0.04em; color: #0a0a0a; }
+html[data-ui="swiss"] .app-frame h3 { font-weight: 800; }
+html[data-ui="swiss"] .app-frame .uppercase { font-weight: 700; letter-spacing: 0.05em; }
+html[data-ui="swiss"] .app-frame .bg-accent { font-weight: 700; }
+html[data-ui="swiss"] .app-frame .lift:hover { transform: none; box-shadow: inset 0 0 0 2px #0a0a0a; }
+html[data-ui="swiss"] .yb-rail { border-right: 3px solid #0a0a0a; }
+
+/* Home: the poster. */
+.sw-poster { padding: 26px 34px 70px; max-width: 1500px; }
+.sw-head { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 20px; align-items: end; }
+.sw-num { grid-column: span 5; font-weight: 800; font-size: clamp(150px, 19vw, 300px); line-height: 0.74; letter-spacing: -0.075em; color: #0a0a0a; }
+.sw-title { grid-column: 6 / span 7; padding-bottom: 6px; }
+.sw-title h1 { font-size: clamp(40px, 4.8vw, 72px) !important; }
+.sw-rule { height: 10px; background: #e3120b; margin: 18px 0 0; transform-origin: left; animation: sw-wipe 700ms cubic-bezier(0.7, 0, 0.2, 1) both; }
+@keyframes sw-wipe { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.sw-meta { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 20px; padding: 10px 0 0; font-size: 13px; font-weight: 600; }
+.sw-meta > * { grid-column: span 3; }
+.sw-grid { counter-reset: sw; display: grid; grid-auto-flow: row dense; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 40px 20px; margin-top: 44px; align-items: start; }
+.sw-cell { counter-increment: sw; grid-column: span 4; min-width: 0; }
+.sw-cell.sw-wide { grid-column: span 8; }
+.sw-cell > .sw-n { display: flex; align-items: baseline; gap: 10px; border-top: 3px solid #0a0a0a; padding-top: 6px; margin-bottom: 10px; font-weight: 800; font-size: 20px; letter-spacing: -0.03em; }
+.sw-cell > .sw-n::before { content: counter(sw, decimal-leading-zero); color: #e3120b; font-size: 13px; letter-spacing: 0; }
+.sw-cell :is(.panel, .home-card) { border-top: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+.sw-body section > div:first-child > h2 { display: none; }
+.sw-cell:has(> .sw-body:empty) { display: none; }
+.sw-meta > p { grid-column: span 6; }
+@media (max-width: 1023.98px) { .sw-cell, .sw-cell.sw-wide { grid-column: 1 / -1; } .sw-num { grid-column: 1 / -1; } .sw-title { grid-column: 1 / -1; } .sw-meta > * { grid-column: span 6; } .sw-poster { padding: 18px 18px 50px; } }
+@media (prefers-reduced-motion: reduce) { .sw-rule { animation: none; } }
+
+/* Phone: black rule and a red active word. */
+html[data-ui="swiss"] .app-frame .yb-tabbar { background: #ffffff; border-top: 3px solid #0a0a0a; backdrop-filter: none; }
+html[data-ui="swiss"] .app-frame .yb-tabbar :is(a, button) > span:last-child { font-weight: 700; }
+html[data-ui="swiss"] .app-frame .yb-tabbar .bg-accent { border-radius: 0; height: 4px; width: 100%; top: -3px; }

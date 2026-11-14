@@ -1,0 +1,20 @@
+{
+  // YouBank's Cloudflare Worker: the Thesis Agent (Agents SDK), the ledger sequencer (Durable Object), the
+  // nightly kill-criteria Workflow and the hosted MCP server. Set-up: docs/cloudflare.md in the repository.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "youbank-cf",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "APP_URL": "https://youbank.dev" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "THESIS", "class_name": "ThesisAgent" },
+      { "name": "LEDGER", "class_name": "LedgerSequencer" },
+      { "name": "MCP", "class_name": "YouBankMcp" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ThesisAgent", "LedgerSequencer", "YouBankMcp"] }],
+  "workflows": [{ "name": "youbank-kill-criteria", "binding": "BOOK_CHECK", "class_name": "KillCriteriaWorkflow" }],
+  "observability": { "enabled": true }
+}

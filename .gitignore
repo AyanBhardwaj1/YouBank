@@ -56,3 +56,8 @@ ml/__pycache__/
 
 # Agent worktrees (Claude Code)
 .claude/worktrees/
+
+# The Cloudflare Worker package
+/cloudflare/node_modules
+/cloudflare/.wrangler
+/cloudflare/.dev.vars

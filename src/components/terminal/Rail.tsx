@@ -18,7 +18,7 @@ const shortName = (name: string) =>
  * wide screen; below that it is the "Watchlist" sheet (`variant="sheet"`), which closes after a pick.
  */
 export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "aside", onPicked, onHelp }: { activeTicker: string; panels: OpenPanel[]; onRun: (c: Command) => void; aiLabel: string; variant?: "aside" | "sheet"; onPicked?: () => void; onHelp?: () => void }) {
-  const { config, tools: allTools } = useWorkspace();
+  const { config, edge, tools: allTools } = useWorkspace();
   const sheet = variant === "sheet";
   const onRun = (c: Command) => { run(c); onPicked?.(); };
   const tools = allTools.slice(0, 5);
@@ -73,6 +73,18 @@ export function Rail({ activeTicker, panels, onRun: run, aiLabel, variant = "asi
             className={`num ctl border border-line px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:border-accent/50 hover:text-accent ${sheet ? "min-h-10 min-w-14 px-3" : ""}`}>{f}</button>
         ))}
       </div>
+
+      {edge && (
+        <>
+          <div className="border-t border-line px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">Edge monitors</div>
+          <div className="flex flex-wrap gap-1 px-2 pb-2">
+            {(["EVTS", "MARB", "FLR", "SAT", "ALT"] as FunctionCode[]).map((f) => (
+              <button key={f} type="button" title={FUNCTIONS[f].hint} onClick={() => onRun({ ticker: f === "SAT" || f === "ALT" ? activeTicker : "", fn: f, via: "click" })}
+                className={`num ctl border border-line px-1.5 py-0.5 text-[10.5px] font-semibold text-muted hover:border-accent/50 hover:text-accent ${sheet ? "min-h-10 min-w-14 px-3" : ""}`}>{f}</button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="flex items-baseline justify-between border-t border-line px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted">
         <span>Tools for you</span>
