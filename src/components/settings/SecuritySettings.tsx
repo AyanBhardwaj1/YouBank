@@ -10,6 +10,7 @@
  * Once it is on: password sign-in asks for a code, and connecting brokers or mailboxes and live trading
  * ask for a fresh one whatever the sign-in method (src/lib/auth/step-up).
  */
+import { RecoveryKeyCard } from "./RecoveryKeyCard";
 import { useEffect, useState } from "react";
 import { getAuthClient } from "@/lib/auth/client";
 import { errorMessage, fetchJson } from "@/lib/client/errors";
@@ -171,6 +172,7 @@ export function SecuritySettings() {
           )}
         </div>
       )}
+      <RecoveryKeyCard />
     </section>
   );
 }

@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 import { twoFactor } from "better-auth/plugins";
 import { requireDb, schema } from "@/db";
 import { authBaseUrl, authTrustedOrigins } from "./origins";
+import { mailConfigured, resetEmail, sendMail } from "./mail";
 import { AUTH_RATE_RULES, authRateStorage } from "./rate-limit";
 
 /**
@@ -33,9 +34,19 @@ function build() {
       provider: "pg",
       schema: { user: schema.authUsers, session: schema.authSessions, account: schema.authAccounts, verification: schema.authVerifications, twoFactor: schema.authTwoFactor },
     }),
-    // Email and password always; Google when its OAuth client is set. With no mail sender yet there is
-    // no emailed reset: an admin resets a forgotten password.
-    emailAndPassword: { enabled: true, minPasswordLength: 10, maxPasswordLength: 128, autoSignIn: true },
+    // Email and password always; Google when its OAuth client is set. A forgotten password is reset with the
+    // recovery key (src/lib/auth/recovery.ts), or by an emailed link when a mail sender is set (./mail.ts).
+    emailAndPassword: {
+      enabled: true, minPasswordLength: 10, maxPasswordLength: 128, autoSignIn: true,
+      resetPasswordTokenExpiresIn: 60 * 60,
+      revokeSessionsOnPasswordReset: true,
+      ...(mailConfigured() ? {
+        sendResetPassword: async ({ user, url }: { user: { email: string; name?: string | null }; url: string }) => {
+          const m = resetEmail(user.name ?? "", url);
+          await sendMail(user.email, m.subject, m.text, m.html);
+        },
+      } : {}),
+    },
     socialProviders: clientId && clientSecret ? { google: { clientId, clientSecret, prompt: "select_account" } } : {},
     session: { cookieCache: { enabled: true, maxAge: SESSION_DATA_TTL } },
     account: { encryptOAuthTokens: true },
