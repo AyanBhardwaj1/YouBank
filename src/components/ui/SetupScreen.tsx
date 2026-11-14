@@ -6,7 +6,15 @@ import { Icon } from "@/components/ui/Icon";
  * internals, a line saying it will be back. Which part is missing goes to the operator through
  * /api/health, never to visitors. Server component.
  */
-export function SetupScreen({ full = true }: { full?: boolean }) {
+/** What is still missing, in words an operator can act on (no setting's value, only which one). */
+const WHY: Record<string, string> = {
+  database: "Waiting on the database: set DATABASE_URL in the deployment's environment.",
+  auth: "Waiting on sign-in's secret: set BETTER_AUTH_SECRET in the deployment's environment, or check the database is reachable.",
+  schema: "Waiting on the database schema: it is being set up automatically; if this lasts, see /api/health.",
+};
+
+export function SetupScreen({ full = true, reason }: { full?: boolean; reason?: string }) {
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
   return (
     <main role="status" className={`flex items-center justify-center px-4 py-12 ${full ? "min-h-dvh" : "h-full min-h-[320px]"}`}>
       <div className="rise panel float w-full max-w-md p-6">
@@ -22,6 +30,11 @@ export function SetupScreen({ full = true }: { full?: boolean }) {
             <Icon name="Home" className="h-3.5 w-3.5" />Home
           </Link>
         </div>
+        {(reason || commit) && (
+          <p className="mt-4 border-t border-line pt-3 text-[10.5px] leading-relaxed text-muted">
+            {reason && WHY[reason] ? `${WHY[reason]} ` : ""}{commit ? `Build ${commit}.` : ""}
+          </p>
+        )}
       </div>
     </main>
   );

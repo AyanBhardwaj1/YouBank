@@ -135,7 +135,8 @@ export function moneySwitches(env: Env): { copyTrading: boolean; algoLive: boole
 
 /** Pure, for tests. */
 export function checkEnv(env: Env, production: boolean): { missing: string[]; invalid: string[] } {
-  const set = (k: string) => !!env[k]?.trim();
+  // The database address also counts under the name other integrations give it (src/db).
+  const set = (k: string) => !!env[k]?.trim() || (k === "DATABASE_URL" && !!env.POSTGRES_URL?.trim());
   const missing = [...REQUIRED, ...(production ? PRODUCTION : [])].filter((k) => !set(k));
   if (!set("OPENAI_API_KEY") && !set("ANTHROPIC_API_KEY")) missing.push("OPENAI_API_KEY or ANTHROPIC_API_KEY");
   const invalid: string[] = [];

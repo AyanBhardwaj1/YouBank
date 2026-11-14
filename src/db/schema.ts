@@ -82,6 +82,13 @@ export const authRecovery = pgTable("auth_recovery", {
   usedAt: timestamp("used_at", { withTimezone: true }),
 }, (t) => [index("auth_recovery_created_idx").on(t.createdAt)]);
 
+/** Settings the app made for itself on a fresh deploy (drizzle/0035): the sign-in secret when none is set. */
+export const appSecrets = pgTable("app_secrets", {
+  name: text("name").primaryKey(),
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 /** Saved peer groups (user-created or saved from an AI proposal). */
 export const peerGroups = pgTable("peer_groups", {
   id: serial("id").primaryKey(),

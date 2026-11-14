@@ -6,6 +6,12 @@ import type { Instrumentation } from "next";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // A fresh deploy sets up its own database and, if none is set, its sign-in secret, before the first page
+  // (src/lib/db/automigrate.ts); src/lib/setup.ts tries again if this did not finish.
+  if (process.env.DATABASE_URL || process.env.POSTGRES_URL) {
+    const { bootstrap } = await import("@/lib/setup");
+    await bootstrap().catch(() => undefined);
+  }
   const { checkEnv, featureStatus, moneySwitches, REQUIRED } = await import("@/lib/env");
   const production = process.env.NODE_ENV === "production";
   const { missing, invalid } = checkEnv(process.env, production);

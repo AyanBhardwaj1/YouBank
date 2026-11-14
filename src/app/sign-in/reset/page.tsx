@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * configured. The emailed link comes back here with ?token= (or ?error=INVALID_TOKEN when it expired).
  */
 export default async function ResetPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  if (!(await setupState().catch(() => ({ ready: true as const }))).ready) return <SetupScreen />;
+  const setup = await setupState().catch(() => ({ ready: true as const }));
+  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
   const q = await searchParams;
   const token = typeof q.token === "string" && /^[A-Za-z0-9_-]{8,200}$/.test(q.token) ? q.token : null;
   const expired = q.error === "INVALID_TOKEN";
