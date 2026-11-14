@@ -27,6 +27,7 @@ import { clearAiHistory } from "@/lib/client/ai-history";
 import { Icon } from "@/components/ui/Icon";
 import { LogoMark } from "@/components/brand/Logo";
 import { NotificationBell } from "@/components/news/NotificationBell";
+import { ChromeInBar } from "./InterfaceChrome";
 
 /** On Home's tab: how many decisions wait in the desk inbox. */
 function WaitingBadge() {
@@ -95,16 +96,16 @@ export function AppNav({ email }: { email: string }) {
     <div className="flex h-12 items-center gap-1.5 px-2 text-[11.5px] md:h-10">
       <button type="button" onClick={() => nav.setOpen(!nav.open)} aria-expanded={nav.open} aria-label={nav.open ? "Close the sidebar" : "Open all features and workflows"}
         title={`${nav.open ? "Close" : "All features and workflows"} (⌘\\)`}
-        className={`ctl hidden h-7 w-7 shrink-0 place-items-center transition-colors md:grid ${nav.open ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
+        className={`yb-side-btn ctl hidden h-7 w-7 shrink-0 place-items-center transition-colors md:grid ${nav.open ? "bg-accent-soft text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
         {nav.open ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
       </button>
-      <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11 max-md:min-w-8" aria-label="YouBank home">
+      <Link href="/app" className="yb-brand flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11 max-md:min-w-8" aria-label="YouBank home">
         <LogoMark size={18} id="nav" />
         <span className={`yb-wordmark font-semibold tracking-tight ${current && current.id !== "home" ? "max-md:hidden" : ""}`}><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
       </Link>
       {/* Phones: the page's name, as a native app's title bar has it. */}
       {current && current.id !== "home" && <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-fg md:hidden">{current.label}</span>}
-      <span className="hidden truncate text-muted 2xl:inline" title={`${ROLES[profile.role].label}: ${config.title}`}>· {config.title}</span>
+      <span className="yb-role hidden truncate text-muted 2xl:inline" title={`${ROLES[profile.role].label}: ${config.title}`}>· {config.title}</span>
       <nav aria-label="Pinned features" className="yb-pins ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex">
         {pinned.map((f) => <Tab key={f.id} f={f} active={current?.id === f.id} iconsOnly={iconsOnly} />)}
         <AnimatePresence>
@@ -115,10 +116,11 @@ export function AppNav({ email }: { email: string }) {
           <SlidersHorizontal className="h-3.5 w-3.5" />
         </button>
       </nav>
-      <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+      <div className="yb-right ml-auto flex shrink-0 items-center gap-1 md:gap-1.5">
+        <ChromeInBar />
         {status?.configured && <span className="num hidden text-[10.5px] text-muted 2xl:inline" title={`Model ${status.model}, reasoning ${status.effort}`}>{status.label ?? status.model}</span>}
         <button type="button" onClick={openPalette} onMouseEnter={preloadPalette} onFocus={preloadPalette} title="Go anywhere, change the look, or ask (⌘K)" aria-label="Search, go to, or ask"
-          className="ctl flex items-center gap-1.5 border border-line px-2 py-1 text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">
+          className="yb-search ctl flex items-center gap-1.5 border border-line px-2 py-1 text-muted transition hover:border-accent/50 hover:text-fg max-md:h-10 max-md:w-10 max-md:justify-center max-md:border-transparent max-md:px-0">
           <Icon name="Search" className="h-3.5 w-3.5 max-md:h-[18px] max-md:w-[18px]" />
           <span className="hidden lg:inline">Search or ask</span>
           <kbd className="hidden rounded border border-line px-1 font-mono text-[9.5px] text-faint lg:inline">⌘K</kbd>

@@ -5,9 +5,10 @@ import { moveWidget, nudgeWidget, toggleWidget, isWide, asAccent, BUILTIN_LOOKS,
 import { ACCENTS, DEFAULT_LOOK, accentInk, lookAttrs, lookCookie, normalizeDesk, normalizeLook, readLookCookie, recommendDesk, widgetsFor, WIDGETS } from "@/lib/desk/desk";
 import { featuresFor, normalizeNavPrefs } from "@/lib/nav";
 import { sitePath } from "@/lib/desktop/feed";
-import { INTERFACES, INTERFACE_META, chromeOf, interfacesFor, isInterface, suggestedInterface } from "@/lib/desk/interfaces";
+import { INTERFACES, INTERFACE_META, chromeOf, homeOf, interfacesFor, isInterface, matchFeature, pinsInTopBar, suggestedInterface } from "@/lib/desk/interfaces";
 import { ROLE_IDS } from "@/lib/roles";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 let pass = 0, fail = 0;
 const ok = (label: string, got: unknown, want: unknown) => {
@@ -140,24 +141,55 @@ console.log("sharing a setup");
 ok("desktop notifications: a full link (the Book's alerts) opens its own page; anything off-site falls back", [sitePath("https://youbank.app/report/week", "/app/news"), sitePath("/app/book?x=1", "/f"), sitePath("//evil.com/x", "/f"), sitePath("https://a.com//evil", "/f"), sitePath("javascript:alert(1)", "/f")], ["/report/week", "/app/book?x=1", "/f", "/f", "/f"]);
 console.log("interfaces");
 {
+  const others = INTERFACES.filter((i) => i !== "classic");
   ok("the default look is the Classic interface and sets no data-ui", [DEFAULT_LOOK.ui, lookAttrs(DEFAULT_LOOK).attrs["data-ui"]], ["classic", undefined]);
   ok("an unknown interface falls back to Classic", normalizeLook({ ui: "vaporwave" }).ui, "classic");
-  ok("eight interfaces besides Classic", INTERFACES.filter((i) => i !== "classic").length, 8);
-  for (const id of INTERFACES.filter((i) => i !== "classic")) ok(`${id}: sets data-ui and survives the cookie`, [lookAttrs(normalizeLook({ ui: id })).attrs["data-ui"], readLookCookie(lookCookie(normalizeLook({ ui: id }))).ui], [id, id]);
+  ok("twelve interfaces besides Classic, Bare, Spectacle, Prompt and Canvas among them", [others.length, ["bare", "spectacle", "prompt", "canvas"].every((id) => isInterface(id))], [12, true]);
+  for (const id of others) ok(`${id}: sets data-ui and survives the cookie`, [lookAttrs(normalizeLook({ ui: id })).attrs["data-ui"], readLookCookie(lookCookie(normalizeLook({ ui: id }))).ui], [id, id]);
   ok("isInterface accepts only the list", [isInterface("zen"), isInterface("ZEN"), isInterface(3)], [true, false, false]);
-  ok("every interface has a name, tagline and suits line", INTERFACES.every((id) => INTERFACE_META[id].name && INTERFACE_META[id].tagline.length > 20 && INTERFACE_META[id].suits), true);
-  ok("navigation moves: masthead, dock, rail and hidden all appear", [...new Set(INTERFACES.map((id) => chromeOf(id).nav))].sort(), ["dock", "hidden", "masthead", "rail", "topbar"]);
-  ok("no two interfaces share the same frame and colours", new Set(INTERFACES.map((id) => JSON.stringify([chromeOf(id), INTERFACE_META[id].preview.bg, INTERFACE_META[id].preview.font]))).size, INTERFACES.length);
+  ok("every interface has a name, tagline, suits line and signature", INTERFACES.every((id) => INTERFACE_META[id].name && INTERFACE_META[id].tagline.length > 20 && INTERFACE_META[id].suits && INTERFACE_META[id].signature.length > 10), true);
+  ok("navigation moves: twelve different places among thirteen interfaces", new Set(INTERFACES.map((id) => chromeOf(id).nav)).size, 12);
+  ok("no two interfaces share the same frame", new Set(INTERFACES.map((id) => JSON.stringify(chromeOf(id)))).size, INTERFACES.length);
+  ok("every interface composes Home its own way", new Set(INTERFACES.map(homeOf)).size, INTERFACES.length);
+  ok("every interface moves its own way", new Set(INTERFACES.map((id) => INTERFACE_META[id].motion)).size, INTERFACES.length);
+  ok("no two interfaces share colours and type", new Set(INTERFACES.map((id) => JSON.stringify([INTERFACE_META[id].preview.bg, INTERFACE_META[id].preview.font, INTERFACE_META[id].preview.accent]))).size, INTERFACES.length);
+  ok("Classic keeps its top bar and its Focus/Home/Desk Home", [chromeOf("classic"), homeOf("classic"), INTERFACE_META.classic.motion], [{ nav: "topbar", dock: false, statusStrip: false, editionLine: false, centered: false, frame: "none" }, "desk", "classic"]);
+  ok("pins stay in the top bar only where the top bar is the navigation", INTERFACES.filter(pinsInTopBar), ["classic", "bare", "broadsheet", "cockpit", "glass"]);
   ok("a markets person is offered Cockpit, an accountant Ledger, a student Bento", [suggestedInterface("markets"), suggestedInterface("accountant"), suggestedInterface("student")], ["cockpit", "ledger", "bento"]);
   for (const r of ROLE_IDS) {
     const list = interfacesFor(r).map((m) => m.id);
-    ok(`${r}: all nine, Classic first, the suggested one second`, [list.length, new Set(list).size, list[0], suggestedInterface(r) ? list[1] === suggestedInterface(r) : true], [9, 9, "classic", true]);
+    ok(`${r}: all thirteen, Classic first, the suggested one second`, [list.length, new Set(list).size, list[0], suggestedInterface(r) ? list[1] === suggestedInterface(r) : true], [13, 13, "classic", true]);
   }
-  const css = readFileSync("src/app/interfaces.css", "utf8");
-  for (const id of INTERFACES.filter((i) => i !== "classic")) ok(`${id}: its tokens are scoped to the app frame (the public site never changes)`, css.includes(`html[data-ui="${id}"]:has(.app-frame) {`), true);
-  ok("no interface rule reaches outside the app frame", css.split("\n").filter((l) => /^html\[data-ui/.test(l) && !l.includes(".app-frame") && !/ \.yb-(dock|strip|rail|edition)/.test(l)).length, 0);
-  ok("the look code keeps the interface", readLookCode(lookCode({ name: "x", theme: "terminal", look: normalizeLook({ ui: "swiss" }) }))?.look.ui, "swiss");
-  ok("setup codes carry the interface", readSetupCode(setupCode({ desk: normalizeDesk(undefined, "pe"), theme: "paper", look: normalizeLook({ ui: "ledger" }) }), "pe")?.look.ui, "ledger");
+  // Prompt's composer: a page's name goes there, anything else is asked.
+  const fs = featuresFor("markets");
+  ok("the composer goes to a page by name, prefix or part", [matchFeature("book", fs)?.id, matchFeature("/news", fs)?.id, matchFeature("go to terminal", fs)?.id, matchFeature("room", fs)?.id], ["book", "news", "terminal", "news"]);
+  ok("…and asks anything else", [matchFeature("What changed in NVDA's 10-Q?", fs), matchFeature("x", fs), matchFeature("", fs)], [null, null, null]);
+
+  const dir = "src/app/interfaces";
+  const files = readdirSync(dir).filter((f) => f.endsWith(".css"));
+  const css = files.map((f) => readFileSync(join(dir, f), "utf8")).join("\n");
+  const globals = readFileSync("src/app/globals.css", "utf8");
+  ok("every interface stylesheet is imported", files.every((f) => globals.includes(`@import "./interfaces/${f}";`)), true);
+  for (const id of others) ok(`${id}: its tokens are scoped to the app frame (the public site never changes)`, css.includes(`html[data-ui="${id}"]:has(.app-frame) {`), true);
+  for (const id of others) ok(`${id}: has its own stylesheet`, files.includes(`${id}.css`), true);
+  const loose = css.split("\n").filter((l) => /^html(\[data-ui|:is\(\[data-ui)/.test(l) && !l.includes(".app-frame") && !/ \.yb-[a-z-]+/.test(l));
+  ok("no interface rule reaches outside the app frame", loose, []);
+  // Each Home composition has its own lazily loaded component, registered with Home.
+  const dash = readFileSync("src/components/workspace/HomeDashboard.tsx", "utf8");
+  const homes = readdirSync("src/components/workspace/interfaces/homes");
+  for (const id of others) {
+    const comp = homeOf(id);
+    const file = `${comp[0].toUpperCase()}${comp.slice(1).replace("page", "Page")}Home.tsx`;
+    ok(`${id}: Home is its own component (${file}), loaded on demand`, [homes.includes(file), dash.includes(`${comp}: dynamic(() => import("./interfaces/homes/${file.replace(".tsx", "")}"))`)], [true, true]);
+  }
+  // Settings is the only place to choose one: never the landing page or the command palette.
+  const walk = (d: string): string[] => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : /\.(tsx?|css)$/.test(f) ? [p] : []; });
+  const outside = [...walk("src/components/marketing"), "src/components/workspace/CommandPalette.tsx", "src/components/workspace/PalettePanel.tsx", "src/app/page.tsx"];
+  const names = new RegExp(`\\b(${others.filter((id) => !["glass", "ledger", "canvas", "prompt", "bare", "zen"].includes(id)).map((id) => INTERFACE_META[id].name).join("|")})\\b`);
+  const leaks = outside.filter((f) => { const t = readFileSync(f, "utf8"); return /lib\/desk\/interfaces|data-ui|InterfacePicker|\bui:\s*["']|look\.ui/.test(t) || names.test(t); });
+  ok("no interface is advertised on the landing page or in the command palette", leaks, []);
+  ok("the look code keeps the interface", readLookCode(lookCode({ name: "x", theme: "terminal", look: normalizeLook({ ui: "spectacle" }) }))?.look.ui, "spectacle");
+  ok("setup codes carry the interface", readSetupCode(setupCode({ desk: normalizeDesk(undefined, "pe"), theme: "paper", look: normalizeLook({ ui: "canvas" }) }), "pe")?.look.ui, "canvas");
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

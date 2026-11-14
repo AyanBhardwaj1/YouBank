@@ -1,0 +1,72 @@
+/* =====================================================================================================
+   Prompt: command-first. No menus: one composer along the bottom goes to any page by name or asks the
+   assistant (interfaces/Composer.tsx), and Home is a conversation in which YouBank tells you about your
+   day, one message at a time (homes/ThreadHome.tsx). Warm near-black, soft round surfaces with no
+   borders, an amber accent, monospaced metadata.
+   ===================================================================================================== */
+html[data-ui="prompt"]:has(.app-frame) {
+  --bg: #0d0d0c; --panel: #171716; --elevated: #201f1d; --raised: #262523; --line: #2b2a27; --line-strong: #44423d;
+  --fg: #edebe4; --muted: #a8a59c; --faint: #8a877e; --accent: #e8b974; --accent-soft: rgba(232, 185, 116, 0.13); --accent-fg: #1b1306;
+  --pos: #8fd19e; --neg: #f19a8b; --info: #9cc3e8; --chart-1: #e8b974; --chart-dim: #44423d; --chart-emphasis: #f19a8b;
+  --radius: 18px; --radius-sm: 12px; --bg-image: none; --shadow-lg: 0 30px 70px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px #2b2a27; --glow: none; --glass: 1;
+  color-scheme: dark;
+}
+html[data-ui="prompt"] .app-frame { font-size: 12.5px; background: radial-gradient(80% 50% at 50% 110%, rgba(232, 185, 116, 0.08), transparent 70%), #0d0d0c; }
+html[data-ui="prompt"] .app-frame .yb-topbar { background: transparent; border-bottom-color: transparent; backdrop-filter: none; }
+html[data-ui="prompt"] .app-frame .yb-wordmark { font-weight: 500; letter-spacing: -0.01em; }
+html[data-ui="prompt"] .app-frame .yb-wordmark span:last-child { color: var(--fg); }
+html[data-ui="prompt"] .app-frame .yb-right :is(button, a) { border-color: transparent; }
+@media (min-width: 768px) {
+  html[data-ui="prompt"] .app-frame .yb-main { padding-bottom: 104px; }
+  html[data-ui="prompt"] .app-frame .yb-search { display: none; }
+}
+html[data-ui="prompt"] .app-frame :is(.panel, .home-card) { border-color: transparent; background: var(--panel); }
+html[data-ui="prompt"] .app-frame h1 { font-weight: 500; letter-spacing: -0.025em; }
+html[data-ui="prompt"] .app-frame .uppercase { font-family: var(--font-mono); letter-spacing: 0.04em; }
+html[data-ui="prompt"] .app-frame .bg-accent { border-radius: 999px; }
+
+/* The composer. */
+.yb-composer { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 45; width: min(760px, calc(100% - 48px)); }
+.yb-composer form { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 22px; background: #1c1b19; border: 1px solid #34322e; box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.04); transition: border-color 160ms ease, box-shadow 160ms ease; }
+.yb-composer form:focus-within { border-color: #e8b974; box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.9), 0 0 0 4px rgba(232, 185, 116, 0.12); }
+.yb-composer input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 15px; color: var(--fg); }
+.yb-composer input::placeholder { color: var(--faint); }
+.yb-composer input:focus-visible { outline: none; }
+.yb-composer-go { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 14px; background: var(--accent); color: var(--accent-fg); transition: transform 160ms ease, opacity 160ms ease; }
+.yb-composer-go:disabled { opacity: 0.35; }
+.yb-composer-go:not(:disabled):hover { transform: translateY(-1px); }
+.yb-composer-list { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); padding: 6px; border-radius: 18px; background: #1c1b19; border: 1px solid #34322e; box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.9); }
+.yb-composer-list [role="option"] { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; color: var(--fg); font-size: 13px; cursor: pointer; }
+.yb-composer-list [role="option"][aria-selected="true"] { background: rgba(232, 185, 116, 0.12); color: #f5d7a8; }
+.yb-composer-hint { display: flex; gap: 14px; justify-content: center; margin-top: 7px; font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
+.yb-composer-hint kbd { color: var(--muted); }
+
+/* Home: the thread. Each message waits its turn behind a typing indicator (CSS only, from the first paint). */
+.pr-thread { max-width: 760px; margin: 0 auto; padding: 28px 20px 40px; }
+.pr-msg { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 12px; margin-top: 22px; animation: pr-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+/* The indicator sits over where the message will be, so nothing moves when it gives way. */
+.pr-msg .pr-typing { position: absolute; left: 42px; top: 22px; display: inline-flex; gap: 4px; padding: 10px 12px; border-radius: 14px; background: var(--panel); pointer-events: none; animation: pr-typing-out 160ms ease both; animation-delay: calc(var(--d, 0ms) + 520ms); }
+.pr-msg .pr-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: pr-dot 900ms ease-in-out infinite; }
+.pr-msg .pr-typing i:nth-child(2) { animation-delay: 150ms; }
+.pr-msg .pr-typing i:nth-child(3) { animation-delay: 300ms; }
+.pr-msg .pr-body { grid-column: 2; min-width: 0; animation: pr-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + 520ms); }
+.pr-msg .pr-avatar { grid-row: span 2; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: #201f1d; border: 1px solid #34322e; }
+.pr-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); margin-bottom: 6px; }
+.pr-meta b { color: var(--muted); font-weight: 500; }
+.pr-bubble { font-size: 15px; line-height: 1.55; color: var(--fg); }
+.pr-me { margin-left: auto; width: fit-content; max-width: 80%; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: rgba(232, 185, 116, 0.14); color: #f5e3c4; font-size: 14px; }
+.pr-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pr-quick a, .pr-quick button { border-radius: 999px; border: 1px solid #3a3833; padding: 6px 12px; font-size: 12.5px; color: var(--fg); transition: border-color 160ms ease, background-color 160ms ease; }
+.pr-quick a:hover, .pr-quick button:hover { border-color: var(--accent); background: rgba(232, 185, 116, 0.08); }
+@keyframes pr-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes pr-typing-out { to { opacity: 0; visibility: hidden; } }
+@keyframes pr-dot { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .pr-msg, .pr-msg .pr-body { animation: none; } .pr-msg .pr-typing { display: none; } }
+html[data-motion="reduced"] .pr-msg .pr-typing { display: none; }
+
+/* Phone: the tab bar is a quiet strip with an amber active word. */
+html[data-ui="prompt"] .app-frame .yb-tabbar { background: #121211; border-top-color: #2b2a27; }
+html[data-ui="prompt"] .app-frame .yb-tabbar .bg-accent { height: 3px; width: 18px; }
+.pr-widget section > div:first-child > h2 { display: none; }
+.pr-widget section > div:first-child:has(> h2:only-child) { display: none; }
+.pr-msg:has(> .pr-widget:empty) { display: none; }

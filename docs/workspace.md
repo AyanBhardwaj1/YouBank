@@ -93,21 +93,33 @@ Both are base64url JSON, and every value goes through the same normalizers as st
 
 ## Interfaces
 
-Settings → Style → Interface picks the whole frame of the signed-in app, nine ways (`src/lib/desk/interfaces.ts`). A theme only recolours the Classic frame; an interface changes where the navigation lives, what a panel is, the type, the density and the colours:
+Settings → Style → Interface picks the whole frame of the signed-in app, thirteen ways (`src/lib/desk/interfaces.ts`). A theme only recolours the Classic frame; an interface changes the structure, so switching one feels like opening a different app over the same data and features: where the navigation lives, how Home is composed, how things move, the type and density, the colours, and one signature detail.
 
-| Interface | Navigation | Panels | Suggested for |
-|---|---|---|---|
-| Classic | top bar | the theme's boxes | everyone (default) |
-| Broadsheet | masthead with an edition line | ruled columns, serif headlines | consultants |
-| Cockpit | top bar and a live status strip | bracketed instruments, monospaced | markets |
-| Glass | floating bar and a bottom dock | frosted panes over colour | VC |
-| Swiss | numbered index rail | heavy rules, big grotesk type | PE |
-| Ledger | top bar and a folio strip | ruled green paper, red margin | accountants, bankers |
-| Blueprint | top bar and a title block | dashed lines on grid paper | corporate finance |
-| Zen | none (⌘K and the menu) | one calm centred column | anyone who wants focus |
-| Bento | bottom dock | rounded tiles in colour | students |
+| Interface | Navigation (desktop) | Home | Motion | Signature | Suggested for |
+|---|---|---|---|---|---|
+| Classic | top bar | Focus, Home or Desk | the sliding tab | (unchanged) | everyone (default) |
+| Bare | one line of numbered text links | a plain document with a table of contents | none at all | 1–9 jump to pinned pages, / searches | keyboard people |
+| Spectacle | a glowing orb that blooms into the features | a title sequence and a reel of tilting cards | pages arrive out of a blur; springs | the orb leans toward the pointer; an aurora and a pointer light | demos, pitches |
+| Prompt | a composer along the bottom (no menus) | a conversation, one message per widget | messages type in | type a page's name to go, anything else is asked | people who type |
+| Canvas | a floating tool rail | a board you pan and zoom, with a minimap | a zoom-in | selection handles; the dots move with the board | visual thinkers |
+| Broadsheet | a nameplate with sections, an edition line | a front page: banner, lead with drop cap, ruled columns | ink settling (fade) | the drop cap and column rules | consultants |
+| Cockpit | bracketed function keys (F1…), a status strip | a radar of the watchlist, a big clock, gauges, numbered channels | a boot flicker | blips flare as the sweep passes | markets |
+| Glass | an OS menu bar and a magnifying dock; pages in windows | a desktop: clock, Spotlight, icons, widget windows | windows open from the dock | the dock swells under the pointer | VC |
+| Swiss | a numbered index rail | a poster: the date as a giant numeral, numbered sections | a hard wipe | the red rule | PE |
+| Ledger | thumb tabs cut into the book's edge, a folio strip | an open book: accounts left, journal right | pages turn | the gutter and the tabs | accountants, bankers |
+| Blueprint | drawing-sheet tabs, a title block | a drawing whose details draw themselves in | a sheet being drawn | crosshair coordinates in the title block | corporate finance |
+| Zen | none (⌘K, the menu, G then a letter) | one calm column, widgets revealed as you scroll | slow fades | a circle that breathes | anyone who wants focus |
+| Bento | a dock of big squishy buttons | a box of tiles in every size with your numbers | bounces | tiles squish when pressed | students |
 
-It is `look.ui` in the stored look and the `yb-look` cookie, set on `<html data-ui>` by `lookAttrs`, so the first paint already has it. `src/app/interfaces.css` draws each one, scoped to pages with the app frame (`:has(.app-frame)`), so the public site never changes. `src/components/workspace/InterfaceChrome.tsx` adds the dock, the rail, the status strip and the edition line, all desktop-only: on a phone every interface keeps the bottom tab bar. The hooks it styles are `.yb-topbar`, `.yb-wordmark`, `.yb-pins`, `.yb-pill` and `.yb-main`. Interfaces are offered only in Settings, never on the landing page or in the command palette.
+How it fits together:
+
+- `look.ui` in the stored look and the `yb-look` cookie, set on `<html data-ui>` by `lookAttrs`, so the first paint already has it.
+- `src/app/interfaces/*.css` (imported from `globals.css`): `base.css` for what they share, then one file per interface with its tokens (scoped to `html[data-ui="x"]:has(.app-frame)`, so the public site never changes), its frame and its Home. The hooks in the frame are `.yb-topbar`, `.yb-side-btn`, `.yb-brand`, `.yb-wordmark`, `.yb-role`, `.yb-pins`, `.yb-pill`, `.yb-right`, `.yb-search`, `.yb-main` and `.yb-tabbar`.
+- `src/components/workspace/InterfaceChrome.tsx` places each interface's furniture (edition line, menu-bar clock, rails, dock, orb, composer, thumb tabs, sheet tabs, status strip). The larger pieces live in `src/components/workspace/interfaces/` and load only for the interface that uses them; `Effects.tsx` holds the behaviour (how a page arrives, Bare's keys, Spectacle's light, Blueprint's crosshair, Glass's window title). Page arrivals use the Web Animations API on `.yb-main`, so nothing remounts and no transform is left behind.
+- Home: `HomeDashboard` keeps Classic's three layouts and hands every other interface to its own composition in `src/components/workspace/interfaces/homes/` (each a lazily loaded chunk). They reuse the same widgets, stores and Arrange mode through `home/Kit.tsx`; nothing is fetched twice.
+- Motion honours `prefers-reduced-motion` and Settings → Style's "Less motion" (`html[data-motion="reduced"]`): springs, sweeps, the aurora, tilt, magnetism and page arrivals stand still.
+- On a phone every interface keeps the bottom tab bar, drawn in its own style, and its Home stacks; the desktop furniture is hidden below 768px.
+- Interfaces are offered only in Settings (with a live miniature of each, `interfaces/Miniatures.tsx`, pure CSS that plays on hover, focus and for the one in use), never on the landing page or in the command palette; `scripts/test-desk.ts` checks this.
 
 ## Tests
 

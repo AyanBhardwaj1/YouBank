@@ -1,0 +1,71 @@
+/* =====================================================================================================
+   Broadsheet: a financial paper. A centred nameplate with the sections in small capitals beneath it and
+   an edition line under that; Newsreader for text, Instrument Serif for headlines; ruled columns instead
+   of boxes; one red. Home is a front page: a banner headline, a lead story with a drop cap and the rest
+   set in ruled columns (homes/FrontPageHome.tsx). Pages arrive like ink settling: a fade, nothing slides.
+   ===================================================================================================== */
+html[data-ui="broadsheet"]:has(.app-frame) {
+  --bg: #f4efe4; --panel: #f4efe4; --elevated: #ece5d7; --raised: #fbf8f1; --line: #d3c9b6; --line-strong: #1b1a17;
+  --fg: #1b1a17; --muted: #5a5449; --faint: #6b6357; --accent: #9b1c1c; --accent-soft: rgba(155, 28, 28, 0.08); --accent-fg: #ffffff;
+  --pos: #1f6b3a; --neg: #a61b1b; --info: #1f4e79; --chart-1: #1f4e79; --chart-dim: #c9bfae; --chart-emphasis: #9b1c1c;
+  --radius: 0px; --radius-sm: 0px; --bg-image: none; --shadow-lg: 0 18px 40px rgba(40, 30, 10, 0.18); --glow: none; --glass: 0;
+  --font-sans: var(--font-newsreader), "Iowan Old Style", Charter, "Palatino Linotype", Georgia, serif;
+  color-scheme: light;
+}
+html[data-ui="broadsheet"] .app-frame { font-size: 13.5px; background: #f4efe4; }
+html[data-ui="broadsheet"] .app-frame .yb-topbar { background: var(--bg); border-bottom: 1px solid var(--fg); backdrop-filter: none; }
+/* The nameplate. */
+@media (min-width: 768px) {
+  html[data-ui="broadsheet"] .app-frame .yb-topbar > div { display: grid; grid-template-columns: 1fr auto 1fr; grid-template-areas: "side brand right" "pins pins pins"; height: auto; padding: 10px 16px 0; row-gap: 2px; }
+  html[data-ui="broadsheet"] .app-frame .yb-side-btn { grid-area: side; justify-self: start; }
+  html[data-ui="broadsheet"] .app-frame .yb-brand { grid-area: brand; justify-self: center; }
+  html[data-ui="broadsheet"] .app-frame .yb-brand svg { display: none; }
+  html[data-ui="broadsheet"] .app-frame .yb-wordmark { font-family: var(--font-display); font-size: 54px; line-height: 1; font-weight: 400; letter-spacing: -0.02em; }
+  html[data-ui="broadsheet"] .app-frame .yb-wordmark span { color: var(--fg) !important; }
+  html[data-ui="broadsheet"] .app-frame .yb-role { display: none; }
+  html[data-ui="broadsheet"] .app-frame .yb-right { grid-area: right; justify-self: end; }
+  html[data-ui="broadsheet"] .app-frame .yb-pins { grid-area: pins; justify-content: center; margin: 6px -16px 0; padding: 3px 0; border-top: 1px solid var(--fg); overflow: visible; }
+  html[data-ui="broadsheet"] .app-frame .yb-pins > div + div { border-left: 1px solid var(--line); }
+}
+html[data-ui="broadsheet"] .app-frame .yb-pins a { font-variant-caps: all-small-caps; letter-spacing: 0.1em; font-size: 14px; color: var(--fg); padding: 2px 14px; }
+html[data-ui="broadsheet"] .app-frame .yb-pins a svg { display: none; }
+html[data-ui="broadsheet"] .app-frame .yb-pins a[aria-current="page"] { color: var(--accent); }
+html[data-ui="broadsheet"] .app-frame .yb-pill { background: transparent; border-bottom: 2px solid var(--accent); border-radius: 0; }
+html[data-ui="broadsheet"] .app-frame .yb-right :is(button, a) { border-color: transparent; }
+html[data-ui="broadsheet"] .yb-edition { border-bottom: 3px double var(--fg); font-family: var(--font-newsreader), Georgia, serif; }
+
+html[data-ui="broadsheet"] .app-frame .panel { background: transparent; border: 0; border-top: 1px solid var(--fg); border-radius: 0; }
+html[data-ui="broadsheet"] .app-frame :is(.home-card, .home-hero) { background: transparent; border: 0; border-top: 2px solid var(--fg); border-radius: 0; }
+html[data-ui="broadsheet"] .app-frame h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.02; letter-spacing: -0.015em; text-wrap: balance; }
+html[data-ui="broadsheet"] .app-frame h2 { font-family: var(--font-display); font-weight: 400; font-size: 21px; letter-spacing: -0.005em; }
+html[data-ui="broadsheet"] .app-frame h2.uppercase { font-family: var(--font-newsreader), serif; font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--fg); }
+html[data-ui="broadsheet"] .app-frame h3 { font-weight: 700; }
+html[data-ui="broadsheet"] .app-frame .uppercase { letter-spacing: 0.14em; }
+html[data-ui="broadsheet"] .app-frame table th { border-bottom: 1px solid var(--fg); }
+html[data-ui="broadsheet"] .app-frame .lift:hover { transform: none; box-shadow: none; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+html[data-ui="broadsheet"] .app-frame .bg-accent { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-size: 14px; }
+
+/* Home: the front page. */
+.bs-front { max-width: 1280px; margin: 0 auto; padding: 18px 28px 64px; }
+.bs-banner { text-align: center; padding: 16px 0 14px; border-bottom: 1px solid var(--fg); }
+.bs-banner h1 { font-size: clamp(40px, 6vw, 84px) !important; line-height: 0.96 !important; letter-spacing: -0.025em !important; }
+.bs-deck { font-style: italic; font-size: 17px; color: var(--muted); margin-top: 8px; }
+.bs-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent); }
+.bs-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0; margin-top: 18px; }
+.bs-grid > * { padding: 0 24px; }
+.bs-grid > * + * { border-left: 1px solid var(--line-strong); }
+.bs-grid > :first-child { padding-left: 0; }
+.bs-grid > :last-child { padding-right: 0; }
+.bs-lead .panel { border-top: 0 !important; }
+.bs-lead .panel > div:first-child { border-bottom: 0; padding-left: 0; }
+.bs-lead :is(p, li):first-of-type::first-letter { float: left; font-family: var(--font-display); font-size: 4.2em; line-height: 0.82; padding: 4px 8px 0 0; color: var(--accent); }
+.bs-cols { columns: 3 260px; column-gap: 48px; column-rule: 1px solid var(--line); margin-top: 28px; padding-top: 14px; border-top: 3px double var(--fg); }
+.bs-cols > * { break-inside: avoid; margin-bottom: 26px; }
+.bs-section-title { display: flex; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--fg); padding-bottom: 4px; margin-bottom: 10px; }
+.bs-letters form { border-bottom: 1px solid var(--fg); }
+@media (max-width: 1023.98px) { .bs-grid { grid-template-columns: minmax(0, 1fr); } .bs-grid > * { padding: 0; border: 0 !important; } .bs-grid > * + * { margin-top: 20px; } }
+
+/* Phone: small capitals on paper. */
+html[data-ui="broadsheet"] .app-frame .yb-tabbar { background: #f4efe4; border-top: 3px double #1b1a17; backdrop-filter: none; }
+html[data-ui="broadsheet"] .app-frame .yb-tabbar :is(a, button) > span:last-child { font-variant-caps: all-small-caps; letter-spacing: 0.08em; font-size: 13px; }
+html[data-ui="broadsheet"] .app-frame .yb-tabbar .bg-accent { border-radius: 0; height: 2px; }

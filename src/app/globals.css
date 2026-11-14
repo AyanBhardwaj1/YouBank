@@ -1,6 +1,18 @@
 @import "tailwindcss";
 @import "./themes.css";
-@import "./interfaces.css";
+@import "./interfaces/base.css";
+@import "./interfaces/bare.css";
+@import "./interfaces/spectacle.css";
+@import "./interfaces/prompt.css";
+@import "./interfaces/canvas.css";
+@import "./interfaces/broadsheet.css";
+@import "./interfaces/cockpit.css";
+@import "./interfaces/glass.css";
+@import "./interfaces/swiss.css";
+@import "./interfaces/ledger.css";
+@import "./interfaces/blueprint.css";
+@import "./interfaces/zen.css";
+@import "./interfaces/bento.css";
 
 /*
  * YouBank design tokens. The default (:root) is the Terminal theme; every other theme overrides the same
