@@ -2,7 +2,7 @@
  * The Cloudflare pieces end to end, against a local Worker and a local YouBank (not run in CI: it needs both):
  *   cd cloudflare && npx wrangler dev --port 8787            (with .dev.vars: APP_SECRET, APP_URL=http://localhost:3000)
  *   CF_WORKER_URL=http://localhost:8787 CF_WORKER_SECRET=… pnpm dev
- *   CF_WORKER_URL=… CF_WORKER_SECRET=… DATABASE_URL=… pnpm exec tsx scripts/test-cloudflare-local.ts <userId>
+ *   CF_WORKER_URL=… CF_WORKER_SECRET=… DATABASE_URL=… pnpm exec tsx scripts/e2e-cloudflare.ts <userId>
  * Checks: twenty ledger entries appended at once through the Durable Object land as one gap-free chain that
  * verifies; an entry whose insert was lost is handed back and written on the next append; a thesis agent wakes,
  * calls YouBank, logs the tick and schedules itself; the nightly Workflow runs to completion over a real book.
@@ -20,7 +20,7 @@ const ok = (label: string, cond: boolean, detail?: unknown) => { if (cond) { pas
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  if (!userId || !workerConfig()) throw new Error("usage: CF_WORKER_URL=… CF_WORKER_SECRET=… tsx scripts/test-cloudflare-local.ts <userId>");
+  if (!userId || !workerConfig()) throw new Error("usage: CF_WORKER_URL=… CF_WORKER_SECRET=… tsx scripts/e2e-cloudflare.ts <userId>");
   const db = requireDb();
   ok("the Worker answers", !!(await callWorker<{ ok: boolean }>("/health"))?.ok);
   ok("the ledger and the Thesis Agent run on Cloudflare", cfOn("ledger") && cfOn("thesis") && cfOn("workflow"));

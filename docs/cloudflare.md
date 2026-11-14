@@ -70,7 +70,7 @@ down.
   ```sh
   cd cloudflare && printf 'APP_SECRET=<secret>\nAPP_URL=http://localhost:3000\n' > .dev.vars && npx wrangler dev --port 8787
   CF_WORKER_URL=http://localhost:8787 CF_WORKER_SECRET=<secret> pnpm dev
-  CF_WORKER_URL=http://localhost:8787 CF_WORKER_SECRET=<secret> DATABASE_URL=… pnpm exec tsx scripts/test-cloudflare-local.ts <userId>
+  CF_WORKER_URL=http://localhost:8787 CF_WORKER_SECRET=<secret> DATABASE_URL=… pnpm exec tsx scripts/e2e-cloudflare.ts <userId>
   cd cloudflare && npx tsx test/mcp-local.ts <YouBank API key>
   ```
 - `pnpm exec tsx scripts/test-prod.ts` covers the gateway, the Worker settings and the R2 picture and filing rules.
