@@ -6,6 +6,7 @@
 import { inngest, metered, type Steps } from "@/lib/edge/infra/jobs";
 import { flushUsage } from "@/lib/edge/infra/usage";
 import { publishOddsSignals, publishPulseSignals } from "./adapters/edge";
+import { publishPredictSignals } from "./adapters/predict";
 import { buildFactors, refreshFactsSlice } from "./factors/build";
 import { publishEventCards } from "./insiders/cards";
 import { pollInsiders, publishInsiderSignals } from "./insiders/store";
@@ -31,8 +32,9 @@ export const quantNightly = inngest.createFunction(
     const factors = await s.run("factors", () => buildFactors(Date.now() + 220_000));
     const rates = new Date().getUTCDay() === 5 ? await s.run("base-rates", () => baseRatesPass(Date.now() + 220_000)) : null;
     const targets = await s.run("targets", () => targetsPass(Date.now() + 200_000));
-    const signals = await s.run("signals", async () => ({ insiders: (await publishInsiderSignals(Date.now() + 100_000)).stored, pulse: (await publishPulseSignals()).stored, odds: (await publishOddsSignals()).stored }));
-    return { refreshed, facts, factors, rates, targets, signals };
+    const signals = await s.run("signals", async () => ({ insiders: (await publishInsiderSignals(Date.now() + 100_000)).stored, pulse: (await publishPulseSignals()).stored, odds: (await publishOddsSignals()).stored, predict: (await publishPredictSignals().catch(() => ({ stored: 0 }))).stored }));
+    const predict = await s.run("predict-watches", async () => (await import("@/lib/predict/watch")).predictPass(Date.now() + 200_000).catch(() => null));
+    return { refreshed, facts, factors, rates, targets, signals, predict };
   },
 );
 

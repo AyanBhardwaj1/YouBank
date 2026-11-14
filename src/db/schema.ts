@@ -2507,3 +2507,46 @@ export const researchLedger = pgTable("research_ledger", {
   prev: text("prev").notNull().default(""),
   hash: text("hash").notNull(),
 }, (t) => [uniqueIndex("research_ledger_user_seq_uidx").on(t.userId, t.seq)]);
+
+/**
+ * Prediction markets (src/lib/predict, migration 0037): markets a person watches for a probability move,
+ * alerted through the Newsroom's delivery (news_notifications) when the price moves `threshold` from
+ * `base_prob`, the price last alerted on.
+ */
+export const predictWatches = pgTable("predict_watches", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  marketKey: text("market_key").notNull(),
+  eventId: text("event_id").notNull().default(""),
+  venue: text("venue").notNull(),
+  title: text("title").notNull(),
+  url: text("url").notNull().default(""),
+  threshold: real("threshold").notNull().default(0.05),
+  baseProb: real("base_prob"),
+  lastProb: real("last_prob"),
+  resolvedSent: boolean("resolved_sent").notNull().default(false),
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  alertedAt: timestamp("alerted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("predict_watches_user_market_uidx").on(t.userId, t.marketKey), index("predict_watches_checked_idx").on(t.checkedAt)]);
+
+/** Paper forecasts on prediction markets: one per person, market and day; scored (Brier) when the market resolves. */
+export const predictForecasts = pgTable("predict_forecasts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => authUsers.id, { onDelete: "cascade" }),
+  marketKey: text("market_key").notNull(),
+  eventId: text("event_id").notNull().default(""),
+  venue: text("venue").notNull(),
+  title: text("title").notNull(),
+  url: text("url").notNull().default(""),
+  p: real("p").notNull(),
+  /** The market's price when the forecast was made, scored beside it. */
+  marketP: real("market_p"),
+  day: date("day").notNull(),
+  closeTime: timestamp("close_time", { withTimezone: true }),
+  outcome: integer("outcome"),
+  brier: real("brier"),
+  marketBrier: real("market_brier"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("predict_forecasts_user_market_day_uidx").on(t.userId, t.marketKey, t.day), index("predict_forecasts_open_idx").on(t.resolvedAt, t.marketKey)]);

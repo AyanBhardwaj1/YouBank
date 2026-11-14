@@ -138,18 +138,18 @@ export function normalizeDesk(raw: unknown, role: RoleId): DeskPrefs {
 /* ---------------- Setting it up for the person ---------------- */
 
 /** Every optional feature, so a recommendation can say what it hid and why. */
-const OPTIONAL: NavId[] = ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crypto", "copy", "algo", "quant", "crm", "calendar", "collab", "library", "team"];
+const OPTIONAL: NavId[] = ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crypto", "copy", "algo", "quant", "predict", "crm", "calendar", "collab", "library", "team"];
 
 /** What each role starts with: features shown, the Home layout, and what goes in the top bar. */
 const ROLE_SETUP: Record<RoleId, { show: NavId[]; layout: HomeLayout; pinned?: NavId[] }> = {
   banker: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "crm", "news"] },
-  pe: { show: ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team", "quant"], layout: "desk", pinned: ["home", "terminal", "vc", "studio", "crm"] },
+  pe: { show: ["book", "terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team", "quant", "predict"], layout: "desk", pinned: ["home", "terminal", "vc", "studio", "crm"] },
   vc: { show: ["terminal", "news", "tools", "studio", "edge", "vc", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "vc", "crm", "news", "tools"] },
-  markets: { show: ["book", "terminal", "news", "tools", "studio", "edge", "quant", "copy", "algo", "calendar", "library", "team"], layout: "desk", pinned: ["home", "book", "terminal", "news", "quant", "edge"] },
+  markets: { show: ["book", "terminal", "news", "tools", "studio", "edge", "quant", "copy", "algo", "calendar", "library", "team", "predict"], layout: "desk", pinned: ["home", "book", "terminal", "news", "quant", "edge"] },
   corpfin: { show: ["terminal", "news", "tools", "studio", "edge", "calendar", "collab", "library", "team"], layout: "desk", pinned: ["home", "terminal", "studio", "tools", "news"] },
   consultant: { show: ["terminal", "news", "tools", "studio", "edge", "crm", "calendar", "collab", "library", "team"], layout: "home", pinned: ["home", "tools", "studio", "news", "crm"] },
   accountant: { show: ["terminal", "news", "tools", "studio", "calendar", "collab", "library", "team"], layout: "focus", pinned: ["home", "tools", "terminal", "studio"] },
-  student: { show: ["terminal", "news", "tools", "studio", "edge", "library", "calendar"], layout: "home", pinned: ["home", "terminal", "tools", "news", "studio"] },
+  student: { show: ["terminal", "news", "tools", "studio", "edge", "library", "calendar", "predict"], layout: "home", pinned: ["home", "terminal", "tools", "news", "studio"] },
 };
 
 /** Words in a person's goals (or their own description) that switch features on. */
@@ -163,6 +163,7 @@ const KEYWORDS: [RegExp, NavId[]][] = [
   [/\b(startups?|venture|seed|series [a-d]|form d|private (markets?|companies)|sourcing)\b/i, ["vc"]],
   [/\b(models?|dcf|lbo|decks?|pitch ?books?|excel|powerpoint|spreadsheets?)\b/i, ["studio"]],
   [/\b(satellite|alternative data|alt data|supply chain|deal radar|precedents?|theses|thesis)\b/i, ["edge"]],
+  [/\b(prediction markets?|kalshi|polymarket|event contracts?|event odds)\b/i, ["predict"]],
   [/\b(news|headlines|briefs?|morning)\b/i, ["news"]],
   [/\b(team|colleagues|together|collaborat\w*)\b/i, ["team", "collab"]],
 ];

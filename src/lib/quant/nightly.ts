@@ -11,6 +11,7 @@ import { r2Ready } from "@/lib/edge/infra/r2";
 import { describeFailure } from "@/lib/errors";
 import { CURATED } from "@/lib/copytrade/funds";
 import { publishOddsSignals, publishPulseSignals } from "./adapters/edge";
+import { publishPredictSignals } from "./adapters/predict";
 import { syncCopyTarget, syncFundTarget } from "./adapters/copy13f";
 import { CATALOG, computeBaseRate, storedEvents } from "./events/rates";
 import { buildFactors, refreshFactsSlice } from "./factors/build";
@@ -86,6 +87,8 @@ export async function nightlyInline(deadline: number, now = new Date()): Promise
   if (left() > 20_000) await part("targets", out, () => targetsPass(Date.now() + Math.min(40_000, left() - 15_000)));
   if (left() > 10_000) await part("insiders", out, () => pollInsiders(Date.now() + Math.min(30_000, left() - 8_000)));
   if (left() > 8_000) await part("cards", out, () => publishEventCards(Date.now() + Math.min(15_000, left() - 6_000)));
-  if (left() > 5_000) await part("signals", out, async () => ({ insiders: await publishInsiderSignals(Date.now() + 20_000).catch(() => null), pulse: await publishPulseSignals().catch(() => null), odds: await publishOddsSignals().catch(() => null) }));
+  if (left() > 5_000) await part("signals", out, async () => ({ insiders: await publishInsiderSignals(Date.now() + 20_000).catch(() => null), pulse: await publishPulseSignals().catch(() => null), odds: await publishOddsSignals().catch(() => null), predict: await publishPredictSignals().catch(() => null) }));
+  // Prediction-market watches and forecasts once a day at least (/api/predict/cron runs it hourly where scheduled).
+  if (left() > 15_000) await part("predict", out, async () => (await import("@/lib/predict/watch")).predictPass(Date.now() + Math.min(60_000, left() - 5_000)));
   return out;
 }

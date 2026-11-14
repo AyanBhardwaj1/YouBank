@@ -1,0 +1,53 @@
+{
+  "data": [
+    {
+      "id": "gem-evt-1201",
+      "ticker": "FEDDEC26",
+      "title": "Fed decision in December 2026",
+      "description": "The outcome of the FOMC meeting concluding December 9, 2026.",
+      "category": "Economics",
+      "status": "active",
+      "expiryDate": "2026-12-09T19:00:00.000Z",
+      "volume": "2450210.55",
+      "contracts": [
+        {
+          "id": "gem-ctr-9001",
+          "label": "Cut 25 bps",
+          "instrumentSymbol": "GEMI-FEDDEC26-CUT25",
+          "status": "active",
+          "expiryDate": "2026-12-09T19:00:00.000Z",
+          "termsAndConditionsUrl": "https://www.gemini.com/legal/predictions",
+          "prices": { "bestBid": "0.63", "bestAsk": "0.65", "lastTradePrice": "0.64" }
+        },
+        {
+          "id": "gem-ctr-9002",
+          "label": "Hold",
+          "instrumentSymbol": "GEMI-FEDDEC26-HOLD",
+          "status": "active",
+          "expiryDate": "2026-12-09T19:00:00.000Z",
+          "prices": { "bestBid": "0.33", "bestAsk": "0.36", "lastTradePrice": "0.35" }
+        }
+      ]
+    },
+    {
+      "id": "gem-evt-1300",
+      "ticker": "BTC100KDEC26",
+      "title": "Bitcoin above $100,000 on December 31, 2026?",
+      "category": "Crypto",
+      "status": "active",
+      "expiryDate": "2026-12-31T22:00:00.000Z",
+      "volume": "880200.00",
+      "contracts": [
+        {
+          "id": "gem-ctr-9100",
+          "label": "Yes",
+          "instrumentSymbol": "GEMI-BTC100KDEC26-YES",
+          "status": "active",
+          "expiryDate": "2026-12-31T22:00:00.000Z",
+          "prices": { "bestBid": "0.41", "bestAsk": "0.44", "lastTradePrice": null }
+        }
+      ]
+    }
+  ],
+  "pagination": { "limit": 50, "offset": 0, "total": 2 }
+}
