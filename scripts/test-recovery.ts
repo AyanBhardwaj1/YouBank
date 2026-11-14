@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { hashKey, newRecoveryKey, normalizeKey, sameHash } from "@/lib/auth/recovery";
 import { databaseUrl, FIRST, inTransaction, ordered, statementsOf } from "@/lib/db/automigrate";
 import { BASE_SQL, MIGRATION_SQL } from "@/lib/db/migrations.gen";
-import { checkEnv } from "@/lib/env";
+import { checkEnv, sameDatabase } from "@/lib/env";
 import { MIGRATIONS } from "@/lib/setup";
 
 let pass = 0, fail = 0;
@@ -37,6 +37,7 @@ ok("the database address is found under the names integrations use", databaseUrl
 ok("the environment check counts POSTGRES_URL as the database", !checkEnv({ POSTGRES_URL: "postgres://a", BETTER_AUTH_SECRET: "x".repeat(40) }, false).missing.includes("DATABASE_URL"));
 ok("sign-in's migrations run first, then the rest in file order", JSON.stringify(ordered(["0032_analytics", "0012_launch", "0031_two_factor", "0030_mail_compliance"])) === JSON.stringify(["0030_mail_compliance", "0031_two_factor", "0012_launch", "0032_analytics"]));
 ok("every migration named first exists", FIRST.every((n) => MIGRATION_SQL.some(([m]) => m === n)));
+ok("a direct address on another database is flagged; Neon's pooled and direct addresses of one database are not", sameDatabase("postgres://u:p@ep-a-1-pooler.us-east-2.aws.neon.tech/neondb", "postgres://u:p@ep-a-1.us-east-2.aws.neon.tech/neondb") && !sameDatabase("postgres://u:p@ep-a-1-pooler.us-east-2.aws.neon.tech/neondb", "postgres://u:p@ep-b-2.us-east-2.aws.neon.tech/neondb") && checkEnv({ DATABASE_URL: "postgres://u:p@ep-a-1-pooler.x.neon.tech/neondb", DATABASE_URL_UNPOOLED: "postgres://u:p@ep-b-2.x.neon.tech/neondb" }, false).invalid.some((x) => x.startsWith("DATABASE_URL_UNPOOLED")));
 const recent = MIGRATION_SQL.filter(([n]) => n >= "0030");
 ok("they are written to be safe twice (IF NOT EXISTS on every create and add column)", recent.every(([, t]) => statementsOf(t).every((s) => !/^(create (table|index|unique index)|alter table .* add column)/i.test(s) || /if not exists/i.test(s))), recent.map(([n]) => n));
 
