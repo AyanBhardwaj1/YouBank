@@ -11,6 +11,7 @@
 import { FEATURES, defaultPinned, type NavId } from "@/lib/nav";
 import type { RoleId } from "@/lib/roles";
 import { isThemeId, type ThemeId } from "@/lib/themes";
+import { isInterface, type InterfaceId } from "./interfaces";
 
 /* ---------------- Home ---------------- */
 
@@ -233,8 +234,10 @@ export type LookPrefs = {
   system: boolean;
   lightTheme: ThemeId;
   darkTheme: ThemeId;
+  /** The interface: the whole frame and how it is drawn (src/lib/desk/interfaces.ts). "classic" uses the theme. */
+  ui: InterfaceId;
 };
-export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", wallpaper: "none", motion: "full", contrast: "normal", system: false, lightTheme: "daylight", darkTheme: "terminal" };
+export const DEFAULT_LOOK: LookPrefs = { scale: 1, radius: "theme", font: "sans", accent: "theme", background: "theme", wallpaper: "none", motion: "full", contrast: "normal", system: false, lightTheme: "daylight", darkTheme: "terminal", ui: "classic" };
 export const LOOK_COOKIE = "yb-look";
 
 const oneOf = <T,>(list: readonly T[], v: unknown, d: T): T => (list.includes(v as T) ? (v as T) : d);
@@ -254,6 +257,7 @@ export function normalizeLook(raw: unknown): LookPrefs {
     system: r.system === true,
     lightTheme: typeof r.lightTheme === "string" && isThemeId(r.lightTheme) ? r.lightTheme : DEFAULT_LOOK.lightTheme,
     darkTheme: typeof r.darkTheme === "string" && isThemeId(r.darkTheme) ? r.darkTheme : DEFAULT_LOOK.darkTheme,
+    ui: isInterface(r.ui) ? r.ui : DEFAULT_LOOK.ui,
   };
 }
 
@@ -287,6 +291,7 @@ export function lookAttrs(l: LookPrefs): { attrs: Record<string, string>; vars: 
   if (l.wallpaper !== "none") attrs["data-wall"] = l.wallpaper;
   if (l.motion === "reduced") attrs["data-motion"] = "reduced";
   if (l.contrast === "high") attrs["data-contrast"] = "high";
+  if (l.ui !== "classic") attrs["data-ui"] = l.ui;
   return { attrs, vars };
 }
 

@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./themes.css";
+@import "./interfaces.css";
 
 /*
  * YouBank design tokens. The default (:root) is the Terminal theme; every other theme overrides the same

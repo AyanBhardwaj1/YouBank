@@ -39,7 +39,7 @@ function Tab({ f, active, iconsOnly, temporary, onPin }: { f: NavFeature; active
   const link = (
     <Link href={f.href} title={iconsOnly || temporary ? `${f.label}: ${f.blurb}` : f.blurb} aria-current={active ? "page" : undefined}
       className={`relative ctl flex items-center gap-1.5 whitespace-nowrap px-2 py-1 transition-colors ${active ? "text-accent" : "text-muted hover:bg-elevated hover:text-fg"}`}>
-      {active && <motion.span layoutId="nav-active" className="absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
+      {active && <motion.span layoutId="nav-active" className="yb-pill absolute inset-0 ctl bg-accent-soft" transition={{ type: "spring", stiffness: 520, damping: 42 }} />}
       <Icon name={f.icon} className="relative h-3.5 w-3.5 shrink-0" />
       {!iconsOnly && <span className="relative hidden lg:inline">{f.label}</span>}
       {f.id === "home" && <WaitingBadge />}
@@ -91,7 +91,7 @@ export function AppNav({ email }: { email: string }) {
   }, [menu]);
 
   return (
-    <div className="glass relative z-50 shrink-0 border-b border-line bg-bg/90 pt-safe px-safe">
+    <div className="yb-topbar glass relative z-50 shrink-0 border-b border-line bg-bg/90 pt-safe px-safe">
     <div className="flex h-12 items-center gap-1.5 px-2 text-[11.5px] md:h-10">
       <button type="button" onClick={() => nav.setOpen(!nav.open)} aria-expanded={nav.open} aria-label={nav.open ? "Close the sidebar" : "Open all features and workflows"}
         title={`${nav.open ? "Close" : "All features and workflows"} (⌘\\)`}
@@ -100,12 +100,12 @@ export function AppNav({ email }: { email: string }) {
       </button>
       <Link href="/app" className="flex shrink-0 items-center gap-2 pl-0.5 max-md:min-h-11 max-md:min-w-8" aria-label="YouBank home">
         <LogoMark size={18} id="nav" />
-        <span className={`font-semibold tracking-tight ${current && current.id !== "home" ? "max-md:hidden" : ""}`}><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
+        <span className={`yb-wordmark font-semibold tracking-tight ${current && current.id !== "home" ? "max-md:hidden" : ""}`}><span className="text-fg">You</span><span className="text-accent">Bank</span></span>
       </Link>
       {/* Phones: the page's name, as a native app's title bar has it. */}
       {current && current.id !== "home" && <span className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-fg md:hidden">{current.label}</span>}
       <span className="hidden truncate text-muted 2xl:inline" title={`${ROLES[profile.role].label}: ${config.title}`}>· {config.title}</span>
-      <nav aria-label="Pinned features" className="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex">
+      <nav aria-label="Pinned features" className="yb-pins ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] md:flex">
         {pinned.map((f) => <Tab key={f.id} f={f} active={current?.id === f.id} iconsOnly={iconsOnly} />)}
         <AnimatePresence>
           {unpinned && <Tab key={`open-${unpinned.id}`} f={unpinned} active iconsOnly={iconsOnly} temporary onPin={() => nav.update({ pinned: [...nav.prefs.pinned, unpinned.id] })} />}

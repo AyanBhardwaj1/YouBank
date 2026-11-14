@@ -21,6 +21,7 @@ import { useWorkspace } from "./WorkspaceProvider";
 import { usePhone } from "@/components/ui/useMedia";
 import { StepUpHost } from "@/components/security/StepUpHost";
 import { CommandPalette } from "./CommandPalette";
+import { ChromeBottom, ChromeFloat, ChromeSide, ChromeTop } from "./InterfaceChrome";
 import { Shortcuts } from "./Shortcuts";
 import { WhatsNew } from "./WhatsNew";
 import { SystemTheme } from "@/components/theme/SystemTheme";
@@ -88,10 +89,15 @@ export function AppShell({ email, initialNav, children }: { email: string; initi
     <NavCtx.Provider value={value}>
       <div className="app-frame flex h-dvh flex-col overflow-clip text-fg">
         <AppNav email={email} />
+        {/* The interface's own furniture (Settings → Style → Interface): an edition line, an index rail, a dock, a status strip. */}
+        <ChromeTop />
         <div className="relative flex min-h-0 flex-1">
+          <ChromeSide />
           <Sidebar />
-          <div className="min-h-0 min-w-0 flex-1 px-safe">{children}</div>
+          <div className="yb-main min-h-0 min-w-0 flex-1 px-safe">{children}</div>
+          <ChromeFloat />
         </div>
+        <ChromeBottom />
         <MobileTabBar />
         {/* The authenticator-code dialog before risky actions (src/lib/client/step-up). */}
         <StepUpHost />
