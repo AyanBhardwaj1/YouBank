@@ -75,8 +75,9 @@ const RAW = /(Error:|TypeError|at [\w.]+ \(|ECONNREFUSED|stack|undefined is not|
   const back = await page.goto(`${BASE}/app`);
   ok("signed out, the app sends you to sign in", page.url().includes("/sign-in") || (back?.status() ?? 0) >= 300);
   await signIn("not-the-password-1");
-  await page.getByRole("alert").first().waitFor({ timeout: 30_000 }).catch(() => undefined);
-  const wrong = (await page.getByRole("alert").first().innerText().catch(() => "")).trim();
+  // Next.js keeps an empty route announcer with role="alert"; read the one that has words.
+  const alertText = async () => { await page.getByRole("alert").filter({ hasText: /\w/ }).first().waitFor({ timeout: 30_000 }).catch(() => undefined); return (await page.getByRole("alert").filter({ hasText: /\w/ }).allInnerTexts()).join(" ").trim(); };
+  const wrong = await alertText();
   ok("a wrong password is refused with a plain message", page.url().includes("/sign-in") && wrong.length > 5 && !RAW.test(wrong), wrong);
   await signIn(pw1);
   await page.waitForURL(/\/app/, { timeout: 60_000 });
@@ -116,8 +117,8 @@ const RAW = /(Error:|TypeError|at [\w.]+ \(|ECONNREFUSED|stack|undefined is not|
   await page.getByPlaceholder(/New password/).fill(pw3);
   await page.getByPlaceholder(/The same password again/).fill(pw3);
   await page.getByRole("button", { name: /set the new password/i }).click();
-  await page.getByRole("alert").first().waitFor({ timeout: 30_000 });
-  ok("the key it replaced no longer works", (await page.getByRole("alert").first().innerText()).includes("do not match"));
+  await page.getByRole("alert").filter({ hasText: /do not match/ }).first().waitFor({ timeout: 30_000 }).catch(() => undefined);
+  ok("the key it replaced no longer works", (await page.getByRole("alert").filter({ hasText: /\w/ }).allInnerTexts()).join(" ").includes("do not match"));
   await page.getByPlaceholder("XXXX-XXXX-XXXX-XXXX-XXXX").fill(key3);
   await page.getByRole("button", { name: /set the new password/i }).click();
   await page.getByLabel("Recovery key").waitFor({ timeout: 30_000 });

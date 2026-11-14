@@ -71,7 +71,7 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
       <button type="submit" disabled={busy} className="w-full rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white disabled:opacity-60">
         {busy ? "One moment…" : mode === "in" ? "Sign in" : "Create account"}
       </button>
-      {error && <div className="text-[11px] text-neg">{error}</div>}
+      {error && <div role="alert" className="text-[11px] text-neg">{error}</div>}
       <div className="flex items-center justify-between text-[11.5px] text-muted">
         <button type="button" className="hover:text-fg" onClick={() => { setMode(mode === "in" ? "up" : "in"); setError(null); }}>
           {mode === "in" ? "New here? Create an account" : "Have an account? Sign in"}
