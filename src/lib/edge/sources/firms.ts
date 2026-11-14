@@ -1,8 +1,9 @@
 /**
  * Heat seen from space: NASA FIRMS active-fire detections from the VIIRS instruments on Suomi NPP,
  * NOAA-20 and NOAA-21 (375 m pixels, each satellite passing by night and by day, within about three hours
- * of the pass). In an oil field the steadiest hot spots are gas flares. The rolling seven-day files for
- * the contiguous US need no key; they are read a few times a day and only the boxes Edge maps are kept.
+ * of the pass). In an oil field the steadiest hot spots are gas flares. The rolling seven-day and 24-hour
+ * files for the contiguous US need no key; the 24-hour files are read every hour (the flare pass), the
+ * seven-day ones once a day, and only the boxes Edge maps are kept.
  */
 import { cacheJson } from "@/lib/cache";
 import type { Bbox, SourceInfo } from "./eia";
@@ -57,13 +58,22 @@ export function parseFirmsCsv(text: string, bbox?: Bbox): Hotspot[] {
   return out;
 }
 
-/** The last seven days of hot spots in a box, from all three satellites (a file that fails is skipped). Shared for three hours. */
-export async function hotspots(bbox: Bbox): Promise<{ spots: Hotspot[]; satellites: string[] }> {
-  const bucket = Math.floor(Date.now() / (3 * 3_600_000));
-  return cacheJson(`edge:firms:v1:${bbox.map((v) => v.toFixed(2)).join(",")}:${bucket}`, 3 * 3_600_000, async () => {
+/** The FIRMS file for one satellite and window ("24h" for the hourly pass, "7d" for the daily one). Pure. */
+export const firmsFileUrl = (f: { dir: string; file: string }, window: "24h" | "7d") =>
+  `https://firms.modaps.eosdis.nasa.gov/data/active_fire/${f.dir}/csv/${f.file}_USA_contiguous_and_Hawaii_${window}.csv`;
+
+/**
+ * Hot spots in a box from all three satellites (a file that fails is skipped): the last seven days, shared
+ * for three hours, or the last 24 hours, shared for half an hour (the hourly flare pass reads these: new
+ * passes land in them within about three hours of the overpass, and they are a seventh of the size).
+ */
+export async function hotspots(bbox: Bbox, window: "24h" | "7d" = "7d"): Promise<{ spots: Hotspot[]; satellites: string[] }> {
+  const ttl = window === "24h" ? 30 * 60_000 : 3 * 3_600_000;
+  const bucket = Math.floor(Date.now() / ttl);
+  return cacheJson(`edge:firms:v1:${window}:${bbox.map((v) => v.toFixed(2)).join(",")}:${bucket}`, ttl, async () => {
     const got = await Promise.all(FILES.map(async (f) => {
       try {
-        const res = await fetchRetry(`https://firms.modaps.eosdis.nasa.gov/data/active_fire/${f.dir}/csv/${f.file}_USA_contiguous_and_Hawaii_7d.csv`, { cache: "no-store", timeoutMs: 40_000 });
+        const res = await fetchRetry(firmsFileUrl(f, window), { cache: "no-store", timeoutMs: window === "24h" ? 25_000 : 40_000 });
         if (!res.ok) return null;
         return { sat: f.sat, spots: parseFirmsCsv(await res.text(), bbox) };
       } catch { return null; }

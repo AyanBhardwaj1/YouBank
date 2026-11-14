@@ -12,9 +12,12 @@ import type { EdgeCard, Scope } from "@/lib/edge/feed";
 import type { Proforma } from "@/lib/edge/proforma";
 import type { Bbox } from "@/lib/edge/sources/eia";
 import type { Watch } from "@/lib/edge/watches";
+import type { PendingDeal } from "@/lib/edge/dealimpact";
+import type { GlobeMarker } from "@/lib/edge/globe-core";
+import type { SatVisual as SatVisualT } from "@/lib/edge/sat/scan";
 
 export { api, ago, post, useApi, useNow } from "@/components/news/client";
-export type { Blend, EdgeCard, Proforma, Scope, Watch, Bbox };
+export type { Blend, EdgeCard, GlobeMarker, PendingDeal, Proforma, Scope, Watch, Bbox };
 
 export type EdgeState = {
   beta: boolean; since: string | null; blend: Blend;
@@ -25,7 +28,9 @@ export type EdgeState = {
   covered: { key: string; name: string; bbox: Bbox }[];
 };
 
-export type FeedData = { cards: EdgeCard[]; counts: Record<Scope, number>; total: number; kinds?: Record<string, number>; generatedAt: string };
+/** How fresh flaring is: when the last flare pass ran and the newest detection it held. */
+export type FlareFreshness = { checkedAt: string | null; newestSpot: string | null; ok: boolean };
+export type FeedData = { cards: EdgeCard[]; counts: Record<Scope, number>; total: number; kinds?: Record<string, number>; flares?: FlareFreshness | null; generatedAt: string };
 
 export type GroundVisual = {
   type: "before_after";
@@ -100,6 +105,25 @@ export type MethaneVisual = {
   credit: string;
 };
 
+/** The new satellite analyses (crops, water, ships): lib/edge/sat/scan.ts. */
+export type SatVisual = SatVisualT;
+export type ReactorVisual = {
+  type: "reactor"; unit: string; plant: string; owner: string; tickers: string[]; merchant: boolean; event: "outage" | "derate";
+  start: string; latest: string; days: number; power: number; before: number; mw: number; lostMwh: number; refuelSeason: boolean;
+  series: { date: string; power: number }[]; site: { name: string; lon: number; lat: number }; url: string;
+};
+export type RecallVisual = {
+  type: "recall"; source: "fda" | "nhtsa"; ticker: string; name: string;
+  k?: number; classI?: number; lambda?: number; p?: number; units?: number; usual?: number; parkIt?: boolean;
+  items: { id: string; cls?: string; category?: string; product: string; reason: string; date: string; quantity?: string; units?: number; parkIt?: boolean; url: string }[];
+};
+export type DealImpactVisual = {
+  type: "deal_impact"; deal: PendingDeal; side: "acquirer" | "target"; ticker: string; category: string; severity: "high" | "medium" | "low";
+  effects: string[]; site: { name?: string; lon: number; lat: number } | null;
+  signal: { id: number; kind: string; title: string; summary: string; confidence: number; magnitude: number; observedAt: string };
+};
+export type GlobeData = { markers: GlobeMarker[]; flares: FlareFreshness | null; generatedAt: string };
+
 export type FlagVisual = { type: "flag"; company: { id: number; name: string; ticker: string }; flag: { kind: string; severity: "high" | "medium"; title: string; detail: string; date: string; people?: string[]; urls?: string[] } };
 export type PredictionVisual = { type: "prediction"; subject: { id: number; name: string; ticker: string }; direction: "acquirers" | "targets"; items: { id: number; name: string; ticker: string; score: number; rank: number; fresh: boolean }[]; scorecard: string; version: string };
 
@@ -134,7 +158,7 @@ export function confidenceLabel(c: number): { label: string; tone: "pos" | "acce
 }
 
 export const MODULES = [
-  { id: "earth", label: "Earth", tech: "GeoAI", icon: "Globe", live: true, blurb: "Satellite change at plants and pipelines, and deal maps" },
+  { id: "earth", label: "Earth", tech: "GeoAI", icon: "Globe", live: true, blurb: "Flaring within the hour, radar and ground change, crops, water and ships from orbit, nuclear units and recalls, and how they touch pending deals" },
   { id: "documents", label: "Documents", tech: "RAG", icon: "FileSearch", live: true, blurb: "Cited answers across filings, calls and data rooms" },
   { id: "networks", label: "Networks", tech: "GNN", icon: "Network", live: true, blurb: "Ownership, boards, supply chains and deals as a graph" },
   { id: "scenarios", label: "Scenarios", tech: "Synthetic data", icon: "FlaskConical", live: true, blurb: "Simulated markets and company what-ifs, always labeled" },

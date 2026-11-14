@@ -1,0 +1,130 @@
+/**
+ * Public records name companies the way they were filed ("Pfizer Laboratories Div Pfizer Inc", "FORD
+ * MOTOR COMPANY", "Medtronic MiniMed, Inc."), not by ticker. These are the listed parents Edge maps them
+ * to: a pattern on the filed name and the parent's ticker. A name that matches nothing is not guessed at.
+ * Subsidiaries are listed where they file under their own names (Ethicon, DePuy, Abiomed for J&J).
+ * Pure and tested (scripts/test-edge-records.ts).
+ */
+export type NameRule = { re: RegExp; ticker: string; name: string };
+
+const R = (re: RegExp, ticker: string, name: string): NameRule => ({ re, ticker, name });
+
+/** Drug, device and food firms as they appear in FDA recall records. */
+export const FDA_FIRMS: NameRule[] = [
+  R(/\bpfizer\b|\bhospira\b|\bseagen\b/i, "PFE", "Pfizer"),
+  R(/\bjohnson\s*&\s*johnson\b|\bjanssen\b|\bethicon\b|\bdepuy\b|\babiomed\b|\bauris\b|\bshockwave medical\b/i, "JNJ", "Johnson & Johnson"),
+  R(/\bmerck sharp\b|\bmerck & co\b/i, "MRK", "Merck"),
+  R(/\babbvie\b|\ballergan\b/i, "ABBV", "AbbVie"),
+  R(/\beli lilly\b|\blilly\b/i, "LLY", "Eli Lilly"),
+  R(/\bbristol[- ]myers\b|\bcelgene\b/i, "BMY", "Bristol-Myers Squibb"),
+  R(/\bamgen\b|\bhorizon therapeutics\b/i, "AMGN", "Amgen"),
+  R(/\bgilead\b|\bkite pharma\b/i, "GILD", "Gilead"),
+  R(/\bmedtronic\b|\bcovidien\b/i, "MDT", "Medtronic"),
+  R(/\babbott\b/i, "ABT", "Abbott"),
+  R(/\bboston scientific\b/i, "BSX", "Boston Scientific"),
+  R(/\bstryker\b/i, "SYK", "Stryker"),
+  R(/\bbecton\b|\bbd\b(?= )|\bc\.?\s?r\.?\s?bard\b|\bcarefusion\b/i, "BDX", "Becton Dickinson"),
+  R(/\bbaxter\b|\bhillrom\b|\bhill-rom\b/i, "BAX", "Baxter"),
+  R(/\bzimmer\b|\bbiomet\b/i, "ZBH", "Zimmer Biomet"),
+  R(/\bedwards lifesciences\b/i, "EW", "Edwards Lifesciences"),
+  R(/\bintuitive surgical\b/i, "ISRG", "Intuitive Surgical"),
+  R(/\bteleflex\b/i, "TFX", "Teleflex"),
+  R(/\bdexcom\b/i, "DXCM", "Dexcom"),
+  R(/\binsulet\b/i, "PODD", "Insulet"),
+  R(/\bhologic\b/i, "HOLX", "Hologic"),
+  R(/\bge healthcare\b|\bge medical\b/i, "GEHC", "GE HealthCare"),
+  R(/\bphilips\b|\brespironics\b/i, "PHG", "Philips"),
+  R(/\bteva\b|\bactavis\b/i, "TEVA", "Teva"),
+  R(/\bviatris\b|\bmylan\b/i, "VTRS", "Viatris"),
+  R(/\bperrigo\b/i, "PRGO", "Perrigo"),
+  R(/\bsun pharma/i, "SUNPHARMA.NS", "Sun Pharma"),
+  R(/\bdr\.? reddy/i, "RDY", "Dr. Reddy's"),
+  R(/\bnovartis\b|\bsandoz\b/i, "NVS", "Novartis"),
+  R(/\bastrazeneca\b/i, "AZN", "AstraZeneca"),
+  R(/\bglaxosmithkline\b|\bgsk\b/i, "GSK", "GSK"),
+  R(/\bsanofi\b/i, "SNY", "Sanofi"),
+  R(/\bnovo nordisk\b/i, "NVO", "Novo Nordisk"),
+  R(/\bkenvue\b|\bmcneil consumer\b/i, "KVUE", "Kenvue"),
+  R(/\bprocter\s*&\s*gamble\b/i, "PG", "Procter & Gamble"),
+  R(/\bcolgate\b/i, "CL", "Colgate-Palmolive"),
+  R(/\bcardinal health\b/i, "CAH", "Cardinal Health"),
+  R(/\bmckesson\b/i, "MCK", "McKesson"),
+  R(/\bcencora\b|\bamerisourcebergen\b/i, "COR", "Cencora"),
+  R(/\bthermo fisher\b|\bfisher scientific\b/i, "TMO", "Thermo Fisher"),
+  R(/\bdanaher\b|\bbeckman coulter\b|\bcepheid\b|\bradiometer\b/i, "DHR", "Danaher"),
+  R(/\bresmed\b/i, "RMD", "ResMed"),
+  R(/\bglobus medical\b|\bnuvasive\b/i, "GMED", "Globus Medical"),
+  R(/\btandem diabetes\b/i, "TNDM", "Tandem Diabetes"),
+  R(/\bpenumbra\b/i, "PEN", "Penumbra"),
+  R(/\bicu medical\b/i, "ICUI", "ICU Medical"),
+  R(/\bintegra lifesciences\b/i, "IART", "Integra LifeSciences"),
+  R(/\bmasimo\b/i, "MASI", "Masimo"),
+  R(/\btyson\b/i, "TSN", "Tyson Foods"),
+  R(/\bconagra\b/i, "CAG", "Conagra"),
+  R(/\bgeneral mills\b/i, "GIS", "General Mills"),
+  R(/\bkraft heinz\b/i, "KHC", "Kraft Heinz"),
+  R(/\bkellanova\b|\bkellogg\b/i, "K", "Kellanova"),
+  R(/\bhormel\b/i, "HRL", "Hormel"),
+  R(/\bmondelez\b/i, "MDLZ", "Mondelez"),
+  R(/\bpepsico\b|\bfrito[- ]lay\b|\bquaker oats\b/i, "PEP", "PepsiCo"),
+  R(/\bnestl[eé]\b|\bgerber products\b/i, "NSRGY", "Nestlé"),
+  R(/\bcampbell\b/i, "CPB", "Campbell's"),
+  R(/\bj\.?\s?m\.? smucker\b/i, "SJM", "J.M. Smucker"),
+  R(/\bpilgrim'?s pride\b/i, "PPC", "Pilgrim's Pride"),
+  R(/\bwalmart\b|\bwal-mart\b/i, "WMT", "Walmart"),
+  R(/\bcostco\b/i, "COST", "Costco"),
+  R(/\btarget corporation\b/i, "TGT", "Target"),
+  R(/\bkroger\b/i, "KR", "Kroger"),
+  R(/\bcvs\b/i, "CVS", "CVS Health"),
+  R(/\bwalgreen/i, "WBA", "Walgreens"),
+];
+
+/** Vehicle and equipment makers and big suppliers as they appear in NHTSA recall records. */
+export const NHTSA_MAKERS: NameRule[] = [
+  R(/\bford motor\b/i, "F", "Ford"),
+  R(/\bgeneral motors\b/i, "GM", "General Motors"),
+  R(/\bchrysler\b|\bfca us\b|\bstellantis\b/i, "STLA", "Stellantis"),
+  R(/\btesla\b/i, "TSLA", "Tesla"),
+  R(/\btoyota\b/i, "TM", "Toyota"),
+  R(/\bhonda\b|\bamerican honda\b/i, "HMC", "Honda"),
+  R(/\bnissan\b/i, "NSANY", "Nissan"),
+  R(/\bhyundai\b/i, "HYMTF", "Hyundai"),
+  R(/\bkia\b/i, "KIMTF", "Kia"),
+  R(/\bsubaru\b/i, "FUJHY", "Subaru"),
+  R(/\bmazda\b/i, "MZDAY", "Mazda"),
+  R(/\bmercedes[- ]benz\b/i, "MBGYY", "Mercedes-Benz"),
+  R(/\bbmw\b/i, "BMWYY", "BMW"),
+  R(/\bvolkswagen\b|\baudi\b|\bporsche\b/i, "VWAGY", "Volkswagen"),
+  R(/\bvolvo car\b/i, "VLVLY", "Volvo"),
+  R(/\brivian\b/i, "RIVN", "Rivian"),
+  R(/\blucid\b/i, "LCID", "Lucid"),
+  R(/\bharley[- ]davidson\b/i, "HOG", "Harley-Davidson"),
+  R(/\bpolaris\b/i, "PII", "Polaris"),
+  R(/\bbrp\b|\bbombardier recreational\b/i, "DOOO", "BRP"),
+  R(/\bthor motor\b|\bairstream\b|\bjayco\b|\bkeystone rv\b|\bheartland recreational\b/i, "THO", "Thor Industries"),
+  R(/\bwinnebago\b|\bgrand design\b/i, "WGO", "Winnebago"),
+  R(/\bforest river\b/i, "BRK.B", "Berkshire Hathaway (Forest River)"),
+  R(/\bpaccar\b|\bkenworth\b|\bpeterbilt\b/i, "PCAR", "PACCAR"),
+  R(/\bdaimler truck\b|\bfreightliner\b|\bwestern star\b|\bthomas built\b/i, "DTRUY", "Daimler Truck"),
+  R(/\bnavistar\b|\binternational motors\b/i, "TRATF", "Traton (Navistar)"),
+  R(/\bblue bird\b/i, "BLBD", "Blue Bird"),
+  R(/\bshyft\b|\bspartan motors\b|\butilimaster\b/i, "SHYF", "Shyft Group"),
+  R(/\boshkosh\b|\bpierce manufacturing\b|\bjlg\b/i, "OSK", "Oshkosh"),
+  R(/\brev group\b|\bfleetwood rv\b|\bholiday rambler\b/i, "REVG", "REV Group"),
+  R(/\bgoodyear\b/i, "GT", "Goodyear"),
+  R(/\bautoliv\b/i, "ALV", "Autoliv"),
+  R(/\bbridgestone\b|\bfirestone\b/i, "BRDCY", "Bridgestone"),
+  R(/\bmichelin\b/i, "MGDDY", "Michelin"),
+  R(/\bcontinental\b/i, "CTTAY", "Continental"),
+  R(/\baptiv\b/i, "APTV", "Aptiv"),
+  R(/\bborgwarner\b/i, "BWA", "BorgWarner"),
+  R(/\blear corporation\b/i, "LEA", "Lear"),
+  R(/\bgentex\b/i, "GNTX", "Gentex"),
+];
+
+/** The listed parent for a filed name, or null. Pure. */
+export function tickerFor(rules: NameRule[], filed: string): NameRule | null {
+  const name = filed.replace(/\s+/g, " ").trim();
+  if (!name) return null;
+  return rules.find((r) => r.re.test(name)) ?? null;
+}

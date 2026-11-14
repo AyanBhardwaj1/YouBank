@@ -36,6 +36,14 @@ export function isBig(d: Pick<Detection, "kind" | "confidence" | "magnitude" | "
     // Quant Edge: an insider cluster of $1 million or more (magnitude 0.89 on its log scale) by two or more insiders, any new 13D.
     case "quant.insider_cluster": return d.magnitude >= 0.89 && d.confidence >= 0.75;
     case "quant.activist": return (d.visual as { eventType?: string }).eventType === "activist_new";
+    // New satellite analyses: a clear reading (z of 3 or more) from a confident scene.
+    case "crop_vigour": case "water_extent": case "vessel_traffic": return d.confidence >= 0.7 && Math.abs(Number((d.visual as { metric?: { z?: number } }).metric?.z ?? 0)) >= 3;
+    // Public records: a unit out for a merchant owner or long; any Class I or a large burst of recalls; a do-not-drive warning or a recall in the millions.
+    case "reactor_outage": return d.magnitude >= 0.6;
+    case "fda_recall": return Number((d.visual as { classI?: number }).classI ?? 0) > 0 && d.magnitude >= 0.5;
+    case "vehicle_recall": return d.magnitude >= 0.75;
+    // Deal watch: a hard signal at the target of an announced deal.
+    case "deal_impact": return (d.visual as { severity?: string }).severity === "high";
     // Thesis Agent: a kill criterion fired.
     case "thesis_update": return ((d.visual as { fired?: unknown[] }).fired ?? []).length > 0;
     default: return false;

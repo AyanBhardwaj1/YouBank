@@ -45,6 +45,12 @@ export function digestItem(d: Pick<Detection, "id" | "kind" | "title" | "summary
     const p = (v.proforma as { parties?: { label: string; capacityMMcfd: number; color?: string }[] } | undefined)?.parties ?? [];
     const max = Math.max(1, ...p.map((x) => x.capacityMMcfd));
     picture = p.map((x) => `<div style="font-size:12px;color:#3a3f47;padding:2px 0">${esc(x.label)} · ${Math.round(x.capacityMMcfd)} MMcfd<div style="height:6px;border-radius:3px;background:${esc(x.color ?? "#2f6fbd")};width:${Math.round((x.capacityMMcfd / max) * 100)}%"></div></div>`).join("");
+  } else if ((d.kind === "crop_vigour" || d.kind === "water_extent" || d.kind === "vessel_traffic") && (v.image as { url?: string } | null | undefined)?.url) {
+    const img = v.image as { url: string; date?: string; caption?: string };
+    picture = `<img src="${esc(img.url)}" width="290" style="width:50%;border-radius:8px;display:block;background:#111" alt="${esc(img.caption ?? "Satellite view")}, ${esc(img.date ?? "")}"><div style="font-size:11px;color:#8a8f98;padding-top:3px">${esc(img.caption ?? "")} · ${esc(img.date ?? "")}</div>`;
+  } else if (d.kind === "deal_impact") {
+    const deal = v.deal as { headline?: string } | undefined, fx = (v.effects as string[] | undefined) ?? [];
+    picture = `<div style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a6d0b">Deal watch · ${esc(String(v.side ?? ""))}</div><div style="font-size:12.5px;color:#3a3f47;padding-top:2px">${esc(deal?.headline ?? "")}</div>${fx[0] ? `<div style="font-size:12px;color:#6b7280;padding-top:3px">${esc(fx[0])}</div>` : ""}`;
   } else if (d.kind === "graph_prediction") {
     const items = (v.items as { name: string; ticker: string; fresh?: boolean }[] | undefined) ?? [];
     picture = `<ol style="margin:0;padding-left:18px;font-size:13px;color:#3a3f47">${items.slice(0, 3).map((i) => `<li>${esc(i.name)}${i.ticker ? ` (${esc(i.ticker)})` : ""}${i.fresh ? ` <b style="color:#8a6d0b">new</b>` : ""}</li>`).join("")}</ol>`;

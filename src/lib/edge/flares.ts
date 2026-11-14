@@ -165,6 +165,31 @@ export function hotPixels(b12: ArrayLike<number>, b11: ArrayLike<number>, valid?
   return hot;
 }
 
+/** One detection's identity: where, when and by which satellite (the 24-hour and seven-day files repeat each other). Pure. */
+export const spotKey = (s: Hotspot) => `${s.lat.toFixed(4)},${s.lon.toFixed(4)},${s.date},${s.time},${s.sat}`;
+
+/**
+ * The hot spots kept between passes: what was kept before plus what just arrived, each detection once,
+ * only the `days` days ending on `to` (older ones age out, as they do from the seven-day files). Pure.
+ */
+export function mergeSpots(kept: Hotspot[], fresh: Hotspot[], to: string, days = DAYS): Hotspot[] {
+  const from = new Date(Date.parse(`${to}T00:00:00Z`) - (days - 1) * DAY).toISOString().slice(0, 10);
+  const by = new Map<string, Hotspot>();
+  for (const s of [...kept, ...fresh]) if (s.date >= from && s.date <= to) by.set(spotKey(s), s);
+  return [...by.values()].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+}
+
+/** The newest detection's time as "2026-11-13T08:42Z", or null. Pure. */
+export function newestSpot(spots: Hotspot[]): string | null {
+  let best: Hotspot | null = null;
+  for (const s of spots) if (!best || s.date + s.time > best.date + best.time) best = s;
+  return best ? `${best.date}T${best.time.slice(0, 2)}:${best.time.slice(2, 4)}Z` : null;
+}
+
+/** Whether a week's numbers moved since the card was last written (a new detection, a new day or more heat). Pure. */
+export const statsMoved = (before: Partial<FlareStats> | null | undefined, now: FlareStats) =>
+  !before || before.detections !== now.detections || before.days !== now.days || Math.abs((before.frpTotal ?? 0) - now.frpTotal) >= 0.5;
+
 /* ---------------- Reading the sources ---------------- */
 
 /** The shortwave-infrared heat of a box as an image: flares glow yellow on dark ground. */
@@ -192,27 +217,52 @@ async function plants(): Promise<Plant[]> {
     .map((r) => ({ id: r.id, name: r.name, company: r.company ?? "", ticker: r.ticker ?? "", lon: Number(r.lon), lat: Number(r.lat), cap: Number(r.cap) || 0 }));
 }
 
-const HIST = "edge:flares:hist:v1", LAST = "edge:flares:cards:v1", FILLED = "edge:flares:backfilled:v1";
+const HIST = "edge:flares:hist:v1", LAST = "edge:flares:cards:v1", FILLED = "edge:flares:backfilled:v1", SPOTS = "edge:flares:spots:v1";
 const readJson = async <T,>(key: string, fallback: T): Promise<T> => { try { const v = await cacheGet(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; } };
 
 const fmt = (v: number, dp = 0) => v.toLocaleString("en-US", { maximumFractionDigits: dp, minimumFractionDigits: dp });
 
+/** Hot spots in the covered boxes from one window of FIRMS files (a box whose files all fail is left out). */
+async function readSpots(window: "24h" | "7d"): Promise<{ spots: Hotspot[]; satellites: Set<string> }> {
+  const got = await Promise.all(COVERED.map((c) => hotspots(c.bbox, window).catch(() => null)));
+  if (got.every((g) => !g)) throw new Error("NASA FIRMS did not answer");
+  return got.reduce<{ spots: Hotspot[]; satellites: Set<string> }>((acc, r) => { if (r) { acc.spots.push(...r.spots); r.satellites.forEach((s) => acc.satellites.add(s)); } return acc; }, { spots: [], satellites: new Set() });
+}
+
+export type FlareScan = { plants: number; flaring: number; created: number[]; updated: number; unchanged: number; newestSpot: string | null; mode: "full" | "quick" };
+
 /**
- * The daily pass: every mapped plant against the last seven days of hot spots. Plants that flared get a
+ * A flare pass: every mapped plant against the last seven days of hot spots. Plants that flared get a
  * card (one per plant per week, refreshed while the week runs); the weekly record is kept for every
  * plant. Returns the ids of new cards (for alerts).
+ *
+ * `full` (the daily pass) reads the seven-day files. `quick` (the hourly pass, and a refresh when Edge
+ * opens) reads only the 24-hour files and adds them to the detections kept from earlier passes, so a
+ * flare seen on this morning's overpass is on its card within the hour; a card whose numbers did not
+ * move is left alone, and one that moved keeps its Sentinel-2 look and New Mexico's reports rather than
+ * fetching them again.
  */
-export async function scanFlares(deadline: number): Promise<{ plants: number; flaring: number; created: number[]; updated: number }> {
+export async function scanFlares(deadline: number, opts: { mode?: "full" | "quick" } = {}): Promise<FlareScan> {
+  let mode = opts.mode ?? "full";
   const all = await plants();
-  if (!all.length) return { plants: 0, flaring: 0, created: [], updated: 0 };
-  const seen = (await Promise.all(COVERED.map((c) => hotspots(c.bbox)))).reduce<{ spots: Hotspot[]; satellites: Set<string> }>((acc, r) => { acc.spots.push(...r.spots); r.satellites.forEach((s) => acc.satellites.add(s)); return acc; }, { spots: [], satellites: new Set() });
-  const to = seen.spots.reduce((m, s) => (s.date > m ? s.date : m), new Date(Date.now() - DAY).toISOString().slice(0, 10));
+  if (!all.length) return { plants: 0, flaring: 0, created: [], updated: 0, unchanged: 0, newestSpot: null, mode };
+  const kept = await readJson<{ spots: Hotspot[]; satellites: string[] } | null>(SPOTS, null);
+  // A quick pass needs the kept week to add to; without it (the first run, an expired cache) it reads the week.
+  if (mode === "quick" && !kept?.spots.length) mode = "full";
+  const read = await readSpots(mode === "full" ? "7d" : "24h");
+  const fresh = read.spots;
+  const today = new Date(Date.now() - DAY).toISOString().slice(0, 10);
+  const toRaw = [...fresh, ...(kept?.spots ?? [])].reduce((m, s) => (s.date > m ? s.date : m), today);
+  const spots = mergeSpots(mode === "full" ? [] : kept?.spots ?? [], fresh, toRaw);
+  const seen = { spots, satellites: new Set([...read.satellites, ...(mode === "quick" ? kept?.satellites ?? [] : [])]) };
+  await cacheSet(SPOTS, JSON.stringify({ spots, satellites: [...seen.satellites] }), 3 * DAY).catch(() => undefined);
+  const to = toRaw;
   const week = isoWeek(to);
   const hist = await readJson<Record<string, FlareWeek[]>>(HIST, {});
   const last = await readJson<Record<string, { at: string; days: number; frp: number }>>(LAST, {});
   // Once, with the free archive key: the twelve weeks before, so the record starts full.
   if (upgradeOn("firms-archive") && !(await cacheGet(FILLED)) && (await backfill(all, to, hist, Math.min(deadline, Date.now() + 60_000)).catch((e) => { logError(e, { where: "edge-flares-backfill" }); return false; }))) await cacheSet(FILLED, new Date().toISOString(), 400 * DAY);
-  const out = { plants: all.length, flaring: 0, created: [] as number[], updated: 0 };
+  const out: FlareScan = { plants: all.length, flaring: 0, created: [], updated: 0, unchanged: 0, newestSpot: newestSpot(spots), mode };
   const now = Date.now();
   // The plants that flared, the hottest weeks first (so a short deadline still reaches the biggest).
   const found = all.map((p) => { const near = spotsNear(seen.spots, p.lon, p.lat); const days = byDay(near, to); return { p, near, days, s: flareStats(near, days) }; });
@@ -223,11 +273,19 @@ export async function scanFlares(deadline: number): Promise<{ plants: number; fl
     if (Date.now() > deadline) break;
     try {
       const key = `flaring:v1:asset:${f.p.id}:${week}`;
-      const [existing] = await requireDb().select({ id: schema.edgeDetections.id }).from(schema.edgeDetections).where(sql`${schema.edgeDetections.key} = ${key}`);
+      const [existing] = await requireDb().select({ id: schema.edgeDetections.id, visual: schema.edgeDetections.visual }).from(schema.edgeDetections).where(sql`${schema.edgeDetections.key} = ${key}`);
       if (!existing && repeats(last[f.p.id] ?? null, f.s, now)) continue;
+      const before = existing?.visual as { stats?: Partial<FlareStats>; heat?: { scene: string; date: string; hot: number } | null; reported?: Reported | null; firstSeenAt?: string } | undefined;
+      if (existing && !statsMoved(before?.stats, f.s)) { out.unchanged++; continue; }
       const box = boxAround(f.p.lon, f.p.lat, BOX_KM);
-      const [heat, reported] = await Promise.all([heatAt(box).catch(() => null), reportedNear(f.p.lon, f.p.lat).catch(() => null)]);
-      const card = cardFor(f.p, f.s, f.days, f.near, box, heat, reported, hist[f.p.id] ?? [], to);
+      // A quick pass keeps the card's Sentinel-2 look and state reports; the daily pass looks again.
+      const reuse = mode === "quick" && !!existing;
+      const [heat, reported] = reuse
+        ? [before?.heat ? { scene: { id: before.heat.scene, date: before.heat.date, cloud: 0 }, hot: before.heat.hot } : null, before?.reported ?? null]
+        : await Promise.all([heatAt(box).catch(() => null), reportedNear(f.p.lon, f.p.lat).catch(() => null)]);
+      const drawn = cardFor(f.p, f.s, f.days, f.near, box, heat, reported, hist[f.p.id] ?? [], to);
+      const stamp = new Date(now).toISOString();
+      const card = { ...drawn, visual: { ...drawn.visual, firstSeenAt: before?.firstSeenAt ?? stamp, updatedAt: stamp } };
       if (existing) {
         await requireDb().update(schema.edgeDetections).set({ title: card.title, summary: card.summary, why: card.why, confidence: card.confidence, magnitude: card.magnitude, visual: card.visual, observedAt: card.observedAt }).where(sql`${schema.edgeDetections.id} = ${existing.id}`);
         out.updated++;
@@ -236,7 +294,7 @@ export async function scanFlares(deadline: number): Promise<{ plants: number; fl
         if (!row) continue;
         const retrieved = new Date();
         const sources: Provenance[] = [
-          { sourceName: FIRMS.name, sourceUrl: `${FIRMS.url} (${[...seen.satellites].join(", ")}, seven-day files to ${to})`, license: FIRMS.license, method: `${FLARE_VERSION}: detections within ${RADIUS_KM} km of the plant, counted by day`, modelVersion: "", retrievedAt: retrieved },
+          { sourceName: FIRMS.name, sourceUrl: `${FIRMS.url} (${[...seen.satellites].join(", ")}, ${mode === "full" ? "seven-day files" : "24-hour files added to the week already read"} to ${to})`, license: FIRMS.license, method: `${FLARE_VERSION}: detections within ${RADIUS_KM} km of the plant, counted by day`, modelVersion: "", retrievedAt: retrieved },
           ...(heat ? [{ sourceName: SENTINEL.name, sourceUrl: `${SENTINEL.url} (scene ${heat.scene.id})`, license: SENTINEL.license, method: "shortwave-infrared heat: band 12 against band 11", modelVersion: "", retrievedAt: retrieved }] : []),
           ...(reported ? [{ sourceName: NM_OCD.name, sourceUrl: NM_OCD.url, license: NM_OCD.license, method: `reports within ${reported.radiusKm} km for ${reported.period}`, modelVersion: "", retrievedAt: retrieved }] : []),
           { sourceName: EIA_PLANTS.name, sourceUrl: EIA_PLANTS.url, license: EIA_PLANTS.license, method: `site location (${EIA_PLANTS.vintage})`, modelVersion: "", retrievedAt: retrieved },

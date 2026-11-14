@@ -1,0 +1,96 @@
+{
+ "meta": {
+  "disclaimer": "Do not rely on openFDA to make decisions regarding medical care.",
+  "license": "https://open.fda.gov/license/",
+  "last_updated": "2026-11-11",
+  "results": {
+   "skip": 0,
+   "limit": 1000,
+   "total": 5
+  }
+ },
+ "results": [
+  {
+   "status": "Ongoing",
+   "city": "Minneapolis",
+   "state": "MN",
+   "country": "United States",
+   "classification": "Class I",
+   "product_type": "Devices",
+   "event_id": "98765",
+   "recalling_firm": "Medtronic MiniMed, Inc.",
+   "address_1": "18000 Devonshire St",
+   "voluntary_mandated": "Voluntary: Firm initiated",
+   "initial_firm_notification": "Letter",
+   "distribution_pattern": "Worldwide distribution",
+   "recall_number": "Z-0412-2027",
+   "product_description": "MiniMed 780G insulin pump, model MMT-1886",
+   "product_quantity": "41,200 units",
+   "reason_for_recall": "Pump may stop delivering insulin without an alarm after a software fault.",
+   "recall_initiation_date": "20261020",
+   "center_classification_date": "20261105",
+   "report_date": "20261111",
+   "code_info": "All serial numbers"
+  },
+  {
+   "status": "Ongoing",
+   "classification": "Class II",
+   "product_type": "Drugs",
+   "recalling_firm": "Teva Pharmaceuticals USA, Inc.",
+   "recall_number": "D-0101-2027",
+   "product_description": "Atorvastatin calcium tablets, 40 mg",
+   "product_quantity": "12,000 bottles",
+   "reason_for_recall": "Failed dissolution specifications.",
+   "recall_initiation_date": "20261015",
+   "report_date": "20261105",
+   "distribution_pattern": "Nationwide"
+  },
+  {
+   "status": "Ongoing",
+   "classification": "Class II",
+   "product_type": "Drugs",
+   "recalling_firm": "Teva Pharmaceuticals USA, Inc.",
+   "recall_number": "D-0102-2027",
+   "product_description": "Atorvastatin calcium tablets, 80 mg",
+   "product_quantity": "9,000 bottles",
+   "reason_for_recall": "Failed dissolution specifications.",
+   "recall_initiation_date": "20261015",
+   "report_date": "20261105",
+   "distribution_pattern": "Nationwide"
+  },
+  {
+   "status": "Ongoing",
+   "classification": "Class II",
+   "product_type": "Drugs",
+   "recalling_firm": "Actavis Pharma, Inc.",
+   "recall_number": "D-0103-2027",
+   "product_description": "Amlodipine tablets",
+   "product_quantity": "4,000 bottles",
+   "reason_for_recall": "CGMP deviations.",
+   "recall_initiation_date": "20261018",
+   "report_date": "20261111",
+   "distribution_pattern": "Nationwide"
+  },
+  {
+   "status": "Ongoing",
+   "classification": "Class III",
+   "product_type": "Food",
+   "recalling_firm": "Smallville Bakery LLC",
+   "recall_number": "F-0040-2027",
+   "product_description": "Bread",
+   "product_quantity": "100 loaves",
+   "reason_for_recall": "Label missing allergen statement.",
+   "recall_initiation_date": "20261101",
+   "report_date": "20261111",
+   "distribution_pattern": "KS"
+  },
+  {
+   "status": "Ongoing",
+   "classification": "Class II",
+   "product_type": "Drugs",
+   "recalling_firm": "",
+   "recall_number": "D-0104-2027",
+   "report_date": "20261111"
+  }
+ ]
+}

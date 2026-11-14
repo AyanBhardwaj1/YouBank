@@ -49,12 +49,20 @@ export function sizeOf(kind: string, magnitude: number): number {
 /** Kinds that rarely reach the news: the Alt-Data Pulse's signals and the Deal Radar's odds (base 0.8). */
 const SIGNAL_KINDS = new Set(["hiring_shift", "hiring_tell", "attention_spike", "contract_award", "layoff_notice", "patent_shift", "deal_odds", "call_evasion"]);
 
+/** The new satellite analyses (sat/scan.ts). */
+export const SAT_KINDS = new Set(["crop_vigour", "water_extent", "vessel_traffic"]);
+const RECORD_BASE: Record<string, number> = { reactor_outage: 0.75, fda_recall: 0.6, vehicle_recall: 0.55, deal_impact: 0.8 };
+
 /** Satellite changes, radar, flaring and methane are rarely in the news; permits are public records few read; a deal is news, though not its map; a filing is public, its edits rarely reported; alternative-data signals, model odds and call evasion rarely reach the news; settled promises are half news; a person's thesis updates are theirs. Fades over a month. Pure. */
 export function noveltyOf(kind: string, ageDays: number): number {
   // Call Desk's evasion readings are rarely reported (0.8, with the Pulse); a settled promise is half news (0.5:
   // the results are reported, the promise against them rarely); a promise falling due 0.55; a person's own
   // thesis update is theirs alone, so it is new to them (0.7).
   // Quant Edge's insider clusters are rarely reported (0.7); a 13D often is (0.5).
+  // The new satellite analyses are as rarely in the news as flaring (0.85); a reactor's daily status is public
+  // but seldom read (0.75); recalls are often reported, vehicle recalls most (0.6, 0.55); a signal set against a
+  // pending deal is Edge's own reading (0.8).
+  if (SAT_KINDS.has(kind) || RECORD_BASE[kind] !== undefined) return (SAT_KINDS.has(kind) ? 0.85 : RECORD_BASE[kind]) * (0.5 + 0.5 * Math.exp(-ageDays / 30));
   const base = kind === "quant.insider_cluster" ? 0.7 : kind === "quant.activist" ? 0.5 : kind === "ground_change" ? 0.9 : kind === "flaring" || kind === "radar_change" || kind === "methane_plume" ? 0.85 : SIGNAL_KINDS.has(kind) ? 0.8 : kind === "permits" ? 0.75 : kind === "deal_proforma" ? 0.45 : kind === "filing_change" ? 0.7 : kind === "thesis_update" ? 0.7 : kind === "commitment_due" ? 0.55 : kind === "guidance_result" ? 0.5 : 0.6;
   return base * (0.5 + 0.5 * Math.exp(-ageDays / 30));
 }
@@ -122,6 +130,16 @@ async function cardsOf(page: Ranked[]): Promise<EdgeCard[]> {
       sources: trail.filter((t) => t.subject === `detection:${d.id}`).map((t) => ({ name: t.sourceName, url: t.sourceUrl, license: t.license, method: t.method, modelVersion: t.modelVersion, retrievedAt: t.retrievedAt.toISOString() })),
     }];
   });
+}
+
+/** One finding as a card, if the person may see it (public, or their own); for the map's markers outside their feed. */
+export async function cardById(userId: string, id: number, watches: Watch[], blend: Blend): Promise<EdgeCard | null> {
+  const [d] = await requireDb().select(LIGHT).from(schema.edgeDetections)
+    .where(sql`${schema.edgeDetections.id} = ${id} and (${schema.edgeDetections.ownerId} is null or ${schema.edgeDetections.ownerId} = ${userId})`);
+  if (!d) return null;
+  const mine = matches(d, watches).filter((w) => w.mine);
+  const [card] = await cardsOf([rankOf(d, mine.length ? "mine" : "trending", mine.length ? 1 : 0.5, mine.length ? [`You watch ${mine[0].label}`] : [], blend, Date.now())]);
+  return card ?? null;
 }
 
 /** Everything found about one company that the person may see (public findings and their own), newest first. */

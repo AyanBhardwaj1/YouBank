@@ -7,14 +7,15 @@
  */
 import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, Download, ExternalLink, Film, Map as MapIcon, MapPin, Mountain, Network, Radar, Sparkles, Users } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { createContext, memo, useContext, useMemo, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Compare } from "./Compare";
 import { TerrainPanel } from "./Terrain";
 import { Timelapse } from "./Timelapse";
 import { wordDiff } from "@/lib/edge/docs/text";
 import { ProbBar, Sparkline } from "./next/charts";
-import { ago, confidenceLabel, fmtNum, useClock, type EdgeCard, type FilingVisual, type FlagVisual, type FlaringVisual, type GroundVisual, type MethaneVisual, type PermitsVisual, type PredictionVisual, type ProformaVisual, type RadarVisual } from "./client";
+import { freshness } from "@/lib/edge/fresh";
+import { ago, confidenceLabel, fmtNum, useClock, type DealImpactVisual, type EdgeCard, type FilingVisual, type FlagVisual, type FlaringVisual, type GroundVisual, type MethaneVisual, type PermitsVisual, type PredictionVisual, type ProformaVisual, type RadarVisual, type ReactorVisual, type RecallVisual, type SatVisual } from "./client";
 
 /** "4m", "Yesterday", "Sep 26": kept fresh by the shared clock, so a tick re-renders only the times. */
 export function Ago({ iso }: { iso: string }) {
@@ -73,6 +74,19 @@ function Provenance({ card }: { card: EdgeCard }) {
   );
 }
 
+/** Ids of cards that arrived while the feed was open (the feed fills it on each poll), so they read as new. */
+export const ArrivedContext = createContext<ReadonlySet<number>>(new Set());
+
+/** "New" for a finding from the last six hours (or one that arrived while the feed was open), "Updated" when its numbers moved in the last three. */
+export function FreshMark({ card }: { card: EdgeCard }) {
+  const now = useClock();
+  const arrived = useContext(ArrivedContext);
+  const f = now ? freshness(card.detectedAt, (card.visual as { updatedAt?: string }).updatedAt, now) : null;
+  const mark = f ?? (arrived.has(card.id) ? "new" : null);
+  if (!mark) return null;
+  return <span className={`shrink-0 rounded-full px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wider ${mark === "new" ? "bg-accent text-accent-fg" : "border border-accent/50 text-accent"}`} title={mark === "new" ? "Found in the last six hours" : "Its numbers changed in the last three hours"}>{mark === "new" ? "New" : "Updated"}</span>;
+}
+
 function Shell({ card, index, children, kicker, icon }: { card: EdgeCard; index: number; children: React.ReactNode; kicker: string; icon: string }) {
   const reduce = useReducedMotion();
   return (
@@ -83,7 +97,7 @@ function Shell({ card, index, children, kicker, icon }: { card: EdgeCard; index:
     >
       <div className="flex items-center justify-between gap-2 px-3.5 pt-3">
         <div className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-accent">
-          <Icon name={icon} className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{kicker}</span>
+          <Icon name={icon} className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{kicker}</span><FreshMark card={card} />
         </div>
         <Confidence value={card.confidence} />
       </div>
@@ -706,5 +720,190 @@ export const EdgeCardView = memo(function EdgeCardView(props: { card: EdgeCard; 
   if (props.card.kind === "guidance_result" || props.card.kind === "commitment_due") return <PromiseCard card={props.card} index={props.index} />;
   if (props.card.kind === "thesis_update") return <ThesisCard card={props.card} index={props.index} />;
   if (props.card.kind === "quant.insider_cluster" || props.card.kind === "quant.activist") return <QuantEventCard card={props.card} index={props.index} />;
+  if (props.card.kind === "crop_vigour" || props.card.kind === "water_extent" || props.card.kind === "vessel_traffic") return <SatCard card={props.card} index={props.index} onMap={props.onMap} />;
+  if (props.card.kind === "reactor_outage") return <ReactorCard card={props.card} index={props.index} onMap={props.onMap} />;
+  if (props.card.kind === "fda_recall" || props.card.kind === "vehicle_recall") return <RecallCard card={props.card} index={props.index} />;
+  if (props.card.kind === "deal_impact") return <DealImpactCard card={props.card} index={props.index} onMap={props.onMap} />;
   return null;
 });
+
+/* ---------------- Satellite analyses, public records and deal watch ---------------- */
+
+const SAT_KICKER: Record<string, { label: string; icon: string; source: string }> = {
+  crop_vigour: { label: "Earth · crop condition", icon: "Satellite", source: "Sentinel-2, 10 m" },
+  water_extent: { label: "Earth · water extent", icon: "Globe2", source: "Sentinel-2, 10 to 20 m" },
+  vessel_traffic: { label: "Earth · ships at port", icon: "Radar", source: "Sentinel-1 radar, 10 m" },
+};
+
+/** One reading against its baseline: a bar per earlier year or pass, the reading now in the accent colour. */
+function BaselineBars({ m }: { m: SatVisual["metric"] }) {
+  const all = [...m.baseline.map((b) => b.value), m.current];
+  const lo = m.unit === "ships" ? 0 : Math.min(...all) * 0.9, hi = Math.max(...all) || 1;
+  const h = (v: number) => `${Math.max(6, ((v - lo) / (hi - lo || 1)) * 100)}%`;
+  const show = (v: number) => (m.unit === "share" ? `${Math.round(v * 100)}%` : m.unit === "ndvi" ? v.toFixed(2) : String(Math.round(v)));
+  const bars = m.baseline.slice(-12);
+  return (
+    <div>
+      <div className="flex h-14 items-end gap-[3px]" role="img" aria-label={`${m.label}: ${show(m.current)} now against ${show(m.mean)} before`}>
+        {bars.map((b) => <div key={b.label} title={`${b.label}: ${show(b.value)}`} className="flex-1 rounded-t-[2px] bg-line-strong" style={{ height: h(b.value) }} />)}
+        <div title={`${m.date}: ${show(m.current)}`} className="flex-1 rounded-t-[2px] bg-accent" style={{ height: h(m.current) }} />
+      </div>
+      <div className="mt-0.5 flex justify-between text-[9.5px] text-faint"><span>{bars[0]?.label ?? ""}</span><span>{m.date}</span></div>
+    </div>
+  );
+}
+
+export function SatCard({ card, index, onMap }: { card: EdgeCard; index: number; onMap?: OnMap }) {
+  const v = card.visual as SatVisual;
+  const m = v.metric;
+  const k = SAT_KICKER[card.kind] ?? SAT_KICKER.crop_vigour;
+  const show = (x: number) => (m.unit === "share" ? `${Math.round(x * 100)}%` : m.unit === "ndvi" ? x.toFixed(2) : String(Math.round(x * 10) / 10));
+  const [open, setOpen] = useState(false);
+  return (
+    <Shell card={card} index={index} kicker={`${k.label}${card.tickers.length ? ` · ${card.tickers.slice(0, 3).join(", ")}` : ""}`} icon={k.icon}>
+      {v.image && (
+        <div className="mt-2.5 px-3.5">
+          <figure className="overflow-hidden rounded-lg border border-line bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={v.image.url} alt={`${v.site.name}, ${v.image.date}: ${v.image.caption}`} loading="lazy" className="aspect-square w-full object-cover" />
+            <figcaption className="bg-bg/80 px-2 py-1 text-[10.5px] text-muted">{v.image.caption} · {v.image.date}</figcaption>
+          </figure>
+        </div>
+      )}
+      <div className="flex flex-1 flex-col gap-2 px-3.5 pb-3 pt-2.5">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-accent">{show(m.current)} now · {show(m.mean)} usual</span>
+          <span className="num rounded-md bg-elevated px-1.5 py-0.5 text-muted">{m.pct >= 0 ? "+" : ""}{Math.round(m.pct * 100)}% · z {m.z.toFixed(1)} · {m.n} {m.unit === "ships" ? "passes" : "years"} before</span>
+          <span className="rounded-md bg-elevated px-1.5 py-0.5 text-muted">{v.site.region}</span>
+        </div>
+        <BaselineBars m={m} />
+        <p className="text-[12.5px] leading-relaxed text-muted">{card.summary}</p>
+        <button type="button" onClick={() => setOpen((x) => !x)} aria-expanded={open} className="flex items-center gap-1 self-start text-[11px] text-accent hover:underline"><ChevronDown className={`h-3 w-3 transition ${open ? "rotate-180" : ""}`} /> {open ? "Hide the method and caveats" : "Method and caveats"}</button>
+        {open && <div className="rise space-y-1.5 rounded-lg border border-line bg-elevated/40 p-2.5 text-[11.5px] leading-relaxed text-muted"><p><span className="font-semibold text-fg">Method. </span>{v.method}</p><p><span className="font-semibold text-fg">Caveats. </span>{v.caveats}</p></div>}
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Seen <Ago iso={card.observedAt ?? card.detectedAt} /> · {k.source}</span>
+          {onMap && <button type="button" onClick={() => onMap(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><MapIcon className="h-3 w-3" /> On the map</button>}
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+/** A nuclear unit's last weeks of power, one bar a day, the run below normal in the accent colour. */
+function PowerStrip({ v }: { v: ReactorVisual }) {
+  const days = v.series.slice(-30);
+  return (
+    <div>
+      <div className="flex h-10 items-end gap-px" role="img" aria-label={`${v.unit}'s daily power over the last ${days.length} days, ${Math.round(v.power)}% on ${v.latest}`}>
+        {days.map((d) => <div key={d.date} title={`${d.date}: ${d.power}%`} className={`flex-1 rounded-t-[1px] ${d.date >= v.start ? "bg-accent" : "bg-line-strong"}`} style={{ height: `${Math.max(4, d.power)}%` }} />)}
+      </div>
+      <div className="mt-0.5 flex justify-between text-[9.5px] text-faint"><span>{days[0]?.date}</span><span>{v.latest}</span></div>
+    </div>
+  );
+}
+
+export function ReactorCard({ card, index, onMap }: { card: EdgeCard; index: number; onMap?: OnMap }) {
+  const v = card.visual as ReactorVisual;
+  return (
+    <Shell card={card} index={index} kicker={`Records · nuclear unit${v.tickers.length ? ` · ${v.tickers.join(", ")}` : ""}`} icon="Zap">
+      <div className="flex flex-1 flex-col gap-2 px-3.5 pb-3 pt-2.5">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-accent">{Math.round(v.power)}% now · {Math.round(v.before)}% usual</span>
+          <span className="num rounded-md bg-elevated px-1.5 py-0.5 text-muted">{v.days} day{v.days === 1 ? "" : "s"} · about {fmtNum(v.lostMwh)} MWh lost</span>
+          <span className="rounded-md bg-elevated px-1.5 py-0.5 text-muted">{v.merchant ? "Sells into the market" : "Regulated"}{v.refuelSeason ? " · refuelling season" : ""}</span>
+        </div>
+        <PowerStrip v={v} />
+        <p className="text-[12.5px] leading-relaxed text-muted">{card.summary}</p>
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Reported <Ago iso={card.observedAt ?? card.detectedAt} /> · NRC daily status</span>
+          <span className="flex items-center gap-2.5">
+            <a href={v.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink className="h-3 w-3" /> NRC</a>
+            {onMap && <button type="button" onClick={() => onMap(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><MapIcon className="h-3 w-3" /> On the map</button>}
+          </span>
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+export function RecallCard({ card, index }: { card: EdgeCard; index: number }) {
+  const v = card.visual as RecallVisual;
+  const fda = v.source === "fda";
+  return (
+    <Shell card={card} index={index} kicker={`Records · ${fda ? "FDA recalls" : "vehicle recalls"} · ${v.ticker}`} icon={fda ? "Stethoscope" : "AlertTriangle"}>
+      <div className="flex flex-1 flex-col gap-2 px-3.5 pb-3 pt-2.5">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          {fda ? (
+            <>
+              <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-accent">{v.k ?? 0} in two weeks · about {(v.lambda ?? 0).toFixed(1)} usual</span>
+              {(v.classI ?? 0) > 0 && <span className="num rounded-md bg-neg/15 px-1.5 py-0.5 text-neg">{v.classI} Class I</span>}
+            </>
+          ) : (
+            <>
+              <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-accent">{fmtNum(v.units ?? 0)} vehicles · about {fmtNum(v.usual ?? 0)} usual</span>
+              {v.parkIt && <span className="rounded-md bg-neg/15 px-1.5 py-0.5 text-neg">Do not drive or park outside</span>}
+            </>
+          )}
+        </div>
+        <ul className="space-y-1 rounded-lg border border-line bg-elevated/40 p-2 text-[11.5px]">
+          {v.items.slice(0, 4).map((r) => (
+            <li key={r.id}>
+              <div className="flex justify-between gap-2"><a href={r.url} target="_blank" rel="noreferrer" className="truncate font-medium hover:text-info">{r.id}{r.cls ? ` · ${r.cls}` : ""}{r.units ? ` · ${fmtNum(r.units)} vehicles` : ""}</a><span className="num shrink-0 text-faint">{r.date}</span></div>
+              <div className="line-clamp-2 text-muted">{r.product ? `${r.product}: ` : ""}{r.reason}</div>
+            </li>
+          ))}
+        </ul>
+        <p className="text-[12.5px] leading-relaxed text-muted">{card.summary}</p>
+        <Reasons card={card} />
+        <div className="mt-auto pt-1 text-[10.5px] text-faint">Reported <Ago iso={card.observedAt ?? card.detectedAt} /> · {fda ? "openFDA enforcement reports" : "NHTSA recalls"}</div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}
+
+const SEVERITY: Record<string, string> = { high: "border-neg/50 bg-neg/10 text-neg", medium: "border-accent/50 bg-accent-soft text-accent", low: "border-line bg-elevated text-muted" };
+
+export function DealImpactCard({ card, index, onMap }: { card: EdgeCard; index: number; onMap?: OnMap }) {
+  const v = card.visual as DealImpactVisual;
+  const d = v.deal;
+  const stage = d.stage === "announced" ? `Announced ${d.announcedAt}` : d.stage === "reported" ? `Reported ${d.announcedAt}, not confirmed` : "Deal Radar estimate";
+  return (
+    <Shell card={card} index={index} kicker={`Deal watch · ${v.side} · ${v.ticker}`} icon="Handshake">
+      <div className="flex flex-1 flex-col gap-2 px-3.5 pb-3 pt-2.5">
+        <h3 className="text-[15px] font-semibold leading-snug tracking-tight">{card.title}</h3>
+        <div className="rounded-lg border border-line bg-elevated/40 p-2.5 text-[12px]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider ${SEVERITY[v.severity] ?? SEVERITY.low}`}>{v.severity === "high" ? "Worth a look now" : v.severity === "medium" ? "Worth watching" : "Background"}</span>
+            <span className="text-muted">{stage}{d.valueUsd ? ` · $${fmtNum(d.valueUsd / 1e9, 1)} billion` : ""}{d.consideration ? ` · ${d.consideration}` : ""}</span>
+          </div>
+          <div className="mt-1.5 font-medium">{d.stage === "model" ? `${d.target} as a possible target` : `${d.acquirer || d.acquirerTicker} (acquirer) and ${d.target || d.targetTicker} (target)`}</div>
+          {d.url && <a href={d.url} target={d.url.startsWith("/") ? undefined : "_blank"} rel="noreferrer" className="mt-0.5 line-clamp-2 text-[11.5px] text-info hover:underline">{d.headline}</a>}
+        </div>
+        <div className="rounded-lg border border-line p-2.5 text-[12px]">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">The signal at the {v.side}</div>
+          <a href={`#edge-card-${v.signal.id}`} className="mt-0.5 block font-medium hover:text-accent">{v.signal.title}</a>
+          <div className="mt-0.5 text-[11px] text-faint">Confidence {Math.round(v.signal.confidence * 100)} of 100 · seen {v.signal.observedAt.slice(0, 10)}</div>
+        </div>
+        <div>
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted">What it could mean for the deal</div>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-[12px] leading-relaxed text-muted">{v.effects.map((e, i) => <li key={i}>{e}</li>)}</ul>
+          <p className="mt-1.5 text-[10.5px] text-faint">Hypotheses from how deals usually respond, not a prediction or advice. Check the merger agreement and the spread.</p>
+        </div>
+        <Reasons card={card} />
+        <div className="mt-auto flex items-center justify-between gap-2 pt-1 text-[10.5px] text-faint">
+          <span>Seen <Ago iso={card.observedAt ?? card.detectedAt} /></span>
+          {onMap && v.site && <button type="button" onClick={() => onMap(card)} className="inline-flex items-center gap-1 text-accent hover:underline"><MapIcon className="h-3 w-3" /> On the map</button>}
+        </div>
+        <Provenance card={card} />
+      </div>
+    </Shell>
+  );
+}

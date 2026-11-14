@@ -25,6 +25,7 @@ import { inngest, metered, sendJob, type Steps } from "./infra/jobs";
 import { doneFor, noteMlCost, type MlDone } from "./infra/ml";
 import { flushUsage } from "./infra/usage";
 import { tickMonitors } from "./monitors";
+import { runFlarePass, runRecordsPass } from "./passes";
 import { applyRefinement, startRefine } from "./refine";
 import { finishIngest, startIngest } from "./docs/uploads";
 import { setDoc } from "./docs/store";
@@ -311,4 +312,23 @@ export const oddsWeekly = inngest.createFunction(
   async ({ step }) => scoreAll(metered(asSteps(step)), true),
 );
 
-export const functions = [canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, lboRefine, agentTick, dealsBackfill, pulseWeekly, oddsRefresh, oddsWeekly];
+/**
+ * Fresh signals every hour: flaring from NASA FIRMS's 24-hour files (new overpasses land within about three
+ * hours), then the public records (the NRC's reactor status, FDA and NHTSA recalls). Each pass runs only
+ * when its last one is older than 55 minutes and under its own lease, so this, the page-open refresh and
+ * the daily cron never run one twice at once. Free sources only; new cards alert watchers and are checked
+ * against pending deals. The same tick checks prediction-market watches and settles forecasts.
+ */
+export const freshTick = inngest.createFunction(
+  { id: "edge-fresh-tick", triggers: [{ cron: "5 * * * *" }, { event: "edge/fresh.tick" }], concurrency: 1, retries: 1 },
+  async ({ step }) => {
+    const s = metered(asSteps(step));
+    const flares = await s.run("flares", async () => { try { return await runFlarePass("hourly", Date.now() + 180_000); } catch (e) { return { error: failureMessage(e, "edge-fresh-flares") }; } });
+    const records = await s.run("records", async () => { try { return await runRecordsPass("hourly", Date.now() + 180_000); } catch (e) { return { error: failureMessage(e, "edge-fresh-records") }; } });
+    // Prediction-market watches: probability moves alerted, resolved forecasts scored (src/lib/predict/watch.ts).
+    const predict = await s.run("predict", async () => { try { return await (await import("@/lib/predict/watch")).predictPass(Date.now() + 60_000); } catch (e) { return { error: failureMessage(e, "edge-fresh-predict") }; } });
+    return { flares, records, predict };
+  },
+);
+
+export const functions = [freshTick, canvasRun, monitorsTick, digestTick, detectionRefine, docIngest, graphRefresh, graphIngest, graphTrain, scenarioRefine, lboRefine, agentTick, dealsBackfill, pulseWeekly, oddsRefresh, oddsWeekly];

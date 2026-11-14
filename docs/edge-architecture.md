@@ -11,7 +11,7 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Files | Cloudflare R2, through `aws4fetch` (`src/lib/edge/infra/r2.ts`) | uploads (in 4 MB parts), transcripts, parsed documents, graph exports and models, factor history, large scenario results, exports |
 | Background jobs | Inngest (`src/lib/edge/functions.ts`, served at `/api/inngest`) | canvas runs, monitors, the digest, document reading, the graph, scenario refinement |
 | ML service | Modal app `youbank-edge-ml` (`ml/edge_ml.py`), scales to zero | `geo.refine` (Prithvi-EO-2.0, SAM 2.1, older pair as fallback), `geo.embed_change` (AlphaEarth embeddings, with a grid for the 3D map), `geo.footprints` (SAM 2.1 automatic masks), `docs.parse`, `docs.rerank` (ettin-reranker-32m), `audio.transcribe` (Parakeet for English, Whisper otherwise), `graph.train`, `synth.tabular`, `synth.series`, `topics.map`, `docs.verify` (Calibrated Claims), `odds.train` and `odds.score` (Deal Radar; the logic in `ml/odds_core.py`), `health`. Deploys go to a staging copy (`EDGE_ML_APP=youbank-edge-ml-staging`) and its smoke test first; see `ml/README.md` |
-| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2, Sentinel-1 radar, NAIP and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, NASA FIRMS heat detections, the New Mexico OCD (C-115B waste reports, well permits), the Texas RRC map service, AWS Terrain Tiles for the 3D map, USGS 3DEP lidar point clouds (Entwine on AWS Open Data), OpenStreetMap through Overpass and OpenFreeMap, Impact Observatory land use, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
+| Public data | fetched on demand, cached | EIA maps and prices, Sentinel-2, Sentinel-1 radar, NAIP and elevation (USGS 3DEP lidar and 10 m, Copernicus 30 m) via Microsoft Planetary Computer, NASA FIRMS heat detections (seven-day files daily, 24-hour files hourly), NASA GIBS imagery tiles (browser only), the NRC's daily power reactor status, openFDA recall enforcement, NHTSA recalls (data.transportation.gov), the New Mexico OCD (C-115B waste reports, well permits), the Texas RRC map service, AWS Terrain Tiles for the 3D map, USGS 3DEP lidar point clouds (Entwine on AWS Open Data), OpenStreetMap through Overpass and OpenFreeMap, Impact Observatory land use, SEC EDGAR, Kenneth French's library, the Treasury curve, Nasdaq (FMP as backup) |
 | Language models | the app's OpenAI/Anthropic setup, under the AI spend caps | answers, memos, card text, intro drafts |
 
 ## Code map (`src/lib/edge/`)
@@ -19,7 +19,9 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
 | Area | Files |
 |---|---|
 | Access and the beta | `access.ts` (`requireEdge`, prefs, limits), `onboard.ts` (first canvas) |
-| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `terrain.ts` (elevation and its analyses), `ground.ts` (terrain for findings and assets), `site3d.ts` (sites in 3D), `timelapse.ts`, `flares.ts`, `radar.ts`, `permits.ts`, `sources/` (EIA, Sentinel-2 and -1, FIRMS, NM OCD, NM wells, Texas RRC, USGS lidar points, OpenStreetMap) |
+| Earth | `assets.ts`, `detect.ts`, `change.ts`, `refine.ts`, `proforma.ts`, `dealwatch.ts`, `terrain.ts` (elevation and its analyses), `ground.ts` (terrain for findings and assets), `site3d.ts` (sites in 3D), `timelapse.ts`, `flares.ts`, `passes.ts` (the hourly and page-open passes and their freshness), `radar.ts`, `permits.ts`, `sat/` (crop condition from Sentinel-2 NDVI, water extent from MNDWI, ships from Sentinel-1 bright targets: `score.ts` pure scoring, `sites.ts` the curated sites and their tickers, `scan.ts` the pass), `sources/` (EIA, Sentinel-2 and -1, FIRMS, NM OCD, NM wells, Texas RRC, USGS lidar points, OpenStreetMap, NRC, openFDA, NHTSA) |
+| Records and deal watch | `records/` (NRC reactor outages and derates, FDA recall bursts, NHTSA vehicle recalls: `logic.ts` pure, `names.ts` filed names to tickers, `reactors.ts` units to owners, `scan.ts`), `dealimpact.ts` (signals at a party to a pending or reported deal, with the side and the effect as hypotheses) |
+| The globe | `gibs.ts` (NASA GIBS layers and dates), `globe-core.ts` (markers, pure), `globe.ts` (every public finding of the month with a place), `fresh.ts` (New and Updated marks); APIs `/api/edge/globe` and `/api/edge/card` |
 | 3D maps and geospatial AI | `twin.ts` (digital twins), `scene.ts` (scene analyses), `place.ts` (a request's place), `geo3d/` (sun, procedural meshes, glTF, lidar octree and wire format, terrain tiles, twin export); client side `src/components/edge/map3d/` (the layer registry, MapLibre helpers, deck.gl loading, controls, the twin panel) |
 | Watches, feed, alerts | `watches.ts`, `feed.ts`, `state.ts` (the person's Edge, for the API and the page), `brief.ts`, `notify.ts`, `alerts.ts`, `digest.ts`, `crm.ts`, `provenance.ts` |
 | Documents | `docs/` (ingest, `html.ts` and chunking, retrieval with keyword, meaning and rerank steps, answers with the second reading, change radar, topics, filing watch) |
@@ -61,6 +63,9 @@ How Edge is put together and how to run it. What it does for users is in `docs/e
   `edge_agent_steps`, `edge_job_state` (the backfill's, the Pulse's and the Deal Radar's cursors and switches). R2 holds the
   Pulse's raw pulls and posting state, and the Deal Radar's raw store, events, panels and models.
 
+New kinds in `edge_detections` (no new table): `crop_vigour`, `water_extent`, `vessel_traffic`, `reactor_outage`, `fda_recall`,
+`vehicle_recall`, `deal_impact`. Pass state lives in `edge_job_state`; histories and cursors for the analyses in `kv_cache`.
+
 Migrations are `drizzle/0013_edge.sql`, `drizzle/0014_edge_platform.sql` and `drizzle/0020_edge_next.sql`. They are applied by hand:
 first on a Neon branch, then on production with the owner's approval.
 
@@ -68,7 +73,8 @@ first on a Neon branch, then on production with the owner's approval.
 
 | What | Trigger | Notes |
 |---|---|---|
-| Daily pass | Vercel cron `/api/cron/edge`, 07:30 UTC | Checks watches, scans deals and filings, then flaring (every plant), radar (watched plants, a dozen a day), permits and (only when licensed) methane side by side, notifies watchers, runs the graph's daily slice. Sends digests itself only when Inngest is not configured. |
+| Daily pass | Vercel cron `/api/cron/edge`, 07:30 UTC | Checks watches, scans deals and filings, then flaring (every plant, the full seven-day read), radar (watched plants, a dozen a day), permits, (only when licensed) methane, the satellite analyses (`sat/scan.ts`: crops, water, ships; each site on its own cadence) and the public records side by side, notifies watchers, checks every signal of the last three days against pending deals (`dealimpact.ts`), runs the graph's daily slice. Sends digests itself only when Inngest is not configured. |
+| Fresh signals | hourly `5 * * * *`, `edge/fresh.tick` (`edge-fresh-tick`); the page and every feed poll (`after()`) when flaring is over an hour old | `passes.ts`: a quick flare pass from FIRMS's 24-hour files merged into the kept week (new overpasses land within about three hours), then the public records (NRC reactor status, openFDA and NHTSA recalls). Each pass runs under a lease, only when its last run (in `edge_job_state`: `edge.flares.pass`, `edge.records.pass`) is old enough, so the hourly tick, the page-open refresh and the cron never run one twice. Vercel Hobby allows only daily crons, so nothing depends on a sub-daily cron: without Inngest, the page-open refresh keeps flaring within the hour while anyone uses Edge. New cards alert watchers and are checked against pending deals. |
 | Canvas runs | `edge/canvas.run` | One step per block, retried; monitors re-run deployed canvases hourly (`20 * * * *`). |
 | Digest | `35 * * * *` | Each person at their morning brief's hour, in their time zone. |
 | Ground check | `edge/detection.created` | `geo.refine` on Modal (Prithvi, Segment Anything) raises or lowers confidence. |
@@ -123,6 +129,8 @@ At a limit, runs queue or fall back:
   `youbank-edge` holds the R2 keys, `R2_BUCKET`, `INNGEST_EVENT_KEY` and `EDGE_ML_SECRET`, so the
   service reads and writes R2 and posts `edge/ml.done` itself.
 - **Links in emails:** `YOUBANK_URL`, or Vercel's production URL.
+- **Fresh signals (optional):** `OPENFDA_API_KEY` (raises openFDA's daily limit; works without), `EDGE_SOCRATA_APP_TOKEN`
+  (raises data.transportation.gov's rate limit; works without), `EDGE_NHTSA_URL` (replace the NHTSA dataset address if it moves).
 - **3D maps (optional):** `OVERPASS_URL` (default the public overpass-api.de; set a mirror or your own
   instance for heavy use) and `USGS_LIDAR_INDEX_URL` (default Hobu's index of the USGS lidar bucket on GitHub).
 

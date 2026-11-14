@@ -140,7 +140,9 @@ export function EdgeWorkspace({ initialView = "feed", initialDocs = null, initia
                 <WatchPanel state={state} onChanged={edge.reload} />
                 <div className="panel hidden p-3 text-[11.5px] leading-relaxed text-muted xl:block">
                   <div className="font-semibold text-fg">How Earth works</div>
-                  <p className="mt-1">Every day Edge compares each watched plant with the same place a year before in Sentinel-2 imagery (10 m), keeps changes that are compact and clear of cloud, shadow and vegetation, and describes what it sees. New Newsroom deals that touch your companies are drawn as pro-forma maps.</p>
+                  <p className="mt-1">Every day Edge compares each watched plant with the same place a year before in Sentinel-2 imagery (10 m), keeps changes that are compact and clear of cloud, shadow and vegetation, and describes what it sees. Flaring is read from NASA&apos;s VIIRS detections every hour. Crop condition, water in reservoirs and brine ponds, and ships at LNG terminals and ports are read from Sentinel-2 and Sentinel-1 against earlier years and passes. New Newsroom deals that touch your companies are drawn as pro-forma maps, and any signal at a party to a pending deal becomes a deal-watch card.</p>
+                  <div className="mt-2 font-semibold text-fg">How Records works</div>
+                  <p className="mt-1">Nuclear units&apos; daily power from the NRC, FDA recalls and NHTSA vehicle recalls are read every hour and matched to the listed companies behind them; a card needs a clear break from the company&apos;s own usual pace.</p>
                   <div className="mt-2 font-semibold text-fg">How Documents works</div>
                   <p className="mt-1">When a company you watch files a 10-K or 10-Q, Edge compares its risk factors with the previous one and posts what was added, dropped and reworded, in the filing&apos;s own words.</p>
                 </div>
