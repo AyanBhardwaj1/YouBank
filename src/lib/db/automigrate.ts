@@ -75,8 +75,11 @@ export function ordered(names: string[]): string[] {
 
 async function run(missing: string[], base: boolean): Promise<AutoMigrateResult> {
   // The direct address when there is one (DDL is happiest off the pooler); the pooled one works too.
-  // The direct address first (DDL is happiest off the pooler), then the pooled one if that cannot connect.
-  const urls = [...new Set([process.env.DATABASE_URL_UNPOOLED, process.env.POSTGRES_URL_NON_POOLING, databaseUrl()].filter((u): u is string => !!u))];
+  // The very database the app reads (DATABASE_URL): never a separate "direct" address, which a deployment can
+  // have pointing somewhere else (a stale DATABASE_URL_UNPOOLED from another project or branch), so the
+  // migrations would land where the app never looks. DDL runs fine through Neon's pooler inside a transaction.
+  // The direct address is used only if the app's own address cannot connect at all.
+  const urls = [...new Set([databaseUrl(), process.env.DATABASE_URL_UNPOOLED, process.env.POSTGRES_URL_NON_POOLING].filter((u): u is string => !!u))];
   if (!urls.length) return { applied: [], base: false, error: "no database" };
   let url = urls[0];
   for (const u of urls) {

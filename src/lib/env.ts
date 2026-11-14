@@ -133,6 +133,15 @@ export function moneySwitches(env: Env): { copyTrading: boolean; algoLive: boole
   return { copyTrading: on("COPYTRADE_TRADING_ENABLED"), algoLive: on("ALGO_LIVE_ENABLED"), webull: on("ALGO_WEBULL_ENABLED"), algoKill: on("ALGO_KILL") };
 }
 
+/** Whether two Postgres addresses name the same database (host without Neon's -pooler, port and database name). Pure. */
+export function sameDatabase(a: string, b: string): boolean {
+  try {
+    const x = new URL(a), y = new URL(b);
+    const host = (u: URL) => u.hostname.toLowerCase().replace("-pooler.", ".");
+    return host(x) === host(y) && (x.port || "5432") === (y.port || "5432") && x.pathname === y.pathname;
+  } catch { return true; }
+}
+
 /** Pure, for tests. */
 export function checkEnv(env: Env, production: boolean): { missing: string[]; invalid: string[] } {
   // The database address also counts under the name other integrations give it (src/db).
@@ -140,6 +149,8 @@ export function checkEnv(env: Env, production: boolean): { missing: string[]; in
   const missing = [...REQUIRED, ...(production ? PRODUCTION : [])].filter((k) => !set(k));
   if (!set("OPENAI_API_KEY") && !set("ANTHROPIC_API_KEY")) missing.push("OPENAI_API_KEY or ANTHROPIC_API_KEY");
   const invalid: string[] = [];
+  // The direct address must be the same database as the app's (Neon: the same endpoint without -pooler).
+  if (env.DATABASE_URL?.trim() && env.DATABASE_URL_UNPOOLED?.trim() && !sameDatabase(env.DATABASE_URL, env.DATABASE_URL_UNPOOLED)) invalid.push("DATABASE_URL_UNPOOLED (points at a different database than DATABASE_URL: update or delete it)");
   if (set("BETTER_AUTH_SECRET") && env.BETTER_AUTH_SECRET!.length < 32) invalid.push("BETTER_AUTH_SECRET (needs 32+ characters; sign-in fails without it)");
   if (set("EMAIL_TOKEN_SECRET") && env.EMAIL_TOKEN_SECRET!.length < 16) invalid.push("EMAIL_TOKEN_SECRET (needs 16+ characters)");
   if (set("EDGAR_USER_AGENT") && !env.EDGAR_USER_AGENT!.includes("@")) invalid.push("EDGAR_USER_AGENT (SEC asks for a contact email in it)");
