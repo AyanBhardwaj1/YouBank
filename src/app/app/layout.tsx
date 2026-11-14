@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // A deploy ahead of its database (no DATABASE_URL, or the schema not pushed yet) shows a calm
   // "being set up" screen; /api/health tells the operator what is missing.
   const setup = await setupState();
-  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
+  if (!setup.ready) return <SetupScreen reason={setup.reason} detail={"detail" in setup ? setup.detail : undefined} />;
   const user = await currentUser();
   if (!user) redirect("/sign-in");
   if (!db) return <SetupScreen />;

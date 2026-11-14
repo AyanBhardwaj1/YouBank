@@ -5,7 +5,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { hashKey, newRecoveryKey, normalizeKey, sameHash } from "@/lib/auth/recovery";
-import { databaseUrl, inTransaction, statementsOf } from "@/lib/db/automigrate";
+import { databaseUrl, FIRST, inTransaction, ordered, statementsOf } from "@/lib/db/automigrate";
 import { BASE_SQL, MIGRATION_SQL } from "@/lib/db/migrations.gen";
 import { checkEnv } from "@/lib/env";
 import { MIGRATIONS } from "@/lib/setup";
@@ -35,6 +35,8 @@ ok("inside the transaction an index is built without CONCURRENTLY", inTransactio
 ok("an empty database gets the whole schema, sign-in's tables included", ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache", "auth_recovery", "app_secrets"].every((t) => BASE_SQL.includes(`CREATE TABLE "${t}"`)));
 ok("the database address is found under the names integrations use", databaseUrl({ POSTGRES_URL: "postgres://a" }) === "postgres://a" && databaseUrl({ DATABASE_URL: "postgres://b", POSTGRES_URL: "postgres://a" }) === "postgres://b" && databaseUrl({}) === "");
 ok("the environment check counts POSTGRES_URL as the database", !checkEnv({ POSTGRES_URL: "postgres://a", BETTER_AUTH_SECRET: "x".repeat(40) }, false).missing.includes("DATABASE_URL"));
+ok("sign-in's migrations run first, then the rest in file order", JSON.stringify(ordered(["0032_analytics", "0012_launch", "0031_two_factor", "0030_mail_compliance"])) === JSON.stringify(["0030_mail_compliance", "0031_two_factor", "0012_launch", "0032_analytics"]));
+ok("every migration named first exists", FIRST.every((n) => MIGRATION_SQL.some(([m]) => m === n)));
 const recent = MIGRATION_SQL.filter(([n]) => n >= "0030");
 ok("they are written to be safe twice (IF NOT EXISTS on every create and add column)", recent.every(([, t]) => statementsOf(t).every((s) => !/^(create (table|index|unique index)|alter table .* add column)/i.test(s) || /if not exists/i.test(s))), recent.map(([n]) => n));
 

@@ -10,7 +10,7 @@
 import { sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
 import { shared } from "./shared";
-import { autoMigrate, provisionAuthSecret } from "./db/automigrate";
+import { autoMigrate, lastSetupProblem, provisionAuthSecret } from "./db/automigrate";
 
 /** Tables the schema push creates and every page needs. */
 export const CORE_TABLES = ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache"];
@@ -95,7 +95,7 @@ export async function schemaStatus(d: Db): Promise<SchemaStatus> {
   return summarize(r.rows.map((x) => x.name), c.rows.map((x) => x.name));
 }
 
-export type SetupState = { ready: true } | { ready: false; reason: "database" | "schema" | "auth" };
+export type SetupState = { ready: true } | { ready: false; reason: "database" | "schema" | "auth"; detail?: string };
 
 /** Per process (src/lib/shared): the layout, pages and routes are separate build layers with their own module copies. */
 const ready = shared("setup:ready", () => ({ until: 0, migrated: false }));
@@ -165,7 +165,7 @@ export async function setupState(): Promise<SetupState> {
     // request checks again.
     return { ready: true };
   }
-  if (missing) return { ready: false, reason: "schema" };
+  if (missing) return { ready: false, reason: "schema", detail: lastSetupProblem() || undefined };
   ready.until = Date.now() + 5 * 60_000;
   return { ready: true };
 }

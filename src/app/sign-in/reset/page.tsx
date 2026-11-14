@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function ResetPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const setup = await setupState().catch(() => ({ ready: true as const }));
-  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
+  if (!setup.ready) return <SetupScreen reason={setup.reason} detail={"detail" in setup ? setup.detail : undefined} />;
   const q = await searchParams;
   const token = typeof q.token === "string" && /^[A-Za-z0-9_-]{8,200}$/.test(q.token) ? q.token : null;
   const expired = q.error === "INVALID_TOKEN";

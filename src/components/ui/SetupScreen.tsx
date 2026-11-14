@@ -13,7 +13,7 @@ const WHY: Record<string, string> = {
   schema: "Waiting on the database schema: it is being set up automatically; if this lasts, see /api/health.",
 };
 
-export function SetupScreen({ full = true, reason }: { full?: boolean; reason?: string }) {
+export function SetupScreen({ full = true, reason, detail }: { full?: boolean; reason?: string; detail?: string }) {
   const commit = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
   return (
     <main role="status" className={`flex items-center justify-center px-4 py-12 ${full ? "min-h-dvh" : "h-full min-h-[320px]"}`}>
@@ -32,7 +32,7 @@ export function SetupScreen({ full = true, reason }: { full?: boolean; reason?: 
         </div>
         {(reason || commit) && (
           <p className="mt-4 border-t border-line pt-3 text-[10.5px] leading-relaxed text-muted">
-            {reason && WHY[reason] ? `${WHY[reason]} ` : ""}{commit ? `Build ${commit}.` : ""}
+            {reason && WHY[reason] ? `${WHY[reason]} ` : ""}{detail ? `Last setup problem: ${detail}. ` : ""}{commit ? `Build ${commit}.` : ""}
           </p>
         )}
       </div>

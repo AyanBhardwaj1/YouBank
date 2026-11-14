@@ -41,7 +41,11 @@ export const autoApplicable = (text: string) => typeof text === "string";
 
 export type AutoMigrateResult = { applied: string[]; base: boolean; error?: string };
 
-const state = shared("automigrate", () => ({ running: null as Promise<AutoMigrateResult> | null, lastTry: 0 }));
+const state = shared("automigrate", () => ({ running: null as Promise<AutoMigrateResult> | null, lastTry: 0, lastProblem: "" }));
+
+/** The last thing setup could not do, as a step name and a Postgres error code (no values): shown on the setup screen. */
+export const lastSetupProblem = () => state.lastProblem;
+const codeOf = (e: unknown) => String((e as { code?: string }).code ?? (e as { cause?: { code?: string } }).cause?.code ?? (e as Error).name ?? "error");
 
 /**
  * Apply the named migrations, and the whole schema first when `base` (an empty database). At most one run per
@@ -50,7 +54,7 @@ const state = shared("automigrate", () => ({ running: null as Promise<AutoMigrat
 export function autoMigrate(missing: string[], opts: { base?: boolean } = {}): Promise<AutoMigrateResult> {
   if (process.env.AUTO_MIGRATE === "off" || (!missing.length && !opts.base)) return Promise.resolve({ applied: [], base: false });
   if (state.running) return state.running;
-  if (Date.now() - state.lastTry < 60_000) return Promise.resolve({ applied: [], base: false, error: "retrying shortly" });
+  if (Date.now() - state.lastTry < 15_000) return Promise.resolve({ applied: [], base: false, error: "retrying shortly" });
   state.lastTry = Date.now();
   state.running = run(missing, !!opts.base).finally(() => { state.running = null; });
   return state.running;
@@ -58,49 +62,75 @@ export function autoMigrate(missing: string[], opts: { base?: boolean } = {}): P
 
 const connect = (url: string) => postgres(url, { prepare: false, max: 1, connect_timeout: 15, idle_timeout: 5, onnotice: () => undefined, connection: { application_name: "youbank-migrate" } });
 
+/** Sign-in's own migrations (the columns every session reads, recovery, the secret's table): always first. */
+export const FIRST = ["0030_mail_compliance", "0031_two_factor", "0034_account_recovery", "0035_app_secrets"];
+/** How long one run may spend before it leaves the rest to the next request (a serverless function has a ceiling). */
+const BUDGET_MS = 20_000;
+
+/** The order to apply them in: sign-in's first, then the rest in file order. Pure. */
+export function ordered(names: string[]): string[] {
+  const set = new Set(names);
+  return [...FIRST.filter((n) => set.has(n)), ...MIGRATION_SQL.map(([n]) => n).filter((n) => set.has(n) && !FIRST.includes(n))];
+}
+
 async function run(missing: string[], base: boolean): Promise<AutoMigrateResult> {
   // The direct address when there is one (DDL is happiest off the pooler); the pooled one works too.
-  const url = process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING || databaseUrl();
-  if (!url) return { applied: [], base: false, error: "no database" };
-  const want = new Set(missing);
-  const todo = base ? MIGRATION_SQL : MIGRATION_SQL.filter(([name]) => want.has(name));
+  // The direct address first (DDL is happiest off the pooler), then the pooled one if that cannot connect.
+  const urls = [...new Set([process.env.DATABASE_URL_UNPOOLED, process.env.POSTGRES_URL_NON_POOLING, databaseUrl()].filter((u): u is string => !!u))];
+  if (!urls.length) return { applied: [], base: false, error: "no database" };
+  let url = urls[0];
+  for (const u of urls) {
+    const probe = connect(u);
+    const ok = await probe`select 1`.then(() => true, () => false);
+    await probe.end({ timeout: 2 }).catch(() => undefined);
+    if (ok) { url = u; break; }
+  }
+  const t0 = Date.now();
+  const names = ordered(base ? MIGRATION_SQL.map(([n]) => n) : missing);
+  const text = new Map(MIGRATION_SQL);
   const sql = connect(url);
   const applied: string[] = [];
-  try {
+  let skipped = 0;
+  /**
+   * One step (the base schema, or one migration) in its own transaction, so what it does is kept even when a
+   * later step fails, and each statement best effort: one this database cannot run (an older migration that no
+   * longer fits, a type an older extension lacks) is logged and skipped, never at the cost of the rest.
+   */
+  const step = async (label: string, statements: string[], extensions = false) => {
     await sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(${LOCK})`;
       await tx`set local statement_timeout = 0`;
-      let skippedStatements = 0;
-      const exec = async (label: string, stmt: string) => {
+      if (extensions) {
+        // The schema's column types need them (halfvec, geometry). Neon and Supabase both allow these.
+        for (const ext of ["vector", "postgis"]) await tx.savepoint((sp) => sp.unsafe(`create extension if not exists ${ext}`)).catch(() => undefined);
+      }
+      for (const stmt of statements) {
         try {
           await tx.savepoint((sp) => sp.unsafe(inTransaction(stmt)));
         } catch (e) {
-          if (EXISTS.has((e as { code?: string }).code ?? "")) return;
-          // Setting up an empty database is best effort: a statement this database cannot run (an older
-          // pgvector without halfvec, say) only costs the feature that needs it, never sign-in's own tables.
-          if (base) { skippedStatements++; logError(Object.assign(new Error(`setup skipped a statement in ${label}`), { cause: e }), { where: "automigrate" }); return; }
-          // Logged with the step's name; the whole transaction rolls back.
-          throw Object.assign(new Error(`migration ${label} failed`), { cause: e });
+          if (EXISTS.has((e as { code?: string }).code ?? "")) continue;
+          skipped++;
+          state.lastProblem = `${label}: ${codeOf(e)}`;
+          logError(Object.assign(new Error(`setup skipped a statement in ${label}`), { cause: e }), { where: "automigrate" });
         }
-      };
-      if (base) {
-        // The schema's column types need them (halfvec, geometry). Neon and Supabase both allow these.
-        for (const ext of ["vector", "postgis"]) {
-          await tx.savepoint((sp) => sp.unsafe(`create extension if not exists ${ext}`)).catch(() => undefined);
-        }
-        for (const s of statementsOf(BASE_SQL)) await exec("base", s);
       }
-      for (const [name, text] of todo) {
-        for (const s of statementsOf(text)) await exec(name, s);
-        applied.push(name);
-      }
-      if (skippedStatements) console.warn(JSON.stringify({ level: "warn", msg: "database set up with statements skipped", skipped: skippedStatements }));
     });
-    console.info(JSON.stringify({ level: "info", msg: "database set up", base, applied }));
+  };
+  try {
+    if (base) await step("base", statementsOf(BASE_SQL), true);
+    for (const name of names) {
+      // Sign-in's own steps always run; the rest wait for the next request once the budget is spent.
+      if (Date.now() - t0 > BUDGET_MS && !FIRST.includes(name)) break;
+      await step(name, statementsOf(text.get(name) ?? ""));
+      applied.push(name);
+    }
+    console.info(JSON.stringify({ level: skipped ? "warn" : "info", msg: "database set up", base, applied, skippedStatements: skipped, left: names.length - applied.length }));
     return { applied, base };
   } catch (e) {
+    // A step that could not even start (no connection, the lock): what earlier steps did is kept.
     const ref = logError(e, { where: "automigrate" });
-    return { applied: [], base: false, error: `failed (ref ${ref})` };
+    state.lastProblem = `${codeOf(e)} (ref ${ref})`;
+    return { applied, base, error: `failed (ref ${ref})` };
   } finally {
     await sql.end({ timeout: 5 }).catch(() => undefined);
   }
