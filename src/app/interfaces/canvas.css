@@ -71,7 +71,7 @@ html[data-ui="canvas"] .app-frame .uppercase { letter-spacing: 0.04em; }
 
 /* Phone: the tab bar is a white floating toolbar. */
 html[data-ui="canvas"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 16px; border: 0; background: #ffffff; box-shadow: 0 0 0 1px #e1e1dc, 0 12px 30px -14px rgba(24, 24, 27, 0.35); }
-html[data-ui="canvas"] .app-frame .yb-tabbar .bg-accent { top: 6px; height: 34px; width: 46px; border-radius: 10px; opacity: 0.12; }
+html[data-ui="canvas"] .app-frame .yb-tabbar .bg-accent { top: 6px; height: 44px; width: 52px; border-radius: 10px; background: rgba(79, 70, 229, 0.1); }
 
 .cv-frame section > div:first-child > h2 { display: none; }
 .cv-node:not(:has(.cv-frame section, .cv-frame a)) { display: none; }

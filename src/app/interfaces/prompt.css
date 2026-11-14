@@ -31,7 +31,7 @@ html[data-ui="prompt"] .app-frame .bg-accent { border-radius: 999px; }
 .yb-composer form:focus-within { border-color: #e8b974; box-shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.9), 0 0 0 4px rgba(232, 185, 116, 0.12); }
 .yb-composer input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 15px; color: var(--fg); }
 .yb-composer input::placeholder { color: var(--faint); }
-.yb-composer input:focus-visible { outline: none; }
+html[data-ui="prompt"] .yb-composer input:focus-visible { outline: none; box-shadow: none; }
 .yb-composer-go { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 14px; background: var(--accent); color: var(--accent-fg); transition: transform 160ms ease, opacity 160ms ease; }
 .yb-composer-go:disabled { opacity: 0.35; }
 .yb-composer-go:not(:disabled):hover { transform: translateY(-1px); }

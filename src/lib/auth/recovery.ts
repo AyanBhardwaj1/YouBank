@@ -55,7 +55,7 @@ export async function recoveryStatus(userId: string): Promise<{ has: boolean; cr
 }
 
 export const PASSWORD_MIN = 10, PASSWORD_MAX = 128;
-const NO_MATCH = "That email and recovery key do not match. Check the key, including every group.";
+const NO_MATCH = "That email and recovery key do not match. Check the key, including every group. Lost your key? Email bhardwajayan000@gmail.com from your account's email address.";
 
 export type ResetResult = { ok: true; newKey: string } | { ok: false; error: string; status: number };
 

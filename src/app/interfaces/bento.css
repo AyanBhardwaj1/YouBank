@@ -62,5 +62,5 @@ html[data-ui="bento"] .yb-dock-item[aria-current="page"] { background: var(--til
 
 /* Phone: big rounded tabs. */
 html[data-ui="bento"] .app-frame .yb-tabbar { margin: 0 8px 8px; border-radius: 26px; border: 0; background: #1c1a22; box-shadow: 0 0 0 1px #2c2934; }
-html[data-ui="bento"] .app-frame .yb-tabbar .bg-accent { top: 7px; height: 40px; width: 52px; border-radius: 16px; opacity: 0.2; }
+html[data-ui="bento"] .app-frame .yb-tabbar .bg-accent { top: 5px; height: 46px; width: 56px; border-radius: 16px; background: rgba(255, 122, 89, 0.18); }
 html[data-ui="bento"] .app-frame .yb-tabbar :is(a, button) > span:last-child { font-weight: 800; }
