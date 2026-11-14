@@ -10,7 +10,7 @@
 import { sql } from "drizzle-orm";
 import { db, type Db } from "@/db";
 import { shared } from "./shared";
-import { autoMigrate } from "./db/automigrate";
+import { autoMigrate, provisionAuthSecret } from "./db/automigrate";
 
 /** Tables the schema push creates and every page needs. */
 export const CORE_TABLES = ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache"];
@@ -57,6 +57,7 @@ export const MIGRATIONS: [string, string[], string][] = [
   ["0032_analytics", ["analytics_activity", "analytics_cohorts", "analytics_modules"], ""],
   ["0033_research_ledger", ["research_ledger"], "research_ledger_user_seq_uidx"],
   ["0034_account_recovery", ["auth_recovery"], "auth_recovery_created_idx"],
+  ["0035_app_secrets", ["app_secrets"], ""],
 ];
 
 /** Columns a migration adds to an existing table, checked separately (to_regclass cannot see them). */
@@ -103,12 +104,27 @@ const ready = shared("setup:ready", () => ({ until: 0, migrated: false }));
  * Apply whatever drizzle/ migrations the database lacks (src/lib/db/automigrate.ts). Once per instance
  * when it first serves a page, and again whenever sign-in's own columns are missing.
  */
-async function ensureMigrations(): Promise<void> {
+export async function ensureMigrations(): Promise<void> {
   if (!db) return;
   const status = await schemaStatus(db);
-  // Without the core tables (a database that never had the schema pushed) the migrations cannot apply.
-  if (status.core.length) return;
+  // No core tables: an empty database, which gets the whole schema first, then every migration.
+  if (status.core.length) { await autoMigrate([], { base: true }); return; }
   await autoMigrate(status.migrations.map((m) => m.name));
+}
+
+/** Everything a fresh deploy can do for itself: the schema, the migrations, then the sign-in secret. Once per instance. */
+const boot = shared("setup:boot", () => ({ done: null as Promise<void> | null, at: 0 }));
+export function bootstrap(): Promise<void> {
+  // Run again (at most every three seconds) while something is still missing: another instance may have been
+  // part-way through setting the database up when this one first looked.
+  const incomplete = !process.env.BETTER_AUTH_SECRET?.trim() || ready.until === 0;
+  if (boot.done && incomplete && Date.now() - boot.at > 3_000) boot.done = null;
+  boot.done ??= (async () => {
+    boot.at = Date.now();
+    await ensureMigrations().catch(() => undefined);
+    await provisionAuthSecret().catch(() => false);
+  })();
+  return boot.done;
 }
 
 /**
@@ -120,14 +136,15 @@ async function ensureMigrations(): Promise<void> {
  */
 export async function setupState(): Promise<SetupState> {
   if (!db) return { ready: false, reason: "database" };
+  // The schema, the migrations and (when none is set) the sign-in secret, once per instance.
+  await bootstrap();
   // The development sign-in (YOUBANK_DEV_USER, never in production builds) needs no auth secret.
   const devUser = process.env.NODE_ENV !== "production" && !!process.env.YOUBANK_DEV_USER;
+  // Another instance may just have made the secret: read it before deciding.
+  if (!devUser && !process.env.BETTER_AUTH_SECRET?.trim()) await provisionAuthSecret().catch(() => false);
   if (!devUser && !process.env.BETTER_AUTH_SECRET?.trim()) return { ready: false, reason: "auth" };
   if (Date.now() < ready.until) return { ready: true };
-  if (!ready.migrated) {
-    ready.migrated = true;
-    await ensureMigrations().catch(() => undefined);
-  }
+  ready.migrated = true;
   const check = async () => {
     const r = await db!.execute<{ name: string }>(sql`select n as name from unnest(array[${sql.join(CORE_TABLES.map((n) => sql`${n}`), sql`, `)}]::text[]) as n where to_regclass('public.' || quote_ident(n)) is null`);
     if (r.rows.length) return r.rows.length;

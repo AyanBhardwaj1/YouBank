@@ -164,8 +164,14 @@ Each is logged at startup and shown to operators by `/api/health` under `realMon
 On the first request after a deploy, the app compares the database with `drizzle/` (`src/lib/setup.ts`
 `schemaStatus`) and applies what is missing from copies embedded at build time (`src/lib/db/automigrate.ts`,
 `src/lib/db/migrations.gen.ts`), in one transaction under an advisory lock, so two instances never race.
-The "YouBank is being set up" screen therefore only stays up when something cannot be fixed from the code:
-no `DATABASE_URL`, no `BETTER_AUTH_SECRET`, or a database with no schema at all. `/api/health` names which.
+An empty database (a new project or branch) gets the extensions and the whole schema first (drizzle-kit's
+export of `src/db/schema.ts`, embedded as `BASE_SQL`), then every migration; a statement that database cannot
+run is skipped and logged, never at the cost of sign-in's tables. Without `BETTER_AUTH_SECRET`, the app makes
+one, keeps it in `app_secrets` (drizzle/0035) so every instance shares it, and logs a warning; setting it in
+the environment always wins. `POSTGRES_URL` is accepted when `DATABASE_URL` is not set.
+
+The "YouBank is being set up" screen therefore stays up only without a database at all; it says what it is
+waiting on, with the build it is running, and `/api/health` gives operators the detail.
 
 - After adding a migration: `pnpm exec tsx scripts/gen-migrations.mts` (scripts/test-recovery.ts fails
   until you do).

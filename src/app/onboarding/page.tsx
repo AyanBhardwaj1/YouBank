@@ -11,7 +11,8 @@ import { safeNext } from "@/lib/safe-next";
 export const dynamic = "force-dynamic";
 
 export default async function Onboarding({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  if (!(await setupState()).ready) return <SetupScreen />;
+  const setup = await setupState();
+  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
   const user = await currentUser();
   const next = safeNext((await searchParams).next);
   if (!user) redirect(next === "/app" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`);

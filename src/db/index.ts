@@ -5,7 +5,8 @@ import * as schema from "./schema";
 import { mayRetry } from "./transient";
 import { shared } from "@/lib/shared";
 
-const url = process.env.DATABASE_URL;
+// DATABASE_URL, or the name another integration gives it (Vercel Postgres and some Neon setups: POSTGRES_URL).
+const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING;
 
 /**
  * The app's connection: Neon's pooled address (the `-pooler` host, PgBouncer in transaction mode), which

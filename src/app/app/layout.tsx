@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // A deploy ahead of its database (no DATABASE_URL, or the schema not pushed yet) shows a calm
   // "being set up" screen; /api/health tells the operator what is missing.
-  if (!(await setupState()).ready) return <SetupScreen />;
+  const setup = await setupState();
+  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
   const user = await currentUser();
   if (!user) redirect("/sign-in");
   if (!db) return <SetupScreen />;

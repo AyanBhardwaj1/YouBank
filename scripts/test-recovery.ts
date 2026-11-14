@@ -5,8 +5,9 @@
  */
 import { spawnSync } from "node:child_process";
 import { hashKey, newRecoveryKey, normalizeKey, sameHash } from "@/lib/auth/recovery";
-import { autoApplicable, statementsOf } from "@/lib/db/automigrate";
-import { MIGRATION_SQL } from "@/lib/db/migrations.gen";
+import { databaseUrl, inTransaction, statementsOf } from "@/lib/db/automigrate";
+import { BASE_SQL, MIGRATION_SQL } from "@/lib/db/migrations.gen";
+import { checkEnv } from "@/lib/env";
 import { MIGRATIONS } from "@/lib/setup";
 
 let pass = 0, fail = 0;
@@ -30,9 +31,11 @@ ok("the embedded migrations match drizzle/ (run scripts/gen-migrations.mts after
 const names = MIGRATION_SQL.map(([n]) => n);
 ok("every migration setup.ts checks is embedded, and every embedded one is checked", MIGRATIONS.every(([n]) => names.includes(n)) && names.every((n) => MIGRATIONS.some(([m]) => m === n)), names.filter((n) => !MIGRATIONS.some(([m]) => m === n)));
 ok("statements: comments dropped, split on semicolons", JSON.stringify(statementsOf("-- a note\nCREATE TABLE x (a int);\n\n-- more\nCREATE INDEX i ON x (a);\n")) === JSON.stringify(["CREATE TABLE x (a int)", "CREATE INDEX i ON x (a)"]));
-ok("a CONCURRENTLY build is left to the script", !autoApplicable("CREATE INDEX CONCURRENTLY i ON x (a);") && autoApplicable("CREATE INDEX i ON x (a);"));
+ok("inside the transaction an index is built without CONCURRENTLY", inTransaction("CREATE INDEX CONCURRENTLY IF NOT EXISTS i ON x (a)") === "CREATE INDEX IF NOT EXISTS i ON x (a)");
+ok("an empty database gets the whole schema, sign-in's tables included", ["auth_users", "auth_sessions", "auth_accounts", "auth_verifications", "profiles", "kv_cache", "auth_recovery", "app_secrets"].every((t) => BASE_SQL.includes(`CREATE TABLE "${t}"`)));
+ok("the database address is found under the names integrations use", databaseUrl({ POSTGRES_URL: "postgres://a" }) === "postgres://a" && databaseUrl({ DATABASE_URL: "postgres://b", POSTGRES_URL: "postgres://a" }) === "postgres://b" && databaseUrl({}) === "");
+ok("the environment check counts POSTGRES_URL as the database", !checkEnv({ POSTGRES_URL: "postgres://a", BETTER_AUTH_SECRET: "x".repeat(40) }, false).missing.includes("DATABASE_URL"));
 const recent = MIGRATION_SQL.filter(([n]) => n >= "0030");
-ok("the recent migrations (sign-in's columns, recovery) apply automatically", recent.length >= 5 && recent.every(([, t]) => autoApplicable(t)));
 ok("they are written to be safe twice (IF NOT EXISTS on every create and add column)", recent.every(([, t]) => statementsOf(t).every((s) => !/^(create (table|index|unique index)|alter table .* add column)/i.test(s) || /if not exists/i.test(s))), recent.map(([n]) => n));
 
 console.log(`\n${pass} passed, ${fail} failed`);

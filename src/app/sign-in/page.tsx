@@ -16,7 +16,8 @@ export default async function SignIn({ searchParams }: { searchParams: Promise<R
   const next = safeNext((await searchParams).next);
   // Without a database or the auth secret nobody can sign in: say so instead of a form that cannot work.
   // A database that cannot be reached right now still shows the form (signing in reports its own error).
-  if (!(await setupState().catch(() => ({ ready: true as const }))).ready) return <SetupScreen />;
+  const setup = await setupState().catch(() => ({ ready: true as const }));
+  if (!setup.ready) return <SetupScreen reason={setup.reason} />;
   if (await currentUser()) redirect(next);
   return (
     <main className="relative flex min-h-dvh items-center justify-center px-6 py-10">
