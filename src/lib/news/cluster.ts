@@ -5,12 +5,12 @@
  * key. Filings join a news story only on the same ticker, a compatible category and close timing,
  * because "Acme: Material agreement" and "Acme to buy Widget for $4B" share almost no words.
  */
-import OpenAI from "openai";
 import { resolveAi } from "@/lib/ai/config";
 import { aiBlocked } from "@/lib/ai/limits";
 import { recordUsage } from "@/lib/ai/usage";
 import { noteSpend } from "./budget";
 import { jaccard, tokens } from "./normalize";
+import { openaiClient } from "@/lib/ai/gateway";
 
 export const EMBED_MODEL = "text-embedding-3-small";
 export const EMBED_DIMS = 256;
@@ -21,7 +21,7 @@ export async function embed(texts: string[]): Promise<Float32Array[] | null> {
   if (!texts.length) return [];
   const cfg = resolveAi(null, { model: "gpt-5.6-luna" });
   if (cfg.provider !== "openai" || (await aiBlocked(null))) return null;
-  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 60_000, maxRetries: 1 });
+  const client = openaiClient({ apiKey: cfg.apiKey, feature: "news-cluster", cache: true, timeout: 60_000, maxRetries: 1 });
   const out: Float32Array[] = [];
   let tokensUsed = 0;
   for (let i = 0; i < texts.length; i += 96) {

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // The desktop app (Tauri): its own small frontend and Rust, built and linted on its own.
     "desktop/**",
+    // The Cloudflare Worker (cloudflare/): its own package, type-checked and tested on its own.
+    "cloudflare/**",
   ]),
 ]);
 

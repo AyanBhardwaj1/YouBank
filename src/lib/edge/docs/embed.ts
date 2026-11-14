@@ -2,10 +2,10 @@
  * Passage embeddings: OpenAI text-embedding-3-small shortened to 512 dimensions (stored as half
  * precision, about 1 KB a passage), counted against the AI spend caps like every other model call.
  */
-import OpenAI from "openai";
 import { resolveAi } from "@/lib/ai/config";
 import { guardAi } from "@/lib/ai/limits";
 import { aiUser, recordUsage } from "@/lib/ai/usage";
+import { openaiClient } from "@/lib/ai/gateway";
 
 export const EMBED_MODEL = "text-embedding-3-small";
 export const EMBED_DIMS = 512;
@@ -20,7 +20,7 @@ export async function embedTexts(texts: string[], feature = "edge-embed"): Promi
   const cfg = resolveAi(null, { model: EMBED_MODEL });
   if (cfg.provider !== "openai") throw Object.assign(new Error("Document search needs an OpenAI key for embeddings."), { status: 503 });
   await guardAi(aiUser());
-  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 60_000, maxRetries: 1 });
+  const client = openaiClient({ apiKey: cfg.apiKey, feature: "edge-embed", cache: true, timeout: 60_000, maxRetries: 1 });
   const out: number[][] = [];
   let tokens = 0;
   for (let i = 0; i < texts.length; i += 128) {

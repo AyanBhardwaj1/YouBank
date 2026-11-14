@@ -11,6 +11,7 @@ import type { AssetTerrain } from "@/lib/edge/ground";
 import type { Pad, PipelineProfile, SiteTerrain } from "@/lib/edge/terrain";
 import { positionWords } from "@/lib/edge/terrain-view";
 import { useApi } from "./client";
+import { edgeImageSrc } from "@/lib/edge/imgsrc";
 
 const n0 = (v: number) => Math.round(v).toLocaleString("en-US");
 const n1 = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-US");
@@ -41,7 +42,7 @@ export function SiteTerrainView({ t, onView3D }: { t: SiteTerrain; onView3D?: ()
     <div className="space-y-2">
       <div className="flex gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {t.image && <img src={t.image} alt="Shaded relief of the site before the change, with the change outlined" width={128} height={128} className="h-32 w-32 shrink-0 rounded-md border border-line object-cover" />}
+        {t.image && <img src={edgeImageSrc(t.image)} alt="Shaded relief of the site before the change, with the change outlined" width={128} height={128} className="h-32 w-32 shrink-0 rounded-md border border-line object-cover" />}
         <div className="min-w-0 space-y-1 text-[11.5px] leading-snug">
           <p>The ground here lies between <span className="num font-medium">{n0(t.elevation.min)}</span> and <span className="num font-medium">{n0(t.elevation.max)}</span> m{t.elevation.atSite !== null ? <> (<span className="num">{n0(t.elevation.atSite)}</span> m at the site)</> : null}: a relief of <span className="num">{n1(t.reliefM)}</span> m across the area, sloping <span className="num">{n1(t.slope.meanDeg)}</span>° on average and <span className="num">{n1(t.slope.p90Deg)}</span>° on its steeper tenth.</p>
           {t.elevation.positionAtSite !== null && !t.pads.length && <p className="text-muted">The site sits {positionWords(t.elevation.positionAtSite)}.</p>}

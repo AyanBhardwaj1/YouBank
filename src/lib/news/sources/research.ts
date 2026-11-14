@@ -5,7 +5,6 @@
  * not a forum or social network, and it is recent. Runs a few times a day for desks people use, inside
  * the research tier of the news budget.
  */
-import OpenAI from "openai";
 import { resolveAi } from "@/lib/ai/config";
 import { aiBlocked } from "@/lib/ai/limits";
 import { recordUsage } from "@/lib/ai/usage";
@@ -13,6 +12,7 @@ import { allow, noteSpend } from "../budget";
 import type { Desk, Tier } from "../desks";
 import { canonicalUrl, cleanTitle, domainOf, keyOf, tickersIn } from "../normalize";
 import type { RawItem } from "../types";
+import { openaiClient } from "@/lib/ai/gateway";
 
 const MODEL = () => process.env.NEWS_RESEARCH_MODEL?.trim() || process.env.MARKET_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
 const SEARCH_FEE_USD = 0.01;
@@ -52,7 +52,7 @@ export async function researchDesk(desk: Desk, now = new Date()): Promise<RawIte
   const model = MODEL();
   const cfg = resolveAi(null, { model });
   if (cfg.provider !== "openai") return [];
-  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: 120_000, maxRetries: 0 });
+  const client = openaiClient({ apiKey: cfg.apiKey, feature: "news-research", timeout: 120_000, maxRetries: 0 });
   const today = now.toISOString().slice(0, 10);
   const res = await client.responses.create({
     model, reasoning: { effort: "low" }, tools: [{ type: "web_search" }], include: ["web_search_call.action.sources"],

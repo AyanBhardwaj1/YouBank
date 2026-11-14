@@ -15,11 +15,12 @@
  * takes to read them).
  */
 import { randomUUID } from "node:crypto";
-import OpenAI, { toFile } from "openai";
+import { toFile } from "openai";
 import { recordUsage } from "@/lib/ai/usage";
 import { mlRun } from "@/lib/edge/infra/ml";
 import { deleteObject, getJson, putObject, r2Ready } from "@/lib/edge/infra/r2";
 import type { Segment } from "./model";
+import { openaiClient } from "@/lib/ai/gateway";
 
 export type TranscribeInput = {
   bytes: Uint8Array;
@@ -107,7 +108,7 @@ export const openAiTranscriber = (apiKey: string, model = DEFAULT_OPENAI_MODEL):
   id: "openai",
   diarizes: /diarize/.test(model),
   async transcribe(input) {
-    const client = new OpenAI({ apiKey, timeout: 90_000, maxRetries: 1 });
+    const client = openaiClient({ apiKey, feature: "meetings-transcribe", timeout: 90_000, maxRetries: 1 });
     const file = await toFile(input.bytes, `chunk.${extension(input.mime)}`, { type: input.mime });
     const diarize = /diarize/.test(model);
     const res = await client.audio.transcriptions.create({

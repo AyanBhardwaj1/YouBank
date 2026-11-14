@@ -10,7 +10,6 @@
  * When fewer than half the figures survive, one retry goes to a stronger small model (GPT-5.4 mini).
  * Answers are cached for hours, and every call is in the usage ledger with its search fees.
  */
-import OpenAI from "openai";
 import { z } from "zod";
 import { cacheJson } from "@/lib/cache";
 import { resolveAi } from "@/lib/ai/config";
@@ -18,6 +17,7 @@ import { guardAi } from "@/lib/ai/limits";
 import { aiUser, recordUsage } from "@/lib/ai/usage";
 import { budget } from "./budgets";
 import { backupEnabled } from "./nasdaq";
+import { openaiClient } from "@/lib/ai/gateway";
 
 const RESEARCH_MODEL = () => process.env.MARKET_RESEARCH_MODEL?.trim() || "gpt-5.6-luna";
 const ESCALATION_MODEL = () => process.env.MARKET_RESEARCH_ESCALATION_MODEL?.trim() || "gpt-5.4-mini";
@@ -202,7 +202,7 @@ async function ask(model: string, subject: string, fields: Field[], ctx: Context
   await guardAi(aiUser());
   // Within the research budget (budgets.ts): no retry that could not finish, and the abort below cuts the rest.
   const left = Math.max(1, Math.min(90_000, deadline - Date.now()));
-  const client = new OpenAI({ apiKey: cfg.apiKey, timeout: left, maxRetries: left >= 90_000 ? 1 : 0 });
+  const client = openaiClient({ apiKey: cfg.apiKey, feature: "market-research", timeout: left, maxRetries: left >= 90_000 ? 1 : 0 });
   const today = ctx.today ?? new Date().toISOString().slice(0, 10);
   const res = await client.responses.create({
     model, reasoning: { effort: "low" }, tools: [{ type: "web_search" }], include: ["web_search_call.action.sources"],

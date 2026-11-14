@@ -34,6 +34,7 @@ import { deskBrief, forYou } from "./brief";
 import { localParts, type VoiceId } from "./prefs";
 import type { ReaderContext } from "./reader";
 import { sharedRecentClusters, type ClusterRow } from "./store";
+import { openaiClient } from "@/lib/ai/gateway";
 
 export const TTS_MODEL = "gpt-4o-mini-tts";
 const TTS_INSTRUCTIONS = "Read as a calm, clear financial news anchor: measured pace, neutral and confident, light emphasis on numbers and company names. Short pauses between sentences. Never rush.";
@@ -126,7 +127,7 @@ export async function makeBriefing(ctx: ReaderContext, kind: "ai" | "daily", at 
   const inline: string[] = [];
   let costUsd = 0;
   if (ttsReady()) {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 90_000, maxRetries: 1 });
+    const client = openaiClient({ apiKey: process.env.OPENAI_API_KEY, feature: "news-audio", timeout: 90_000, maxRetries: 1 });
     const voice = ctx.prefs.audio.voice, speed = ctx.prefs.audio.speed;
     // Three chapters at a time: a briefing is about ten chapters, and each takes a few seconds.
     const clips: Uint8Array[] = new Array(chapters.length);

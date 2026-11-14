@@ -12,9 +12,9 @@
  * Runs only inside a premium scope with edge.citations (see lib/billing/use.ts) and when
  * ANTHROPIC_API_KEY and EDGE_CITATIONS=anthropic are set; any failure falls back to the standard writer.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { guardAi } from "@/lib/ai/limits";
 import { aiUser, recordUsage } from "@/lib/ai/usage";
+import { anthropicClient } from "@/lib/ai/gateway";
 
 /** Sonnet 5.5 by default ($2 / $10 per million tokens); EDGE_CITATIONS_MODEL may name another Claude model. */
 export const citationsModel = () => process.env.EDGE_CITATIONS_MODEL?.trim() || "claude-sonnet-5-5";
@@ -89,7 +89,7 @@ export async function citedAnswer(question: string, passages: CitePassage[], mod
   if (!apiKey) throw new Error("Citations need ANTHROPIC_API_KEY.");
   await guardAi(aiUser());
   const model = citationsModel();
-  const client = new Anthropic({ apiKey, timeout: timeoutMs, maxRetries: 1 });
+  const client = anthropicClient({ apiKey, feature: "edge-citations", timeout: timeoutMs, maxRetries: 1 });
   const fallback = FALLBACK_MODELS.has(model);
   const message = await client.beta.messages.stream({
     model, max_tokens: 8000,
