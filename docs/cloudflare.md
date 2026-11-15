@@ -13,6 +13,10 @@ down.
 | Kill-criteria Workflow | The nightly check: plan, insider selling, new filings, then each book as its own retried step | `cloudflare/src/workflow.ts`, `src/app/api/cf/book` | same (Vercel's evening cron starts it) |
 | Hosted MCP | YouBank's MCP tools, prompts and resources at the Worker's `/mcp`, one stateful session per connection, with an approval gate on tools that write and a per-session call log | `cloudflare/src/mcp.ts` | deploy the Worker; connect with a YouBank API key |
 
+**Turnstile** (bot protection on sign-up and the reset-link form, `src/lib/auth/bot.ts`): in the dashboard go to
+Turnstile → Add widget, hostname `youbank.dev`, mode Managed. In Vercel set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and
+`TURNSTILE_SECRET_KEY`, then redeploy. A token that does not verify, or no answer from Cloudflare, refuses the sign-up.
+
 `CF_DISABLE=ledger` (or `thesis`, `workflow`, `mcp`, `all`) keeps a part in the app even with the Worker set up.
 
 ## Set up

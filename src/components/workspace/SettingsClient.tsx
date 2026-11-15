@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ThemePicker } from "@/components/theme/ThemePicker";
 import { InterfacePicker } from "@/components/settings/InterfacePicker";
+import { DeleteAccount } from "@/components/settings/DeleteAccount";
 import { INTERFACE_META } from "@/lib/desk/interfaces";
 import { ModelPicker, useAiSettings } from "@/components/ai/ModelPicker";
 import { AiUsage } from "@/components/ai/AiUsage";
@@ -177,6 +178,7 @@ export function SettingsClient({ email, prefs, initialTab }: { email: string; pr
                 <div key={k} className="border-t border-line pt-3"><dt className="font-semibold">{k}</dt><dd className="mt-1 text-muted">{v}</dd></div>
               ))}
             </dl>
+            <DeleteAccount email={email} />
           </section>
         )}
       </div>

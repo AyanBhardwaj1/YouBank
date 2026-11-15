@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ROLES, SECTORS, type Profile, type RoleId } from "@/lib/roles";
-import { isThemeId, type ThemeId } from "@/lib/themes";
+import { DEFAULT_THEME } from "@/lib/themes";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { catalogForRole } from "@/lib/workflows/catalog";
 import { Icon } from "@/components/ui/Icon";
@@ -31,8 +31,10 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
 
   const pickRole = (id: RoleId) => {
     setD({ ...d, role: id, specialty: "", seniority: "", firmType: "" });
-    if (isThemeId(ROLES[id].defaultTheme)) setTheme(ROLES[id].defaultTheme as ThemeId);
   };
+  // Everyone starts in the Classic interface with the default style, whatever role they pick or style this
+  // browser last showed; the style is changed in Settings → Style and nowhere else.
+  useEffect(() => { if (themeId !== DEFAULT_THEME) setTheme(DEFAULT_THEME, { persist: false }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async () => {
     setBusy(true); setError(null);
@@ -41,7 +43,8 @@ export function OnboardingWizard({ initial, userName, next = "/app" }: { initial
       if (!res.ok) throw await apiError(res);
       // After the profile, which sets the desk up from these answers: then the choices made here win.
       await fetch("/api/prefs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-        theme: themeId,
+        theme: DEFAULT_THEME,
+        look: { ui: "classic" },
         ...(layout ? { desk: { layout, widgets: widgetsFor(layout, d.role), source: "auto" } } : {}),
       }) }).catch(() => {});
       // Everything is new to a new account: Getting started on Home covers it, not the "New in YouBank" card.
