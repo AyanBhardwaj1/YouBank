@@ -15,7 +15,7 @@ import { cacheableImage, edgeImageSrc } from "@/lib/edge/imgsrc";
 import { archiveKey } from "@/lib/edgar/client";
 import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
-import { AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
+import { ACCOUNT_RULE, AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
 import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.config";
 import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from "@/lib/client/net";
 import { safeNext } from "@/lib/safe-next";
@@ -338,6 +338,8 @@ async function testAuthAndHeaders() {
   check("a wildcard origin is never trusted", !authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app,*.vercel.app, https://ok.example.com" }).some((o) => o.includes("*")) && authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app, https://ok.example.com" }).includes("https://ok.example.com"));
   check("extra origins can be added", authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "app.youbank.com, https://www.youbank.com" }).includes("https://www.youbank.com"));
   check("no stray origins are trusted in production", !authTrustedOrigins({ ...prod, NODE_ENV: "production" }).some((o) => o.includes("localhost")));
+  check("a room of 100 on one wifi can all sign in and sign up within the per-address limits", (AUTH_RATE_RULES["/sign-in/email"] as { max: number }).max >= 100 && (AUTH_RATE_RULES["/sign-up/email"] as { max: number }).max >= 100);
+  check("password guessing is stopped per account: at most 10 tries in 15 minutes", ACCOUNT_RULE.max <= 10 && ACCOUNT_RULE.window >= 900);
   check("sign-in limits: session reads are not counted, password sign-in has a long window", AUTH_RATE_RULES["/get-session"] === false && (AUTH_RATE_RULES["/sign-in/email"] as { window: number }).window >= 60);
   check("a refused sign-in says when to try again", secondsLeft(60, 30_500) === 30 && secondsLeft(60, 59_999) === 1);
 

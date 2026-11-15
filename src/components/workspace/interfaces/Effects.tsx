@@ -127,10 +127,32 @@ function WindowTitle() {
   return null;
 }
 
+/**
+ * While the person scrolls, html[data-scrolling] is set (cleared 160 ms after the last scroll), so the
+ * interfaces can hold still what is costly to keep moving: an animated backdrop behind blurred panes makes
+ * every blur be computed again on every frame, and scrolling is when frames matter most.
+ */
+function ScrollCalm() {
+  useEffect(() => {
+    const html = document.documentElement;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      if (!html.hasAttribute("data-scrolling")) html.setAttribute("data-scrolling", "");
+      clearTimeout(timer);
+      timer = setTimeout(() => html.removeAttribute("data-scrolling"), 160);
+    };
+    // Capture: the app's panes scroll inside the frame, not the window.
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => { document.removeEventListener("scroll", onScroll, { capture: true }); clearTimeout(timer); html.removeAttribute("data-scrolling"); };
+  }, []);
+  return null;
+}
+
 export default function Effects({ ui }: { ui: InterfaceId }) {
   return (
     <>
       <RouteMotion language={INTERFACE_META[ui].motion} />
+      <ScrollCalm />
       {ui === "bare" && <BareKeys />}
       {ui === "spectacle" && <PointerLight />}
       {ui === "blueprint" && <Crosshair />}

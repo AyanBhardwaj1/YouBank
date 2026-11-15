@@ -5,7 +5,8 @@ import { twoFactor } from "better-auth/plugins";
 import { requireDb, schema } from "@/db";
 import { authBaseUrl, authTrustedOrigins } from "./origins";
 import { mailConfigured, resetEmail, sendMail } from "./mail";
-import { AUTH_RATE_RULES, authRateStorage } from "./rate-limit";
+import { ACCOUNT_LIMITED, AUTH_RATE_RULES, accountLimit, authRateStorage } from "./rate-limit";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 
 /**
  * How long the signed session cookie is trusted before the session is read from the database again
@@ -53,6 +54,15 @@ function build() {
     // Limits shared by every instance (the default memory store is per instance on serverless). On in
     // production builds only, as Better Auth's default is.
     rateLimit: { customStorage: authRateStorage, customRules: AUTH_RATE_RULES },
+    // Per account as well as per address: password guessing against one account stops after a few tries,
+    // from any number of addresses, while a room sharing one address can still all sign in.
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-in/email" && !(await accountLimit((ctx.body as { email?: unknown } | undefined)?.email))) {
+          throw new APIError("TOO_MANY_REQUESTS", { message: ACCOUNT_LIMITED });
+        }
+      }),
+    },
     advanced: {
       // Secure (HTTPS-only) cookies wherever the site is served over HTTPS; plain http only on localhost.
       useSecureCookies: baseURL.startsWith("https://"),

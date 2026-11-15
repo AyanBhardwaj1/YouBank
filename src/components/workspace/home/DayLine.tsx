@@ -32,8 +32,8 @@ export function DayLine({ className = "" }: { className?: string }) {
   const next: DayFacts["next"] = meeting && now !== null && Date.parse(meeting.end) > now ? { title: meeting.title, start: meeting.start } : null;
   const { data } = useCompanies(config.watchlist);
   const mover = useMemo(() => biggestMover(config.watchlist.map((t) => ({ ticker: t, changePct: data[t]?.price?.changePct }))), [config.watchlist, data]);
-  if (now === null) return null;
-  const parts = dayParts({ waiting, next, mover }, now, (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
-  if (!parts.length) return null;
-  return <p className={`text-[12.5px] text-muted ${className}`} aria-live="polite">{parts.join(" · ")}</p>;
+  const parts = now === null ? [] : dayParts({ waiting, next, mover }, now, (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+  // Always one line tall, empty until there is something to say: the line arrives after the page (the clock
+  // and the calendar are read in the browser), and appearing from nothing would push the whole page down.
+  return <p className={`min-h-[1.4em] text-[12.5px] text-muted ${className}`} aria-live="polite">{parts.length ? parts.join(" · ") : " "}</p>;
 }
