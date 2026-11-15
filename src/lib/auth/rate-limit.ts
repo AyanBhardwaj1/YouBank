@@ -30,6 +30,19 @@ export const authRateStorage = {
  */
 export const AUTH_RATE_RULES: Record<string, Rule | false> = {
   "/get-session": false,
-  "/sign-in/email": { window: 300, max: 30 },
-  "/sign-up/email": { window: 3600, max: 50 },
+  // A whole office, campus or conference on one wifi shares an address: enough for a room signing in at once.
+  // Guessing one account's password is stopped per account instead (accountLimit below).
+  "/sign-in/email": { window: 300, max: 150 },
+  "/sign-up/email": { window: 3600, max: 200 },
 };
+
+/** Password sign-in tries per account (by email, whatever the address): enough for a few typos, not a guessing run. */
+export const ACCOUNT_RULE: Rule = { window: 900, max: 10 };
+export const ACCOUNT_LIMITED = "Too many sign-in attempts for this account. Wait 15 minutes, or reset your password from “Forgot your password?”.";
+
+/** Whether another password sign-in for this email is allowed now. Fails open, like the other limits. */
+export async function accountLimit(email: unknown): Promise<boolean> {
+  const e = typeof email === "string" ? email.trim().toLowerCase().slice(0, 254) : "";
+  if (!e) return true;
+  return withinRate(`auth:account:${e}`, ACCOUNT_RULE.max, ACCOUNT_RULE.window * 1000);
+}

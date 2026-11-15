@@ -23,6 +23,8 @@ import { LAYOUTS, isWide, type HomeLayout } from "@/lib/desk/desk";
 import { Widget, type HomeFacts } from "./home/Widgets";
 import { ArrangeBar, ArrangeProvider, Slot } from "./home/Arrange";
 import { DayLine } from "./home/DayLine";
+import { ChecklistSeed } from "./home/Checklist";
+import type { ServerChecklistFacts } from "@/lib/desk/checklist-facts";
 import { AskBox, greeting, Suggestions, type HomeProps } from "./home/Kit";
 import { homeOf, type HomeComposition } from "@/lib/desk/interfaces";
 
@@ -64,7 +66,12 @@ function LayoutSwitch({ arranging, onArrange }: { arranging: boolean; onArrange:
   );
 }
 
-export function HomeDashboard({ facts, brief }: { facts: HomeFacts; brief?: BriefSeed }) {
+/** Home, with what the server read for it: the checklist's facts go to every layout's checklist widget. */
+export function HomeDashboard({ facts, brief, checklist }: { facts: HomeFacts; brief?: BriefSeed; checklist?: ServerChecklistFacts | null }) {
+  return <ChecklistSeed.Provider value={checklist ?? null}><HomeDashboardInner facts={facts} brief={brief} /></ChecklistSeed.Provider>;
+}
+
+function HomeDashboardInner({ facts, brief }: { facts: HomeFacts; brief?: BriefSeed }) {
   const { profile, tools, desk, look } = useWorkspace();
   const on = desk.widgets.filter((w) => w.on);
   const [arranging, setArranging] = useState(false);

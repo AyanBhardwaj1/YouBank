@@ -23,7 +23,7 @@ html[data-ui="glass"] .app-frame {
 }
 /* The menu bar. */
 @media (min-width: 768px) {
-  html[data-ui="glass"] .app-frame .yb-topbar { background: rgba(18, 13, 38, 0.42); border-bottom: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); }
+  html[data-ui="glass"] .app-frame .yb-topbar { background: rgba(18, 13, 38, 0.42); border-bottom: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(18px) saturate(1.8); -webkit-backdrop-filter: blur(18px) saturate(1.8); }
   html[data-ui="glass"] .app-frame .yb-topbar > div { height: 30px; gap: 4px; font-size: 12.5px; }
   html[data-ui="glass"] .app-frame .yb-side-btn { display: none; }
   html[data-ui="glass"] .app-frame .yb-brand svg { width: 14px; height: 14px; }
@@ -62,7 +62,7 @@ html[data-ui="glass"] .app-frame h1 { font-size: clamp(24px, 2.6vw, 32px); font-
 html[data-ui="glass"] .app-frame .bg-accent { border-radius: 8px; }
 
 /* The dock. */
-html[data-ui="glass"] .yb-dock { gap: 8px; padding: 7px 9px; border-radius: 22px; background: rgba(30, 22, 64, 0.42); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 50px -16px rgba(0, 0, 0, 0.65); }
+html[data-ui="glass"] .yb-dock { gap: 8px; padding: 7px 9px; border-radius: 22px; background: rgba(30, 22, 64, 0.42); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(18px) saturate(1.8); -webkit-backdrop-filter: blur(18px) saturate(1.8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 24px 50px -16px rgba(0, 0, 0, 0.65); }
 html[data-ui="glass"] .yb-dock-item { width: 48px; height: 48px; border-radius: 13px; color: #ffffff; background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 6px 14px -6px rgba(0, 0, 0, 0.6); }
 html[data-ui="glass"] .yb-dock-item[aria-current="page"] { background: linear-gradient(160deg, #7dd3fc, #6366f1); color: #ffffff; }
 html[data-ui="glass"] .yb-dock-item[aria-current="page"]::after { content: ""; position: absolute; bottom: -6px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: #ffffff; }
@@ -72,9 +72,9 @@ html[data-ui="glass"] .yb-dock-item[aria-current="page"]::after { content: ""; p
 /* Home: the desktop. */
 .gl-desktop { position: relative; min-height: 100%; padding: 26px 28px 40px; }
 .gl-clock { font-variant-numeric: tabular-nums; font-weight: 200; font-size: clamp(64px, 8vw, 116px); letter-spacing: -0.04em; line-height: 0.9; color: #ffffff; text-shadow: 0 10px 40px rgba(10, 0, 40, 0.45); }
-.gl-spot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: rgba(30, 22, 64, 0.5); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7); }
+.gl-spot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px; background: rgba(30, 22, 64, 0.5); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(18px) saturate(1.8); -webkit-backdrop-filter: blur(18px) saturate(1.8); box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.7); }
 .gl-windows { columns: 3 340px; column-gap: 18px; margin-top: 26px; }
-.gl-win { break-inside: avoid; margin-bottom: 18px; border-radius: 12px; overflow: hidden; background: rgba(20, 15, 44, 0.66); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 50px -24px rgba(3, 0, 20, 0.85); transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 300ms ease; }
+.gl-win { break-inside: avoid; margin-bottom: 18px; border-radius: 12px; overflow: hidden; background: rgba(20, 15, 44, 0.66); border: 1px solid rgba(255, 255, 255, 0.14); backdrop-filter: blur(18px) saturate(1.6); -webkit-backdrop-filter: blur(18px) saturate(1.6); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 24px 50px -24px rgba(3, 0, 20, 0.85); transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 300ms ease; }
 .gl-win:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 34px 70px -24px rgba(3, 0, 20, 0.95); }
 .gl-bar { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.04); font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .gl-bar i { width: 10px; height: 10px; border-radius: 50%; }
@@ -90,5 +90,5 @@ html[data-ui="glass"] .yb-dock-item[aria-current="page"]::after { content: ""; p
 .gl-icon:hover, .gl-icon:focus-visible { background: rgba(255, 255, 255, 0.12); }
 
 /* Phone: a frosted dock for a tab bar. */
-html[data-ui="glass"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(30, 22, 64, 0.45); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); }
+html[data-ui="glass"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 24px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(30, 22, 64, 0.45); backdrop-filter: blur(18px) saturate(1.8); -webkit-backdrop-filter: blur(18px) saturate(1.8); }
 html[data-ui="glass"] .app-frame .yb-tabbar .bg-accent { top: auto; bottom: 4px; height: 4px; width: 4px; background: #ffffff; }

@@ -7,7 +7,7 @@
  * "Hide" takes it off sooner.
  */
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useWorkspace } from "../WorkspaceProvider";
 import { fetchJson } from "@/lib/client/errors";
@@ -15,13 +15,20 @@ import { canInstall, isInstalled, onInstallChange, promptInstall } from "@/lib/c
 import { checklist, type ChecklistFacts } from "@/lib/desk/checklist";
 import { WIDGET_LABEL, toggleWidget } from "@/lib/desk/desk";
 
+type Facts = Omit<ChecklistFacts, "installed"> & { desktop?: boolean; role?: string };
+/** The facts read on the server with Home (src/app/app/page.tsx), so the checklist is in the first paint. */
+export const ChecklistSeed = createContext<Facts | null>(null);
+
 export function ChecklistWidget({ roomy }: { roomy?: boolean }) {
   const { desk, setDesk } = useWorkspace();
-  const [facts, setFacts] = useState<(Omit<ChecklistFacts, "installed"> & { desktop?: boolean; role?: string }) | null>(null);
+  const seed = useContext(ChecklistSeed);
+  // Seeded from the server render when there is one, so nothing below the checklist jumps when it arrives;
+  // still asked for again once mounted, so a step done in another tab is shown.
+  const [facts, setFacts] = useState<Facts | null>(seed);
   const [installed, setInstalled] = useState(false);
   const [offer, setOffer] = useState(false);
   useEffect(() => {
-    fetchJson<Omit<ChecklistFacts, "installed"> & { desktop?: boolean; role?: string }>("/api/desk/checklist").then(setFacts).catch(() => setFacts(null));
+    fetchJson<Facts>("/api/desk/checklist").then(setFacts).catch(() => undefined);
     const sync = () => { setInstalled(isInstalled()); setOffer(canInstall()); };
     sync();
     return onInstallChange(sync);

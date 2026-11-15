@@ -30,6 +30,10 @@ html[data-ui="spectacle"] .app-frame::after {
     radial-gradient(60% 50% at 50% 0%, rgba(167, 139, 250, 0.18), transparent 70%);
   animation: sp-aurora 34s ease-in-out infinite alternate-reverse;
 }
+/* Held still while scrolling (Effects.tsx ScrollCalm): the panes above it blur it, and a moving backdrop makes
+   every blur be recomputed each frame. */
+html[data-ui="spectacle"][data-scrolling] .app-frame::before, html[data-ui="spectacle"][data-scrolling] .app-frame::after,
+html[data-ui="spectacle"][data-scrolling] .yb-orb-core::before, html[data-ui="spectacle"][data-scrolling] .sp-title .sp-word { animation-play-state: paused; }
 @keyframes sp-aurora { 0% { transform: translate3d(-4%, -3%, 0) rotate(0deg) scale(1); } 50% { transform: translate3d(5%, 4%, 0) rotate(8deg) scale(1.12); } 100% { transform: translate3d(-2%, 6%, 0) rotate(-6deg) scale(1.04); } }
 /* The light that follows the pointer (interfaces/PointerLight.tsx moves it). */
 .yb-spot { position: fixed; left: 0; top: 0; width: 720px; height: 720px; margin: -360px 0 0 -360px; border-radius: 50%; pointer-events: none; z-index: 0; background: radial-gradient(closest-side, rgba(196, 181, 253, 0.16), rgba(125, 211, 252, 0.06) 55%, transparent); will-change: transform; }
@@ -87,7 +91,7 @@ html[data-ui="spectacle"] .app-frame :is(input, textarea):focus { box-shadow: 0 
 .yb-orb-item[aria-current="page"] { background: var(--sp-grad); color: #14092e; }
 
 /* Phone: the tab bar is a floating glass pill with a lit active tab. */
-html[data-ui="spectacle"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 26px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(20, 14, 50, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7); }
+html[data-ui="spectacle"] .app-frame .yb-tabbar { margin: 0 10px 8px; border-radius: 26px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(20, 14, 50, 0.7); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.7); }
 html[data-ui="spectacle"] .app-frame .yb-tabbar [aria-current="page"] { color: #ffffff; text-shadow: 0 0 14px rgba(196, 181, 253, 0.9); }
 html[data-ui="spectacle"] .app-frame .yb-tabbar .bg-accent { background: var(--sp-grad); box-shadow: 0 0 12px rgba(196, 181, 253, 0.9); width: 40px; }
 
@@ -95,7 +99,7 @@ html[data-ui="spectacle"] .app-frame .yb-tabbar .bg-accent { background: var(--s
 html[data-ui="spectacle"] .app-frame .sp-title { font-family: var(--font-unbounded), sans-serif; font-weight: 700; letter-spacing: -0.05em; line-height: 0.95; font-size: clamp(44px, 7.4vw, 116px); }
 .sp-title .sp-word { display: inline-block; background: var(--sp-grad); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: gradient-shift 9s ease infinite; padding-bottom: 0.08em; }
 .sp-ask { position: relative; border-radius: 999px; padding: 1px; background: linear-gradient(100deg, rgba(240, 171, 252, 0.8), rgba(125, 211, 252, 0.8), rgba(110, 231, 183, 0.8)); box-shadow: 0 0 60px -10px rgba(167, 139, 250, 0.6); }
-.sp-ask > form { border-radius: 999px; background: rgba(12, 8, 34, 0.86); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+.sp-ask > form { border-radius: 999px; background: rgba(12, 8, 34, 0.86); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
 .sp-reel { display: flex; align-items: flex-start; gap: 22px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 18px max(20px, calc((100% - 1240px) / 2)) 30px; scrollbar-width: none; overscroll-behavior-x: contain; }
 .sp-reel::-webkit-scrollbar { display: none; }
 .sp-card { flex: 0 0 min(440px, 86vw); scroll-snap-align: center; perspective: 1000px; }

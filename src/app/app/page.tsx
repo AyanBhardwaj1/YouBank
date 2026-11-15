@@ -5,6 +5,7 @@ import { profileRow } from "@/lib/auth/profile-row";
 import { currentUser } from "@/lib/auth/user";
 import { memo } from "@/lib/memo";
 import { HomeDashboard } from "@/components/workspace/HomeDashboard";
+import { checklistFacts } from "@/lib/desk/checklist-facts";
 import type { BriefData } from "@/components/news/Boards";
 import { briefSlot } from "@/lib/news/brief";
 import { allDesks, deskFor } from "@/lib/news/desks";
@@ -47,12 +48,14 @@ const seededBrief = (userId: string) => {
 export default async function AppHome() {
   const user = await currentUser();
   if (!user || !db) redirect("/sign-in");
-  const [brief, startups, sheets, groups] = await Promise.all([
+  const [brief, startups, sheets, groups, checklist] = await Promise.all([
     seededBrief(user.id),
     // The same for everyone and changes nightly: counted once per instance every ten minutes.
     memo("vc:total", 600_000, () => db!.select({ n: count() }).from(schema.startups).then((r) => r[0]?.n ?? null)).catch(() => null),
     db.select({ n: count() }).from(schema.compsSheets).where(eq(schema.compsSheets.userId, user.id)).then((r) => Number(r[0]?.n ?? 0)).catch(() => 0),
     db.select({ n: count() }).from(schema.peerGroups).where(eq(schema.peerGroups.userId, user.id)).then((r) => Number(r[0]?.n ?? 0)).catch(() => 0),
+    // Getting started, in the first HTML: without it the checklist arrives after the page and pushes everything below it down.
+    checklistFacts(user.id).catch(() => null),
   ]);
-  return <HomeDashboard facts={{ directoryTotal: startups === null ? null : Number(startups), sheets, groups }} brief={brief} />;
+  return <HomeDashboard facts={{ directoryTotal: startups === null ? null : Number(startups), sheets, groups }} brief={brief} checklist={checklist} />;
 }
