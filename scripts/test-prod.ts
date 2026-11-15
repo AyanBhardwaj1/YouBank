@@ -16,6 +16,8 @@ import { archiveKey } from "@/lib/edgar/client";
 import { expectedRelations, MIGRATIONS, summarize } from "@/lib/setup";
 import { authBaseUrl, authTrustedOrigins } from "@/lib/auth/origins";
 import { ACCOUNT_RULE, AUTH_RATE_RULES, secondsLeft } from "@/lib/auth/rate-limit";
+import { BOT_REFUSED, botCheck, honeypotTripped, turnstileOn, verifyTurnstile } from "@/lib/auth/bot";
+import { blockerMessage } from "@/lib/account/delete";
 import nextConfig, { contentSecurityPolicy, permissionsPolicy } from "../next.config";
 import { clientFetch, retryAfterMs, retryPlan, signInHref, watchesSession } from "@/lib/client/net";
 import { safeNext } from "@/lib/safe-next";
@@ -338,6 +340,23 @@ async function testAuthAndHeaders() {
   check("a wildcard origin is never trusted", !authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app,*.vercel.app, https://ok.example.com" }).some((o) => o.includes("*")) && authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "https://*.vercel.app, https://ok.example.com" }).includes("https://ok.example.com"));
   check("extra origins can be added", authTrustedOrigins({ ...prod, AUTH_TRUSTED_ORIGINS: "app.youbank.com, https://www.youbank.com" }).includes("https://www.youbank.com"));
   check("no stray origins are trusted in production", !authTrustedOrigins({ ...prod, NODE_ENV: "production" }).some((o) => o.includes("localhost")));
+  console.log("bots and account deletion");
+  {
+    const env = { TURNSTILE_SECRET_KEY: "secret" };
+    const seen: string[] = [];
+    const cf = (ok: boolean, status = 200) => (async (_u: RequestInfo | URL, init?: RequestInit) => { seen.push(String(init?.body)); return new Response(JSON.stringify({ success: ok }), { status }); }) as typeof fetch;
+    const h = (o: Record<string, string>) => new Headers(o);
+    check("Turnstile is off until its secret is set", !turnstileOn({}) && turnstileOn(env));
+    check("off: sign-up goes through with no token", (await botCheck("/sign-up/email", h({}), {}, cf(false))) === null);
+    check("the honeypot is checked even without Turnstile", (await botCheck("/sign-up/email", h({ "x-yb-hp": "http://spam.example" }), {}, cf(true))) === BOT_REFUSED && honeypotTripped("x") && !honeypotTripped("  ") && !honeypotTripped(null));
+    check("on: no token, no account", (await botCheck("/sign-up/email", h({}), env, cf(true))) === BOT_REFUSED);
+    check("on: a token Cloudflare accepts goes through, with the caller's address", (await botCheck("/sign-up/email", h({ "x-turnstile-token": "tok", "x-real-ip": "203.0.113.9" }), env, cf(true))) === null && seen.at(-1)!.includes("remoteip=203.0.113.9") && seen.at(-1)!.includes("response=tok"));
+    check("on: a token Cloudflare refuses is refused", (await botCheck("/sign-up/email", h({ "x-turnstile-token": "tok" }), env, cf(false))) === BOT_REFUSED);
+    check("on: Cloudflare down or erroring counts as no (fails closed)", !(await verifyTurnstile("tok", null, env, (async () => { throw new TypeError("fetch failed"); }) as typeof fetch)) && !(await verifyTurnstile("tok", null, env, cf(true, 500))));
+    check("the reset-link request is guarded too; sign-in and other paths are not", (await botCheck("/request-password-reset", h({}), env, cf(true))) === BOT_REFUSED && (await botCheck("/sign-in/email", h({}), env, cf(false))) === null);
+    check("the page may load Turnstile (script and frame), nothing wider", contentSecurityPolicy({}).includes("script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com") && contentSecurityPolicy({}).includes("frame-src 'self' https://challenges.cloudflare.com"));
+    check("deletion waits on a team with others in it and a renewing plan, in plain words", blockerMessage([{ kind: "team", team: "Arb desk" }, { kind: "plan", plan: "pro" }]) === "Before your account can be deleted, make someone else an owner of the team “Arb desk” (Team page), and cancel your Pro plan in Settings → Plan, so you are not charged again." && blockerMessage([]) === "");
+  }
   check("a room of 100 on one wifi can all sign in and sign up within the per-address limits", (AUTH_RATE_RULES["/sign-in/email"] as { max: number }).max >= 100 && (AUTH_RATE_RULES["/sign-up/email"] as { max: number }).max >= 100);
   check("password guessing is stopped per account: at most 10 tries in 15 minutes", ACCOUNT_RULE.max <= 10 && ACCOUNT_RULE.window >= 900);
   check("sign-in limits: session reads are not counted, password sign-in has a long window", AUTH_RATE_RULES["/get-session"] === false && (AUTH_RATE_RULES["/sign-in/email"] as { window: number }).window >= 60);
@@ -348,7 +367,8 @@ async function testAuthAndHeaders() {
   const has = (d: string) => csp.split("; ").some((x) => x === d || x.startsWith(`${d} `));
   check("framing is refused", csp.includes("frame-ancestors 'none'"));
   check("plugins and <base> hijacks are refused", has("object-src 'none'") && has("base-uri 'self'"));
-  check("scripts load only from YouBank", /script-src 'self'/.test(csp) && !/script-src[^;]*https:/.test(csp));
+  // One outside script source, on purpose: Cloudflare Turnstile on sign-up (src/lib/auth/bot.ts).
+  check("scripts load only from YouBank and Cloudflare Turnstile", /script-src 'self'/.test(csp) && (csp.match(/script-src[^;]*/)?.[0].match(/https:\/\/[^\s;]+/g) ?? []).every((u) => u === "https://challenges.cloudflare.com"));
   check("no eval in production", !csp.includes("'unsafe-eval'") && contentSecurityPolicy({ dev: true }).includes("'unsafe-eval'"));
   check("map and PDF workers may start from blobs", has("worker-src 'self' blob:"));
   check("WebAssembly may compile", csp.includes("'wasm-unsafe-eval'"));

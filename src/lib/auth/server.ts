@@ -7,6 +7,7 @@ import { authBaseUrl, authTrustedOrigins } from "./origins";
 import { mailConfigured, resetEmail, sendMail } from "./mail";
 import { ACCOUNT_LIMITED, AUTH_RATE_RULES, accountLimit, authRateStorage } from "./rate-limit";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { botCheck } from "./bot";
 
 /**
  * How long the signed session cookie is trusted before the session is read from the database again
@@ -61,6 +62,9 @@ function build() {
         if (ctx.path === "/sign-in/email" && !(await accountLimit((ctx.body as { email?: unknown } | undefined)?.email))) {
           throw new APIError("TOO_MANY_REQUESTS", { message: ACCOUNT_LIMITED });
         }
+        // Bots: sign-up and reset-link requests pass Turnstile (when set up) and the honeypot (./bot.ts).
+        const refused = await botCheck(ctx.path, ctx.headers);
+        if (refused) throw new APIError("FORBIDDEN", { message: refused });
       }),
     },
     advanced: {

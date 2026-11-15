@@ -25,7 +25,8 @@ export function contentSecurityPolicy(opts: { dev?: boolean; preview?: boolean; 
   const live = opts.preview ? " https://vercel.live" : "";
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${opts.dev ? " 'unsafe-eval'" : ""}${live}`,
+    // challenges.cloudflare.com: Turnstile on sign-up and the reset-link form (src/lib/auth/bot.ts).
+    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://challenges.cloudflare.com${opts.dev ? " 'unsafe-eval'" : ""}${live}`,
     `style-src 'self' 'unsafe-inline'${live}`,
     "img-src 'self' data: blob: https:",
     `font-src 'self' data:${opts.preview ? " https://vercel.live https://assets.vercel.com" : ""}`,
@@ -35,7 +36,7 @@ export function contentSecurityPolicy(opts: { dev?: boolean; preview?: boolean; 
     "media-src 'self' data: blob: https:",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
-    `frame-src 'self'${live}`,
+    `frame-src 'self' https://challenges.cloudflare.com${live}`,
     "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

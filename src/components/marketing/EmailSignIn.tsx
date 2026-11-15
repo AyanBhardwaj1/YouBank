@@ -5,6 +5,7 @@ import { useState } from "react";
 import { RecoveryKeyReveal } from "@/components/settings/RecoveryKeyReveal";
 import { getAuthClient } from "@/lib/auth/client";
 import { signInError } from "./SignInButton";
+import { useBotGuard } from "./BotGuard";
 
 const FIELD = "w-full rounded-md border border-line bg-transparent px-3 py-2 text-[13px] text-fg outline-none placeholder:text-muted focus:border-line-strong";
 
@@ -22,6 +23,8 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
   const [error, setError] = useState<string | null>(null);
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
   const [after, setAfter] = useState<string | null>(null);
+  // Sign-up only: Turnstile (when set up) and the honeypot, checked again on the server (src/lib/auth/bot.ts).
+  const guard = useBotGuard(mode === "up");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +33,8 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
       const client = await getAuthClient();
       const res = mode === "in"
         ? await client.signIn.email({ email: email.trim(), password })
-        : await client.signUp.email({ name: name.trim() || email.trim().split("@")[0], email: email.trim(), password });
-      if (res?.error) { setError(signInError(res.error)); setBusy(false); return; }
+        : await client.signUp.email({ name: name.trim() || email.trim().split("@")[0], email: email.trim(), password }, { headers: guard.headers() });
+      if (res?.error) { setError(signInError(res.error)); setBusy(false); if (mode === "up") guard.reset(); return; }
       // Two-factor is on: the auth client is already taking the browser to the code page, and there is
       // no session yet, so going to `next` here would only bounce back to sign-in.
       if (res?.data && "twoFactorRedirect" in res.data && res.data.twoFactorRedirect) return;
@@ -63,12 +66,13 @@ export function EmailSignIn({ next = "/app", className = "" }: { next?: string; 
   }
 
   return (
-    <form onSubmit={submit} onPointerEnter={() => { void getAuthClient(); }} className={`space-y-2.5 ${className}`}>
+    <form onSubmit={submit} style={{ position: "relative" }} onPointerEnter={() => { void getAuthClient(); }} className={`space-y-2.5 ${className}`}>
       {mode === "up" && <input className={FIELD} placeholder="Your name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />}
       <input className={FIELD} type="email" required placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
       <input className={FIELD} type="password" required minLength={mode === "up" ? 10 : undefined} placeholder={mode === "up" ? "Password (10+ characters)" : "Password"}
         autoComplete={mode === "up" ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} />
-      <button type="submit" disabled={busy} className="w-full rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white disabled:opacity-60">
+      {mode === "up" && guard.fields}
+      <button type="submit" disabled={busy || (mode === "up" && !guard.ready)} className="w-full rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white disabled:opacity-60">
         {busy ? "One moment…" : mode === "in" ? "Sign in" : "Create account"}
       </button>
       {error && <div role="alert" className="text-[11px] text-neg">{error}</div>}

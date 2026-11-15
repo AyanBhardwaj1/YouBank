@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { RecoveryKeyReveal } from "@/components/settings/RecoveryKeyReveal";
+import { useBotGuard } from "./BotGuard";
 
 /** Who to write to when someone cannot get back in on their own. */
 export const SUPPORT_EMAIL = "bhardwajayan000@gmail.com";
@@ -10,8 +11,8 @@ export const SUPPORT_EMAIL = "bhardwajayan000@gmail.com";
 const FIELD = "w-full rounded-md border border-line bg-transparent px-3 py-2 text-[13px] text-fg outline-none placeholder:text-muted focus:border-line-strong";
 const BUTTON = "w-full rounded-md bg-fg px-4 py-2.5 text-[13px] font-semibold text-bg transition hover:bg-white disabled:opacity-60";
 
-async function post(path: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function post(path: string, body: unknown, extra: Record<string, string> = {}): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", ...extra }, body: JSON.stringify(body) });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { ok: res.ok, data };
 }
@@ -34,6 +35,8 @@ export function ResetPassword({ emailReset, token, expired }: { emailReset: bool
   const [done, setDone] = useState(false);
 
   const mismatch = confirm.length > 0 && confirm !== password;
+  // The emailed link can flood an inbox, so that form gets the bot check (src/lib/auth/bot.ts).
+  const guard = useBotGuard(mode === "email" && emailReset && !token);
 
   if (newKey) {
     return (
@@ -88,8 +91,9 @@ export function ResetPassword({ emailReset, token, expired }: { emailReset: bool
   const byEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setError(null);
-    const r = await post("/api/auth/request-password-reset", { email: email.trim(), redirectTo: "/sign-in/reset" }).catch(() => ({ ok: false, data: {} as Record<string, unknown> }));
+    const r = await post("/api/auth/request-password-reset", { email: email.trim(), redirectTo: "/sign-in/reset" }, guard.headers()).catch(() => ({ ok: false, data: {} as Record<string, unknown> }));
     setBusy(false);
+    if (!r.ok) guard.reset();
     // The same answer whether or not the email has an account.
     if (r.ok) setSent(true); else setError(messageOf(r.data, "That did not work just now. Try again in a minute."));
   };
@@ -109,9 +113,10 @@ export function ResetPassword({ emailReset, token, expired }: { emailReset: bool
         sent ? (
           <p role="status" className="mt-4 text-[12.5px] text-muted">If that email has a YouBank account, a link to choose a new password is on its way. It works for an hour. Check your spam folder if it has not arrived in a few minutes.</p>
         ) : (
-          <form onSubmit={byEmail} className="mt-4 space-y-2.5">
+          <form onSubmit={byEmail} className="relative mt-4 space-y-2.5">
             <input className={FIELD} type="email" required placeholder="Your account's email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <button type="submit" disabled={busy} className={BUTTON}>{busy ? "One moment…" : "Email me a link"}</button>
+            {guard.fields}
+            <button type="submit" disabled={busy || !guard.ready} className={BUTTON}>{busy ? "One moment…" : "Email me a link"}</button>
             {error && <div role="alert" className="text-[11px] text-neg">{error}</div>}
           </form>
         )
